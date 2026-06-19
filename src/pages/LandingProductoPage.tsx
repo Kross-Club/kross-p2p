@@ -21,7 +21,7 @@ interface FormData {
 
 export default function LandingProductoPage() {
   const { landingId } = useParams<{ landingId: string }>()
-  const { landings, productos, tiendas, currentUser, chats, openNewChat } = useKrossStore()
+  const { landings, productos, tiendas, currentUser, chats, pedidos, openNewChat } = useKrossStore()
 
   const landing = landings.find(l => l.id === landingId)
   const producto = landing ? productos.find(p => p.id === landing.productoId) : null
@@ -72,6 +72,21 @@ export default function LandingProductoPage() {
   // ——— CHAT VIEW ———
   if (step === 'chat') {
     const activeChat = chatId ? chats.find(c => c.id === chatId) : null
+    const pedido = chatId ? pedidos.find(p => p.chatId === chatId) : null
+    const etapa = pedido?.etapa || 'nuevo'
+
+    // Rappi-style stages
+    const stages: { key: string; label: string; emoji: string }[] = [
+      { key: 'nuevo', label: 'Pedido', emoji: '📋' },
+      { key: 'confirmo', label: 'Confirmado', emoji: '📞' },
+      { key: 'despacho', label: 'Preparando', emoji: '📦' },
+      { key: 'ruta', label: 'En camino', emoji: '🚚' },
+      { key: 'entregado', label: 'Entregado', emoji: '✅' },
+    ]
+    const stageOrder = ['nuevo', 'asesorando', 'confirmo', 'despacho', 'ruta', 'destino', 'entregado']
+    const currentIdx = Math.max(0, stageOrder.indexOf(etapa))
+    const activeStage = (key: string) => stageOrder.indexOf(key) <= currentIdx
+
     return (
       <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 112px)' }}>
         {/* Header azul con curva inferior */}
@@ -131,6 +146,47 @@ export default function LandingProductoPage() {
               <p className="text-sm font-black text-white truncate max-w-[200px]">{selectedPack?.nombre || producto.nombre}</p>
             </div>
             <p className="font-black text-lg text-white">S/{precioBase}</p>
+          </div>
+        </div>
+
+        {/* Rastreador de pedido estilo Rappi */}
+        <div className="mx-4 mt-3 mb-1 bg-white rounded-2xl px-4 py-3 shadow-sm" style={{ border: '1.5px solid #F0F0F0' }}>
+          <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: '#55C8F5' }}>Estado de tu pedido</p>
+          <div className="flex items-center">
+            {stages.map((s, i) => {
+              const done = activeStage(s.key)
+              const isCurrent = stageOrder.indexOf(s.key) === currentIdx ||
+                (s.key === 'nuevo' && (etapa === 'nuevo' || etapa === 'asesorando'))
+              return (
+                <div key={s.key} className="flex items-center flex-1 last:flex-none">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all"
+                      style={isCurrent
+                        ? { background: '#FFD400', border: '2.5px solid #111111', fontSize: 16 }
+                        : done
+                        ? { background: '#55C8F5', fontSize: 14 }
+                        : { background: '#F3F4F6', fontSize: 14 }
+                      }
+                    >
+                      {s.emoji}
+                    </div>
+                    <p
+                      className="text-[8px] font-bold text-center leading-tight w-12"
+                      style={{ color: isCurrent ? '#111111' : done ? '#55C8F5' : '#9CA3AF' }}
+                    >
+                      {s.label}
+                    </p>
+                  </div>
+                  {i < stages.length - 1 && (
+                    <div
+                      className="flex-1 h-0.5 mx-1 mb-4 rounded-full"
+                      style={{ background: activeStage(stages[i + 1].key) ? '#55C8F5' : '#E5E7EB' }}
+                    />
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 

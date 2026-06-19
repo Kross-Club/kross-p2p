@@ -118,8 +118,19 @@ export const useKrossStore = create<KrossState>((set, get) => ({
 
   openNewChat: (clienteId, tiendaId, productoId, landingId, nombre, direccion, _whatsapp?) => {
     const landing = get().landings.find(l => l.id === landingId)
+    const producto = get().productos.find(p => p.id === productoId)
     const chatId = `ch${Date.now()}`
     const pedidoId = `ped${Date.now()}`
+
+    // Compute delivery date and welcome text
+    const primerNombre = nombre.split(' ')[0]
+    const entrega = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+    const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+    const fechaStr = `${dias[entrega.getDay()]} ${entrega.getDate()} de ${meses[entrega.getMonth()]}`
+    const nombreProd = producto?.nombre || 'tu producto'
+    const precio = landing?.ofertas[0]?.precio || producto?.precio || '—'
+
     const newChat: Chat = {
       id: chatId,
       clienteId,
@@ -130,25 +141,18 @@ export const useKrossStore = create<KrossState>((set, get) => ({
       mensajes: [
         {
           id: `m${Date.now()}a`,
-          autor: 'bot',
-          tipo: 'audio',
-          contenido: { duracion: '0:42', url: '#' },
+          autor: 'bot' as const,
+          tipo: 'texto' as const,
+          contenido: `¡Hola ${primerNombre}! 🎉 Tu ${nombreProd} (S/${precio}) llega a tu puerta sin adelanto el ${fechaStr}.\nEscucha el audio 🎧 te explico todo. En un momento te llamamos para confirmar 📞 — contesta y queda listo.\nMientras tanto, resuelve tus dudas aquí 👇`,
           timestamp: new Date().toISOString(),
         },
-        (() => {
-          const primerNombre = nombre.split(' ')[0]
-          const entrega = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
-          const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
-          const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
-          const fechaStr = `${dias[entrega.getDay()]} ${entrega.getDate()} de ${meses[entrega.getMonth()]}`
-          return {
-            id: `m${Date.now()}ab`,
-            autor: 'bot' as const,
-            tipo: 'texto' as const,
-            contenido: `¡Hola ${primerNombre}! 🎉 Tu pedido llegará a la puerta de tu casa sin ningún adelanto si confirmas ahora y contestas nuestras llamadas de confirmación. Te estará llegando el ${fechaStr} entre las 11 am y 6 pm. Solo necesitamos que nos confirmes la llamada que llegará en un momento — mientras tanto puedes resolver dudas por aquí 👇`,
-            timestamp: new Date(Date.now() + 100).toISOString(),
-          }
-        })(),
+        {
+          id: `m${Date.now()}b`,
+          autor: 'bot' as const,
+          tipo: 'audio' as const,
+          contenido: { duracion: '0:42', url: '#' },
+          timestamp: new Date(Date.now() + 100).toISOString(),
+        },
         ...(landing && landing.faq.length > 0 ? [{
           id: `m${Date.now()}c`,
           autor: 'bot' as const,
@@ -160,17 +164,6 @@ export const useKrossStore = create<KrossState>((set, get) => ({
           },
           timestamp: new Date(Date.now() + 200).toISOString(),
         }] : []),
-        {
-          id: `m${Date.now()}d`,
-          autor: 'bot' as const,
-          tipo: 'botones' as const,
-          contenido: {
-            pregunta: 'Para asegurar tu pedido y que llegue puntual, confírmalo ahora:',
-            opciones: ['✅ Sí, confirmo mi pedido'],
-            respuestas: { '✅ Sí, confirmo mi pedido': '¡Perfecto! 🎉 Tu pedido está confirmado. Recibirás una llamada en breve para coordinar la entrega.' },
-          },
-          timestamp: new Date(Date.now() + 400).toISOString(),
-        },
       ]
     }
     const newPedido: Pedido = {
