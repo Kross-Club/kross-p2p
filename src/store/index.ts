@@ -135,13 +135,6 @@ export const useKrossStore = create<KrossState>((set, get) => ({
           contenido: { duracion: '0:42', url: '#' },
           timestamp: new Date().toISOString(),
         },
-        ...(landing && landing.ofertas.length > 0 ? [{
-          id: `m${Date.now()}b`,
-          autor: 'bot' as const,
-          tipo: 'precios' as const,
-          contenido: landing.ofertas,
-          timestamp: new Date().toISOString(),
-        }] : []),
         ...(landing && landing.faq.length > 0 ? [{
           id: `m${Date.now()}c`,
           autor: 'bot' as const,

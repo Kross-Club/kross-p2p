@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Star, Shield, Truck, Zap, CheckCircle, ChevronDown, X, Play, Pause } from 'lucide-react'
+import { Star, Shield, Truck, Zap, CheckCircle, ChevronDown, X } from 'lucide-react'
 import { useKrossStore } from '../store'
 import { DEPARTAMENTOS_PERU } from '../data/seed'
 import { GEO_PERU } from '../data/peru-geo'
@@ -18,28 +18,6 @@ interface FormData {
   direccion: string
 }
 
-function AudioMini({ duracion }: { duracion: string }) {
-  const [playing, setPlaying] = useState(false)
-  const bars = [4, 8, 12, 7, 14, 10, 6, 16, 9, 5, 13, 8, 11, 15, 7, 10, 4, 12, 8, 6, 14, 9]
-  return (
-    <div className="flex items-center gap-3 bg-white/20 rounded-2xl px-4 py-3 w-full max-w-xs">
-      <button
-        onClick={() => setPlaying(!playing)}
-        className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-green-600 flex-shrink-0 shadow-sm"
-      >
-        {playing ? <Pause size={16} /> : <Play size={16} />}
-      </button>
-      <div className="flex-1">
-        <div className="flex items-end gap-0.5 h-5">
-          {bars.map((h, i) => (
-            <div key={i} className={`w-0.5 rounded-full ${playing ? 'bg-white' : 'bg-white/50'}`} style={{ height: `${h}px` }} />
-          ))}
-        </div>
-        <p className="text-[11px] text-white/70 mt-0.5 font-medium">{duracion}</p>
-      </div>
-    </div>
-  )
-}
 
 export default function LandingProductoPage() {
   const { landingId } = useParams<{ landingId: string }>()
@@ -110,10 +88,6 @@ export default function LandingProductoPage() {
               <p className="text-sm font-bold text-white truncate max-w-[200px]">{selectedPack?.nombre || producto.nombre}</p>
             </div>
             <p className="font-black text-lg">S/{precioBase}</p>
-          </div>
-          {/* Mini audio en el header */}
-          <div className="mt-3">
-            <AudioMini duracion="0:52" />
           </div>
         </div>
 
@@ -507,20 +481,62 @@ export default function LandingProductoPage() {
                 </div>
               </div>
 
-              {/* Trust */}
-              <div className="flex items-center justify-center gap-4 my-4 text-[10px] text-gray-400">
-                <span className="flex items-center gap-1"><Shield size={11} className="text-green-500" /> Datos seguros</span>
-                <span className="flex items-center gap-1"><Zap size={11} className="text-amber-500" /> Respuesta inmediata</span>
-                <span className="flex items-center gap-1"><Truck size={11} className="text-blue-500" /> Contraentrega</span>
+              {/* Kross Club seal */}
+              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 my-4">
+                <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-amber-400 to-yellow-500 rounded-full flex items-center justify-center shadow-sm border-2 border-amber-300">
+                  <svg viewBox="0 0 40 40" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20 4l2.4 7.4H30l-6.2 4.5 2.4 7.4L20 19l-6.2 4.3 2.4-7.4L10 11.4h7.6L20 4z" fill="white"/>
+                    <circle cx="20" cy="26" r="8" fill="white" fillOpacity="0.3" stroke="white" strokeWidth="1.5"/>
+                    <path d="M16 26l2.5 2.5L24 23" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[11px] font-black text-amber-800 uppercase tracking-wide">Garantía Kross Club</p>
+                  <p className="text-[10px] text-amber-700 leading-tight">30 días de protección total. Si no estás satisfecho, te devolvemos tu dinero.</p>
+                </div>
               </div>
 
-              <button
-                onClick={handleSubmit}
-                disabled={!formValid}
-                className="w-full bg-green-500 text-white font-black py-4 rounded-2xl text-base shadow-lg shadow-green-200 disabled:opacity-40 active:scale-95 transition-transform"
-              >
-                Confirmar pedido — S/{precioBase} →
-              </button>
+              {/* Mascota + Botón */}
+              <div className="flex items-end gap-3">
+                {/* Mascota Kross (zorro) */}
+                <div className="flex-shrink-0 mb-1">
+                  <svg viewBox="0 0 64 72" width="56" height="64" xmlns="http://www.w3.org/2000/svg">
+                    {/* Cuerpo */}
+                    <ellipse cx="32" cy="52" rx="16" ry="14" fill="#FFB300"/>
+                    {/* Cabeza */}
+                    <ellipse cx="32" cy="32" rx="18" ry="17" fill="#FFB300"/>
+                    {/* Orejas */}
+                    <polygon points="16,18 10,4 22,14" fill="#FF6B35"/>
+                    <polygon points="48,18 54,4 42,14" fill="#FF6B35"/>
+                    {/* Oreja interior */}
+                    <polygon points="16,17 12,7 21,14" fill="#FFE0CC"/>
+                    <polygon points="48,17 52,7 43,14" fill="#FFE0CC"/>
+                    {/* Cara blanca */}
+                    <ellipse cx="32" cy="35" rx="11" ry="10" fill="#FFF3E0"/>
+                    {/* Ojos */}
+                    <circle cx="26" cy="29" r="3" fill="#1A1A2E"/>
+                    <circle cx="38" cy="29" r="3" fill="#1A1A2E"/>
+                    <circle cx="27" cy="28" r="1" fill="white"/>
+                    <circle cx="39" cy="28" r="1" fill="white"/>
+                    {/* Nariz */}
+                    <ellipse cx="32" cy="35" rx="2.5" ry="1.5" fill="#1A1A2E"/>
+                    {/* Boca sonrisa */}
+                    <path d="M29 37.5 Q32 40 35 37.5" stroke="#1A1A2E" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+                    {/* Manoplas */}
+                    <ellipse cx="18" cy="60" rx="6" ry="5" fill="#FF6B35"/>
+                    <ellipse cx="46" cy="60" rx="6" ry="5" fill="#FF6B35"/>
+                    {/* Estrella */}
+                    <text x="27" y="56" fontSize="10" fill="white" fontWeight="bold">★</text>
+                  </svg>
+                </div>
+                <button
+                  onClick={handleSubmit}
+                  disabled={!formValid}
+                  className="flex-1 bg-gradient-to-r from-amber-400 to-yellow-400 text-gray-900 font-black py-4 rounded-2xl text-base shadow-lg shadow-amber-200 disabled:opacity-40 active:scale-95 transition-transform border-b-4 border-amber-500"
+                >
+                  ¡Confirmar pedido! S/{precioBase} →
+                </button>
+              </div>
             </div>
           </div>
         </>
