@@ -31,13 +31,13 @@ export default function BottomNav() {
             to={to}
             className={({ isActive }) =>
               `flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl transition-colors min-w-0 ${
-                isActive ? 'text-green-600' : 'text-gray-400 hover:text-gray-600'
+                isActive ? '' : 'text-gray-400 hover:text-gray-600'
               }`
             }
           >
             {({ isActive }) => (
               <>
-                <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-green-50' : ''}`}>
+                <div className="p-1.5 rounded-xl transition-colors" style={isActive ? { color: '#55C8F5', background: '#EEF9FF' } : {}}>
                   <Icon size={20} />
                 </div>
                 <span className="text-[10px] font-medium truncate">{label}</span>

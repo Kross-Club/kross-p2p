@@ -72,7 +72,7 @@ export default function ChatsVendedorPage() {
                 onClick={() => navigate(`/vendedor/chat/${chat.id}`)}
                 className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
               >
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white text-lg font-black flex-shrink-0">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#55C8F5] to-[#2BB5EE] flex items-center justify-center text-white text-lg font-black flex-shrink-0">
                   {(cliente?.nombre || 'C')[0]}
                 </div>
                 <div className="flex-1 min-w-0">

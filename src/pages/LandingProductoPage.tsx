@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Star, Shield, Truck, Zap, CheckCircle, ChevronDown, X, Phone } from 'lucide-react'
+import { Star, Shield, Truck, Zap, CheckCircle, ChevronDown, X, Phone, ArrowLeft } from 'lucide-react'
 import { useKrossStore } from '../store'
 import { DEPARTAMENTOS_PERU } from '../data/seed'
 import { GEO_PERU } from '../data/peru-geo'
@@ -74,63 +74,64 @@ export default function LandingProductoPage() {
     const activeChat = chatId ? chats.find(c => c.id === chatId) : null
     return (
       <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 112px)' }}>
-        {/* Header del chat — estilo app de mensajería */}
-        <div className="px-4 py-3 text-white flex items-center gap-3" style={{ background: '#55C8F5' }}>
-          {/* Avatar mascota del vendedor */}
-          <div className="relative flex-shrink-0">
-            <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/40 bg-amber-100 flex items-center justify-center">
-              <svg viewBox="0 0 64 64" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
-                {/* Fondo */}
-                <circle cx="32" cy="32" r="32" fill="#FFF9E0"/>
-                {/* Cuerpo oso */}
-                <ellipse cx="32" cy="48" rx="14" ry="11" fill="#D4A05A"/>
-                {/* Cabeza */}
-                <circle cx="32" cy="28" r="16" fill="#E8B86D"/>
-                {/* Orejas */}
-                <circle cx="17" cy="16" r="6" fill="#D4A05A"/>
-                <circle cx="47" cy="16" r="6" fill="#D4A05A"/>
-                <circle cx="17" cy="16" r="3.5" fill="#F5C98A"/>
-                <circle cx="47" cy="16" r="3.5" fill="#F5C98A"/>
-                {/* Cara */}
-                <ellipse cx="32" cy="31" rx="10" ry="8" fill="#F5C98A"/>
-                {/* Ojos */}
-                <circle cx="26" cy="26" r="2.5" fill="#1A1A1A"/>
-                <circle cx="38" cy="26" r="2.5" fill="#1A1A1A"/>
-                <circle cx="26.8" cy="25.2" r="0.9" fill="white"/>
-                <circle cx="38.8" cy="25.2" r="0.9" fill="white"/>
-                {/* Nariz */}
-                <ellipse cx="32" cy="31" rx="2.5" ry="1.8" fill="#1A1A1A"/>
-                {/* Sonrisa */}
-                <path d="M28.5 33.5 Q32 36.5 35.5 33.5" stroke="#1A1A1A" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
-                {/* Gorrito */}
-                <ellipse cx="32" cy="13" rx="13" ry="4" fill="#55C8F5"/>
-                <rect x="19" y="9" width="26" height="8" rx="4" fill="#55C8F5"/>
-                <rect x="23" y="6" width="18" height="7" rx="3.5" fill="#2BB5EE"/>
-                <circle cx="32" cy="6" r="2.5" fill="#FFD400"/>
-              </svg>
+        {/* Header azul con curva inferior */}
+        <div className="px-4 pt-3 pb-5 text-white" style={{ background: '#55C8F5', borderRadius: '0 0 32px 32px' }}>
+          <div className="flex items-center gap-3">
+            {/* Flecha atrás */}
+            <button
+              onClick={() => setStep('landing')}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(255,255,255,0.22)' }}
+            >
+              <ArrowLeft size={18} className="text-white" />
+            </button>
+
+            {/* Avatar mascota oso Teddy */}
+            <div className="relative flex-shrink-0">
+              <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/60">
+                <svg viewBox="0 0 64 64" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="32" cy="32" r="32" fill="#FFF9E0"/>
+                  <ellipse cx="32" cy="48" rx="14" ry="11" fill="#D4A05A"/>
+                  <circle cx="32" cy="28" r="16" fill="#E8B86D"/>
+                  <circle cx="17" cy="16" r="6" fill="#D4A05A"/>
+                  <circle cx="47" cy="16" r="6" fill="#D4A05A"/>
+                  <circle cx="17" cy="16" r="3.5" fill="#F5C98A"/>
+                  <circle cx="47" cy="16" r="3.5" fill="#F5C98A"/>
+                  <ellipse cx="32" cy="31" rx="10" ry="8" fill="#F5C98A"/>
+                  <circle cx="26" cy="26" r="2.5" fill="#1A1A1A"/>
+                  <circle cx="38" cy="26" r="2.5" fill="#1A1A1A"/>
+                  <circle cx="26.8" cy="25.2" r="0.9" fill="white"/>
+                  <circle cx="38.8" cy="25.2" r="0.9" fill="white"/>
+                  <ellipse cx="32" cy="31" rx="2.5" ry="1.8" fill="#1A1A1A"/>
+                  <path d="M28.5 33.5 Q32 36.5 35.5 33.5" stroke="#1A1A1A" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
+                  <ellipse cx="32" cy="13" rx="13" ry="4" fill="#55C8F5"/>
+                  <rect x="19" y="9" width="26" height="8" rx="4" fill="#55C8F5"/>
+                  <rect x="23" y="6" width="18" height="7" rx="3.5" fill="#2BB5EE"/>
+                  <circle cx="32" cy="6" r="2.5" fill="#FFD400"/>
+                </svg>
+              </div>
+              <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" style={{ background: '#4ADE80' }} />
             </div>
-            {/* Punto online */}
-            <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" style={{ background: '#4ADE80' }} />
+
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-white text-base leading-tight">Teddy</p>
+              <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>En línea ahora</p>
+            </div>
+
+            {/* Llamada — blanco con borde negro como referencia */}
+            <button className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white" style={{ border: '2px solid #111111' }}>
+              <Phone size={17} style={{ color: '#111111' }} />
+            </button>
           </div>
 
-          <div className="flex-1 min-w-0">
-            <p className="font-black text-white text-base leading-tight">Teddy</p>
-            <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>En línea ahora</p>
+          {/* Info pedido dentro del header */}
+          <div className="mt-3 rounded-2xl px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.2)' }}>
+            <div>
+              <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>Tu pedido</p>
+              <p className="text-sm font-black text-white truncate max-w-[200px]">{selectedPack?.nombre || producto.nombre}</p>
+            </div>
+            <p className="font-black text-lg text-white">S/{precioBase}</p>
           </div>
-
-          {/* Ícono de llamada */}
-          <button className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,255,255,0.2)' }}>
-            <Phone size={17} className="text-white" />
-          </button>
-        </div>
-
-        {/* Sub-header pedido */}
-        <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: '#3DBAED' }}>
-          <div>
-            <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>Tu pedido</p>
-            <p className="text-sm font-black text-white truncate max-w-[220px]">{selectedPack?.nombre || producto.nombre}</p>
-          </div>
-          <p className="font-black text-lg text-white">S/{precioBase}</p>
         </div>
 
         {/* Chat */}

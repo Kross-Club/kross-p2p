@@ -12,9 +12,9 @@ export default function ChatsPage() {
   if (!cliente) {
     return (
       <div className="flex flex-col items-center justify-center h-64 px-8 text-center">
-        <MessageCircle size={48} className="text-green-200 mb-4" />
+        <MessageCircle size={48} className="text-[#55C8F5]/30 mb-4" />
         <p className="text-gray-500 text-sm">Aún no tienes chats. Busca un producto y empieza a chatear.</p>
-        <button onClick={() => navigate('/landing/l1')} className="mt-4 bg-green-500 text-white px-6 py-3 rounded-2xl font-bold text-sm">
+        <button onClick={() => navigate('/landing/l1')} className="mt-4 bg-[#55C8F5] text-white px-6 py-3 rounded-2xl font-bold text-sm">
           Ver productos
         </button>
       </div>
@@ -27,9 +27,9 @@ export default function ChatsPage() {
 
       {misChats.length === 0 ? (
         <div className="text-center py-12">
-          <MessageCircle size={48} className="text-green-200 mx-auto mb-3" />
+          <MessageCircle size={48} className="text-[#55C8F5]/30 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No tienes chats abiertos aún.</p>
-          <button onClick={() => navigate('/landing/l1')} className="mt-4 bg-green-500 text-white px-6 py-3 rounded-2xl font-bold text-sm">
+          <button onClick={() => navigate('/landing/l1')} className="mt-4 bg-[#55C8F5] text-white px-6 py-3 rounded-2xl font-bold text-sm">
             Ver productos
           </button>
         </div>
@@ -47,7 +47,7 @@ export default function ChatsPage() {
                 onClick={() => navigate(`/comprador/chat/${chat.id}`)}
                 className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
               >
-                <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center text-2xl flex-shrink-0">
+                <div className="w-12 h-12 rounded-2xl bg-[#EEF9FF] flex items-center justify-center text-2xl flex-shrink-0">
                   {tienda?.logo || '🏪'}
                 </div>
                 <div className="flex-1 min-w-0">

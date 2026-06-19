@@ -88,8 +88,8 @@ function BotonesBubble({
         })}
       </div>
       {selected && selected.toLowerCase() !== 'chat' && contenido.respuestas[selected] && (
-        <div className="rounded-2xl rounded-bl-sm px-4 py-2.5 mt-1" style={{ background: '#EEF9FF' }}>
-          <p className="text-sm" style={{ color: '#111111' }}>{contenido.respuestas[selected]}</p>
+        <div className="rounded-2xl rounded-bl-sm px-4 py-2.5 mt-1" style={{ background: '#FFD400' }}>
+          <p className="text-sm font-semibold" style={{ color: '#111111' }}>{contenido.respuestas[selected]}</p>
         </div>
       )}
     </div>
@@ -136,8 +136,8 @@ function MensajeItem({
       <div className="flex justify-start mb-1">
         <div className="max-w-[85%] space-y-2">
           {contenido.pregunta && (
-            <div className="rounded-2xl rounded-bl-sm px-4 py-2.5" style={{ background: '#EEF9FF' }}>
-              <p className="text-sm" style={{ color: '#111111' }}>{contenido.pregunta}</p>
+            <div className="rounded-2xl rounded-bl-sm px-4 py-2.5" style={{ background: '#FFD400' }}>
+              <p className="text-sm font-semibold" style={{ color: '#111111' }}>{contenido.pregunta}</p>
             </div>
           )}
           <BotonesBubble
@@ -156,7 +156,7 @@ function MensajeItem({
       <div className={`max-w-[80%] ${isClient ? 'items-end' : 'items-start'} flex flex-col`}>
         <div
           className={`px-4 py-2.5 rounded-2xl text-sm ${isClient ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
-          style={isClient ? { background: '#55C8F5', color: 'white' } : { background: '#EEF9FF', color: '#111111' }}
+          style={isClient ? { background: '#55C8F5', color: 'white' } : { background: '#FFD400', color: '#111111' }}
         >
           {msg.contenido as string}
         </div>
@@ -211,8 +211,8 @@ export default function ChatView({ chat, isVendedor, lockedUntilChat }: ChatView
         {lockedUntilChat && !chatUnlocked && (
           <div className="flex justify-start mb-3">
             <div className="max-w-[85%] space-y-2">
-              <div className="rounded-2xl rounded-bl-sm px-4 py-2.5" style={{ background: '#EEF9FF' }}>
-                <p className="text-sm mb-2" style={{ color: '#111111' }}>¿Quieres hablar con un asesor ahora?</p>
+              <div className="rounded-2xl rounded-bl-sm px-4 py-2.5" style={{ background: '#FFD400' }}>
+                <p className="text-sm font-semibold mb-2" style={{ color: '#111111' }}>¿Quieres hablar con un asesor ahora?</p>
                 <button
                   onClick={handleChatUnlock}
                   className="flex items-center gap-2 font-bold px-4 py-2 rounded-xl text-sm text-white"
