@@ -74,20 +74,23 @@ export default function LandingProductoPage() {
     return (
       <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 112px)' }}>
         {/* Header del chat */}
-        <div className="bg-gradient-to-r from-green-600 to-green-500 px-4 py-4 text-white">
+        <div className="px-4 py-4 text-white" style={{ background: 'linear-gradient(135deg, #55C8F5 0%, #2BB5EE 100%)' }}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-xl">{tienda?.logo}</div>
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shadow-sm" style={{ background: 'rgba(255,255,255,0.25)' }}>{tienda?.logo}</div>
             <div>
-              <p className="font-black">¡Hola {form.nombre.split(' ')[0]}! 👋</p>
-              <p className="text-green-100 text-xs">{tienda?.nombre} • En línea ahora</p>
+              <p className="font-black text-white">¡Hola {form.nombre.split(' ')[0]}! 👋</p>
+              <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>{tienda?.nombre} • En línea ahora</p>
+            </div>
+            <div className="ml-auto flex-shrink-0">
+              <div className="w-2.5 h-2.5 rounded-full bg-green-400 shadow-sm animate-pulse" />
             </div>
           </div>
-          <div className="mt-3 bg-white/15 rounded-xl px-3 py-2 flex items-center justify-between">
+          <div className="mt-3 rounded-xl px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.18)' }}>
             <div>
-              <p className="text-xs text-white/80">Tu pedido</p>
-              <p className="text-sm font-bold text-white truncate max-w-[200px]">{selectedPack?.nombre || producto.nombre}</p>
+              <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>Tu pedido</p>
+              <p className="text-sm font-black text-white truncate max-w-[200px]">{selectedPack?.nombre || producto.nombre}</p>
             </div>
-            <p className="font-black text-lg">S/{precioBase}</p>
+            <p className="font-black text-lg text-white">S/{precioBase}</p>
           </div>
         </div>
 

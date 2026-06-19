@@ -135,6 +135,20 @@ export const useKrossStore = create<KrossState>((set, get) => ({
           contenido: { duracion: '0:42', url: '#' },
           timestamp: new Date().toISOString(),
         },
+        (() => {
+          const primerNombre = nombre.split(' ')[0]
+          const entrega = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+          const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+          const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+          const fechaStr = `${dias[entrega.getDay()]} ${entrega.getDate()} de ${meses[entrega.getMonth()]}`
+          return {
+            id: `m${Date.now()}ab`,
+            autor: 'bot' as const,
+            tipo: 'texto' as const,
+            contenido: `¡Hola ${primerNombre}! 🎉 Tu pedido llegará a la puerta de tu casa sin ningún adelanto si confirmas ahora y contestas nuestras llamadas de confirmación. Te estará llegando el ${fechaStr} entre las 11 am y 6 pm. Solo necesitamos que nos confirmes la llamada que llegará en un momento — mientras tanto puedes resolver dudas por aquí 👇`,
+            timestamp: new Date(Date.now() + 100).toISOString(),
+          }
+        })(),
         ...(landing && landing.faq.length > 0 ? [{
           id: `m${Date.now()}c`,
           autor: 'bot' as const,

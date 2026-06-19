@@ -6,22 +6,23 @@ import type { Chat, Mensaje, MensajeBotones, MensajePrecioOpcion, MensajeAudio }
 function AudioBubble({ contenido }: { contenido: MensajeAudio }) {
   const [playing, setPlaying] = useState(false)
   return (
-    <div className="flex items-center gap-3 bg-green-50 rounded-2xl px-4 py-3 min-w-[180px]">
+    <div className="flex items-center gap-3 rounded-2xl px-4 py-3 min-w-[180px]" style={{ background: '#FFFBE6', border: '1.5px solid #FFD400' }}>
       <button
         onClick={() => setPlaying(!playing)}
-        className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white flex-shrink-0 shadow-sm"
+        className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
+        style={{ background: '#FFD400', color: '#111111' }}
       >
         {playing ? <Pause size={16} /> : <Play size={16} />}
       </button>
       <div className="flex-1">
         <div className="flex items-end gap-0.5 h-6">
           {[4,9,14,7,16,11,6,18,8,5,13,9,12,16,7,11,4,13,9,6,15,10].map((h, i) => (
-            <div key={i} className={`w-0.5 rounded-full transition-all ${playing ? 'bg-green-500' : 'bg-green-300'}`} style={{ height: `${h}px` }} />
+            <div key={i} className="w-0.5 rounded-full transition-all" style={{ height: `${h}px`, background: playing ? '#FFD400' : '#FFD40066' }} />
           ))}
         </div>
-        <p className="text-[11px] text-green-600 mt-1 font-medium">{contenido.duracion}</p>
+        <p className="text-[11px] mt-1 font-bold" style={{ color: '#9A7A00' }}>{contenido.duracion}</p>
       </div>
-      <Mic size={14} className="text-green-400" />
+      <Mic size={14} style={{ color: '#FFD400' }} />
     </div>
   )
 }
@@ -73,13 +74,14 @@ function BotonesBubble({
             <button
               key={op}
               onClick={() => handleSelect(op)}
-              className={`text-xs font-medium px-3 py-2 rounded-full border transition-all ${
+              className={`text-xs font-bold px-3 py-2 rounded-full border transition-all ${isChat ? 'flex items-center gap-1.5' : ''}`}
+              style={
                 isChat
-                  ? 'bg-green-500 text-white border-green-500 font-bold flex items-center gap-1.5'
+                  ? { background: '#55C8F5', color: 'white', borderColor: '#55C8F5' }
                   : selected === op
-                  ? 'bg-green-500 text-white border-green-500'
-                  : 'bg-white text-green-700 border-green-200 hover:border-green-400'
-              }`}
+                  ? { background: '#FFD400', color: '#111111', borderColor: '#FFD400' }
+                  : { background: 'white', color: '#55C8F5', borderColor: '#55C8F5' }
+              }
             >
               {isChat && <MessageCircle size={11} />}
               {op}
@@ -88,8 +90,8 @@ function BotonesBubble({
         })}
       </div>
       {selected && selected.toLowerCase() !== 'chat' && contenido.respuestas[selected] && (
-        <div className="bg-green-50 rounded-2xl px-3 py-2 mt-1">
-          <p className="text-sm text-green-800">{contenido.respuestas[selected]}</p>
+        <div className="rounded-2xl px-3 py-2 mt-1" style={{ background: '#EEF9FF' }}>
+          <p className="text-sm" style={{ color: '#1a6a8a' }}>{contenido.respuestas[selected]}</p>
         </div>
       )}
     </div>
@@ -157,9 +159,10 @@ function MensajeItem({
             {msg.autor === 'vendedor' ? 'Vendedor' : 'IA Kross'}
           </p>
         )}
-        <div className={`px-4 py-2.5 rounded-2xl text-sm ${
-          isClient ? 'bg-green-500 text-white rounded-br-sm' : 'bg-gray-100 text-gray-800 rounded-bl-sm'
-        }`}>
+        <div
+          className={`px-4 py-2.5 rounded-2xl text-sm ${isClient ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
+          style={isClient ? { background: '#55C8F5', color: 'white' } : { background: '#EEF9FF', color: '#111111' }}
+        >
           {msg.contenido as string}
         </div>
         <p className="text-[10px] text-gray-300 mt-1 mx-1">{time}</p>
@@ -216,11 +219,12 @@ export default function ChatView({ chat, isVendedor, lockedUntilChat }: ChatView
           <div className="flex justify-start mb-3">
             <div className="max-w-[85%]">
               <p className="text-[10px] text-gray-400 mb-1 ml-1">Kross Bot</p>
-              <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
-                <p className="text-sm text-gray-700 mb-2">¿Quieres hablar con un asesor ahora?</p>
+              <div className="rounded-2xl rounded-bl-sm px-4 py-3" style={{ background: '#EEF9FF' }}>
+                <p className="text-sm mb-2" style={{ color: '#111111' }}>¿Quieres hablar con un asesor ahora?</p>
                 <button
                   onClick={handleChatUnlock}
-                  className="flex items-center gap-2 bg-green-500 text-white font-bold px-4 py-2 rounded-xl text-sm"
+                  className="flex items-center gap-2 font-bold px-4 py-2 rounded-xl text-sm text-white"
+                  style={{ background: '#55C8F5' }}
                 >
                   <MessageCircle size={14} />
                   Chat
@@ -242,13 +246,15 @@ export default function ChatView({ chat, isVendedor, lockedUntilChat }: ChatView
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSend()}
               placeholder={isVendedor ? 'Responder al cliente...' : 'Escribe tu mensaje...'}
-              className="flex-1 bg-gray-100 rounded-2xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-200 placeholder-gray-400"
+              className="flex-1 bg-gray-100 rounded-2xl px-4 py-2.5 text-sm outline-none placeholder-gray-400"
+              style={{ '--tw-ring-color': '#55C8F5' } as React.CSSProperties}
               autoFocus
             />
             <button
               onClick={handleSend}
               disabled={!input.trim()}
-              className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white shadow-sm disabled:opacity-40 transition-opacity"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40 transition-opacity"
+              style={{ background: '#55C8F5' }}
             >
               <Send size={16} />
             </button>
