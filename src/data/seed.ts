@@ -32,14 +32,94 @@ export const TIENDAS: Tienda[] = [
 ]
 
 export const PRODUCTOS: Producto[] = [
-  { id: 'p1', tiendaId: 't1', nombre: 'Masajeador eléctrico de cuello y hombros', descripcion: 'Masajeador cervical con calor infrarrojo, 8 cabezales rotatorios y 3 velocidades. Alivia el dolor de cuello y tensión muscular en minutos.', precio: 79, imagenes: ['💆'], estado: 'activo', landingId: 'l1' },
-  { id: 'p2', tiendaId: 't1', nombre: 'Freidora de aire 4.5L sin aceite', descripcion: 'Freidora de aire caliente digital con pantalla táctil, 8 programas preestablecidos. Cocina saludable sin aceite y más rápido que el horno.', precio: 189, imagenes: ['🍳'], estado: 'activo', landingId: 'l2' },
-  { id: 'p3', tiendaId: 't1', nombre: 'Lámpara LED escritorio plegable con USB', descripcion: 'Lámpara de escritorio LED con puerto USB, 3 modos de luz, intensidad regulable y cuello flexible 360°. Ideal para estudiar y trabajar.', precio: 45, imagenes: ['💡'], estado: 'activo', landingId: 'l3' },
-  { id: 'p4', tiendaId: 't1', nombre: 'Set de cuchillos de cocina 6 piezas', descripcion: 'Juego de cuchillos de acero inoxidable alemán con mango ergonómico antideslizante. Incluye soporte de madera de bambú.', precio: 65, imagenes: ['🔪'], estado: 'activo', landingId: 'l4' },
-  { id: 'p5', tiendaId: 't2', nombre: 'Colágeno + Vitamina C x 60 cápsulas', descripcion: 'Suplemento de colágeno hidrolizado marino con vitamina C, biotina y ácido hialurónico. Piel firme, cabello y uñas fuertes desde adentro.', precio: 55, imagenes: ['✨'], estado: 'activo', landingId: 'l5' },
-  { id: 'p6', tiendaId: 't2', nombre: 'Faja reductora de neopreno para mujer', descripcion: 'Faja abdominal reductora de neopreno con cierre triple ajustable. Acelera la sudoración en la zona abdominal y mejora la postura.', precio: 39, imagenes: ['👙'], estado: 'activo', landingId: 'l6' },
-  { id: 'p7', tiendaId: 't1', nombre: 'Auriculares inalámbricos TWS i12', descripcion: 'Auriculares TWS Bluetooth 5.0 con estuche de carga, sonido estéreo y cancelación de ruido. Hasta 4 horas de batería más 3 cargas extra.', precio: 35, imagenes: ['🎧'], estado: 'activo', landingId: 'l7' },
-  { id: 'p8', tiendaId: 't2', nombre: 'Termómetro digital infrarrojo sin contacto', descripcion: 'Termómetro infrarrojo de precisión médica, resultado en 1 segundo, memoria de 32 lecturas y alarma de fiebre. Apto para toda la familia.', precio: 49, imagenes: ['🌡️'], estado: 'activo', landingId: 'l8' },
+  {
+    id: 'p1', tiendaId: 't1', nombre: 'Masajeador eléctrico de cuello y hombros',
+    descripcion: 'Masajeador cervical con calor infrarrojo, 8 cabezales rotatorios y 3 velocidades. Alivia el dolor de cuello y tensión muscular en minutos.',
+    precio: 79,
+    imagenes: [
+      'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=800&q=80',
+      'https://images.unsplash.com/photo-1600334129128-685c5582fd35?w=800&q=80',
+      'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&q=80',
+    ],
+    estado: 'activo', landingId: 'l1'
+  },
+  {
+    id: 'p2', tiendaId: 't1', nombre: 'Freidora de aire 4.5L sin aceite',
+    descripcion: 'Freidora de aire caliente digital con pantalla táctil, 8 programas preestablecidos. Cocina saludable sin aceite y más rápido que el horno.',
+    precio: 189,
+    imagenes: [
+      'https://images.unsplash.com/photo-1585515320310-259814833e62?w=800&q=80',
+      'https://images.unsplash.com/photo-1574226516831-e1dff420e562?w=800&q=80',
+      'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800&q=80',
+    ],
+    estado: 'activo', landingId: 'l2'
+  },
+  {
+    id: 'p3', tiendaId: 't1', nombre: 'Lámpara LED escritorio plegable con USB',
+    descripcion: 'Lámpara de escritorio LED con puerto USB, 3 modos de luz, intensidad regulable y cuello flexible 360°. Ideal para estudiar y trabajar.',
+    precio: 45,
+    imagenes: [
+      'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80',
+      'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=800&q=80',
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80',
+    ],
+    estado: 'activo', landingId: 'l3'
+  },
+  {
+    id: 'p4', tiendaId: 't1', nombre: 'Set de cuchillos de cocina 6 piezas',
+    descripcion: 'Juego de cuchillos de acero inoxidable alemán con mango ergonómico antideslizante. Incluye soporte de madera de bambú.',
+    precio: 65,
+    imagenes: [
+      'https://images.unsplash.com/photo-1593618998160-e34014e67546?w=800&q=80',
+      'https://images.unsplash.com/photo-1605619925104-ee2b1eb9f7ac?w=800&q=80',
+      'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=800&q=80',
+    ],
+    estado: 'activo', landingId: 'l4'
+  },
+  {
+    id: 'p5', tiendaId: 't2', nombre: 'Colágeno + Vitamina C x 60 cápsulas',
+    descripcion: 'Suplemento de colágeno hidrolizado marino con vitamina C, biotina y ácido hialurónico. Piel firme, cabello y uñas fuertes desde adentro.',
+    precio: 55,
+    imagenes: [
+      'https://images.unsplash.com/photo-1612817288484-6f916006741a?w=800&q=80',
+      'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&q=80',
+      'https://images.unsplash.com/photo-1596755389378-c31d21fd1273?w=800&q=80',
+    ],
+    estado: 'activo', landingId: 'l5'
+  },
+  {
+    id: 'p6', tiendaId: 't2', nombre: 'Faja reductora de neopreno para mujer',
+    descripcion: 'Faja abdominal reductora de neopreno con cierre triple ajustable. Acelera la sudoración en la zona abdominal y mejora la postura.',
+    precio: 39,
+    imagenes: [
+      'https://images.unsplash.com/photo-1518310383802-640c2de311b2?w=800&q=80',
+      'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=800&q=80',
+      'https://images.unsplash.com/photo-1581009137042-c552e485697a?w=800&q=80',
+    ],
+    estado: 'activo', landingId: 'l6'
+  },
+  {
+    id: 'p7', tiendaId: 't1', nombre: 'Auriculares inalámbricos TWS i12',
+    descripcion: 'Auriculares TWS Bluetooth 5.0 con estuche de carga, sonido estéreo y cancelación de ruido. Hasta 4 horas de batería más 3 cargas extra.',
+    precio: 35,
+    imagenes: [
+      'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=800&q=80',
+      'https://images.unsplash.com/photo-1484704849700-f032a568e944?w=800&q=80',
+      'https://images.unsplash.com/photo-1606400082777-ef05f3c5cde2?w=800&q=80',
+    ],
+    estado: 'activo', landingId: 'l7'
+  },
+  {
+    id: 'p8', tiendaId: 't2', nombre: 'Termómetro digital infrarrojo sin contacto',
+    descripcion: 'Termómetro infrarrojo de precisión médica, resultado en 1 segundo, memoria de 32 lecturas y alarma de fiebre. Apto para toda la familia.',
+    precio: 49,
+    imagenes: [
+      'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=800&q=80',
+      'https://images.unsplash.com/photo-1559757175-5700dde675bc?w=800&q=80',
+      'https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=800&q=80',
+    ],
+    estado: 'activo', landingId: 'l8'
+  },
 ]
 
 export const LANDINGS: Landing[] = [
@@ -55,7 +135,8 @@ export const LANDINGS: Landing[] = [
     ],
     ofertas: [
       { nombre: '1 Masajeador', precio: 79, descripcion: 'Masajeador cervical con calor + envío gratis' },
-      { nombre: 'Pack Pareja', precio: 139, descripcion: '2 masajeadores, ahorra S/19. Ideal para regalar.' },
+      { nombre: 'Pack Pareja ⭐ Más vendido', precio: 139, descripcion: '2 masajeadores — ahorra S/19. Ideal para regalar.' },
+      { nombre: 'Pack Familia x3', precio: 195, descripcion: '3 masajeadores — ahorra S/42. ¡El mejor precio!' },
     ],
     faq: [
       { pregunta: '¿Hacen delivery a provincias?', respuesta: 'Sí, enviamos a todo el Perú. Lima: 1-2 días. Provincias: 2-4 días hábiles via Olva o Shalom.' },
