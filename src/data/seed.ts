@@ -10,140 +10,214 @@ export const BENEFICIOS: Beneficio[] = [
 ]
 
 export const USUARIOS: Usuario[] = [
-  { id: 'u1', nombre: 'María López', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=maria' },
-  { id: 'u2', nombre: 'Carlos Quispe', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=carlos' },
-  { id: 'u3', nombre: 'Rosa Mamani', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=rosa' },
-  { id: 'u4', nombre: 'Diego Ramos', tipo: 'vendedor', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=diego', tiendaId: 't1' },
-  { id: 'u5', nombre: 'Lía Torres', tipo: 'vendedor', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=lia', tiendaId: 't2' },
+  { id: 'u1', nombre: 'Carmen Flores', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=carmen' },
+  { id: 'u2', nombre: 'Jorge Huanca', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=jorge' },
+  { id: 'u3', nombre: 'Lucía Paredes', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=lucia' },
+  { id: 'u4', nombre: 'Miguel Ángel Rojas', tipo: 'vendedor', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=miguel', tiendaId: 't1' },
+  { id: 'u5', nombre: 'Patricia Solano', tipo: 'vendedor', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=patricia', tiendaId: 't2' },
   { id: 'u6', nombre: 'Valeria Chávez', tipo: 'vendedora', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=valeria', tiendaId: 't1' },
   { id: 'u7', nombre: 'Sofía Mendoza', tipo: 'vendedora', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=sofia', tiendaId: 't1' },
 ]
 
 export const TIENDAS: Tienda[] = [
-  { id: 't1', nombre: 'Freskas - Bebidas Naturales', dueno_id: 'u4', logo: '🥤', descripcion: 'Bebidas 100% naturales sin azúcar añadida, directo a tu puerta en Lima.' },
-  { id: 't2', nombre: 'TechPeru Accesorios', dueno_id: 'u5', logo: '📱', descripcion: 'Accesorios de tecnología originales con garantía y envío a todo Lima.' },
+  { id: 't1', nombre: 'ImportShop Perú', dueno_id: 'u4', logo: '🛍️', descripcion: 'Los mejores productos importados de China para el hogar, cocina y tecnología. Delivery a todo el Perú.' },
+  { id: 't2', nombre: 'VidaSana Suplementos', dueno_id: 'u5', logo: '💊', descripcion: 'Suplementos y productos de bienestar importados. Calidad garantizada, precios directos al consumidor.' },
 ]
 
 export const PRODUCTOS: Producto[] = [
-  { id: 'p1', tiendaId: 't1', nombre: 'Limonada Frozen Premium', descripcion: 'Limonada frozen de limón sutil con menta fresca. Sin azúcar, 100% natural. Ideal para el verano limeño.', precio: 12, imagenes: ['🍋'], estado: 'activo', landingId: 'l1' },
-  { id: 'p2', tiendaId: 't1', nombre: 'Jugo Verde Detox', descripcion: 'Mezcla de espinaca, pepino, manzana verde y jengibre. Energía total desde las 7am.', precio: 14, imagenes: ['🥒'], estado: 'activo', landingId: 'l2' },
-  { id: 'p3', tiendaId: 't1', nombre: 'Pack Semana Saludable', descripcion: '5 bebidas variadas para toda la semana. Escoge tus sabores favoritos.', precio: 55, imagenes: ['🎒'], estado: 'activo', landingId: 'l3' },
-  { id: 'p4', tiendaId: 't1', nombre: 'Maracuyá Sour Natural', descripcion: 'La clásica combinación de maracuyá con un toque de limón. Solo frutas frescas.', precio: 11, imagenes: ['🍹'], estado: 'inactivo', landingId: 'l4' },
-  { id: 'p5', tiendaId: 't2', nombre: 'Cargador Inalámbrico 15W', descripcion: 'Carga rápida inalámbrica compatible con iPhone y Android. Incluye cable USB-C.', precio: 45, imagenes: ['⚡'], estado: 'activo', landingId: 'l5' },
-  { id: 'p6', tiendaId: 't2', nombre: 'Audífonos Bluetooth Pro', descripcion: 'Sonido estéreo cristalino, 8 horas de batería. Perfectos para el trabajo y el gym.', precio: 89, imagenes: ['🎧'], estado: 'activo', landingId: 'l6' },
-  { id: 'p7', tiendaId: 't2', nombre: 'Case iPhone 15 Antigolpes', descripcion: 'Protección militar anti-caída. Disponible en 6 colores. Envío gratis a Lima.', precio: 25, imagenes: ['📱'], estado: 'activo', landingId: 'l7' },
-  { id: 'p8', tiendaId: 't2', nombre: 'Cable USB-C a Lightning', descripcion: 'Cable de carga rápida certificado MFi. 1 metro, trenzado de nylon.', precio: 18, imagenes: ['🔌'], estado: 'inactivo', landingId: 'l8' },
+  { id: 'p1', tiendaId: 't1', nombre: 'Masajeador eléctrico de cuello y hombros', descripcion: 'Masajeador cervical con calor infrarrojo, 8 cabezales rotatorios y 3 velocidades. Alivia el dolor de cuello y tensión muscular en minutos.', precio: 79, imagenes: ['💆'], estado: 'activo', landingId: 'l1' },
+  { id: 'p2', tiendaId: 't1', nombre: 'Freidora de aire 4.5L sin aceite', descripcion: 'Freidora de aire caliente digital con pantalla táctil, 8 programas preestablecidos. Cocina saludable sin aceite y más rápido que el horno.', precio: 189, imagenes: ['🍳'], estado: 'activo', landingId: 'l2' },
+  { id: 'p3', tiendaId: 't1', nombre: 'Lámpara LED escritorio plegable con USB', descripcion: 'Lámpara de escritorio LED con puerto USB, 3 modos de luz, intensidad regulable y cuello flexible 360°. Ideal para estudiar y trabajar.', precio: 45, imagenes: ['💡'], estado: 'activo', landingId: 'l3' },
+  { id: 'p4', tiendaId: 't1', nombre: 'Set de cuchillos de cocina 6 piezas', descripcion: 'Juego de cuchillos de acero inoxidable alemán con mango ergonómico antideslizante. Incluye soporte de madera de bambú.', precio: 65, imagenes: ['🔪'], estado: 'activo', landingId: 'l4' },
+  { id: 'p5', tiendaId: 't2', nombre: 'Colágeno + Vitamina C x 60 cápsulas', descripcion: 'Suplemento de colágeno hidrolizado marino con vitamina C, biotina y ácido hialurónico. Piel firme, cabello y uñas fuertes desde adentro.', precio: 55, imagenes: ['✨'], estado: 'activo', landingId: 'l5' },
+  { id: 'p6', tiendaId: 't2', nombre: 'Faja reductora de neopreno para mujer', descripcion: 'Faja abdominal reductora de neopreno con cierre triple ajustable. Acelera la sudoración en la zona abdominal y mejora la postura.', precio: 39, imagenes: ['👙'], estado: 'activo', landingId: 'l6' },
+  { id: 'p7', tiendaId: 't1', nombre: 'Auriculares inalámbricos TWS i12', descripcion: 'Auriculares TWS Bluetooth 5.0 con estuche de carga, sonido estéreo y cancelación de ruido. Hasta 4 horas de batería más 3 cargas extra.', precio: 35, imagenes: ['🎧'], estado: 'activo', landingId: 'l7' },
+  { id: 'p8', tiendaId: 't2', nombre: 'Termómetro digital infrarrojo sin contacto', descripcion: 'Termómetro infrarrojo de precisión médica, resultado en 1 segundo, memoria de 32 lecturas y alarma de fiebre. Apto para toda la familia.', precio: 49, imagenes: ['🌡️'], estado: 'activo', landingId: 'l8' },
 ]
 
 export const LANDINGS: Landing[] = [
   {
     id: 'l1', productoId: 'p1',
-    titulo: '🍋 Limonada Frozen Premium - Freskas',
-    descripcionLarga: '¡La limonada frozen más rica de Lima! Hecha con limón sutil recién exprimido, menta fresca y hielo granizado. Sin azúcar añadida, sin preservantes. Solo lo mejor para ti. Delivery en Miraflores, San Isidro, Surco, La Molina y más distritos.',
+    titulo: '💆 Masajeador Eléctrico de Cuello - Adiós al Dolor en Minutos',
+    descripcionLarga: '¿Pasas horas frente a la pantalla y terminas el día con el cuello y hombros destrozados? El Masajeador Cervical Eléctrico de ImportShop Perú fue diseñado para darte alivio real en solo 15 minutos. Con 8 cabezales rotatorios que imitan las manos de un terapeuta profesional, calor infrarrojo para relajar los músculos en profundidad, y 3 niveles de intensidad para que tú elijas. Úsalo en casa, en la oficina o incluso en el carro. Delivery a todo el Perú, pago contraentrega disponible.',
     recomendaciones: [
-      { id: 'r1', nombre: 'Paola V.', texto: '¡Riquísima! La pedí para mi oficina en San Isidro y llegó súper fría. Definitivamente vuelvo a pedir 🥰', estrellas: 5, fecha: '2024-12-10' },
-      { id: 'r2', nombre: 'Javier M.', texto: 'La mejor limonada frozen que he probado en Lima. Sin azúcar y con bastante limón, tal como me gusta.', estrellas: 5, fecha: '2024-12-08' },
-      { id: 'r3', nombre: 'Carla S.', texto: 'Llegó en 40 minutos a Surco. El sabor es increíble. Ya la pedí 3 veces esta semana jaja', estrellas: 4, fecha: '2024-12-05' },
+      { id: 'r1', nombre: 'Giuliana M.', texto: 'Lo compré con desconfianza porque es importado, pero quedé ENCANTADA. Mi cuello estaba rígido por trabajar en casa y ahora lo uso todas las noches. ¡Una maravilla!', estrellas: 5, fecha: '2025-01-15' },
+      { id: 'r2', nombre: 'Ricardo S.', texto: 'Compré uno para mi mamá y le encantó tanto que lo usa dos veces al día. El calor infrarrojo relaja de verdad. Llegó en 3 días a Arequipa.', estrellas: 5, fecha: '2025-01-10' },
+      { id: 'r3', nombre: 'Paola T.', texto: 'Trabajo 8 horas en computadora y sufría de contracturas. Este masajeador ha sido un antes y un después. Lo recomiendo 100%.', estrellas: 5, fecha: '2025-01-08' },
+      { id: 'r4', nombre: 'Augusto V.', texto: 'Buena calidad para el precio. Los cabezales rotan bien fuerte. Preferiría que el cable fuera un poco más largo pero igual es muy bueno.', estrellas: 4, fecha: '2025-01-05' },
     ],
     ofertas: [
-      { nombre: '1 Limonada', precio: 12, descripcion: 'Una limonada frozen grande (500ml)' },
-      { nombre: '2 Limonadas', precio: 22, descripcion: 'Dos limonadas con S/2 de descuento' },
-      { nombre: 'Pack x4', precio: 40, descripcion: 'Cuatro limonadas, ahorra S/8' },
+      { nombre: '1 Masajeador', precio: 79, descripcion: 'Masajeador cervical con calor + envío gratis' },
+      { nombre: 'Pack Pareja', precio: 139, descripcion: '2 masajeadores, ahorra S/19. Ideal para regalar.' },
     ],
     faq: [
-      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, delivery a Miraflores, San Isidro, Surco, La Molina, Barranco y Chorrillos. Tiempo aprox. 30-50 min.' },
+      { pregunta: '¿Hacen delivery a provincias?', respuesta: 'Sí, enviamos a todo el Perú. Lima: 1-2 días. Provincias: 2-4 días hábiles via Olva o Shalom.' },
+      { pregunta: '¿Es contraentrega?', respuesta: 'Sí, disponible contraentrega en Lima. En provincias puedes pagar por Yape o Plin anticipado.' },
+      { pregunta: '¿Tiene garantía?', respuesta: 'Sí, 30 días de garantía por defecto de fábrica. Si algo falla te lo cambiamos sin costo.' },
+      { pregunta: '¿Funciona con voltaje peruano?', respuesta: 'Sí, funciona con 110V/220V. Viene con adaptador universal.' },
       { pregunta: '¿Aceptan Yape?', respuesta: 'Sí aceptamos Yape, Plin, transferencia bancaria y efectivo contraentrega.' },
-      { pregunta: '¿Es contraentrega?', respuesta: 'Sí, puedes pagar cuando recibas tu pedido. También aceptamos pago anticipado.' },
-      { pregunta: '¿Tienen sabores?', respuesta: 'Por ahora solo tenemos limonada frozen de limón sutil con menta. ¡Pronto más sabores!' },
     ],
     aprobadoPorKross: true,
     estadoAprobacion: 'aprobado',
   },
   {
     id: 'l2', productoId: 'p2',
-    titulo: '🥒 Jugo Verde Detox - Freskas',
-    descripcionLarga: 'Empieza tu día con energía total. Nuestro Jugo Verde Detox está hecho con espinaca fresca, pepino, manzana verde y jengibre. Ideal para limpiar tu cuerpo y tener energía desde temprano.',
+    titulo: '🍳 Freidora de Aire 4.5L - Cocina Sano Sin Culpa',
+    descripcionLarga: '¿Quieres comer rico sin aceite y sin gastar horas en la cocina? La Freidora de Aire Digital de 4.5L tiene pantalla táctil, 8 programas automáticos (papas fritas, pollo, pescado, tortas y más) y tecnología de circulación de aire caliente que da el mismo crujiente que la fritura profunda pero con hasta 85% menos grasa. Capacidad para 2-4 personas. Perfecta para familias modernas que quieren comer saludable sin sacrificar el sabor.',
     recomendaciones: [
-      { id: 'r4', nombre: 'Ana P.', texto: 'Lo tomo cada mañana desde hace 2 semanas y me siento con más energía. ¡Gracias Freskas!', estrellas: 5, fecha: '2024-12-09' },
-      { id: 'r5', nombre: 'Luis B.', texto: 'Sabor diferente pero muy rico. Me ayuda a no sentir antojo de dulces en la mañana.', estrellas: 4, fecha: '2024-12-07' },
+      { id: 'r5', nombre: 'Milagros C.', texto: 'La mejor compra que he hecho este año. Las alitas de pollo quedan perfectas, crujientes por fuera y jugosas por dentro. Mis hijos ya no me piden fast food.', estrellas: 5, fecha: '2025-01-20' },
+      { id: 'r6', nombre: 'Fernando B.', texto: 'Hago papas fritas, nuggets, pescado... todo queda riquísimo. Y lavarla es facilísimo. Excelente producto por ese precio.', estrellas: 5, fecha: '2025-01-18' },
+      { id: 'r7', nombre: 'Claudia R.', texto: 'Llegó bien embalada a Trujillo en 3 días. La pantalla táctil es muy fácil de usar. Muy contenta con la compra.', estrellas: 5, fecha: '2025-01-12' },
     ],
     ofertas: [
-      { nombre: '1 Jugo Verde', precio: 14, descripcion: 'Un jugo verde detox (400ml)' },
-      { nombre: '3 Jugos Verde', precio: 38, descripcion: 'Tres jugos con S/4 de descuento' },
+      { nombre: 'Freidora 4.5L', precio: 189, descripcion: 'Freidora digital táctil con 8 programas + recetario' },
+      { nombre: 'Freidora + Set Pinzas', precio: 210, descripcion: 'Freidora 4.5L + set de accesorios de cocina' },
     ],
     faq: [
-      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, delivery a distritos de Lima moderna. Tiempo aprox. 30-50 min.' },
-      { pregunta: '¿Aceptan Yape?', respuesta: '¡Claro! Yape, Plin, transferencia o efectivo.' },
-      { pregunta: '¿Es contraentrega?', respuesta: 'Sí, pagas cuando llega tu pedido.' },
+      { pregunta: '¿Sirve para 4 personas?', respuesta: 'Sí, la capacidad de 4.5L es ideal para 2-4 personas. Puedes hacer 500g de papas o un pollo entero pequeño.' },
+      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, enviamos a todo el Perú. Lima: 1-2 días. Provincias: 3-5 días.' },
+      { pregunta: '¿Es contraentrega?', respuesta: 'Sí, disponible contraentrega en Lima. Provincias pago por Yape anticipado.' },
+      { pregunta: '¿Consume mucha luz?', respuesta: 'No, consume 1500W máximo (similar a una secadora de pelo). Ciclos de cocción cortos de 15-25 min.' },
+      { pregunta: '¿Tiene garantía?', respuesta: '30 días de garantía. Si presenta algún defecto lo reponemos sin costo.' },
     ],
     aprobadoPorKross: true,
     estadoAprobacion: 'aprobado',
   },
   {
     id: 'l3', productoId: 'p3',
-    titulo: '🎒 Pack Semana Saludable - Freskas',
-    descripcionLarga: 'El pack perfecto para tu semana. 5 bebidas naturales que tú eliges: limonadas frozen, jugos verdes, agua de coco, maracuyá y más. Un precio especial para que cuides tu salud todos los días.',
+    titulo: '💡 Lámpara LED Escritorio USB - Estudia y Trabaja Sin Cansar los Ojos',
+    descripcionLarga: 'Cuida tu vista con la iluminación correcta. La Lámpara LED de Escritorio de ImportShop tiene 3 modos de luz (cálida, neutra, fría), 10 niveles de intensidad, cuello flexible 360° y un puerto USB lateral para cargar tu celular mientras trabajas. Tecnología LED de última generación que no parpadea y no emite luz UV, lo que reduce la fatiga visual hasta en 70%. Ideal para estudiantes, teletrabajadores y cualquiera que pasa muchas horas frente a pantallas.',
     recomendaciones: [
-      { id: 'r6', nombre: 'Milagros T.', texto: 'Lo pedí para toda la familia. Llegó puntual y bien empaquetado. Excelente servicio.', estrellas: 5, fecha: '2024-12-11' },
+      { id: 'r8', nombre: 'Andrea L.', texto: 'Perfecta para estudiar de noche. La luz es muy suave con los ojos. Me encanta que tenga el cargador USB integrado para el cel.', estrellas: 5, fecha: '2025-01-14' },
+      { id: 'r9', nombre: 'Piero M.', texto: 'Buen producto para el precio. La flexibilidad del cuello permite apuntar la luz exactamente donde quieres.', estrellas: 4, fecha: '2025-01-09' },
     ],
     ofertas: [
-      { nombre: 'Pack 5 bebidas', precio: 55, descripcion: 'Elige 5 bebidas de nuestro menú (ahorra S/10)' },
+      { nombre: 'Lámpara LED', precio: 45, descripcion: 'Lámpara LED escritorio + puerto USB cargador' },
+      { nombre: 'Pack 2 Lámparas', precio: 80, descripcion: '2 lámparas, una para escritorio y una para mesita de noche' },
     ],
     faq: [
-      { pregunta: '¿Puedo elegir sabores?', respuesta: 'Sí, cuéntanos en el chat cuáles 5 bebidas quieres.' },
-      { pregunta: '¿Aceptan Yape?', respuesta: 'Sí, Yape, Plin, transferencia o efectivo.' },
+      { pregunta: '¿Funciona con enchufe peruano?', respuesta: 'Sí, funciona con enchufe estándar 110-220V. También puede funcionar vía USB con power bank.' },
+      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, delivery a Lima en 1-2 días y a provincias en 3-5 días.' },
+      { pregunta: '¿Es contraentrega?', respuesta: 'Sí, contraentrega disponible en Lima.' },
+      { pregunta: '¿El USB carga rápido?', respuesta: 'El puerto USB es de 5V/1A, ideal para carga normal de celulares.' },
     ],
-    aprobadoPorKross: false,
-    estadoAprobacion: 'pendiente_aprobacion',
+    aprobadoPorKross: true,
+    estadoAprobacion: 'aprobado',
   },
-  { id: 'l4', productoId: 'p4', titulo: 'Maracuyá Sour Natural', descripcionLarga: '', recomendaciones: [], ofertas: [], faq: [], aprobadoPorKross: false, estadoAprobacion: 'pendiente_aprobacion' },
+  {
+    id: 'l4', productoId: 'p4',
+    titulo: '🔪 Set Cuchillos de Cocina 6 Piezas - Corta Todo con Precisión',
+    descripcionLarga: 'Deja atrás los cuchillos baratos que no cortan. El Set de Cuchillos Profesional de 6 piezas de ImportShop Perú está fabricado en acero inoxidable alemán 4Cr13, con hoja ultra afilada y mango ergonómico antideslizante. Incluye: cuchillo chef 20cm, cuchillo pan 20cm, cuchillo deshuesador 15cm, cuchillo utilitario 12cm, pelador y tijeras de cocina. Todo en soporte de madera de bambú. El regalo perfecto para mamá o para renovar tu cocina.',
+    recomendaciones: [
+      { id: 'r10', nombre: 'Rosa E.', texto: 'Los mejores cuchillos que he tenido. Cortan hasta el tomate sin aplastarlo. El soporte de bambú es muy elegante.', estrellas: 5, fecha: '2025-01-22' },
+      { id: 'r11', nombre: 'Carlos A.', texto: 'Lo compré como regalo para mi esposa y quedó encantada. Llegó en una caja muy bien presentada. Vale cada sol.', estrellas: 5, fecha: '2025-01-16' },
+    ],
+    ofertas: [
+      { nombre: 'Set 6 piezas', precio: 65, descripcion: 'Set completo con soporte de bambú' },
+    ],
+    faq: [
+      { pregunta: '¿Son aptos para lavavajillas?', respuesta: 'Recomendamos lavarlos a mano para prolongar su vida útil. El acero es resistente pero el lavado a mano los mantiene mejor.' },
+      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, a todo el Perú. Lima 1-2 días, provincias 3-5 días.' },
+      { pregunta: '¿Es contraentrega?', respuesta: 'Sí, en Lima. Provincias vía Yape anticipado.' },
+    ],
+    aprobadoPorKross: true,
+    estadoAprobacion: 'aprobado',
+  },
   {
     id: 'l5', productoId: 'p5',
-    titulo: '⚡ Cargador Inalámbrico 15W - TechPeru',
-    descripcionLarga: 'Carga tu celular sin cables con nuestra base de carga rápida de 15W. Compatible con iPhone 8 en adelante, Samsung Galaxy, Xiaomi y todos los Android con carga inalámbrica. Incluye cable USB-C.',
+    titulo: '✨ Colágeno + Vitamina C - Piel Joven, Cabello Fuerte y Uñas Resistentes',
+    descripcionLarga: '¿Notas tu piel opaca, tu cabello débil o tus uñas que se quiebran fácil? El paso del tiempo y el estrés agotan el colágeno de tu cuerpo, y eso se nota. Nuestro suplemento de Colágeno Hidrolizado Marino + Vitamina C + Biotina + Ácido Hialurónico es la fórmula completa para recuperar tu vitalidad desde adentro. 60 cápsulas de alta absorción para 2 meses de tratamiento. Miles de mujeres en Perú ya lo toman todos los días y los resultados hablan solos.',
     recomendaciones: [
-      { id: 'r7', nombre: 'Roberto A.', texto: 'Carga rapidísimo, en 1 hora tenía el celu al 100%. El producto llegó bien embalado.', estrellas: 5, fecha: '2024-12-08' },
-      { id: 'r8', nombre: 'Fernanda L.', texto: 'Muy buena calidad para el precio. Lo uso en la oficina y en casa.', estrellas: 4, fecha: '2024-12-06' },
+      { id: 'r12', nombre: 'Yolanda P.', texto: 'Llevo 6 semanas tomándolo y mi piel está más firme y luminosa. Mis amigas me preguntan qué tratamiento me hago. ¡Solo colágeno!', estrellas: 5, fecha: '2025-01-19' },
+      { id: 'r13', nombre: 'Mariela H.', texto: 'Mis uñas solían quebrarse constantemente. Desde que tomo este colágeno están largas y fuertes por primera vez en años.', estrellas: 5, fecha: '2025-01-13' },
+      { id: 'r14', nombre: 'Luz K.', texto: 'Ya voy por mi tercer frasco. El cabello lo noto más grueso y con menos caída. Muy buena calidad para este precio.', estrellas: 5, fecha: '2025-01-07' },
+      { id: 'r15', nombre: 'Patricia G.', texto: 'Me lo recomendó una amiga. En el primer mes no noté mucho pero en el segundo sí vi diferencia en la piel. Hay que ser constante.', estrellas: 4, fecha: '2025-01-03' },
     ],
     ofertas: [
-      { nombre: 'Cargador solo', precio: 45, descripcion: 'Base de carga inalámbrica 15W con cable USB-C' },
-      { nombre: 'Cargador + Case', precio: 65, descripcion: 'Cargador inalámbrico + case compatible con tu modelo' },
+      { nombre: '1 frasco x 60 cáp.', precio: 55, descripcion: 'Tratamiento de 2 meses' },
+      { nombre: 'Pack 3 frascos', precio: 145, descripcion: 'Tratamiento completo de 6 meses, ahorra S/20' },
+      { nombre: 'Pack 6 frascos', precio: 270, descripcion: 'Tratamiento de 12 meses, el máximo resultado, ahorra S/60' },
     ],
     faq: [
-      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, delivery a toda Lima. Tiempo aprox. 1-2 días hábiles.' },
-      { pregunta: '¿Aceptan Yape?', respuesta: 'Sí, Yape, Plin, tarjeta o efectivo.' },
-      { pregunta: '¿Es contraentrega?', respuesta: 'Sí, pagas al recibir tu pedido.' },
-      { pregunta: '¿Tiene garantía?', respuesta: 'Sí, 6 meses de garantía contra defectos de fábrica.' },
+      { pregunta: '¿Cuándo se ven resultados?', respuesta: 'Los primeros cambios se notan a partir de las 4-6 semanas. Para resultados completos en piel, cabello y uñas se recomienda 3 meses continuos.' },
+      { pregunta: '¿Tiene registro DIGEMID?', respuesta: 'Es un suplemento alimenticio importado. Recomendamos consultar con tu médico si tienes condiciones especiales.' },
+      { pregunta: '¿Pueden tomarlo hombres?', respuesta: 'Sí, el colágeno es beneficioso para todos. Muchos hombres lo toman para articulaciones y piel.' },
+      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, a todo el Perú. Lima en 1-2 días, provincias en 3-5 días.' },
+      { pregunta: '¿Aceptan Yape?', respuesta: 'Sí, Yape, Plin, transferencia o efectivo contraentrega en Lima.' },
     ],
     aprobadoPorKross: true,
     estadoAprobacion: 'aprobado',
   },
   {
     id: 'l6', productoId: 'p6',
-    titulo: '🎧 Audífonos Bluetooth Pro - TechPeru',
-    descripcionLarga: 'Sonido estéreo de alta definición con conexión Bluetooth 5.0. Hasta 8 horas de música continua. Diseño ergonómico para el gym, el trabajo o el transporte público.',
+    titulo: '👙 Faja Reductora Neopreno - Moldea tu Figura y Mejora tu Postura',
+    descripcionLarga: 'La Faja Reductora de Neopreno de VidaSana es la favorita de miles de mujeres peruanas. El neopreno de alta densidad aumenta la temperatura corporal en la zona abdominal, acelerando la sudoración y potenciando el efecto de tu ejercicio o actividad diaria. Cierre triple ajustable para mayor compresión, tela interior suave anti-rozadura. Disponible en tallas S, M, L, XL y XXL.',
     recomendaciones: [
-      { id: 'r9', nombre: 'Marco S.', texto: 'Los uso en el gym todos los días. Muy cómodos y la batería dura bastante.', estrellas: 5, fecha: '2024-12-10' },
+      { id: 'r16', nombre: 'Beatriz N.', texto: 'La uso para hacer ejercicio y la diferencia es notable. Se ajusta bien y no se resbala. Muy cómoda para ser de neopreno.', estrellas: 5, fecha: '2025-01-21' },
+      { id: 'r17', nombre: 'Sandra M.', texto: 'La llevo puesta al caminar y siento que sudo más en la barriga. La talla M me quedó perfecta para mi talla 38.', estrellas: 4, fecha: '2025-01-11' },
     ],
     ofertas: [
-      { nombre: 'Audífonos Pro', precio: 89, descripcion: 'Audífonos Bluetooth Pro con estuche de transporte' },
+      { nombre: '1 Faja', precio: 39, descripcion: 'Faja reductora neopreno (talla a elegir)' },
+      { nombre: 'Pack 2 Fajas', precio: 70, descripcion: '2 fajas para variar en el lavado, ahorra S/8' },
     ],
     faq: [
-      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, delivery a todo Lima en 1-2 días hábiles.' },
-      { pregunta: '¿Aceptan Yape?', respuesta: 'Yape, Plin, tarjeta o efectivo.' },
-      { pregunta: '¿Es contraentrega?', respuesta: 'Sí, disponible contraentrega.' },
+      { pregunta: '¿Cómo elijo mi talla?', respuesta: 'S: cintura 60-70cm, M: 70-80cm, L: 80-90cm, XL: 90-100cm, XXL: 100-110cm. Si dudas entre dos tallas, elige la mayor.' },
+      { pregunta: '¿Se puede lavar?', respuesta: 'Sí, lavar a mano con agua fría y jabón suave. No usar secadora ni plancha.' },
+      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, a todo el Perú. Lima 1-2 días, provincias 3-5 días.' },
+      { pregunta: '¿Funciona sin hacer ejercicio?', respuesta: 'Aumenta la sudoración durante cualquier actividad. Para mejores resultados combínala con ejercicio y buena alimentación.' },
     ],
     aprobadoPorKross: true,
     estadoAprobacion: 'aprobado',
   },
-  { id: 'l7', productoId: 'p7', titulo: 'Case iPhone 15', descripcionLarga: '', recomendaciones: [], ofertas: [{ nombre: 'Case', precio: 25, descripcion: 'Case antigolpes' }], faq: [], aprobadoPorKross: true, estadoAprobacion: 'aprobado' },
-  { id: 'l8', productoId: 'p8', titulo: 'Cable USB-C', descripcionLarga: '', recomendaciones: [], ofertas: [], faq: [], aprobadoPorKross: true, estadoAprobacion: 'aprobado' },
+  {
+    id: 'l7', productoId: 'p7',
+    titulo: '🎧 Auriculares TWS i12 - Sonido Premium por Precio Increíble',
+    descripcionLarga: 'Olvídate de los cables y disfruta de libertad total con los Auriculares Inalámbricos TWS i12 de ImportShop Perú. Bluetooth 5.0 para conexión instantánea y estable, sonido estéreo de alta definición, y un estuche de carga que les da 3 recargas adicionales. Perfectos para el gym, la calle, el trabajo o el transporte. Compatibles con iPhone y Android.',
+    recomendaciones: [
+      { id: 'r18', nombre: 'Kevin R.', texto: 'Para el precio que tienen, el sonido es muy bueno. Los uso en el gym y no se caen. La batería dura bastante.', estrellas: 5, fecha: '2025-01-17' },
+      { id: 'r19', nombre: 'Daniela C.', texto: 'Compraron estos y los de una tienda cara... estos suenan igual o mejor. Excelente relación calidad-precio.', estrellas: 5, fecha: '2025-01-06' },
+    ],
+    ofertas: [
+      { nombre: '1 par TWS i12', precio: 35, descripcion: 'Auriculares + estuche carga + cable USB' },
+      { nombre: 'Pack 2 pares', precio: 60, descripcion: '2 pares, uno para ti y uno para regalar, ahorra S/10' },
+    ],
+    faq: [
+      { pregunta: '¿Son compatibles con iPhone?', respuesta: 'Sí, compatibles con iPhone y cualquier Android con Bluetooth.' },
+      { pregunta: '¿Cuánto dura la batería?', respuesta: 'Cada auricular dura aprox. 3-4 horas. El estuche carga les da 3 recargas más, total ~12-16 horas de uso.' },
+      { pregunta: '¿Son resistentes al agua?', respuesta: 'Tienen resistencia básica al sudor (IPX4), ideales para ejercicio. No sumergir en agua.' },
+      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, a todo el Perú. Lima 1-2 días, provincias 3-5 días.' },
+    ],
+    aprobadoPorKross: true,
+    estadoAprobacion: 'aprobado',
+  },
+  {
+    id: 'l8', productoId: 'p8',
+    titulo: '🌡️ Termómetro Infrarrojo - Temperatura en 1 Segundo, Sin Contacto',
+    descripcionLarga: 'Cuida la salud de tu familia con precisión médica. El Termómetro Digital Infrarrojo de VidaSana da resultado en 1 segundo sin ningún contacto. Pantalla LCD grande, memoria de 32 lecturas, alarma sonora y visual de fiebre (>37.5°C). Mide frente, oído, objetos y líquidos. Apto para bebés, niños y adultos. Indispensable en todo hogar peruano.',
+    recomendaciones: [
+      { id: 'r20', nombre: 'Cecilia M.', texto: 'Tengo un bebé de 8 meses y este termómetro ha sido un salvavidas. Sin contacto, resultado inmediato. Vale todo lo que cuesta.', estrellas: 5, fecha: '2025-01-23' },
+      { id: 'r21', nombre: 'Roberto H.', texto: 'Muy preciso, lo comparé con el del médico y da la misma temperatura. Excelente producto.', estrellas: 5, fecha: '2025-01-15' },
+    ],
+    ofertas: [
+      { nombre: '1 Termómetro', precio: 49, descripcion: 'Termómetro infrarrojo + pilas AAA incluidas' },
+      { nombre: 'Pack Familiar x2', precio: 89, descripcion: '2 termómetros, uno para casa y uno para la bolsa, ahorra S/9' },
+    ],
+    faq: [
+      { pregunta: '¿Es preciso para bebés?', respuesta: 'Sí, la medición en frente es la más precisa para bebés. Acercar a 3-5cm de la frente para mejor lectura.' },
+      { pregunta: '¿Qué temperatura considera fiebre?', respuesta: 'La alarma se activa a partir de 37.5°C según estándar médico peruano.' },
+      { pregunta: '¿Hacen delivery?', respuesta: 'Sí, a todo el Perú. Lima 1-2 días, provincias 3-5 días.' },
+      { pregunta: '¿Tiene garantía?', respuesta: 'Sí, 30 días de garantía por defecto de fábrica.' },
+      { pregunta: '¿Aceptan Yape?', respuesta: 'Sí, Yape, Plin, transferencia o efectivo contraentrega en Lima.' },
+    ],
+    aprobadoPorKross: true,
+    estadoAprobacion: 'aprobado',
+  },
 ]
 
 export const CLIENTES: ClientePerfil[] = [
-  { id: 'c1', usuarioId: 'u1', nombre: 'María López', direccion: 'Jr. Ucayali 342, Miraflores', score: 20, puntos: 200 },
-  { id: 'c2', usuarioId: 'u2', nombre: 'Carlos Quispe', direccion: 'Av. Angamos Este 1250, Surco', score: 65, puntos: 650 },
-  { id: 'c3', usuarioId: 'u3', nombre: 'Rosa Mamani', direccion: 'Calle Los Ficus 890, San Isidro', score: 92, puntos: 920 },
+  { id: 'c1', usuarioId: 'u1', nombre: 'Carmen Flores', direccion: 'Av. Benavides 3421, Miraflores', score: 20, puntos: 200 },
+  { id: 'c2', usuarioId: 'u2', nombre: 'Jorge Huanca', direccion: 'Jr. Los Álamos 234, San Borja', score: 65, puntos: 650 },
+  { id: 'c3', usuarioId: 'u3', nombre: 'Lucía Paredes', direccion: 'Calle Los Ficus 890, San Isidro', score: 92, puntos: 920 },
 ]
 
 export const VENDEDORAS: Vendedora[] = [
@@ -158,40 +232,39 @@ export const CHATS: Chat[] = [
       {
         id: 'm1', autor: 'bot', tipo: 'audio',
         contenido: { duracion: '0:42', url: '#' },
-        timestamp: '2024-12-11T10:00:00Z'
+        timestamp: '2025-01-15T10:00:00Z'
       },
       {
         id: 'm2', autor: 'bot', tipo: 'precios',
         contenido: [
-          { nombre: '1 Limonada', precio: 12, descripcion: 'Una limonada frozen grande (500ml)' },
-          { nombre: '2 Limonadas', precio: 22, descripcion: 'Dos limonadas con S/2 de descuento' },
-          { nombre: 'Pack x4', precio: 40, descripcion: 'Cuatro limonadas, ahorra S/8' },
+          { nombre: '1 Masajeador', precio: 79, descripcion: 'Masajeador cervical con calor + envío gratis' },
+          { nombre: 'Pack Pareja', precio: 139, descripcion: '2 masajeadores, ahorra S/19' },
         ],
-        timestamp: '2024-12-11T10:00:05Z'
+        timestamp: '2025-01-15T10:00:05Z'
       },
       {
         id: 'm3', autor: 'bot', tipo: 'botones',
         contenido: {
           pregunta: '¿Tienes alguna duda?',
-          opciones: ['¿Hacen delivery?', 'Formas de pago', '¿Es contraentrega?', '¿Tienen otros sabores?'],
+          opciones: ['¿Hacen delivery a provincias?', '¿Es contraentrega?', '¿Tiene garantía?', '¿Aceptan Yape?'],
           respuestas: {
-            '¿Hacen delivery?': 'Sí, delivery a Miraflores, San Isidro, Surco, La Molina, Barranco y Chorrillos. Tiempo aprox. 30-50 min. 🛵',
-            'Formas de pago': 'Aceptamos Yape 💚, Plin, transferencia bancaria y efectivo contraentrega. ¡El que más te guste!',
-            '¿Es contraentrega?': 'Sí puedes pagar cuando recibas tu pedido. Sin adelanto necesario. 👌',
-            '¿Tienen otros sabores?': 'Por ahora tenemos limonada frozen y jugo verde detox. ¡Pronto más sabores! 🍹'
+            '¿Hacen delivery a provincias?': 'Sí, enviamos a todo el Perú. Lima: 1-2 días. Provincias: 2-4 días hábiles via Olva o Shalom. 🚚',
+            '¿Es contraentrega?': 'Sí, en Lima puedes pagar cuando recibas tu pedido. Sin adelanto. 👌',
+            '¿Tiene garantía?': '30 días de garantía por defecto de fábrica. Si algo falla lo cambiamos sin costo. ✅',
+            '¿Aceptan Yape?': 'Aceptamos Yape 💚, Plin, transferencia bancaria y efectivo contraentrega.',
           }
         },
-        timestamp: '2024-12-11T10:00:10Z'
+        timestamp: '2025-01-15T10:00:10Z'
       },
       {
         id: 'm4', autor: 'cliente', tipo: 'texto',
-        contenido: '¿Hacen delivery a Miraflores?',
-        timestamp: '2024-12-11T10:05:00Z'
+        contenido: '¿Lo pueden enviar a Arequipa?',
+        timestamp: '2025-01-15T10:05:00Z'
       },
       {
         id: 'm5', autor: 'vendedor', tipo: 'texto',
-        contenido: '¡Hola María! Sí, hacemos delivery a Miraflores en aprox. 30-40 minutos 🛵 ¿Te animas con una limonada?',
-        timestamp: '2024-12-11T10:06:00Z'
+        contenido: '¡Hola Carmen! Sí, enviamos a Arequipa en 2-3 días hábiles por Olva Courier. El pago sería por Yape antes del despacho. ¿Te animas? 😊',
+        timestamp: '2025-01-15T10:06:00Z'
       },
     ]
   },
@@ -201,30 +274,30 @@ export const CHATS: Chat[] = [
       {
         id: 'm6', autor: 'bot', tipo: 'audio',
         contenido: { duracion: '0:38', url: '#' },
-        timestamp: '2024-12-10T09:00:00Z'
+        timestamp: '2025-01-18T09:00:00Z'
       },
       {
         id: 'm7', autor: 'bot', tipo: 'precios',
         contenido: [
-          { nombre: '1 Jugo Verde', precio: 14, descripcion: 'Un jugo verde detox (400ml)' },
-          { nombre: '3 Jugos Verde', precio: 38, descripcion: 'Tres jugos con S/4 de descuento' },
+          { nombre: 'Freidora 4.5L', precio: 189, descripcion: 'Freidora digital táctil con 8 programas + recetario' },
+          { nombre: 'Freidora + Set Pinzas', precio: 210, descripcion: 'Freidora 4.5L + set de accesorios de cocina' },
         ],
-        timestamp: '2024-12-10T09:00:05Z'
+        timestamp: '2025-01-18T09:00:05Z'
       },
       {
         id: 'm8', autor: 'cliente', tipo: 'texto',
-        contenido: 'Quiero el pack de 3 jugos verdes para mañana',
-        timestamp: '2024-12-10T09:10:00Z'
+        contenido: '¿Sirve para hacer alitas de pollo?',
+        timestamp: '2025-01-18T09:10:00Z'
       },
       {
         id: 'm9', autor: 'vendedor', tipo: 'texto',
-        contenido: 'Perfecto Carlos! Te lo tenemos listo mañana a las 7am 💪 ¿Tu dirección en Surco sigue siendo Av. Angamos Este 1250?',
-        timestamp: '2024-12-10T09:12:00Z'
+        contenido: '¡Hola Jorge! Claro que sí, las alitas quedan espectaculares en la freidora de aire. Crujientes por fuera y jugosas por dentro, sin una gota de aceite 🍗 ¿Te enviamos una?',
+        timestamp: '2025-01-18T09:12:00Z'
       },
       {
         id: 'm10', autor: 'cliente', tipo: 'texto',
-        contenido: 'Sí, esa dirección está bien. Lo pago por Yape',
-        timestamp: '2024-12-10T09:15:00Z'
+        contenido: 'Perfecto, quiero la freidora sola. ¿Aceitan Yape?',
+        timestamp: '2025-01-18T09:15:00Z'
       },
     ]
   },
@@ -234,35 +307,36 @@ export const CHATS: Chat[] = [
       {
         id: 'm11', autor: 'bot', tipo: 'audio',
         contenido: { duracion: '0:55', url: '#' },
-        timestamp: '2024-12-09T15:00:00Z'
+        timestamp: '2025-01-19T15:00:00Z'
       },
       {
         id: 'm12', autor: 'bot', tipo: 'precios',
         contenido: [
-          { nombre: 'Cargador solo', precio: 45, descripcion: 'Base de carga inalámbrica 15W con cable USB-C' },
-          { nombre: 'Cargador + Case', precio: 65, descripcion: 'Cargador inalámbrico + case compatible' },
+          { nombre: '1 frasco x 60 cáp.', precio: 55, descripcion: 'Tratamiento de 2 meses' },
+          { nombre: 'Pack 3 frascos', precio: 145, descripcion: 'Tratamiento de 6 meses, ahorra S/20' },
+          { nombre: 'Pack 6 frascos', precio: 270, descripcion: 'Tratamiento de 12 meses, ahorra S/60' },
         ],
-        timestamp: '2024-12-09T15:00:05Z'
+        timestamp: '2025-01-19T15:00:05Z'
       },
       {
         id: 'm13', autor: 'cliente', tipo: 'texto',
-        contenido: '¿Es compatible con iPhone 13?',
-        timestamp: '2024-12-09T15:05:00Z'
+        contenido: '¿En cuánto tiempo se ven resultados?',
+        timestamp: '2025-01-19T15:05:00Z'
       },
       {
         id: 'm14', autor: 'vendedor', tipo: 'texto',
-        contenido: 'Hola Rosa! Sí, es 100% compatible con iPhone 13, 14 y 15. Carga a 15W máximo ⚡',
-        timestamp: '2024-12-09T15:07:00Z'
+        contenido: '¡Hola Lucía! Los primeros cambios se notan a las 4-6 semanas: piel más luminosa y uñas más fuertes. Para resultados completos recomendamos 3 meses. Por eso el pack de 3 frascos es el más popular ✨',
+        timestamp: '2025-01-19T15:07:00Z'
       },
       {
         id: 'm15', autor: 'cliente', tipo: 'texto',
-        contenido: 'Perfecto! Lo quiero. ¿Cuándo llega?',
-        timestamp: '2024-12-09T15:09:00Z'
+        contenido: 'Ya, me llevo el pack de 3 frascos. ¿Es contraentrega?',
+        timestamp: '2025-01-19T15:09:00Z'
       },
       {
         id: 'm16', autor: 'vendedor', tipo: 'texto',
-        contenido: '¡Genial! Lo despachamos hoy y llega mañana a San Isidro. Puedes pagar contraentrega 👍',
-        timestamp: '2024-12-09T15:10:00Z'
+        contenido: '¡Excelente elección! Sí, contraentrega disponible en Lima. Lo despachamos hoy y te llega mañana. ¿Tu dirección en San Isidro sigue igual? 💊',
+        timestamp: '2025-01-19T15:10:00Z'
       },
     ]
   },
@@ -272,65 +346,65 @@ export const PEDIDOS: Pedido[] = [
   {
     id: 'ped1', clienteId: 'c1', productoId: 'p1', tiendaId: 't1', chatId: 'ch1', etapa: 'asesorando',
     historial: [
-      { etapa: 'nuevo', fecha: '2024-12-11T10:00:00Z' },
-      { etapa: 'asesorando', fecha: '2024-12-11T10:06:00Z' },
+      { etapa: 'nuevo', fecha: '2025-01-15T10:00:00Z' },
+      { etapa: 'asesorando', fecha: '2025-01-15T10:06:00Z' },
     ]
   },
   {
     id: 'ped2', clienteId: 'c2', productoId: 'p2', tiendaId: 't1', chatId: 'ch2', etapa: 'confirmo',
     historial: [
-      { etapa: 'nuevo', fecha: '2024-12-10T09:00:00Z' },
-      { etapa: 'asesorando', fecha: '2024-12-10T09:10:00Z' },
-      { etapa: 'confirmo', fecha: '2024-12-10T09:15:00Z' },
+      { etapa: 'nuevo', fecha: '2025-01-18T09:00:00Z' },
+      { etapa: 'asesorando', fecha: '2025-01-18T09:10:00Z' },
+      { etapa: 'confirmo', fecha: '2025-01-18T09:15:00Z' },
     ]
   },
   {
     id: 'ped3', clienteId: 'c3', productoId: 'p5', tiendaId: 't2', chatId: 'ch3', etapa: 'entregado',
     clienteMarcoRecibido: true,
     historial: [
-      { etapa: 'nuevo', fecha: '2024-12-09T15:00:00Z' },
-      { etapa: 'asesorando', fecha: '2024-12-09T15:05:00Z' },
-      { etapa: 'confirmo', fecha: '2024-12-09T15:09:00Z' },
-      { etapa: 'despacho', fecha: '2024-12-09T16:00:00Z' },
-      { etapa: 'ruta', fecha: '2024-12-10T08:00:00Z' },
-      { etapa: 'destino', fecha: '2024-12-10T10:00:00Z' },
-      { etapa: 'entregado', fecha: '2024-12-10T10:30:00Z' },
+      { etapa: 'nuevo', fecha: '2025-01-19T15:00:00Z' },
+      { etapa: 'asesorando', fecha: '2025-01-19T15:05:00Z' },
+      { etapa: 'confirmo', fecha: '2025-01-19T15:09:00Z' },
+      { etapa: 'despacho', fecha: '2025-01-19T16:00:00Z' },
+      { etapa: 'ruta', fecha: '2025-01-20T08:00:00Z' },
+      { etapa: 'destino', fecha: '2025-01-20T10:00:00Z' },
+      { etapa: 'entregado', fecha: '2025-01-20T10:30:00Z' },
     ]
   },
   {
     id: 'ped4', clienteId: 'c1', productoId: 'p6', tiendaId: 't2', chatId: 'ch1', etapa: 'cancelado',
     motivoCancelacion: 'No contestó en 1 semana tras varios recordatorios',
     historial: [
-      { etapa: 'nuevo', fecha: '2024-12-01T10:00:00Z' },
-      { etapa: 'asesorando', fecha: '2024-12-01T10:05:00Z' },
-      { etapa: 'cancelado', fecha: '2024-12-08T09:00:00Z' },
+      { etapa: 'nuevo', fecha: '2025-01-01T10:00:00Z' },
+      { etapa: 'asesorando', fecha: '2025-01-01T10:05:00Z' },
+      { etapa: 'cancelado', fecha: '2025-01-08T09:00:00Z' },
     ]
   },
   {
-    id: 'ped5', clienteId: 'c2', productoId: 'p7', tiendaId: 't2', chatId: 'ch2', etapa: 'ruta',
+    id: 'ped5', clienteId: 'c2', productoId: 'p7', tiendaId: 't1', chatId: 'ch2', etapa: 'ruta',
     historial: [
-      { etapa: 'nuevo', fecha: '2024-12-11T08:00:00Z' },
-      { etapa: 'asesorando', fecha: '2024-12-11T08:10:00Z' },
-      { etapa: 'confirmo', fecha: '2024-12-11T08:30:00Z' },
-      { etapa: 'despacho', fecha: '2024-12-11T10:00:00Z' },
-      { etapa: 'ruta', fecha: '2024-12-11T11:00:00Z' },
+      { etapa: 'nuevo', fecha: '2025-01-22T08:00:00Z' },
+      { etapa: 'asesorando', fecha: '2025-01-22T08:10:00Z' },
+      { etapa: 'confirmo', fecha: '2025-01-22T08:30:00Z' },
+      { etapa: 'despacho', fecha: '2025-01-22T10:00:00Z' },
+      { etapa: 'ruta', fecha: '2025-01-22T11:00:00Z' },
     ]
   },
 ]
 
 export const BOTS: Bot[] = [
   {
-    id: 'bot1', tiendaId: 't1', nombre: 'Bot Bienvenida Freskas',
+    id: 'bot1', tiendaId: 't1', nombre: 'Bot Bienvenida ImportShop',
     pasos: [
       {
         id: 'paso1',
-        pregunta: '¿Tienes alguna duda?',
-        opciones: ['¿Hacen delivery?', 'Formas de pago', '¿Es contraentrega?', '¿Tienen otros sabores?'],
+        pregunta: '¿En qué te podemos ayudar?',
+        opciones: ['¿Hacen delivery a provincias?', 'Formas de pago', '¿Es contraentrega?', '¿Tienen garantía?'],
         respuestas: {
-          '¿Hacen delivery?': 'Sí, delivery a Miraflores, San Isidro, Surco, La Molina, Barranco y Chorrillos.',
-          'Formas de pago': 'Aceptamos Yape, Plin, transferencia bancaria y efectivo contraentrega.',
-          '¿Es contraentrega?': 'Sí, pagas cuando recibes tu pedido. Sin adelanto.',
-          '¿Tienen otros sabores?': 'Por ahora tenemos limonada frozen y jugo verde. ¡Pronto más sabores!',
+          '¿Hacen delivery a provincias?': 'Sí, enviamos a todo el Perú por Olva Courier y Shalom. Lima 1-2 días, provincias 2-4 días.',
+          'Formas de pago': 'Aceptamos Yape, Plin, transferencia bancaria y efectivo contraentrega en Lima.',
+          '¿Es contraentrega?': 'Sí, en Lima pagas cuando recibes tu pedido. En provincias por Yape anticipado.',
+          '¿Tienen garantía?': '30 días de garantía por defecto de fábrica en todos nuestros productos.',
         }
       }
     ]
@@ -340,19 +414,19 @@ export const BOTS: Bot[] = [
 export const CONFIGS_IA: ConfigIA[] = [
   {
     id: 'ia1', tiendaId: 't1', estado: 'activo',
-    instrucciones: 'Eres la asistente de Freskas. Somos una marca de bebidas naturales sin azúcar en Lima. Nuestros precios van desde S/11 a S/55. Siempre responde de forma amigable y en tono cercano. Menciona Yape como opción de pago.',
+    instrucciones: 'Eres la asistente de ImportShop Perú. Vendemos productos importados de China: masajeadores, freidoras de aire, lámparas LED, cuchillos y auriculares. Precios de S/35 a S/189. Siempre responde de forma amigable y en tono cercano. Menciona Yape como opción de pago. Destaca la garantía de 30 días y el delivery a todo el Perú.',
     recontacto: {
       intencion: 'Reactivar clientes que preguntaron pero no confirmaron pedido',
-      mensajeAbridor: 'Hola [nombre] 👋 ¡Te extrañamos por aquí! Tenemos una limonada con tu nombre... ¿Se te antoja una fresquita hoy? 🍋',
+      mensajeAbridor: 'Hola [nombre] 👋 ¡Te extrañamos! Aún tenemos disponible el producto que te interesó. ¿Quieres que lo reservamos para ti hoy? 🛍️',
     }
   }
 ]
 
 export const VALORACIONES: Valoracion[] = [
-  { id: 'val1', productoId: 'p1', clienteId: 'c3', estrellas: 5, comentario: 'Riquísima, llegó súper fría. Sin duda la pediré de nuevo.', fecha: '2024-12-10' },
-  { id: 'val2', productoId: 'p5', clienteId: 'c3', estrellas: 5, comentario: 'Cargador excelente, compatible con mi iPhone 13. Llegó bien embalado.', fecha: '2024-12-10' },
+  { id: 'val1', productoId: 'p1', clienteId: 'c3', estrellas: 5, comentario: 'Masajeador excelente, el calor infrarrojo relaja de verdad. Sin duda lo recomiendo.', fecha: '2025-01-20' },
+  { id: 'val2', productoId: 'p5', clienteId: 'c3', estrellas: 5, comentario: 'El colágeno es muy bueno. Después de 6 semanas mi piel está mucho más firme.', fecha: '2025-01-20' },
 ]
 
 export const RECLAMOS: Reclamo[] = [
-  { id: 'rec1', pedidoId: 'ped4', clienteId: 'c1', motivo: 'El pedido llegó tarde y el producto estaba derramado', estado: 'resuelto', fecha: '2024-12-08' },
+  { id: 'rec1', pedidoId: 'ped4', clienteId: 'c1', motivo: 'El producto llegó con el cable dañado', estado: 'resuelto', fecha: '2025-01-09' },
 ]

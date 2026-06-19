@@ -23,7 +23,7 @@ interface KrossState {
   toggleProduct: (productoId: string) => void
   marcarRecibido: (pedidoId: string) => void
   requestLandingApproval: (landingId: string) => void
-  openNewChat: (clienteId: string, tiendaId: string, productoId: string, landingId: string, nombre: string, direccion: string) => string
+  openNewChat: (clienteId: string, tiendaId: string, productoId: string, landingId: string, nombre: string, direccion: string, whatsapp?: string) => string
   updateBotPaso: (botId: string, pasoIdx: number, field: string, value: unknown) => void
   updateConfigIA: (iaId: string, updates: Partial<ConfigIA>) => void
   addVendedora: (vendedora: Omit<Vendedora, 'id'>) => void
@@ -116,7 +116,7 @@ export const useKrossStore = create<KrossState>((set, get) => ({
     }))
   },
 
-  openNewChat: (clienteId, tiendaId, productoId, landingId, nombre, direccion) => {
+  openNewChat: (clienteId, tiendaId, productoId, landingId, nombre, direccion, _whatsapp?) => {
     const landing = get().landings.find(l => l.id === landingId)
     const chatId = `ch${Date.now()}`
     const pedidoId = `ped${Date.now()}`
