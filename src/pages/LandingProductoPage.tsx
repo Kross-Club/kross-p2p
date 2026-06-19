@@ -72,8 +72,6 @@ export default function LandingProductoPage() {
     )
   }
 
-  const chat = chatId ? chats.find(c => c.id === chatId) : null
-
   const handleSubmit = () => {
     if (!form.nombre || !form.whatsapp || !form.departamento || !form.provincia || !form.distrito || !form.direccion) return
     const newChatId = openNewChat(
@@ -502,7 +500,7 @@ export default function LandingProductoPage() {
                     className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-green-300 appearance-none"
                   >
                     <option value="">Selecciona tu departamento</option>
-                    {DEPARTAMENTOS_PERU.map(d => <option key={d} value={d}>{d}</option>)}
+                    {DEPARTAMENTOS_PERU.map((d: string) => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
 

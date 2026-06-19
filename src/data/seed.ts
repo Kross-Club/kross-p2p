@@ -3,6 +3,13 @@ import type {
   Chat, Pedido, Vendedora, Bot, ConfigIA, Valoracion, Reclamo, Beneficio
 } from '../types'
 
+export const DEPARTAMENTOS_PERU = [
+  'Lima', 'Arequipa', 'Cusco', 'La Libertad', 'Piura', 'Lambayeque',
+  'Junín', 'Áncash', 'Cajamarca', 'Puno', 'Loreto', 'Tacna',
+  'Ica', 'San Martín', 'Huánuco', 'Ayacucho', 'Ucayali', 'Apurímac',
+  'Moquegua', 'Pasco', 'Tumbes', 'Madre de Dios', 'Huancavelica', 'Amazonas',
+]
+
 export const BENEFICIOS: Beneficio[] = [
   { id: 'b1', nombre: 'Contraentrega sin adelanto', descripcion: 'Paga cuando recibas tu pedido, sin dar adelanto.', scoreRequerido: 50 },
   { id: 'b2', nombre: 'Prioridad en despacho', descripcion: 'Tu pedido sale primero que otros en la misma zona.', scoreRequerido: 75 },
