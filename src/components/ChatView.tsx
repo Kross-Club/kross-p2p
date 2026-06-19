@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Play, Pause, Mic, MessageCircle } from 'lucide-react'
+import { Send, Play, Pause, Mic, MessageCircle, CheckCircle2 } from 'lucide-react'
 import { useKrossStore } from '../store'
 import type { Chat, Mensaje, MensajeBotones, MensajePrecioOpcion, MensajeAudio } from '../types'
 
@@ -17,7 +17,7 @@ function AudioBubble({ contenido }: { contenido: MensajeAudio }) {
       <div className="flex-1">
         <div className="flex items-end gap-0.5 h-6">
           {[4,9,14,7,16,11,6,18,8,5,13,9,12,16,7,11,4,13,9,6,15,10].map((h, i) => (
-            <div key={i} className="w-0.5 rounded-full transition-all" style={{ height: `${h}px`, background: playing ? '#111111' : '#111111cc' }} />
+            <div key={i} className="w-0.5 rounded-full transition-all" style={{ height: `${h}px`, background: '#111111cc' }} />
           ))}
         </div>
         <p className="text-[11px] mt-1 font-bold" style={{ color: '#111111' }}>{contenido.duracion}</p>
@@ -54,8 +54,11 @@ function BotonesBubble({
 }) {
   const [selected, setSelected] = useState<string | null>(contenido.seleccionada || null)
 
+  const isConfirm = (op: string) => op.startsWith('✅')
+  const isChatBtn = (op: string) => op.toLowerCase().includes('chatear') || op.toLowerCase() === 'chat'
+
   const handleSelect = (op: string) => {
-    if (op.toLowerCase() === 'chat' && onChatUnlock) {
+    if (isChatBtn(op) && onChatUnlock) {
       onChatUnlock()
       return
     }
@@ -63,21 +66,45 @@ function BotonesBubble({
     onSelect(op)
   }
 
+  const isConfirmSection = contenido.opciones.some(op => isConfirm(op))
+
   return (
-    <div className="space-y-2 min-w-[200px]">
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-2">
+      {/* Botones — alineados a la derecha */}
+      <div className="flex flex-wrap gap-2 justify-end">
         {contenido.opciones.map((op) => {
-          const isChat = op.toLowerCase() === 'chat'
+          const isChat = isChatBtn(op)
+          const isConf = isConfirm(op)
+          const isDone = selected === op
+
+          if (isConf) {
+            return (
+              <button
+                key={op}
+                onClick={() => handleSelect(op)}
+                disabled={isDone}
+                className="w-full flex items-center justify-center gap-2 font-black py-3.5 rounded-2xl text-sm transition-all active:scale-95"
+                style={isDone
+                  ? { background: '#55C8F5', color: 'white' }
+                  : { background: '#FFD400', color: '#111111', border: '2px solid #111111' }
+                }
+              >
+                {isDone ? <CheckCircle2 size={16} /> : null}
+                {isDone ? '¡Pedido confirmado!' : op}
+              </button>
+            )
+          }
+
           return (
             <button
               key={op}
               onClick={() => handleSelect(op)}
-              className={`text-xs font-bold px-3 py-2 rounded-full border transition-all ${isChat ? 'flex items-center gap-1.5' : ''}`}
+              className="text-xs font-bold px-3 py-2 rounded-full border transition-all"
               style={
                 isChat
-                  ? { background: '#55C8F5', color: 'white', borderColor: '#55C8F5' }
+                  ? { background: '#55C8F5', color: 'white', borderColor: '#55C8F5', display: 'flex', alignItems: 'center', gap: '4px' }
                   : selected === op
-                  ? { background: '#FFD400', color: '#111111', borderColor: '#FFD400' }
+                  ? { background: '#55C8F5', color: 'white', borderColor: '#55C8F5' }
                   : { background: 'white', color: '#55C8F5', borderColor: '#55C8F5' }
               }
             >
@@ -87,10 +114,25 @@ function BotonesBubble({
           )
         })}
       </div>
-      {selected && selected.toLowerCase() !== 'chat' && contenido.respuestas[selected] && (
+
+      {/* Respuesta al FAQ seleccionado */}
+      {selected && !selected.startsWith('✅') && !isChatBtn(selected) && contenido.respuestas[selected] && (
         <div className="rounded-2xl rounded-bl-sm px-4 py-2.5 mt-1" style={{ background: '#FFD400' }}>
           <p className="text-sm font-semibold" style={{ color: '#111111' }}>{contenido.respuestas[selected]}</p>
         </div>
+      )}
+
+      {/* Confirmación success */}
+      {selected && selected.startsWith('✅') && contenido.respuestas[selected] && (
+        <div className="rounded-2xl px-4 py-3 mt-1 flex items-start gap-2" style={{ background: '#EEF9FF', border: '1.5px solid #55C8F5' }}>
+          <CheckCircle2 size={16} style={{ color: '#55C8F5', flexShrink: 0, marginTop: 2 }} />
+          <p className="text-sm font-semibold" style={{ color: '#1a6a8a' }}>{contenido.respuestas[selected]}</p>
+        </div>
+      )}
+
+      {/* Hint para confirmar (solo en la sección de confirmación) */}
+      {isConfirmSection && !selected && (
+        <p className="text-[10px] text-gray-400 text-right pr-1">👆 Toca para confirmar</p>
       )}
     </div>
   )
@@ -133,8 +175,8 @@ function MensajeItem({
   if (msg.tipo === 'botones') {
     const contenido = msg.contenido as MensajeBotones
     return (
-      <div className="flex justify-start mb-1">
-        <div className="max-w-[85%] space-y-2">
+      <div className="flex justify-start mb-3">
+        <div className="w-full max-w-[90%] space-y-2">
           {contenido.pregunta && (
             <div className="rounded-2xl rounded-bl-sm px-4 py-2.5" style={{ background: '#FFD400' }}>
               <p className="text-sm font-semibold" style={{ color: '#111111' }}>{contenido.pregunta}</p>
@@ -156,7 +198,7 @@ function MensajeItem({
       <div className={`max-w-[80%] ${isClient ? 'items-end' : 'items-start'} flex flex-col`}>
         <div
           className={`px-4 py-2.5 rounded-2xl text-sm ${isClient ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
-          style={isClient ? { background: '#55C8F5', color: 'white' } : { background: '#FFD400', color: '#111111' }}
+          style={isClient ? { background: '#55C8F5', color: 'white' } : { background: '#FFD400', color: '#111111', fontWeight: 600 }}
         >
           {msg.contenido as string}
         </div>
@@ -192,40 +234,18 @@ export default function ChatView({ chat, isVendedor, lockedUntilChat }: ChatView
     setInput('')
   }
 
-  const handleChatUnlock = () => {
-    setChatUnlocked(true)
-  }
-
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ background: '#F5F5F0' }}>
+      {/* Fondo blanco amarillento muy suave */}
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ background: '#FFFDF5' }}>
         {chat.mensajes.map(msg => (
           <MensajeItem
             key={msg.id}
             msg={msg}
             onSelectBtn={() => {}}
-            onChatUnlock={!chatUnlocked ? handleChatUnlock : undefined}
+            onChatUnlock={!chatUnlocked ? () => setChatUnlocked(true) : undefined}
           />
         ))}
-
-        {lockedUntilChat && !chatUnlocked && (
-          <div className="flex justify-start mb-3">
-            <div className="max-w-[85%] space-y-2">
-              <div className="rounded-2xl rounded-bl-sm px-4 py-2.5" style={{ background: '#FFD400' }}>
-                <p className="text-sm font-semibold mb-2" style={{ color: '#111111' }}>¿Quieres hablar con un asesor ahora?</p>
-                <button
-                  onClick={handleChatUnlock}
-                  className="flex items-center gap-2 font-bold px-4 py-2 rounded-xl text-sm text-white"
-                  style={{ background: '#55C8F5' }}
-                >
-                  <MessageCircle size={14} />
-                  Chat
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div ref={bottomRef} />
       </div>
 

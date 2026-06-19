@@ -155,11 +155,22 @@ export const useKrossStore = create<KrossState>((set, get) => ({
           tipo: 'botones' as const,
           contenido: {
             pregunta: '¿Tienes alguna duda?',
-            opciones: landing.faq.map(f => f.pregunta),
+            opciones: [...landing.faq.map(f => f.pregunta), 'Chatear con un asesor'],
             respuestas: Object.fromEntries(landing.faq.map(f => [f.pregunta, f.respuesta])),
           },
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(Date.now() + 200).toISOString(),
         }] : []),
+        {
+          id: `m${Date.now()}d`,
+          autor: 'bot' as const,
+          tipo: 'botones' as const,
+          contenido: {
+            pregunta: 'Para asegurar tu pedido y que llegue puntual, confírmalo ahora:',
+            opciones: ['✅ Sí, confirmo mi pedido'],
+            respuestas: { '✅ Sí, confirmo mi pedido': '¡Perfecto! 🎉 Tu pedido está confirmado. Recibirás una llamada en breve para coordinar la entrega.' },
+          },
+          timestamp: new Date(Date.now() + 400).toISOString(),
+        },
       ]
     }
     const newPedido: Pedido = {
