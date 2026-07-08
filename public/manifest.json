@@ -1,0 +1,19 @@
+{
+  "name": "Kross — Tu pedido",
+  "short_name": "Kross",
+  "description": "Sigue tu pedido y chatea con el equipo de entrega",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#55C8F5",
+  "theme_color": "#55C8F5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["shopping", "utilities"]
+}

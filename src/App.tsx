@@ -12,6 +12,7 @@ import CRMPage from './pages/vendedor/CRMPage'
 import BotIAPage from './pages/vendedor/BotIAPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
 import EstadisticasPage from './pages/vendedor/EstadisticasPage'
+import OrderChatPage from './pages/pedido/OrderChatPage'
 
 function HomeRedirect() {
   const { currentUser } = useKrossStore()
@@ -23,6 +24,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/p/:token" element={<OrderChatPage />} />
         <Route element={<Layout />}>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/landing/:landingId" element={<LandingProductoPage />} />
