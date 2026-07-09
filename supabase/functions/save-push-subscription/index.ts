@@ -13,28 +13,28 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { session_id, seller_id, role, subscription } = await req.json() as {
+  const { session_id, seller_id, sub_role, subscription } = await req.json() as {
     session_id?: string
     seller_id?: string
-    role: 'buyer' | 'seller'
+    sub_role: 'buyer' | 'seller'
     subscription: object
   }
 
-  if (!subscription || !role) {
+  if (!subscription || !sub_role) {
     return new Response('Missing fields', { status: 400, headers: corsHeaders })
   }
 
   // Delete existing for this key first, then insert fresh
-  if (role === 'buyer' && session_id) {
-    await supabase.from('push_subscriptions').delete().match({ session_id, sub_role: role })
-  } else if (role === 'seller' && seller_id) {
-    await supabase.from('push_subscriptions').delete().match({ seller_id, sub_role: role })
+  if (sub_role === 'buyer' && session_id) {
+    await supabase.from('push_subscriptions').delete().match({ session_id, sub_role })
+  } else if (sub_role === 'seller' && seller_id) {
+    await supabase.from('push_subscriptions').delete().match({ seller_id, sub_role })
   }
 
   const { error } = await supabase.from('push_subscriptions').insert({
     session_id: session_id ?? null,
     seller_id: seller_id ?? null,
-    sub_role: role,
+    sub_role,
     subscription,
   })
 

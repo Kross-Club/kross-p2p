@@ -38,7 +38,7 @@ export async function subscribePush(opts: {
       body: JSON.stringify({
         session_id: opts.sessionId ?? null,
         seller_id: opts.sellerId ?? null,
-        role: opts.role,
+        sub_role: opts.role,
         subscription: sub.toJSON(),
       }),
     })
