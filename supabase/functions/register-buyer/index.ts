@@ -1,5 +1,4 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { crypto } from 'jsr:@std/crypto'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -22,17 +21,39 @@ Deno.serve(async (req) => {
 
   const body = await req.json() as {
     store_id: string
-    order_id?: string
     product_name: string
     product_price: number
     pack_name?: string
     buyer_name: string
     buyer_phone: string
     address?: string
+    seller_ids?: string[]   // list of seller user IDs for this store
+  }
+
+  // Round-robin assignment among sellers
+  let assignedSellerId: string | null = null
+  if (body.seller_ids && body.seller_ids.length > 0) {
+    // Count active sessions per seller for this store
+    const counts: Record<string, number> = {}
+    for (const sid of body.seller_ids) counts[sid] = 0
+
+    const { data: existing } = await supabase
+      .from('order_sessions')
+      .select('assigned_seller_id')
+      .eq('store_id', body.store_id)
+      .eq('status', 'active')
+      .in('assigned_seller_id', body.seller_ids)
+
+    for (const row of existing ?? []) {
+      if (row.assigned_seller_id) counts[row.assigned_seller_id] = (counts[row.assigned_seller_id] ?? 0) + 1
+    }
+
+    // Pick seller with fewest sessions
+    assignedSellerId = body.seller_ids.reduce((a, b) => counts[a] <= counts[b] ? a : b)
   }
 
   const token = randomToken()
-  const orderId = body.order_id ?? `ORD-${Date.now()}`
+  const orderId = `ORD-${Date.now()}`
 
   const { data, error } = await supabase
     .from('order_sessions')
@@ -47,18 +68,18 @@ Deno.serve(async (req) => {
       pack_name: body.pack_name ?? null,
       status: 'active',
       stage: 'nuevo',
+      assigned_seller_id: assignedSellerId,
     })
     .select('id, token')
     .single()
 
   if (error || !data) {
     return new Response(JSON.stringify({ error: error?.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
-  // Insert welcome message from seller
+  // Welcome message
   await supabase.from('chat_messages').insert({
     session_id: data.id,
     sender_role: 'seller',
@@ -68,7 +89,7 @@ Deno.serve(async (req) => {
   })
 
   return new Response(
-    JSON.stringify({ token: data.token, session_id: data.id }),
+    JSON.stringify({ token: data.token, session_id: data.id, assigned_seller_id: assignedSellerId }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 })

@@ -45,7 +45,7 @@ export default function ChatsVendedorPage() {
     if (!storeId) return
     setLoadingReal(true)
     fetch(`${BASE}/get-store-sessions`, {
-      headers: { Authorization: `Bearer ${ANON}`, 'x-store-id': storeId },
+      headers: { Authorization: `Bearer ${ANON}`, 'x-store-id': storeId, 'x-seller-id': currentUser.id },
     })
       .then(r => r.ok ? r.json() : [])
       .then((data: SupabaseSession[]) => setSupabaseSessions(data))

@@ -21,7 +21,7 @@ interface FormData {
 
 export default function LandingProductoPage() {
   const { landingId } = useParams<{ landingId: string }>()
-  const { landings, productos, tiendas, currentUser, chats, pedidos, openNewChat } = useKrossStore()
+  const { landings, productos, tiendas, currentUser, chats, pedidos, openNewChat, vendedoras } = useKrossStore()
 
   const landing = landings.find(l => l.id === landingId)
   const producto = landing ? productos.find(p => p.id === landing.productoId) : null
@@ -76,6 +76,7 @@ export default function LandingProductoPage() {
           buyer_name: form.nombre,
           buyer_phone: form.whatsapp,
           address: `${form.direccion}, ${form.distrito}, ${form.provincia}, ${form.departamento}`,
+          seller_ids: vendedoras.filter(v => v.tiendaId === producto.tiendaId).map(v => v.id),
         }),
       })
       if (res.ok) {
