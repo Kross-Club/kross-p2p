@@ -19,20 +19,20 @@ export default function InstallBanner() {
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !(window as any).MSStream
     setIsIOS(ios)
 
-    if (ios) {
-      // Show iOS instructions after 3s
-      const t = setTimeout(() => setShow(true), 3000)
-      return () => clearTimeout(t)
-    }
+    // Show banner after 3s regardless (manual fallback)
+    const t = setTimeout(() => setShow(true), 3000)
 
-    // Chrome/Android: listen for beforeinstallprompt
+    // Chrome/Android: also listen for native install prompt
     const handler = (e: Event) => {
       e.preventDefault()
       setPrompt(e)
       setShow(true)
     }
     window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener('beforeinstallprompt', handler)
+    }
   }, [])
 
   const install = async () => {
@@ -62,10 +62,12 @@ export default function InstallBanner() {
             <p className="text-white font-black text-sm">Instala Kross</p>
             <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
               {isIOS
-                ? 'Toca el botón compartir  y luego "Agregar a inicio" para recibir notificaciones'
-                : 'Instala la app para recibir notificaciones de llamadas y mensajes'}
+                ? 'Toca el botón compartir ⎙ y luego "Agregar a inicio" para recibir notificaciones'
+                : prompt
+                  ? 'Instala la app para recibir notificaciones de llamadas y mensajes'
+                  : 'Toca el menú ⋮ de Chrome y luego "Agregar a pantalla de inicio"'}
             </p>
-            {!isIOS && (
+            {!isIOS && prompt && (
               <button onClick={install}
                 className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black"
                 style={{ background: '#FFD400', color: '#111' }}>
