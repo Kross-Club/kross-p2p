@@ -27,13 +27,28 @@ Deno.serve(async (req) => {
     buyer_name: string
     buyer_phone: string
     address?: string
-    seller_ids?: string[]   // list of seller user IDs for this store
+    seller_ids?: string[]
+  }
+
+  // Upsert buyer account by phone
+  const { data: buyer, error: buyerErr } = await supabase
+    .from('buyers')
+    .upsert(
+      { phone: body.buyer_phone, nombre: body.buyer_name, address: body.address ?? null },
+      { onConflict: 'phone', ignoreDuplicates: false }
+    )
+    .select('id, score, puntos')
+    .single()
+
+  if (buyerErr || !buyer) {
+    return new Response(JSON.stringify({ error: buyerErr?.message ?? 'buyer upsert failed' }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   // Round-robin assignment among sellers
   let assignedSellerId: string | null = null
   if (body.seller_ids && body.seller_ids.length > 0) {
-    // Count active sessions per seller for this store
     const counts: Record<string, number> = {}
     for (const sid of body.seller_ids) counts[sid] = 0
 
@@ -48,7 +63,6 @@ Deno.serve(async (req) => {
       if (row.assigned_seller_id) counts[row.assigned_seller_id] = (counts[row.assigned_seller_id] ?? 0) + 1
     }
 
-    // Pick seller with fewest sessions
     assignedSellerId = body.seller_ids.reduce((a, b) => counts[a] <= counts[b] ? a : b)
   }
 
@@ -61,8 +75,10 @@ Deno.serve(async (req) => {
       order_id: orderId,
       store_id: body.store_id,
       token,
+      buyer_id: buyer.id,
       buyer_name: body.buyer_name,
       buyer_phone: body.buyer_phone,
+      address: body.address ?? null,
       product_name: body.product_name,
       product_price: body.product_price,
       pack_name: body.pack_name ?? null,
@@ -79,7 +95,6 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Welcome message
   await supabase.from('chat_messages').insert({
     session_id: data.id,
     sender_role: 'seller',
@@ -89,7 +104,14 @@ Deno.serve(async (req) => {
   })
 
   return new Response(
-    JSON.stringify({ token: data.token, session_id: data.id, assigned_seller_id: assignedSellerId }),
+    JSON.stringify({
+      token: data.token,
+      session_id: data.id,
+      buyer_id: buyer.id,
+      score: buyer.score,
+      puntos: buyer.puntos,
+      assigned_seller_id: assignedSellerId,
+    }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 })

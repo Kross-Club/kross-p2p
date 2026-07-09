@@ -85,7 +85,8 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-xs mt-4" style={{ color: '#bbb' }}>
-            ¿Eres comprador? Usa el link de tu pedido.
+            ¿Eres comprador?{' '}
+            <a href="/acceso" className="font-bold" style={{ color: '#55C8F5' }}>Ver mis pedidos</a>
           </p>
         </div>
       </div>
