@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import BottomNav from './BottomNav'
 import AccountSelector from './AccountSelector'
 import IncomingCallOverlay from './IncomingCallOverlay'
+import InstallBanner from './InstallBanner'
 import { useKrossStore } from '../store'
 import { subscribePush } from '../lib/push'
 
@@ -10,19 +11,18 @@ export default function Layout() {
   const { currentUser } = useKrossStore()
   const isSeller = currentUser.tipo === 'vendedor'
 
-  // Seller push subscription: subscribe once when seller is active
   useEffect(() => {
     if (!isSeller || !currentUser.id) return
     if (Notification.permission === 'granted') {
-      subscribePush({ sellerId: currentUser.id, role: 'seller' }).catch(() => {})
+      subscribePush({ sellerId: currentUser.id, role: 'seller' as const }).catch(() => {})
     }
-    // If not granted yet, seller will be prompted via IncomingCallOverlay
   }, [isSeller, currentUser.id])
 
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-[430px] min-h-screen bg-white relative flex flex-col shadow-2xl">
         {isSeller && <IncomingCallOverlay storeId={currentUser.tiendaId} />}
+        <InstallBanner />
         <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#55C8F5' }}>

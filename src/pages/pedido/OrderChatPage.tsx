@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush } from '../../lib/push'
 import { startRingtone } from '../../lib/ringtone'
+import InstallBanner from '../../components/InstallBanner'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -547,6 +548,7 @@ export default function OrderChatPage() {
 
   return (
     <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
+      <InstallBanner />
 
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-4 pt-3 pb-5 text-white"
