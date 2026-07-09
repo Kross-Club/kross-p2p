@@ -11,6 +11,8 @@ export interface OrderSession {
   status: 'active' | 'delivered' | 'rejected' | 'expired'
   stage: 'nuevo' | 'confirmado' | 'preparando' | 'en_camino' | 'entregado'
   expires_at: string | null
+  seller_name: string | null
+  seller_role: string | null
 }
 
 export interface OrderMessage {

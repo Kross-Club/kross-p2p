@@ -147,7 +147,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
 // ─── Call modal (buyer initiates or answers seller call) ──────────────────────
 type CallState = 'connecting' | 'connected' | 'ended' | 'error'
 
-function CallModal({ token, buyerName, onClose }: { token: string; buyerName: string; onClose: () => void }) {
+function CallModal({ token, buyerName, sellerName, sellerRole, onClose }: { token: string; buyerName: string; sellerName?: string | null; sellerRole?: string | null; onClose: () => void }) {
   const [callState, setCallState] = useState<CallState>('connecting')
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -281,7 +281,9 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
           </svg>
         </div>
 
-        <p className="text-white font-black text-xl mb-1">Teddy · Kross</p>
+        <p className="text-white font-black text-xl mb-1">
+          {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : 'Kross'}
+        </p>
         <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.55)' }}>
           {callState === 'connecting' && 'Conectando…'}
           {callState === 'connected' && `En llamada · ${fmt(elapsed)}`}
@@ -331,7 +333,7 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
 }
 
 // ─── Incoming call from seller ────────────────────────────────────────────────
-function BuyerIncomingCall({ onAnswer, onReject }: { onAnswer: () => void; onReject: () => void }) {
+function BuyerIncomingCall({ onAnswer, onReject, sellerName, sellerRole }: { onAnswer: () => void; onReject: () => void; sellerName?: string | null; sellerRole?: string | null }) {
   useEffect(() => {
     const stop = startRingtone()
     return stop
@@ -342,7 +344,9 @@ function BuyerIncomingCall({ onAnswer, onReject }: { onAnswer: () => void; onRej
       <div className="w-full max-w-[430px] rounded-t-3xl pb-10 pt-8 px-6 text-center" style={{ background: '#111' }}>
         <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl animate-bounce"
           style={{ background: '#FFD400' }}>📞</div>
-        <p className="text-white font-black text-xl mb-1">Teddy · Kross</p>
+        <p className="text-white font-black text-xl mb-1">
+          {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : 'Kross'}
+        </p>
         <p className="text-sm mb-8 font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
           Llamada entrante…
         </p>
@@ -587,7 +591,11 @@ export default function OrderChatPage() {
           </div>
 
           <div className="flex-1 min-w-0">
-            <p className="font-black text-white text-base leading-tight">Teddy · Kross</p>
+            <p className="font-black text-white text-base leading-tight">
+              {session?.seller_name
+                ? `${session.seller_name.split(' ')[0]}${session.seller_role ? ` · ${session.seller_role}` : ' · Kross'}`
+                : 'Kross'}
+            </p>
             <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>
               ¡Hola {firstName}! En línea ahora
             </p>
@@ -705,6 +713,8 @@ export default function OrderChatPage() {
         <BuyerIncomingCall
           onAnswer={() => { setSellerCalling(false); setShowCall(true) }}
           onReject={() => setSellerCalling(false)}
+          sellerName={session?.seller_name}
+          sellerRole={session?.seller_role}
         />
       )}
 
@@ -712,6 +722,8 @@ export default function OrderChatPage() {
         <CallModal
           token={token}
           buyerName={firstName}
+          sellerName={session?.seller_name}
+          sellerRole={session?.seller_role}
           onClose={() => setShowCall(false)}
         />
       )}

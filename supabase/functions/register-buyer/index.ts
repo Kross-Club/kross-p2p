@@ -26,19 +26,46 @@ Deno.serve(async (req) => {
     pack_name?: string
     buyer_name: string
     buyer_phone: string
+    document_type?: string
+    document_number?: string
     address?: string
     seller_ids?: string[]
   }
 
-  // Upsert buyer account by phone
-  const { data: buyer, error: buyerErr } = await supabase
-    .from('buyers')
-    .upsert(
-      { phone: body.buyer_phone, nombre: body.buyer_name, address: body.address ?? null },
-      { onConflict: 'phone', ignoreDuplicates: false }
-    )
-    .select('id, score, puntos')
-    .single()
+  // Upsert buyer account — document_number as unique key if provided, fallback to phone
+  let buyer: { id: string; score: number; puntos: number } | null = null
+  let buyerErr: { message: string } | null = null
+
+  if (body.document_number) {
+    const { data, error } = await supabase
+      .from('buyers')
+      .upsert(
+        {
+          document_type: body.document_type ?? 'DNI',
+          document_number: body.document_number,
+          phone: body.buyer_phone,
+          nombre: body.buyer_name,
+          address: body.address ?? null,
+        },
+        { onConflict: 'document_number', ignoreDuplicates: false }
+      )
+      .select('id, score, puntos')
+      .single()
+    buyer = data
+    buyerErr = error
+  } else {
+    // Fallback: upsert by phone (old registrations without DNI)
+    const { data, error } = await supabase
+      .from('buyers')
+      .upsert(
+        { phone: body.buyer_phone, nombre: body.buyer_name, address: body.address ?? null },
+        { onConflict: 'phone', ignoreDuplicates: false }
+      )
+      .select('id, score, puntos')
+      .single()
+    buyer = data
+    buyerErr = error
+  }
 
   if (buyerErr || !buyer) {
     return new Response(JSON.stringify({ error: buyerErr?.message ?? 'buyer upsert failed' }), {

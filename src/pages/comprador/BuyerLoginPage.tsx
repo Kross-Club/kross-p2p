@@ -1,14 +1,20 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { KrossIcon } from '../../components/KrossLogo'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
+type DocType = 'DNI' | 'CE' | 'PASAPORTE'
+
 export default function BuyerLoginPage() {
   const navigate = useNavigate()
-  const [phone, setPhone] = useState('')
+  const [docType, setDocType] = useState<DocType>('DNI')
+  const [docNumber, setDocNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const maxLen = docType === 'DNI' ? 8 : docType === 'CE' ? 12 : 20
 
   const login = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -18,15 +24,14 @@ export default function BuyerLoginPage() {
     const res = await fetch(`${BASE}/buyer-login`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify({ document_type: docType, document_number: docNumber }),
     })
 
     if (res.status === 404) {
-      setError('No encontramos una cuenta con ese número. ¿Ya hiciste un pedido?')
+      setError('No encontramos una cuenta con ese documento. ¿Ya hiciste un pedido?')
       setLoading(false)
       return
     }
-
     if (!res.ok) {
       setError('Error al conectar. Intenta de nuevo.')
       setLoading(false)
@@ -40,59 +45,72 @@ export default function BuyerLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: 'linear-gradient(135deg, #55C8F5 0%, #FFD400 100%)' }}>
+      style={{ background: 'linear-gradient(160deg, #060C1A 0%, #0D1F3C 60%, #0A2540 100%)' }}>
       <div className="w-full max-w-[360px]">
 
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.3)', backdropFilter: 'blur(8px)' }}>
-            <img src="/icon-192.png" alt="Kross" className="w-12 h-12 rounded-xl" />
+          <div className="mx-auto mb-4 w-16 h-16 rounded-2xl overflow-hidden">
+            <KrossIcon size={64} />
           </div>
-          <h1 className="text-white font-black text-3xl tracking-tight">kross</h1>
-          <p className="text-white/80 text-sm mt-1">Mis pedidos</p>
+          <h1 className="font-black text-3xl tracking-tight" style={{ color: '#7DE8FF' }}>kross</h1>
+          <p className="text-sm mt-1" style={{ color: 'rgba(125,232,255,0.5)' }}>Mis pedidos</p>
         </div>
 
-        <div className="rounded-3xl p-6 shadow-2xl" style={{ background: '#fff' }}>
-          <h2 className="font-black text-xl mb-1" style={{ color: '#111' }}>¡Hola!</h2>
-          <p className="text-sm mb-5" style={{ color: '#888' }}>
-            Ingresa tu número de WhatsApp para ver tus pedidos
+        <div className="rounded-3xl p-6 shadow-2xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(125,232,255,0.15)', backdropFilter: 'blur(20px)' }}>
+          <h2 className="font-black text-xl mb-1 text-white">¡Hola!</h2>
+          <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.5)' }}>
+            Ingresa tu documento para ver tus pedidos
           </p>
 
           <form onSubmit={login} className="flex flex-col gap-3">
+            {/* Doc type selector */}
+            <div className="flex gap-2">
+              {(['DNI', 'CE', 'PASAPORTE'] as DocType[]).map(t => (
+                <button key={t} type="button" onClick={() => { setDocType(t); setDocNumber('') }}
+                  className="flex-1 py-2 rounded-xl text-xs font-black transition-all"
+                  style={{
+                    background: docType === t ? '#00BFFF' : 'rgba(255,255,255,0.06)',
+                    color: docType === t ? '#060C1A' : 'rgba(255,255,255,0.4)',
+                    border: docType === t ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                  }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+
             <div>
-              <label className="text-xs font-bold mb-1 block" style={{ color: '#555' }}>
-                Número de WhatsApp
+              <label className="text-xs font-bold mb-1 block" style={{ color: 'rgba(125,232,255,0.7)' }}>
+                Número de {docType}
               </label>
-              <div className="flex items-center gap-2 px-4 py-3 rounded-2xl border-2 transition-all"
-                style={{ border: '2px solid #eee', background: '#fafafa' }}>
-                <span className="text-sm font-bold" style={{ color: '#555' }}>🇵🇪 +51</span>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 9))}
-                  required
-                  placeholder="987 654 321"
-                  className="flex-1 bg-transparent text-sm outline-none"
-                  style={{ color: '#111' }}
-                />
-              </div>
+              <input
+                type="text"
+                value={docNumber}
+                onChange={e => setDocNumber(e.target.value.replace(/\D/g, '').slice(0, maxLen))}
+                required
+                placeholder={docType === 'DNI' ? '12345678' : docType === 'CE' ? '000123456' : 'Nro. de pasaporte'}
+                className="w-full px-4 py-3 rounded-2xl text-sm outline-none font-mono tracking-widest"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(125,232,255,0.2)', color: '#fff' }}
+              />
             </div>
 
             {error && (
-              <p className="text-xs font-semibold text-red-500 text-center">{error}</p>
+              <p className="text-xs font-semibold text-center" style={{ color: '#FF6B6B' }}>{error}</p>
             )}
 
-            <button type="submit" disabled={loading || phone.length < 9}
-              className="w-full py-3.5 rounded-2xl font-black text-sm mt-1 transition-opacity"
-              style={{ background: '#55C8F5', color: '#fff', opacity: (loading || phone.length < 9) ? 0.5 : 1 }}>
+            <button type="submit" disabled={loading || docNumber.length < 6}
+              className="w-full py-3.5 rounded-2xl font-black text-sm mt-1 transition-all"
+              style={{
+                background: (loading || docNumber.length < 6) ? 'rgba(0,191,255,0.3)' : 'linear-gradient(135deg, #00BFFF, #7DE8FF)',
+                color: '#060C1A',
+              }}>
               {loading ? 'Buscando…' : 'Ver mis pedidos'}
             </button>
           </form>
 
-          <div className="mt-5 pt-4" style={{ borderTop: '1px solid #f0f0f0' }}>
-            <p className="text-center text-xs" style={{ color: '#bbb' }}>
+          <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+            <p className="text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
               ¿Eres vendedor?{' '}
-              <a href="/login" className="font-bold" style={{ color: '#55C8F5' }}>Ingresar aquí</a>
+              <a href="/login" className="font-bold" style={{ color: '#00BFFF' }}>Ingresar aquí</a>
             </p>
           </div>
         </div>

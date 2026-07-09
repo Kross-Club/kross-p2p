@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Star, Shield, Truck, Zap, CheckCircle, ChevronDown, X, Phone, ArrowLeft } from 'lucide-react'
 import { useKrossStore } from '../store'
@@ -11,11 +11,23 @@ type Step = 'landing' | 'modal' | 'chat'
 interface FormData {
   nombre: string
   whatsapp: string
+  document_type: 'DNI' | 'CE' | 'PASAPORTE'
+  document_number: string
   packIdx: number
   departamento: string
   provincia: string
   distrito: string
   direccion: string
+}
+
+interface BuyerAccount {
+  id: string
+  nombre: string
+  phone: string
+  document_type: string
+  document_number: string
+  score: number
+  puntos: number
 }
 
 
@@ -33,16 +45,38 @@ export default function LandingProductoPage() {
   const [form, setForm] = useState<FormData>({
     nombre: '',
     whatsapp: '',
+    document_type: 'DNI',
+    document_number: '',
     packIdx: landing?.ofertas.length ? 1 : 0,
     departamento: '',
     provincia: '',
     distrito: '',
     direccion: '',
   })
+  const [buyerAccount, setBuyerAccount] = useState<BuyerAccount | null>(null)
   const [chatId, setChatId] = useState<string | null>(null)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
+
+  // Detect existing buyer session
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('buyer_session')
+      if (!raw) return
+      const { buyer } = JSON.parse(raw)
+      if (buyer) {
+        setBuyerAccount(buyer)
+        setForm(f => ({
+          ...f,
+          nombre: buyer.nombre ?? f.nombre,
+          whatsapp: buyer.phone?.replace(/^51/, '') ?? f.whatsapp,
+          document_type: (buyer.document_type as FormData['document_type']) ?? 'DNI',
+          document_number: buyer.document_number ?? f.document_number,
+        }))
+      }
+    } catch { /* ignore */ }
+  }, [])
 
   if (!landing || !producto) {
     return <div className="flex items-center justify-center h-64"><p className="text-gray-400">Producto no encontrado</p></div>
@@ -57,7 +91,7 @@ export default function LandingProductoPage() {
   const provincias = form.departamento ? Object.keys(GEO_PERU[form.departamento] || {}) : []
   const distritos = form.departamento && form.provincia ? (GEO_PERU[form.departamento]?.[form.provincia] || []) : []
 
-  const formValid = form.nombre && form.whatsapp.length >= 9 && form.departamento && form.provincia && form.distrito && form.direccion
+  const formValid = form.nombre && form.whatsapp.length >= 9 && form.document_number.length >= 6 && form.departamento && form.provincia && form.distrito && form.direccion
 
   const handleSubmit = async () => {
     if (!formValid || submitting) return
@@ -75,6 +109,8 @@ export default function LandingProductoPage() {
           pack_name: selectedPack?.nombre ?? null,
           buyer_name: form.nombre,
           buyer_phone: form.whatsapp,
+          document_type: form.document_type,
+          document_number: form.document_number,
           address: `${form.direccion}, ${form.distrito}, ${form.provincia}, ${form.departamento}`,
           seller_ids: vendedoras.filter(v => v.tiendaId === producto.tiendaId).map(v => v.id),
         }),
@@ -528,8 +564,31 @@ export default function LandingProductoPage() {
               <div className="border-t border-gray-100 mb-4" />
               <label className="text-xs font-black text-gray-700 mb-3 block uppercase tracking-wide">2. Tus datos</label>
 
+              {/* Active buyer session banner */}
+              {buyerAccount && (
+                <div className="mb-3 p-3 rounded-2xl flex items-center gap-3"
+                  style={{ background: 'linear-gradient(135deg, #060C1A, #0D1F3C)', border: '1.5px solid rgba(125,232,255,0.3)' }}>
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(0,191,255,0.15)' }}>
+                    <span className="text-lg">⚡</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black" style={{ color: '#7DE8FF' }}>
+                      Comprando como {buyerAccount.nombre.split(' ')[0]}
+                    </p>
+                    <p className="text-xs" style={{ color: 'rgba(125,232,255,0.5)' }}>
+                      {buyerAccount.document_type} {buyerAccount.document_number} · Score {buyerAccount.score}/100
+                    </p>
+                  </div>
+                  <button onClick={() => { setBuyerAccount(null); setForm(f => ({ ...f, nombre: '', whatsapp: '', document_number: '' })) }}
+                    className="text-xs px-2 py-1 rounded-lg" style={{ color: 'rgba(125,232,255,0.5)', background: 'rgba(255,255,255,0.05)' }}>
+                    Cambiar
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-3">
                 {/* Nombre */}
+                {!buyerAccount && (
                 <div>
                   <label className="text-xs font-bold text-gray-500 mb-1 block">Nombre completo *</label>
                   <input
@@ -539,8 +598,35 @@ export default function LandingProductoPage() {
                     className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-green-300"
                   />
                 </div>
+                )}
+
+                {/* DNI / CE */}
+                {!buyerAccount && (
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block">Documento de identidad *</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={form.document_type}
+                      onChange={e => setForm(f => ({ ...f, document_type: e.target.value as FormData['document_type'], document_number: '' }))}
+                      className="bg-gray-100 rounded-2xl px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-green-300 font-bold text-gray-700 flex-shrink-0"
+                    >
+                      <option value="DNI">DNI</option>
+                      <option value="CE">CE</option>
+                      <option value="PASAPORTE">Pasaporte</option>
+                    </select>
+                    <input
+                      value={form.document_number}
+                      onChange={e => setForm(f => ({ ...f, document_number: e.target.value.replace(/\D/g, '').slice(0, form.document_type === 'DNI' ? 8 : 12) }))}
+                      placeholder={form.document_type === 'DNI' ? '12345678' : '000123456'}
+                      type="text"
+                      className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-green-300 font-mono tracking-widest"
+                    />
+                  </div>
+                </div>
+                )}
 
                 {/* WhatsApp */}
+                {!buyerAccount && (
                 <div>
                   <label className="text-xs font-bold text-gray-500 mb-1 block">WhatsApp *</label>
                   <div className="flex gap-2">
@@ -555,6 +641,7 @@ export default function LandingProductoPage() {
                     />
                   </div>
                 </div>
+                )}
 
                 {/* Departamento */}
                 <div>

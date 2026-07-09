@@ -13,62 +13,76 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { phone } = await req.json() as { phone: string }
+  const body = await req.json() as {
+    document_type?: string
+    document_number?: string
+    phone?: string
+  }
 
-  if (!phone) {
-    return new Response(JSON.stringify({ error: 'phone required' }), {
+  if (!body.document_number && !body.phone) {
+    return new Response(JSON.stringify({ error: 'document_number or phone required' }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
-  // Normalize: strip non-digits, try with and without +51 prefix
-  const digits = phone.replace(/\D/g, '').replace(/^0+/, '')
-  const withPrefix = digits.startsWith('51') ? digits : `51${digits}`
-  const withoutPrefix = digits.startsWith('51') ? digits.slice(2) : digits
+  let buyer: Record<string, unknown> | null = null
 
-  // 1. Try buyers table first (accounts created after migration)
-  let buyer = null
-  const { data: existingBuyer } = await supabase
-    .from('buyers')
-    .select('id, nombre, phone, score, puntos, address')
-    .or(`phone.eq.${withPrefix},phone.eq.${withoutPrefix},phone.eq.${digits}`)
-    .maybeSingle()
-
-  buyer = existingBuyer
-
-  // 2. Fallback: buyer exists in order_sessions but not in buyers table yet
-  if (!buyer) {
-    const { data: session } = await supabase
-      .from('order_sessions')
-      .select('buyer_name, buyer_phone')
-      .or(`buyer_phone.eq.${withPrefix},buyer_phone.eq.${withoutPrefix},buyer_phone.eq.${digits}`)
-      .maybeSingle()
-
-    if (!session) {
-      return new Response(JSON.stringify({ error: 'not_found' }), {
-        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Create buyer account from existing order data
-    const { data: newBuyer } = await supabase
+  // 1. Try by document number (preferred — permanent identifier)
+  if (body.document_number) {
+    const { data } = await supabase
       .from('buyers')
-      .upsert(
-        { phone: session.buyer_phone, nombre: session.buyer_name },
-        { onConflict: 'phone', ignoreDuplicates: false }
-      )
-      .select('id, nombre, phone, score, puntos, address')
-      .single()
+      .select('id, nombre, phone, document_type, document_number, score, puntos, address')
+      .eq('document_number', body.document_number)
+      .maybeSingle()
+    buyer = data
+  }
 
-    buyer = newBuyer
+  // 2. Fallback: search by phone in buyers table
+  if (!buyer && body.phone) {
+    const digits = body.phone.replace(/\D/g, '').replace(/^0+/, '')
+    const withPrefix = digits.startsWith('51') ? digits : `51${digits}`
+    const withoutPrefix = digits.startsWith('51') ? digits.slice(2) : digits
 
-    // Link existing sessions to this new buyer record
-    if (newBuyer) {
-      await supabase
+    const { data } = await supabase
+      .from('buyers')
+      .select('id, nombre, phone, document_type, document_number, score, puntos, address')
+      .or(`phone.eq.${withPrefix},phone.eq.${withoutPrefix},phone.eq.${digits}`)
+      .maybeSingle()
+    buyer = data
+
+    // 3. Fallback: buyer exists only in order_sessions (pre-migration)
+    if (!buyer) {
+      const { data: session } = await supabase
         .from('order_sessions')
-        .update({ buyer_id: newBuyer.id })
+        .select('buyer_name, buyer_phone')
         .or(`buyer_phone.eq.${withPrefix},buyer_phone.eq.${withoutPrefix},buyer_phone.eq.${digits}`)
-        .is('buyer_id', null)
+        .maybeSingle()
+
+      if (!session) {
+        return new Response(JSON.stringify({ error: 'not_found' }), {
+          status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      // Auto-create buyer from order_sessions data
+      const { data: newBuyer } = await supabase
+        .from('buyers')
+        .upsert(
+          { phone: session.buyer_phone, nombre: session.buyer_name },
+          { onConflict: 'phone', ignoreDuplicates: false }
+        )
+        .select('id, nombre, phone, document_type, document_number, score, puntos, address')
+        .single()
+
+      buyer = newBuyer
+
+      if (newBuyer) {
+        await supabase
+          .from('order_sessions')
+          .update({ buyer_id: newBuyer.id })
+          .or(`buyer_phone.eq.${withPrefix},buyer_phone.eq.${withoutPrefix},buyer_phone.eq.${digits}`)
+          .is('buyer_id', null)
+      }
     }
   }
 
@@ -78,26 +92,14 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Get all orders — by buyer_id OR by phone (catches sessions not yet linked)
+  // Get all orders for this buyer
   const { data: byId } = await supabase
     .from('order_sessions')
     .select('id, token, order_id, product_name, product_price, pack_name, stage, status, created_at, address')
-    .eq('buyer_id', buyer.id)
+    .eq('buyer_id', buyer.id as string)
     .order('created_at', { ascending: false })
 
-  const { data: byPhone } = await supabase
-    .from('order_sessions')
-    .select('id, token, order_id, product_name, product_price, pack_name, stage, status, created_at, address')
-    .or(`buyer_phone.eq.${withPrefix},buyer_phone.eq.${withoutPrefix},buyer_phone.eq.${digits}`)
-    .is('buyer_id', null)
-    .order('created_at', { ascending: false })
-
-  const seen = new Set<string>()
-  const sessions = [...(byId ?? []), ...(byPhone ?? [])].filter(s => {
-    if (seen.has(s.id)) return false
-    seen.add(s.id)
-    return true
-  })
+  const sessions = byId ?? []
 
   return new Response(
     JSON.stringify({ buyer, sessions }),
