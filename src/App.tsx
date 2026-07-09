@@ -25,9 +25,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/p/:token" element={<OrderChatPage />} />
+        <Route path="/landing/:landingId" element={<LandingProductoPage />} />
         <Route element={<Layout />}>
           <Route path="/" element={<HomeRedirect />} />
-          <Route path="/landing/:landingId" element={<LandingProductoPage />} />
           <Route path="/comprador/chats" element={<ChatsPage />} />
           <Route path="/comprador/chat/:chatId" element={<ChatDetalleComprador />} />
           <Route path="/comprador/perfil" element={<PerfilPage />} />

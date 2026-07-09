@@ -31,7 +31,7 @@ export default function LandingProductoPage() {
   const [step, setStep] = useState<Step>('landing')
   const [imgIdx, setImgIdx] = useState(0)
   const [form, setForm] = useState<FormData>({
-    nombre: currentUser.tipo === 'comprador' ? currentUser.nombre : '',
+    nombre: '',
     whatsapp: '',
     packIdx: landing?.ofertas.length ? 1 : 0,
     departamento: '',
