@@ -1,7 +1,6 @@
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-// VAPID public key — matches VAPID_PUBLIC_KEY in Supabase edge function secrets
 const VAPID_PUBLIC_KEY =
   import.meta.env.VITE_VAPID_PUBLIC_KEY ||
   'BNlgNwxGrQAL6HpxmipTikb7UDu0oj5vcqFURdW7tMhYuVLA-aX3OCZ1yyPGYjetYnRhsbm4kNldMsJqVVEeiSs'
@@ -15,6 +14,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 export async function subscribePush(opts: {
   sessionId?: string
   sellerId?: string
+  buyerId?: string
   role: 'buyer' | 'seller'
 }): Promise<boolean> {
   try {
@@ -38,6 +38,7 @@ export async function subscribePush(opts: {
       body: JSON.stringify({
         session_id: opts.sessionId ?? null,
         seller_id: opts.sellerId ?? null,
+        buyer_id: opts.buyerId ?? null,
         sub_role: opts.role,
         subscription: sub.toJSON(),
       }),

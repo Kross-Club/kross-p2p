@@ -75,6 +75,9 @@ Deno.serve(async (req) => {
 
   // Round-robin assignment among sellers
   let assignedSellerId: string | null = null
+  let assignedSellerName: string | null = null
+  let assignedSellerRole: string | null = null
+
   if (body.seller_ids && body.seller_ids.length > 0) {
     const counts: Record<string, number> = {}
     for (const sid of body.seller_ids) counts[sid] = 0
@@ -91,6 +94,20 @@ Deno.serve(async (req) => {
     }
 
     assignedSellerId = body.seller_ids.reduce((a, b) => counts[a] <= counts[b] ? a : b)
+
+    // Resolve seller name/role from sellers table
+    if (assignedSellerId) {
+      const { data: sellerProfile } = await supabase
+        .from('sellers')
+        .select('nombre, role_label')
+        .eq('auth_user_id', assignedSellerId)
+        .maybeSingle()
+
+      if (sellerProfile) {
+        assignedSellerName = sellerProfile.nombre
+        assignedSellerRole = sellerProfile.role_label
+      }
+    }
   }
 
   const token = randomToken()
@@ -106,6 +123,8 @@ Deno.serve(async (req) => {
       buyer_name: body.buyer_name,
       buyer_phone: body.buyer_phone,
       address: body.address ?? null,
+      seller_name: assignedSellerName,
+      seller_role: assignedSellerRole,
       product_name: body.product_name,
       product_price: body.product_price,
       pack_name: body.pack_name ?? null,

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, ChevronRight, Star, LogOut } from 'lucide-react'
+import { Package, ChevronRight, Star, LogOut, Bell } from 'lucide-react'
+import { subscribePush } from '../../lib/push'
 
 const STAGE_LABEL: Record<string, string> = {
   nuevo:      '📋 Pedido recibido',
@@ -47,11 +48,28 @@ export default function MisPedidosPage() {
   const navigate = useNavigate()
   const [data, setData] = useState<BuyerSession | null>(null)
 
+  const [notifGranted, setNotifGranted] = useState(Notification.permission === 'granted')
+
   useEffect(() => {
     const raw = localStorage.getItem('buyer_session')
     if (!raw) { navigate('/acceso', { replace: true }); return }
-    try { setData(JSON.parse(raw)) } catch { navigate('/acceso', { replace: true }) }
+    try {
+      const parsed = JSON.parse(raw)
+      setData(parsed)
+      // Register push subscription for this buyer
+      if (parsed.buyer?.id && Notification.permission === 'granted') {
+        subscribePush({ buyerId: parsed.buyer.id, role: 'buyer' as const }).catch(() => {})
+      }
+    } catch { navigate('/acceso', { replace: true }) }
   }, [navigate])
+
+  const enableNotifications = async () => {
+    const raw = localStorage.getItem('buyer_session')
+    if (!raw) return
+    const { buyer } = JSON.parse(raw)
+    const ok = await subscribePush({ buyerId: buyer.id, role: 'buyer' as const })
+    if (ok) setNotifGranted(true)
+  }
 
   const logout = () => {
     localStorage.removeItem('buyer_session')
@@ -75,9 +93,18 @@ export default function MisPedidosPage() {
               <img src="/icon-192.png" alt="Kross" className="w-8 h-8 rounded-xl" />
               <span className="font-black text-xl tracking-tight">kross</span>
             </div>
-            <button onClick={logout} className="p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.2)' }}>
-              <LogOut size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              {!notifGranted && (
+                <button onClick={enableNotifications}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black"
+                  style={{ background: 'rgba(255,255,255,0.2)', color: '#fff' }}>
+                  <Bell size={12} /> Activar avisos
+                </button>
+              )}
+              <button onClick={logout} className="p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.2)' }}>
+                <LogOut size={16} />
+              </button>
+            </div>
           </div>
 
           <p className="text-white/70 text-sm">Hola,</p>

@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     .insert({
       session_id,
       sender_role: 'seller',
-      sender_name: seller_name || 'Teddy',
+      sender_name: seller_name || 'Kross',
       type: type || 'text',
       body,
     })
@@ -69,23 +69,48 @@ Deno.serve(async (req) => {
     }),
   })
 
-  // Push notification to buyer if they have a subscription
-  const [{ data: subs }, { data: sessionRow }] = await Promise.all([
-    supabase.from('push_subscriptions').select('subscription').eq('session_id', session_id).eq('sub_role', 'buyer'),
-    supabase.from('order_sessions').select('token').eq('id', session_id).single(),
-  ])
+  // Push notification to buyer — try by buyer_id first (account-linked), fallback to session_id
+  const { data: sessionRow } = await supabase
+    .from('order_sessions')
+    .select('token, buyer_id')
+    .eq('id', session_id)
+    .single()
 
-  if (subs && subs.length > 0 && sessionRow) {
-    const preview = type === 'text' ? body.slice(0, 80) : '🎵 Mensaje de audio'
-    await Promise.all(subs.map(row =>
-      trySendPush(row.subscription, {
-        title: `💬 ${seller_name || 'Teddy'} · Kross`,
-        body: preview,
-        url: `/p/${sessionRow.token}`,
-        tag: `msg-${session_id}`,
-        type: 'message',
-      })
-    ))
+  if (sessionRow) {
+    let subs: { subscription: object }[] = []
+
+    if (sessionRow.buyer_id) {
+      const { data } = await supabase
+        .from('push_subscriptions')
+        .select('subscription')
+        .eq('buyer_id', sessionRow.buyer_id)
+        .eq('sub_role', 'buyer')
+      subs = data ?? []
+    }
+
+    // Fallback to session-based subscription (older registrations)
+    if (subs.length === 0) {
+      const { data } = await supabase
+        .from('push_subscriptions')
+        .select('subscription')
+        .eq('session_id', session_id)
+        .eq('sub_role', 'buyer')
+      subs = data ?? []
+    }
+
+    if (subs.length > 0) {
+      const displayName = seller_name || 'Kross'
+      const preview = type === 'text' ? body.slice(0, 80) : '🎵 Mensaje de audio'
+      await Promise.all(subs.map(row =>
+        trySendPush(row.subscription, {
+          title: `💬 ${displayName}`,
+          body: preview,
+          url: `/p/${sessionRow.token}`,
+          tag: `msg-${session_id}`,
+          type: 'message',
+        })
+      ))
+    }
   }
 
   return new Response(JSON.stringify(msg), {
