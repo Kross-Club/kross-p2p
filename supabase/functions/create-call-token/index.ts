@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, buyer_name, status')
+    .select('id, buyer_name, product_name, status')
     .eq('token', token)
     .single()
 
@@ -37,12 +37,34 @@ Deno.serve(async (req) => {
 
   const livekitToken = await at.toJwt()
 
-  // Insert call_log message into chat
+  // Insert call_log in chat
   await supabase.from('chat_messages').insert({
     session_id: session.id,
     sender_role: 'system',
     type: 'call_log',
     body: 'Comprador inició una llamada de voz',
+  })
+
+  // Notify seller via global channel
+  await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    },
+    body: JSON.stringify({
+      messages: [{
+        topic: 'seller:calls',
+        event: 'incoming_call',
+        payload: {
+          session_id: session.id,
+          room_name: roomName,
+          buyer_name: session.buyer_name,
+          product_name: session.product_name,
+        },
+      }],
+    }),
   })
 
   return new Response(

@@ -1,11 +1,16 @@
 import { Outlet } from 'react-router-dom'
 import BottomNav from './BottomNav'
 import AccountSelector from './AccountSelector'
+import IncomingCallOverlay from './IncomingCallOverlay'
+import { useKrossStore } from '../store'
 
 export default function Layout() {
+  const { currentUser } = useKrossStore()
+  const isSeller = currentUser.tipo === 'vendedor'
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-[430px] min-h-screen bg-white relative flex flex-col shadow-2xl">
+        {isSeller && <IncomingCallOverlay />}
         <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: '#55C8F5' }}>
