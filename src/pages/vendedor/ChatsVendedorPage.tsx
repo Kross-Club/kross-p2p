@@ -124,7 +124,7 @@ export default function ChatsVendedorPage() {
                 return (
                   <button
                     key={session.id}
-                    onClick={() => navigate(`/p/${session.token}`)}
+                    onClick={() => navigate(`/vendedor/pedido/${session.token}`)}
                     className="w-full bg-white border rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
                     style={{ borderColor: '#55C8F5', borderWidth: '1.5px' }}
                   >

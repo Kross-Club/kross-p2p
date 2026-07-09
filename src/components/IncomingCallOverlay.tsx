@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react'
-import { Room, RoomEvent, LocalParticipant, createLocalTracks } from 'livekit-client'
 import { supabase } from '../lib/supabase'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -20,8 +19,9 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
   const [phase, setPhase] = useState<CallPhase>('ringing')
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
-  const roomRef = useRef<Room | null>(null)
+  const roomRef = useRef<InstanceType<typeof import('livekit-client')['Room']> | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const audioEls = useRef<HTMLAudioElement[]>([])
 
   // Listen for incoming calls on store-specific channel
   useEffect(() => {
@@ -48,9 +48,22 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
       })
       const { livekit_url, livekit_token } = await res.json() as { livekit_url: string; livekit_token: string }
 
+      // Lazy-load LiveKit (fixes iOS Safari crash)
+      const { Room, RoomEvent, createLocalTracks, Track } = await import('livekit-client')
+
       const room = new Room()
       roomRef.current = room
       room.on(RoomEvent.Disconnected, () => setPhase('ended'))
+
+      // Subscribe to remote audio tracks
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Audio) {
+          const el = track.attach()
+          el.autoplay = true
+          document.body.appendChild(el)
+          audioEls.current.push(el)
+        }
+      })
 
       await room.connect(livekit_url, livekit_token)
       const tracks = await createLocalTracks({ audio: true, video: false })
@@ -65,18 +78,22 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
 
   const hangUp = () => {
     if (timerRef.current) clearInterval(timerRef.current)
+    audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
+    audioEls.current = []
     roomRef.current?.disconnect()
     setPhase('ended')
     setTimeout(() => setIncoming(null), 1200)
   }
 
   const reject = () => {
+    audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
+    audioEls.current = []
     roomRef.current?.disconnect()
     setIncoming(null)
   }
 
   const toggleMute = () => {
-    const lp: LocalParticipant | undefined = roomRef.current?.localParticipant
+    const lp = roomRef.current?.localParticipant
     if (!lp) return
     lp.audioTrackPublications.forEach(pub => {
       if (pub.track) muted ? pub.track.unmute() : pub.track.mute()
