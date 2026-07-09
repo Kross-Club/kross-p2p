@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2 } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useKrossStore } from '../../store'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
@@ -63,7 +63,9 @@ function SellerCallModal({
           if (track.kind === Track.Kind.Audio) {
             const el = track.attach()
             el.autoplay = true
+            el.setAttribute('playsinline', '')
             document.body.appendChild(el)
+            el.play().catch(() => {})
             audioEls.current.push(el)
           }
         })
@@ -78,6 +80,14 @@ function SellerCallModal({
             (navigator as any).wakeLock.request('screen')
               .then((wl: any) => { wakeLockRef.current = wl })
               .catch(() => {})
+          }
+          // MediaSession: keep audio alive in background
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: 'En llamada · Kross',
+              artist: 'Cliente',
+            })
+            navigator.mediaSession.playbackState = 'playing'
           }
           setCallState('connected')
           timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
@@ -118,6 +128,7 @@ function SellerCallModal({
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
     roomRef.current?.disconnect()
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
     setCallState('ended')
     setTimeout(onClose, 1200)
   }
@@ -393,8 +404,8 @@ export default function VendedorPedidoPage() {
   return (
     <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
 
-      {/* IncomingCallOverlay for when buyer calls while seller is in this view */}
-      <IncomingCallOverlay storeId={currentUser.tiendaId} />
+      {/* IncomingCallOverlay — disabled when seller already has a call open */}
+      <IncomingCallOverlay storeId={currentUser.tiendaId} disabled={showCall} />
 
       {/* Header */}
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
@@ -418,6 +429,13 @@ export default function VendedorPedidoPage() {
             </p>
           </div>
 
+          <button
+            onClick={() => channelRef.current?.send({ type: 'broadcast', event: 'request_push_permission', payload: {} })}
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: 'rgba(255,255,255,0.15)' }}
+            title="Invitar al cliente a activar notificaciones">
+            <Bell size={16} className="text-white" />
+          </button>
           <button onClick={() => setShowCall(true)}
             className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
             style={{ background: '#4ADE80' }}>

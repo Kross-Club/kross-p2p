@@ -188,7 +188,9 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
           if (track.kind === Track.Kind.Audio) {
             const el = track.attach()
             el.autoplay = true
+            el.setAttribute('playsinline', '')
             document.body.appendChild(el)
+            el.play().catch(() => {})
             audioEls.current.push(el)
           }
         })
@@ -198,11 +200,18 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
         for (const track of tracks) await room.localParticipant.publishTrack(track)
 
         if (!cancelled) {
-          // Wake lock: keep screen on during call
           if ('wakeLock' in navigator) {
             (navigator as any).wakeLock.request('screen')
               .then((wl: any) => { wakeLockRef.current = wl })
               .catch(() => {})
+          }
+          // MediaSession: keep audio alive in background
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: 'En llamada · Kross',
+              artist: 'Teddy · Kross',
+            })
+            navigator.mediaSession.playbackState = 'playing'
           }
           setCallState('connected')
           timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
@@ -238,6 +247,7 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
     roomRef.current?.disconnect()
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
     setCallState('ended')
     setTimeout(onClose, 1200)
   }
@@ -449,6 +459,11 @@ export default function OrderChatPage() {
       })
       .on('broadcast', { event: 'seller_call_request' }, () => {
         setSellerCalling(true)
+      })
+      .on('broadcast', { event: 'request_push_permission' }, () => {
+        if (Notification.permission !== 'granted') {
+          setShowPushBanner(true)
+        }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.role === 'seller') {

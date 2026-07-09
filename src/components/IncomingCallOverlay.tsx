@@ -15,7 +15,7 @@ interface IncomingCall {
 
 type CallPhase = 'ringing' | 'connecting' | 'connected' | 'ended'
 
-export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
+export default function IncomingCallOverlay({ storeId, disabled }: { storeId?: string; disabled?: boolean }) {
   const [incoming, setIncoming] = useState<IncomingCall | null>(null)
   const [phase, setPhase] = useState<CallPhase>('ringing')
   const [muted, setMuted] = useState(false)
@@ -25,6 +25,9 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
   const audioEls = useRef<HTMLAudioElement[]>([])
   const stopRingtoneRef = useRef<(() => void) | null>(null)
   const wakeLockRef = useRef<any>(null)
+  const isInCallRef = useRef(false) // true when answer() was called — blocks duplicate notifications
+  const disabledRef = useRef(disabled)
+  useEffect(() => { disabledRef.current = disabled }, [disabled])
 
   // Listen for incoming calls on store-specific channel
   useEffect(() => {
@@ -32,15 +35,13 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
     const channel = supabase
       .channel(channelName)
       .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
-        setPhase(prev => {
-          if (prev !== 'ended' && prev !== 'ringing') return prev
-          setIncoming(payload as IncomingCall)
-          setElapsed(0)
-          // Start ringtone
-          stopRingtoneRef.current?.()
-          stopRingtoneRef.current = startRingtone()
-          return 'ringing'
-        })
+        // Ignore if seller is already in a call (initiated or answered)
+        if (disabledRef.current || isInCallRef.current) return
+        setIncoming(payload as IncomingCall)
+        setPhase('ringing')
+        setElapsed(0)
+        stopRingtoneRef.current?.()
+        stopRingtoneRef.current = startRingtone()
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -48,6 +49,7 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
 
   const answer = async () => {
     if (!incoming) return
+    isInCallRef.current = true
     setPhase('connecting')
     try {
       const res = await fetch(`${BASE}/seller-call-token`, {
@@ -76,7 +78,9 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
         if (track.kind === Track.Kind.Audio) {
           const el = track.attach()
           el.autoplay = true
+          el.setAttribute('playsinline', '')
           document.body.appendChild(el)
+          el.play().catch(() => {})
           audioEls.current.push(el)
         }
       })
@@ -94,6 +98,14 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
           .then((wl: any) => { wakeLockRef.current = wl })
           .catch(() => {})
       }
+      // MediaSession: tell OS this is an active audio call so it continues in background
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'En llamada · Kross',
+          artist: incoming?.buyer_name ?? 'Cliente',
+        })
+        navigator.mediaSession.playbackState = 'playing'
+      }
       setPhase('connected')
       timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
     } catch {
@@ -108,6 +120,8 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
     roomRef.current?.disconnect()
+    isInCallRef.current = false
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
     setPhase('ended')
     setTimeout(() => setIncoming(null), 1200)
   }
@@ -117,6 +131,7 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
     roomRef.current?.disconnect()
+    isInCallRef.current = false
     setIncoming(null)
   }
 
