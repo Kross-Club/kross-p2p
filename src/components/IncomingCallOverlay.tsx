@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { startRingtone } from '../lib/ringtone'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -22,6 +23,8 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
   const roomRef = useRef<InstanceType<typeof import('livekit-client')['Room']> | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioEls = useRef<HTMLAudioElement[]>([])
+  const stopRingtoneRef = useRef<(() => void) | null>(null)
+  const wakeLockRef = useRef<any>(null)
 
   // Listen for incoming calls on store-specific channel
   useEffect(() => {
@@ -29,11 +32,13 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
     const channel = supabase
       .channel(channelName)
       .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
-        // Ignore if already in an active call
         setPhase(prev => {
           if (prev !== 'ended' && prev !== 'ringing') return prev
           setIncoming(payload as IncomingCall)
           setElapsed(0)
+          // Start ringtone
+          stopRingtoneRef.current?.()
+          stopRingtoneRef.current = startRingtone()
           return 'ringing'
         })
       })
@@ -80,6 +85,15 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
       const tracks = await createLocalTracks({ audio: true, video: false })
       for (const track of tracks) await room.localParticipant.publishTrack(track)
 
+      // Stop ringtone when connected
+      stopRingtoneRef.current?.()
+      stopRingtoneRef.current = null
+      // Wake lock: keep screen on during call
+      if ('wakeLock' in navigator) {
+        (navigator as any).wakeLock.request('screen')
+          .then((wl: any) => { wakeLockRef.current = wl })
+          .catch(() => {})
+      }
       setPhase('connected')
       timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
     } catch {
@@ -89,6 +103,8 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
 
   const hangUp = () => {
     if (timerRef.current) clearInterval(timerRef.current)
+    stopRingtoneRef.current?.(); stopRingtoneRef.current = null
+    wakeLockRef.current?.release(); wakeLockRef.current = null
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
     roomRef.current?.disconnect()
@@ -97,6 +113,7 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
   }
 
   const reject = () => {
+    stopRingtoneRef.current?.(); stopRingtoneRef.current = null
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
     roomRef.current?.disconnect()

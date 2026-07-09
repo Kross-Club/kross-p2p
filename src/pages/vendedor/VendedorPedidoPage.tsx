@@ -30,6 +30,7 @@ function SellerCallModal({
   const roomRef = useRef<InstanceType<typeof import('livekit-client')['Room']> | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioEls = useRef<HTMLAudioElement[]>([])
+  const wakeLockRef = useRef<any>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -72,6 +73,12 @@ function SellerCallModal({
         for (const track of tracks) await room.localParticipant.publishTrack(track)
 
         if (!cancelled) {
+          // Wake lock: keep screen on during call
+          if ('wakeLock' in navigator) {
+            (navigator as any).wakeLock.request('screen')
+              .then((wl: any) => { wakeLockRef.current = wl })
+              .catch(() => {})
+          }
           setCallState('connected')
           timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
           // Notify buyer that seller is calling
@@ -89,6 +96,7 @@ function SellerCallModal({
     return () => {
       cancelled = true
       if (timerRef.current) clearInterval(timerRef.current)
+      wakeLockRef.current?.release(); wakeLockRef.current = null
       audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
       audioEls.current = []
       roomRef.current?.disconnect()
@@ -106,6 +114,7 @@ function SellerCallModal({
 
   const hangUp = () => {
     if (timerRef.current) clearInterval(timerRef.current)
+    wakeLockRef.current?.release(); wakeLockRef.current = null
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
     roomRef.current?.disconnect()

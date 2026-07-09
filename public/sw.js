@@ -1,10 +1,8 @@
-// Kross Service Worker — Phase 2 stub
-// Handles Web Push notifications and offline caching
+// Kross Service Worker — PWA + Push
 
-const CACHE_NAME = 'kross-v1'
+const CACHE_NAME = 'kross-v2'
 const OFFLINE_URL = '/'
 
-// Install: pre-cache shell
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL]))
@@ -12,31 +10,42 @@ self.addEventListener('install', (event) => {
   self.skipWaiting()
 })
 
-// Activate: claim clients immediately
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim())
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  )
 })
 
 // Push: show notification
 self.addEventListener('push', (event) => {
   if (!event.data) return
   const data = event.data.json()
-  const { title, body, url, tag } = data
+  const { title, body, url, tag, type } = data
+
+  const isCall = type === 'call'
+
+  const options = {
+    body: body || 'Tienes una novedad',
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
+    tag: tag || 'kross',
+    data: { url: url || '/' },
+    vibrate: isCall ? [500, 200, 500, 200, 500, 200, 500] : [200, 100, 200],
+    requireInteraction: isCall, // call stays until dismissed
+    silent: false,
+    actions: isCall
+      ? [{ action: 'open', title: '📞 Abrir app' }]
+      : [],
+  }
 
   event.waitUntil(
-    self.registration.showNotification(title || 'Kross 📦', {
-      body: body || 'Tienes una novedad de tu pedido',
-      icon: '/favicon.svg',
-      badge: '/favicon.svg',
-      tag: tag || 'kross-order',
-      data: { url },
-      vibrate: [200, 100, 200],
-      requireInteraction: true,
-    })
+    self.registration.showNotification(title || 'Kross 📦', options)
   )
 })
 
-// Notification click: open/focus the magic link
+// Notification click: open/focus the target URL
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const targetUrl = event.notification.data?.url || '/'
@@ -45,14 +54,21 @@ self.addEventListener('notificationclick', (event) => {
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clients) => {
-        const existing = clients.find((c) => c.url.includes(targetUrl))
-        if (existing) return existing.focus()
-        return self.clients.openWindow(targetUrl)
+        // Focus existing tab/window if already open
+        for (const client of clients) {
+          if (client.url.includes(targetUrl) && 'focus' in client) {
+            return client.focus()
+          }
+        }
+        // Otherwise open a new window
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl)
+        }
       })
   )
 })
 
-// Fetch: network-first, fallback to cache
+// Fetch: network-first, fallback to cache for navigation
 self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate') {
     event.respondWith(

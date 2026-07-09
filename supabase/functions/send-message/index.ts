@@ -11,9 +11,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 }
 
+const VAPID_SUBJECT = Deno.env.get('VAPID_MAILTO') ?? 'mailto:kross@kross.pe'
 const VAPID_PUBLIC  = Deno.env.get('VAPID_PUBLIC_KEY') ?? ''
 const VAPID_PRIVATE = Deno.env.get('VAPID_PRIVATE_KEY') ?? ''
-const VAPID_SUBJECT = Deno.env.get('VAPID_MAILTO') ?? 'mailto:kross@kross.pe'
 
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
@@ -21,31 +21,44 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 
 async function trySendPush(sub: object, payload: object) {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) return
-  try { await webpush.sendNotification(sub as any, JSON.stringify(payload)) } catch { /* ignore */ }
+  try {
+    await webpush.sendNotification(sub as any, JSON.stringify(payload))
+  } catch { /* expired/invalid subscription — ignore */ }
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { session_id, seller_name, body, type } = await req.json() as {
-    session_id: string
-    seller_name: string
-    body: string
+  const { token, type, body, media_url } = await req.json() as {
+    token: string
     type: 'text' | 'audio' | 'image'
+    body?: string
+    media_url?: string
   }
 
-  if (!session_id || !body) {
-    return new Response('Missing fields', { status: 400, headers: corsHeaders })
+  if (!token) return new Response('Missing token', { status: 400, headers: corsHeaders })
+
+  // Look up session
+  const { data: session } = await supabase
+    .from('order_sessions')
+    .select('id, store_id, buyer_name, assigned_seller_id, status')
+    .eq('token', token)
+    .single()
+
+  if (!session || session.status !== 'active') {
+    return new Response('Not found', { status: 404, headers: corsHeaders })
   }
 
+  // Insert message
   const { data: msg, error } = await supabase
     .from('chat_messages')
     .insert({
-      session_id,
-      sender_role: 'seller',
-      sender_name: seller_name || 'Teddy',
+      session_id: session.id,
+      sender_role: 'buyer',
+      sender_name: null,
       type: type || 'text',
-      body,
+      body: body ?? null,
+      media_url: media_url ?? null,
     })
     .select()
     .single()
@@ -56,7 +69,7 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Broadcast to buyer's realtime channel
+  // Broadcast to realtime channel
   await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
     method: 'POST',
     headers: {
@@ -65,24 +78,27 @@ Deno.serve(async (req) => {
       apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     },
     body: JSON.stringify({
-      messages: [{ topic: `order:${session_id}`, event: 'new_message', payload: msg }],
+      messages: [{ topic: `order:${session.id}`, event: 'new_message', payload: msg }],
     }),
   })
 
-  // Push notification to buyer if they have a subscription
-  const [{ data: subs }, { data: sessionRow }] = await Promise.all([
-    supabase.from('push_subscriptions').select('subscription').eq('session_id', session_id).eq('role', 'buyer'),
-    supabase.from('order_sessions').select('token').eq('id', session_id).single(),
-  ])
+  // Push notification to assigned seller
+  if (session.assigned_seller_id) {
+    const { data: subs } = await supabase
+      .from('push_subscriptions')
+      .select('subscription')
+      .eq('seller_id', session.assigned_seller_id)
+      .eq('role', 'seller')
 
-  if (subs && subs.length > 0 && sessionRow) {
-    const preview = type === 'text' ? body.slice(0, 80) : '🎵 Mensaje de audio'
-    await Promise.all(subs.map(row =>
+    const buyerFirstName = (session.buyer_name ?? 'Cliente').split(' ')[0]
+    const preview = type === 'text' ? (body ?? '').slice(0, 80) : '🎵 Mensaje de audio'
+
+    await Promise.all((subs ?? []).map(row =>
       trySendPush(row.subscription, {
-        title: `💬 ${seller_name || 'Teddy'} · Kross`,
+        title: `💬 ${buyerFirstName}`,
         body: preview,
-        url: `/p/${sessionRow.token}`,
-        tag: `msg-${session_id}`,
+        url: `/vendedor/chats`,
+        tag: `msg-${session.id}`,
         type: 'message',
       })
     ))

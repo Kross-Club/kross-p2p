@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, CheckCircle2, Truck, MicOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
+import { subscribePush } from '../../lib/push'
+import { startRingtone } from '../../lib/ringtone'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -151,6 +153,7 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
   const roomRef = useRef<InstanceType<typeof import('livekit-client')['Room']> | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioEls = useRef<HTMLAudioElement[]>([])
+  const wakeLockRef = useRef<any>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -195,6 +198,12 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
         for (const track of tracks) await room.localParticipant.publishTrack(track)
 
         if (!cancelled) {
+          // Wake lock: keep screen on during call
+          if ('wakeLock' in navigator) {
+            (navigator as any).wakeLock.request('screen')
+              .then((wl: any) => { wakeLockRef.current = wl })
+              .catch(() => {})
+          }
           setCallState('connected')
           timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
         }
@@ -207,6 +216,7 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
     return () => {
       cancelled = true
       if (timerRef.current) clearInterval(timerRef.current)
+      wakeLockRef.current?.release(); wakeLockRef.current = null
       audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
       audioEls.current = []
       roomRef.current?.disconnect()
@@ -224,6 +234,7 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
 
   const hangUp = () => {
     if (timerRef.current) clearInterval(timerRef.current)
+    wakeLockRef.current?.release(); wakeLockRef.current = null
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
     roomRef.current?.disconnect()
@@ -310,6 +321,11 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
 
 // ─── Incoming call from seller ────────────────────────────────────────────────
 function BuyerIncomingCall({ onAnswer, onReject }: { onAnswer: () => void; onReject: () => void }) {
+  useEffect(() => {
+    const stop = startRingtone()
+    return stop
+  }, [])
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.65)' }}>
       <div className="w-full max-w-[430px] rounded-t-3xl pb-10 pt-8 px-6 text-center" style={{ background: '#111' }}>
@@ -405,7 +421,10 @@ export default function OrderChatPage() {
         setMessages(m)
         setState('ok')
         markRead(token).catch(() => {})
-        if (Notification.permission === 'default') {
+        // If already granted, subscribe silently; else show banner after delay
+        if (Notification.permission === 'granted') {
+          subscribePush({ sessionId: s.id, role: 'buyer' }).catch(() => {})
+        } else if (Notification.permission === 'default') {
           setTimeout(() => setShowPushBanner(true), 3000)
         }
       })
@@ -498,7 +517,9 @@ export default function OrderChatPage() {
 
   const handlePushPermission = async () => {
     setShowPushBanner(false)
-    await Notification.requestPermission()
+    if (session) {
+      await subscribePush({ sessionId: session.id, role: 'buyer' })
+    }
   }
 
   if (state === 'loading') return <Skeleton />
