@@ -24,22 +24,17 @@ Deno.serve(async (req) => {
     return new Response('Missing fields', { status: 400, headers: corsHeaders })
   }
 
-  // Upsert: if same session_id+role or seller_id+role exists, replace subscription
-  const key = role === 'buyer'
-    ? { session_id, role }
-    : { seller_id, role }
-
   // Delete existing for this key first, then insert fresh
   if (role === 'buyer' && session_id) {
-    await supabase.from('push_subscriptions').delete().match({ session_id, role })
+    await supabase.from('push_subscriptions').delete().match({ session_id, sub_role: role })
   } else if (role === 'seller' && seller_id) {
-    await supabase.from('push_subscriptions').delete().match({ seller_id, role })
+    await supabase.from('push_subscriptions').delete().match({ seller_id, sub_role: role })
   }
 
   const { error } = await supabase.from('push_subscriptions').insert({
     session_id: session_id ?? null,
     seller_id: seller_id ?? null,
-    role,
+    sub_role: role,
     subscription,
   })
 

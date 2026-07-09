@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
 
   // Push notification to buyer if they have a subscription
   const [{ data: subs }, { data: sessionRow }] = await Promise.all([
-    supabase.from('push_subscriptions').select('subscription').eq('session_id', session_id).eq('role', 'buyer'),
+    supabase.from('push_subscriptions').select('subscription').eq('session_id', session_id).eq('sub_role', 'buyer'),
     supabase.from('order_sessions').select('token').eq('id', session_id).single(),
   ])
 

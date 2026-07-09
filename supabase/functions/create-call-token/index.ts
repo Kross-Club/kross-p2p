@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
       .from('push_subscriptions')
       .select('subscription')
       .eq('seller_id', session.assigned_seller_id)
-      .eq('role', 'seller')
+      .eq('sub_role', 'seller')
 
     const buyerFirstName = (session.buyer_name ?? 'Cliente').split(' ')[0]
     await Promise.all((subs ?? []).map(row =>
