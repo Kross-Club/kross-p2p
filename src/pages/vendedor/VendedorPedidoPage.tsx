@@ -3,17 +3,27 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useKrossStore } from '../../store'
+import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 const STAGES = ['nuevo','confirmado','preparando','en_camino','entregado']
 
-// ─── Call modal for seller ────────────────────────────────────────────────────
+// ─── Seller-initiated call modal ──────────────────────────────────────────────
 type CallState = 'connecting' | 'connected' | 'ended' | 'error'
 
-function SellerCallModal({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+function SellerCallModal({
+  sessionId,
+  channelRef,
+  onClose,
+}: {
+  sessionId: string
+  channelRef: React.RefObject<RealtimeChannel | null>
+  onClose: () => void
+}) {
   const [callState, setCallState] = useState<CallState>('connecting')
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -38,6 +48,16 @@ function SellerCallModal({ sessionId, onClose }: { sessionId: string; onClose: (
         roomRef.current = room
 
         room.on(RoomEvent.Disconnected, () => { if (!cancelled) setCallState('ended') })
+
+        // End call when remote party hangs up
+        room.on(RoomEvent.ParticipantDisconnected, () => {
+          if (!cancelled && room.remoteParticipants.size === 0) {
+            if (timerRef.current) clearInterval(timerRef.current)
+            setCallState('ended')
+            setTimeout(onClose, 1500)
+          }
+        })
+
         room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === Track.Kind.Audio) {
             const el = track.attach()
@@ -54,6 +74,12 @@ function SellerCallModal({ sessionId, onClose }: { sessionId: string; onClose: (
         if (!cancelled) {
           setCallState('connected')
           timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+          // Notify buyer that seller is calling
+          channelRef.current?.send({
+            type: 'broadcast',
+            event: 'seller_call_request',
+            payload: { session_id: sessionId },
+          })
         }
       } catch {
         if (!cancelled) setCallState('error')
@@ -98,11 +124,21 @@ function SellerCallModal({ sessionId, onClose }: { sessionId: string; onClose: (
         </div>
         <p className="text-white font-black text-xl mb-1">Llamada al cliente</p>
         <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.55)' }}>
-          {callState === 'connecting' && 'Conectando…'}
+          {callState === 'connecting' && 'Esperando que conteste…'}
           {callState === 'connected' && `En llamada · ${fmt(elapsed)}`}
           {callState === 'ended' && 'Llamada finalizada'}
           {callState === 'error' && 'No se pudo conectar'}
         </p>
+
+        {callState === 'connected' && (
+          <div className="flex items-center justify-center gap-1 mb-8">
+            {[10,18,26,18,10,26,14,22,10,18].map((h, i) => (
+              <div key={i} className="w-1 rounded-full animate-pulse"
+                style={{ height: `${h}px`, background: '#4ADE80', animationDelay: `${i * 80}ms` }} />
+            ))}
+          </div>
+        )}
+        {callState !== 'connected' && <div className="mb-8" />}
 
         {(callState === 'connecting' || callState === 'connected') && (
           <div className="flex items-center justify-center gap-6">
@@ -132,7 +168,12 @@ function SellerCallModal({ sessionId, onClose }: { sessionId: string; onClose: (
 }
 
 // ─── Stage selector ───────────────────────────────────────────────────────────
-function StageSelector({ current, sessionId, onUpdate }: { current: string; sessionId: string; onUpdate: (s: string) => void }) {
+function StageSelector({ current, sessionId, channelRef, onUpdate }: {
+  current: string
+  sessionId: string
+  channelRef: React.RefObject<RealtimeChannel | null>
+  onUpdate: (s: string) => void
+}) {
   const stageLabel: Record<string, string> = {
     nuevo: 'Nuevo', confirmado: 'Confirmado', preparando: 'Preparando', en_camino: 'En camino', entregado: 'Entregado'
   }
@@ -144,8 +185,7 @@ function StageSelector({ current, sessionId, onUpdate }: { current: string; sess
     const { error } = await supabase.from('order_sessions').update({ stage: next }).eq('id', sessionId)
     if (!error) {
       onUpdate(next)
-      // Broadcast stage update
-      await supabase.channel(`order:${sessionId}`).send({
+      channelRef.current?.send({
         type: 'broadcast', event: 'stage_update', payload: { stage: next }
       })
     }
@@ -216,7 +256,11 @@ export default function VendedorPedidoPage() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showCall, setShowCall] = useState(false)
+  const [buyerTyping, setBuyerTyping] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const channelRef = useRef<RealtimeChannel | null>(null)
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sendTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Load session by token
   useEffect(() => {
@@ -238,27 +282,50 @@ export default function VendedorPedidoPage() {
     if (!session) return
     const ch = supabase.channel(`order:${session.id}`)
       .on('broadcast', { event: 'new_message' }, ({ payload }) => {
-        setMessages(prev => [...prev, payload as OrderMessage])
+        const msg = payload as OrderMessage
+        setMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev
+          return [...prev.filter(m => !(m.id.startsWith('opt-') && m.sender_role === msg.sender_role)), msg]
+        })
       })
       .on('broadcast', { event: 'stage_update' }, ({ payload }) => {
-        setSession(prev => prev ? { ...prev, stage: payload.stage } : prev)
+        setSession(prev => prev ? { ...prev, stage: payload.stage as OrderSession['stage'] } : prev)
+      })
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload.role === 'buyer') {
+          setBuyerTyping(true)
+          if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+          typingTimerRef.current = setTimeout(() => setBuyerTyping(false), 3000)
+        }
       })
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    channelRef.current = ch
+    return () => {
+      supabase.removeChannel(ch)
+      channelRef.current = null
+    }
   }, [session?.id])
 
   // Scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length])
+  }, [messages.length, buyerTyping])
+
+  const broadcastTyping = useCallback(() => {
+    if (!channelRef.current || !session) return
+    if (sendTypingTimerRef.current) return
+    channelRef.current.send({ type: 'broadcast', event: 'typing', payload: { role: 'seller' } })
+    sendTypingTimerRef.current = setTimeout(() => { sendTypingTimerRef.current = null }, 2000)
+  }, [session])
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || !session || sending) return
     const body = input.trim()
     setInput('')
     setSending(true)
+    const optimisticId = `opt-${Date.now()}`
     const optimistic: OrderMessage = {
-      id: `opt-${Date.now()}`,
+      id: optimisticId,
       session_id: session.id,
       sender_role: 'seller',
       sender_name: currentUser.nombre,
@@ -281,8 +348,13 @@ export default function VendedorPedidoPage() {
         }),
       })
       if (!res.ok) throw new Error('send_failed')
+      const saved: OrderMessage = await res.json()
+      // Replace optimistic with real message; seller-send-message already broadcasts to buyer
+      setMessages(prev => prev.map(m => m.id === optimisticId ? saved : m))
+      // Also broadcast so this seller view deduplicates cleanly
+      channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
     } catch {
-      setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+      setMessages(prev => prev.filter(m => m.id !== optimisticId))
       setInput(body)
     } finally {
       setSending(false)
@@ -311,6 +383,9 @@ export default function VendedorPedidoPage() {
 
   return (
     <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
+
+      {/* IncomingCallOverlay for when buyer calls while seller is in this view */}
+      <IncomingCallOverlay storeId={currentUser.tiendaId} />
 
       {/* Header */}
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
@@ -346,6 +421,7 @@ export default function VendedorPedidoPage() {
       <StageSelector
         current={session.stage}
         sessionId={session.id}
+        channelRef={channelRef}
         onUpdate={stage => setSession(s => s ? { ...s, stage: stage as OrderSession['stage'] } : s)}
       />
 
@@ -358,6 +434,20 @@ export default function VendedorPedidoPage() {
           </div>
         )}
         {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
+
+        {/* Typing indicator */}
+        {buyerTyping && (
+          <div className="flex justify-start mb-3">
+            <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl"
+              style={{ background: '#55C8F5', borderRadius: '18px 18px 18px 4px' }}>
+              {[0,1,2].map(i => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ background: 'white', animationDelay: `${i * 150}ms` }} />
+              ))}
+            </div>
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -366,7 +456,7 @@ export default function VendedorPedidoPage() {
         <div className="flex items-center gap-2">
           <input
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={e => { setInput(e.target.value); broadcastTyping() }}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
             placeholder="Escribe al cliente…"
             className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
@@ -383,7 +473,11 @@ export default function VendedorPedidoPage() {
       </div>
 
       {showCall && session && (
-        <SellerCallModal sessionId={session.id} onClose={() => setShowCall(false)} />
+        <SellerCallModal
+          sessionId={session.id}
+          channelRef={channelRef}
+          onClose={() => setShowCall(false)}
+        />
       )}
     </div>
   )

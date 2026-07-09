@@ -4,6 +4,7 @@ import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, CheckCircle2, Truck, 
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -140,7 +141,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
   )
 }
 
-// ─── Call modal ───────────────────────────────────────────────────────────────
+// ─── Call modal (buyer initiates or answers seller call) ──────────────────────
 type CallState = 'connecting' | 'connected' | 'ended' | 'error'
 
 function CallModal({ token, buyerName, onClose }: { token: string; buyerName: string; onClose: () => void }) {
@@ -162,7 +163,6 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
         if (!res.ok) throw new Error('token_failed')
         const { livekit_url, livekit_token } = await res.json() as { livekit_url: string; livekit_token: string }
 
-        // Lazy-load LiveKit (fixes iOS Safari crash)
         const { Room, RoomEvent, createLocalTracks, Track } = await import('livekit-client')
 
         const room = new Room()
@@ -172,7 +172,15 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
           if (!cancelled) setCallState('ended')
         })
 
-        // Subscribe to remote audio tracks
+        // End call when remote party hangs up
+        room.on(RoomEvent.ParticipantDisconnected, () => {
+          if (!cancelled && room.remoteParticipants.size === 0) {
+            if (timerRef.current) clearInterval(timerRef.current)
+            setCallState('ended')
+            setTimeout(onClose, 1500)
+          }
+        })
+
         room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === Track.Kind.Audio) {
             const el = track.attach()
@@ -231,7 +239,6 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
       <div className="w-full max-w-[430px] rounded-t-3xl pb-10 pt-8 px-6 text-center"
         style={{ background: '#111' }}>
 
-        {/* Avatar Teddy */}
         <div className="w-24 h-24 rounded-full overflow-hidden border-4 mx-auto mb-4"
           style={{ borderColor: callState === 'connected' ? '#4ADE80' : callState === 'error' ? '#EF4444' : '#FFD400' }}>
           <svg viewBox="0 0 64 64" width="96" height="96" xmlns="http://www.w3.org/2000/svg">
@@ -260,7 +267,6 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
           {callState === 'error' && 'No se pudo conectar'}
         </p>
 
-        {/* Waveform animation when connected */}
         {callState === 'connected' && (
           <div className="flex items-center justify-center gap-1 mb-8">
             {[12,20,28,20,12,28,16,24,12,20].map((h, i) => (
@@ -271,7 +277,6 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
         )}
         {callState !== 'connected' && <div className="mb-8" />}
 
-        {/* Controls */}
         {(callState === 'connecting' || callState === 'connected') && (
           <div className="flex items-center justify-center gap-6">
             <button onClick={toggleMute}
@@ -298,6 +303,40 @@ function CallModal({ token, buyerName, onClose }: { token: string; buyerName: st
         <p className="text-[10px] mt-4" style={{ color: 'rgba(255,255,255,0.3)' }}>
           Hola {buyerName}, solo Kross puede llamarte desde este número
         </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Incoming call from seller ────────────────────────────────────────────────
+function BuyerIncomingCall({ onAnswer, onReject }: { onAnswer: () => void; onReject: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.65)' }}>
+      <div className="w-full max-w-[430px] rounded-t-3xl pb-10 pt-8 px-6 text-center" style={{ background: '#111' }}>
+        <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl animate-bounce"
+          style={{ background: '#FFD400' }}>📞</div>
+        <p className="text-white font-black text-xl mb-1">Teddy · Kross</p>
+        <p className="text-sm mb-8 font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
+          Llamada entrante…
+        </p>
+        <div className="flex items-center justify-center gap-10">
+          <div className="flex flex-col items-center gap-2">
+            <button onClick={onReject}
+              className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: '#EF4444' }}>
+              <PhoneOff size={26} className="text-white" />
+            </button>
+            <p className="text-xs text-gray-400">Rechazar</p>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <button onClick={onAnswer}
+              className="w-16 h-16 rounded-full flex items-center justify-center animate-pulse"
+              style={{ background: '#4ADE80' }}>
+              <Phone size={26} className="text-white" />
+            </button>
+            <p className="text-xs text-gray-400">Contestar</p>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -349,7 +388,12 @@ export default function OrderChatPage() {
   const [sending, setSending] = useState(false)
   const [showPushBanner, setShowPushBanner] = useState(false)
   const [showCall, setShowCall] = useState(false)
+  const [sellerCalling, setSellerCalling] = useState(false)
+  const [sellerTyping, setSellerTyping] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const channelRef = useRef<RealtimeChannel | null>(null)
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sendTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Load session
   useEffect(() => {
@@ -371,22 +415,41 @@ export default function OrderChatPage() {
   // Realtime broadcast subscription
   useEffect(() => {
     if (!session) return
-    const channel = supabase
+    const ch = supabase
       .channel(`order:${session.id}`)
       .on('broadcast', { event: 'new_message' }, ({ payload }) => {
-        setMessages(prev => [...prev, payload as OrderMessage])
+        const msg = payload as OrderMessage
+        setMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev
+          // Replace optimistic message from same role if exists
+          return [...prev.filter(m => !(m.id.startsWith('opt-') && m.sender_role === msg.sender_role)), msg]
+        })
       })
       .on('broadcast', { event: 'stage_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, stage: payload.stage } : prev)
       })
+      .on('broadcast', { event: 'seller_call_request' }, () => {
+        setSellerCalling(true)
+      })
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload.role === 'seller') {
+          setSellerTyping(true)
+          if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+          typingTimerRef.current = setTimeout(() => setSellerTyping(false), 3000)
+        }
+      })
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    channelRef.current = ch
+    return () => {
+      supabase.removeChannel(ch)
+      channelRef.current = null
+    }
   }, [session?.id])
 
   // Scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages.length])
+  }, [messages.length, sellerTyping])
 
   // Register Service Worker
   useEffect(() => {
@@ -395,13 +458,21 @@ export default function OrderChatPage() {
     }
   }, [])
 
+  const broadcastTyping = useCallback(() => {
+    if (!channelRef.current || !session) return
+    if (sendTypingTimerRef.current) return // debounce — only send once per 2s
+    channelRef.current.send({ type: 'broadcast', event: 'typing', payload: { role: 'buyer' } })
+    sendTypingTimerRef.current = setTimeout(() => { sendTypingTimerRef.current = null }, 2000)
+  }, [session])
+
   const handleSend = useCallback(async () => {
     if (!input.trim() || !token || sending) return
     const body = input.trim()
     setInput('')
     setSending(true)
+    const optimisticId = `opt-${Date.now()}`
     const optimistic: OrderMessage = {
-      id: `opt-${Date.now()}`,
+      id: optimisticId,
       session_id: session!.id,
       sender_role: 'buyer',
       sender_name: session?.buyer_name ?? null,
@@ -413,9 +484,12 @@ export default function OrderChatPage() {
     }
     setMessages(prev => [...prev, optimistic])
     try {
-      await sendMessage(token, { type: 'text', body })
+      const saved = await sendMessage(token, { type: 'text', body })
+      // Replace optimistic with real message and broadcast to seller
+      setMessages(prev => prev.map(m => m.id === optimisticId ? saved : m))
+      channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
     } catch {
-      setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+      setMessages(prev => prev.filter(m => m.id !== optimisticId))
       setInput(body)
     } finally {
       setSending(false)
@@ -447,7 +521,6 @@ export default function OrderChatPage() {
             <span className="text-white font-black text-base">K</span>
           </div>
 
-          {/* Avatar Teddy */}
           <div className="relative flex-shrink-0">
             <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/60">
               <svg viewBox="0 0 64 64" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
@@ -482,7 +555,6 @@ export default function OrderChatPage() {
             </p>
           </div>
 
-          {/* Call button */}
           <button
             onClick={() => setShowCall(true)}
             className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white"
@@ -491,7 +563,6 @@ export default function OrderChatPage() {
           </button>
         </div>
 
-        {/* Info pedido */}
         <div className="mt-3 rounded-2xl px-3 py-2 flex items-center justify-between"
           style={{ background: 'rgba(255,255,255,0.2)' }}>
           <div className="min-w-0">
@@ -543,6 +614,20 @@ export default function OrderChatPage() {
           </div>
         )}
         {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
+
+        {/* Typing indicator */}
+        {sellerTyping && (
+          <div className="flex justify-start mb-3">
+            <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl"
+              style={{ background: '#FFD400', borderRadius: '18px 18px 18px 4px' }}>
+              {[0,1,2].map(i => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ background: '#111', animationDelay: `${i * 150}ms` }} />
+              ))}
+            </div>
+          </div>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -561,7 +646,7 @@ export default function OrderChatPage() {
         <div className="flex items-center gap-2">
           <input
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={e => { setInput(e.target.value); broadcastTyping() }}
             onKeyDown={e => e.key === 'Enter' && handleSend()}
             placeholder="Escribe tu mensaje…"
             className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
@@ -577,7 +662,14 @@ export default function OrderChatPage() {
         </div>
       </div>
 
-      {/* ── Call modal ── */}
+      {/* ── Call modals ── */}
+      {sellerCalling && !showCall && (
+        <BuyerIncomingCall
+          onAnswer={() => { setSellerCalling(false); setShowCall(true) }}
+          onReject={() => setSellerCalling(false)}
+        />
+      )}
+
       {showCall && token && (
         <CallModal
           token={token}

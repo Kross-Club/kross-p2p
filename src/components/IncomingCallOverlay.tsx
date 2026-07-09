@@ -29,9 +29,13 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
     const channel = supabase
       .channel(channelName)
       .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
-        setIncoming(payload as IncomingCall)
-        setPhase('ringing')
-        setElapsed(0)
+        // Ignore if already in an active call
+        setPhase(prev => {
+          if (prev !== 'ended' && prev !== 'ringing') return prev
+          setIncoming(payload as IncomingCall)
+          setElapsed(0)
+          return 'ringing'
+        })
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -54,6 +58,13 @@ export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
       const room = new Room()
       roomRef.current = room
       room.on(RoomEvent.Disconnected, () => setPhase('ended'))
+      room.on(RoomEvent.ParticipantDisconnected, () => {
+        if (room.remoteParticipants.size === 0) {
+          if (timerRef.current) clearInterval(timerRef.current)
+          setPhase('ended')
+          setTimeout(() => setIncoming(null), 1500)
+        }
+      })
 
       // Subscribe to remote audio tracks
       room.on(RoomEvent.TrackSubscribed, (track) => {
