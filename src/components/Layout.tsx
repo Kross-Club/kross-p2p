@@ -1,15 +1,23 @@
 import { useEffect } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
+import { LogOut } from 'lucide-react'
 import BottomNav from './BottomNav'
 import AccountSelector from './AccountSelector'
 import IncomingCallOverlay from './IncomingCallOverlay'
 import InstallBanner from './InstallBanner'
 import { useKrossStore } from '../store'
 import { subscribePush } from '../lib/push'
+import { supabase } from '../lib/supabase'
 
 export default function Layout() {
   const { currentUser } = useKrossStore()
   const isSeller = currentUser.tipo === 'vendedor'
+  const navigate = useNavigate()
+
+  const logout = async () => {
+    await supabase.auth.signOut()
+    navigate('/login', { replace: true })
+  }
 
   useEffect(() => {
     if (!isSeller || !currentUser.id) return
@@ -30,7 +38,12 @@ export default function Layout() {
             </div>
             <span className="font-black text-lg tracking-tight" style={{ color: '#111111' }}>kross</span>
           </div>
-          <AccountSelector />
+          <div className="flex items-center gap-2">
+            <AccountSelector />
+            <button onClick={logout} className="p-1.5 rounded-xl" style={{ color: '#aaa' }} title="Cerrar sesión">
+              <LogOut size={17} />
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 pb-20 overflow-y-auto">
