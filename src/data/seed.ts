@@ -17,9 +17,6 @@ export const BENEFICIOS: Beneficio[] = [
 ]
 
 export const USUARIOS: Usuario[] = [
-  { id: 'u1', nombre: 'Carmen Flores', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=carmen' },
-  { id: 'u2', nombre: 'Jorge Huanca', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=jorge' },
-  { id: 'u3', nombre: 'Lucía Paredes', tipo: 'comprador', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=lucia' },
   { id: 'u4', nombre: 'Miguel Ángel Rojas', tipo: 'vendedor', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=miguel', tiendaId: 't1' },
   { id: 'u5', nombre: 'Patricia Solano', tipo: 'vendedor', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=patricia', tiendaId: 't2' },
   { id: 'u6', nombre: 'Valeria Chávez', tipo: 'vendedora', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=valeria', tiendaId: 't1' },
