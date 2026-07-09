@@ -15,7 +15,7 @@ interface IncomingCall {
 
 type CallPhase = 'ringing' | 'connecting' | 'connected' | 'ended'
 
-export default function IncomingCallOverlay() {
+export default function IncomingCallOverlay({ storeId }: { storeId?: string }) {
   const [incoming, setIncoming] = useState<IncomingCall | null>(null)
   const [phase, setPhase] = useState<CallPhase>('ringing')
   const [muted, setMuted] = useState(false)
@@ -23,10 +23,11 @@ export default function IncomingCallOverlay() {
   const roomRef = useRef<Room | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Listen for incoming calls on seller:calls channel
+  // Listen for incoming calls on store-specific channel
   useEffect(() => {
+    const channelName = storeId ? `seller:${storeId}:calls` : 'seller:calls'
     const channel = supabase
-      .channel('seller:calls')
+      .channel(channelName)
       .on('broadcast', { event: 'incoming_call' }, ({ payload }) => {
         setIncoming(payload as IncomingCall)
         setPhase('ringing')
@@ -34,7 +35,7 @@ export default function IncomingCallOverlay() {
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [storeId])
 
   const answer = async () => {
     if (!incoming) return

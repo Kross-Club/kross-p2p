@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, buyer_name, product_name, status')
+    .select('id, store_id, buyer_name, product_name, status')
     .eq('token', token)
     .single()
 
@@ -37,7 +37,6 @@ Deno.serve(async (req) => {
 
   const livekitToken = await at.toJwt()
 
-  // Insert call_log in chat
   await supabase.from('chat_messages').insert({
     session_id: session.id,
     sender_role: 'system',
@@ -45,7 +44,8 @@ Deno.serve(async (req) => {
     body: 'Comprador inició una llamada de voz',
   })
 
-  // Notify seller via global channel
+  // Notify seller of this specific store
+  const sellerChannel = session.store_id ? `seller:${session.store_id}:calls` : 'seller:calls'
   await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
     method: 'POST',
     headers: {
@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     },
     body: JSON.stringify({
       messages: [{
-        topic: 'seller:calls',
+        topic: sellerChannel,
         event: 'incoming_call',
         payload: {
           session_id: session.id,
@@ -68,11 +68,7 @@ Deno.serve(async (req) => {
   })
 
   return new Response(
-    JSON.stringify({
-      livekit_url: Deno.env.get('LIVEKIT_URL')!,
-      livekit_token: livekitToken,
-      room_name: roomName,
-    }),
+    JSON.stringify({ livekit_url: Deno.env.get('LIVEKIT_URL')!, livekit_token: livekitToken, room_name: roomName }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 })

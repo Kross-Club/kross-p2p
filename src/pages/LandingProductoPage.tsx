@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Star, Shield, Truck, Zap, CheckCircle, ChevronDown, X, Phone, ArrowLeft } from 'lucide-react'
 import { useKrossStore } from '../store'
 import { DEPARTAMENTOS_PERU } from '../data/seed'
@@ -41,6 +41,8 @@ export default function LandingProductoPage() {
   })
   const [chatId, setChatId] = useState<string | null>(null)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const navigate = useNavigate()
 
   if (!landing || !producto) {
     return <div className="flex items-center justify-center h-64"><p className="text-gray-400">Producto no encontrado</p></div>
@@ -57,8 +59,34 @@ export default function LandingProductoPage() {
 
   const formValid = form.nombre && form.whatsapp.length >= 9 && form.departamento && form.provincia && form.distrito && form.direccion
 
-  const handleSubmit = () => {
-    if (!formValid) return
+  const handleSubmit = async () => {
+    if (!formValid || submitting) return
+    setSubmitting(true)
+    try {
+      const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+      const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+      const res = await fetch(`${BASE}/register-buyer`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: producto.tiendaId,
+          product_name: producto.nombre,
+          product_price: precioBase,
+          pack_name: selectedPack?.nombre ?? null,
+          buyer_name: form.nombre,
+          buyer_phone: form.whatsapp,
+          address: `${form.direccion}, ${form.distrito}, ${form.provincia}, ${form.departamento}`,
+        }),
+      })
+      if (res.ok) {
+        const { token } = await res.json() as { token: string }
+        navigate(`/p/${token}`)
+        return
+      }
+    } catch {
+      // fallback to local chat
+    }
+    // fallback: use local store chat (offline/dev mode)
     const newChatId = openNewChat(
       currentUser.id, producto.tiendaId, producto.id, landing.id,
       form.nombre,
@@ -67,6 +95,7 @@ export default function LandingProductoPage() {
     )
     setChatId(newChatId)
     setStep('chat')
+    setSubmitting(false)
   }
 
   // ——— CHAT VIEW ———
@@ -630,10 +659,10 @@ export default function LandingProductoPage() {
                 </div>
                 <button
                   onClick={handleSubmit}
-                  disabled={!formValid}
+                  disabled={!formValid || submitting}
                   className="flex-1 bg-gradient-to-r from-amber-400 to-yellow-400 text-gray-900 font-black py-4 rounded-2xl text-base shadow-lg shadow-amber-200 disabled:opacity-40 active:scale-95 transition-transform border-b-4 border-amber-500"
                 >
-                  ¡Confirmar pedido! S/{precioBase} →
+                  {submitting ? 'Registrando…' : `¡Confirmar pedido! S/${precioBase} →`}
                 </button>
               </div>
             </div>
