@@ -73,40 +73,56 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Round-robin assignment among sellers
+  // Round-robin assignment among REAL sellers from the sellers table.
+  // We resolve sellers server-side (by auth_user_id) so the assignment always
+  // matches a real Supabase user — the frontend's local seller_ids are ignored.
   let assignedSellerId: string | null = null
   let assignedSellerName: string | null = null
   let assignedSellerRole: string | null = null
+  let assignedSellerAvatar: string | null = null
 
-  if (body.seller_ids && body.seller_ids.length > 0) {
+  // Prefer sellers scoped to this store; fall back to all active sellers.
+  let sellerPool: { auth_user_id: string; nombre: string; role_label: string; avatar_url: string | null }[] = []
+  {
+    const { data: scoped } = await supabase
+      .from('sellers')
+      .select('auth_user_id, nombre, role_label, avatar_url')
+      .eq('store_id', body.store_id)
+      .eq('active', true)
+      .not('auth_user_id', 'is', null)
+    sellerPool = scoped ?? []
+
+    if (sellerPool.length === 0) {
+      const { data: all } = await supabase
+        .from('sellers')
+        .select('auth_user_id, nombre, role_label, avatar_url')
+        .eq('active', true)
+        .not('auth_user_id', 'is', null)
+      sellerPool = all ?? []
+    }
+  }
+
+  if (sellerPool.length > 0) {
+    const ids = sellerPool.map(s => s.auth_user_id)
     const counts: Record<string, number> = {}
-    for (const sid of body.seller_ids) counts[sid] = 0
+    for (const id of ids) counts[id] = 0
 
     const { data: existing } = await supabase
       .from('order_sessions')
       .select('assigned_seller_id')
-      .eq('store_id', body.store_id)
       .eq('status', 'active')
-      .in('assigned_seller_id', body.seller_ids)
+      .in('assigned_seller_id', ids)
 
     for (const row of existing ?? []) {
       if (row.assigned_seller_id) counts[row.assigned_seller_id] = (counts[row.assigned_seller_id] ?? 0) + 1
     }
 
-    assignedSellerId = body.seller_ids.reduce((a, b) => counts[a] <= counts[b] ? a : b)
-
-    // Resolve seller name/role from sellers table
-    if (assignedSellerId) {
-      const { data: sellerProfile } = await supabase
-        .from('sellers')
-        .select('nombre, role_label')
-        .eq('auth_user_id', assignedSellerId)
-        .maybeSingle()
-
-      if (sellerProfile) {
-        assignedSellerName = sellerProfile.nombre
-        assignedSellerRole = sellerProfile.role_label
-      }
+    assignedSellerId = ids.reduce((a, b) => counts[a] <= counts[b] ? a : b)
+    const chosen = sellerPool.find(s => s.auth_user_id === assignedSellerId)
+    if (chosen) {
+      assignedSellerName = chosen.nombre
+      assignedSellerRole = chosen.role_label
+      assignedSellerAvatar = chosen.avatar_url
     }
   }
 
@@ -125,6 +141,7 @@ Deno.serve(async (req) => {
       address: body.address ?? null,
       seller_name: assignedSellerName,
       seller_role: assignedSellerRole,
+      seller_avatar: assignedSellerAvatar,
       product_name: body.product_name,
       product_price: body.product_price,
       pack_name: body.pack_name ?? null,
@@ -144,7 +161,7 @@ Deno.serve(async (req) => {
   await supabase.from('chat_messages').insert({
     session_id: data.id,
     sender_role: 'seller',
-    sender_name: 'Teddy',
+    sender_name: assignedSellerName ?? 'Kross',
     type: 'text',
     body: `¡Hola ${body.buyer_name.split(' ')[0]}! 🎉 Tu ${body.product_name} (S/${body.product_price}) llegará a tu puerta sin adelanto.\n\nEscríbeme cualquier duda o toca el ícono 📞 para llamarme directamente.`,
   })
