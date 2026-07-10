@@ -40,6 +40,7 @@ export default function BuyerLoginPage() {
 
     const { buyer, sessions } = await res.json()
     localStorage.setItem('buyer_session', JSON.stringify({ buyer, sessions }))
+    window.dispatchEvent(new Event('buyer-session-changed'))
     navigate('/mis-pedidos', { replace: true })
   }
 

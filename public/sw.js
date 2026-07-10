@@ -1,6 +1,6 @@
 // Kross Service Worker — PWA + Push
 
-const CACHE_NAME = 'kross-v4'
+const CACHE_NAME = 'kross-v5'
 const OFFLINE_URL = '/'
 
 self.addEventListener('install', (event) => {
@@ -28,12 +28,12 @@ self.addEventListener('push', (event) => {
     try { data = { body: event.data.text() } } catch (_e2) { data = {} }
   }
 
-  const { title, body, url, tag, type } = data
+  const { title, body, url, tag, type, icon } = data
   const isCall = type === 'call'
 
   const options = {
     body: body || 'Tienes una novedad',
-    icon: '/icon-192.png',
+    icon: icon || '/icon-192.png', // person's photo when provided
     badge: '/icon-192.png',
     tag: tag || 'kross',
     renotify: true, // buzz again even if a notification with the same tag exists

@@ -73,6 +73,7 @@ export default function MisPedidosPage() {
 
   const logout = () => {
     localStorage.removeItem('buyer_session')
+    window.dispatchEvent(new Event('buyer-session-changed'))
     navigate('/acceso', { replace: true })
   }
 

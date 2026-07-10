@@ -18,6 +18,8 @@ import EquipoPage from './pages/vendedor/EquipoPage'
 import EstadisticasPage from './pages/vendedor/EstadisticasPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
+import BuyerPresenceTracker from './components/BuyerPresenceTracker'
+import BuyerCallListener from './components/BuyerCallListener'
 
 // Smart home: seller session → seller dashboard, buyer session → mis-pedidos, else → acceso
 function HomeRedirect() {
@@ -66,6 +68,9 @@ function RequireSellerAuth({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      {/* Buyer-wide presence + incoming call ring (work on any page) */}
+      <BuyerPresenceTracker />
+      <BuyerCallListener />
       <Routes>
         {/* Smart home */}
         <Route path="/" element={<HomeRedirect />} />

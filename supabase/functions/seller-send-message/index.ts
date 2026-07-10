@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
   // Push notification to buyer — try by buyer_id first (account-linked), fallback to session_id
   const { data: sessionRow } = await supabase
     .from('order_sessions')
-    .select('token, buyer_id')
+    .select('token, buyer_id, seller_avatar')
     .eq('id', session_id)
     .single()
 
@@ -108,6 +108,7 @@ Deno.serve(async (req) => {
           url: `/p/${sessionRow.token}`,
           tag: `msg-${session_id}`,
           type: 'message',
+          icon: sessionRow.seller_avatar ?? undefined,
         })
       ))
     }

@@ -148,7 +148,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
 // ─── Call modal (buyer initiates or answers seller call) ──────────────────────
 type CallState = 'connecting' | 'connected' | 'ended' | 'error'
 
-function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, onClose }: { token: string; sessionId: string; buyerName: string; sellerName?: string | null; sellerRole?: string | null; onClose: () => void }) {
+function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, sellerAvatar, onClose }: { token: string; sessionId: string; buyerName: string; sellerName?: string | null; sellerRole?: string | null; sellerAvatar?: string | null; onClose: () => void }) {
   const [callState, setCallState] = useState<CallState>('connecting')
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -283,8 +283,11 @@ function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, onClos
       <div className="w-full max-w-[430px] rounded-t-3xl pb-10 pt-8 px-6 text-center"
         style={{ background: '#111' }}>
 
-        <div className="w-24 h-24 rounded-full overflow-hidden border-4 mx-auto mb-4"
-          style={{ borderColor: callState === 'connected' ? '#4ADE80' : callState === 'error' ? '#EF4444' : '#FFD400' }}>
+        <div className="w-24 h-24 rounded-full overflow-hidden border-4 mx-auto mb-4 flex items-center justify-center"
+          style={{ borderColor: callState === 'connected' ? '#4ADE80' : callState === 'error' ? '#EF4444' : '#FFD400', background: '#FFD400' }}>
+          {sellerAvatar ? (
+            <img src={sellerAvatar} alt={sellerName ?? 'Kross'} className="w-full h-full object-cover" />
+          ) : (
           <svg viewBox="0 0 64 64" width="96" height="96" xmlns="http://www.w3.org/2000/svg">
             <circle cx="32" cy="32" r="32" fill="#FFF9E0"/>
             <ellipse cx="32" cy="48" rx="14" ry="11" fill="#D4A05A"/>
@@ -301,6 +304,7 @@ function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, onClos
             <ellipse cx="32" cy="31" rx="2.5" ry="1.8" fill="#1A1A1A"/>
             <path d="M28.5 33.5 Q32 36.5 35.5 33.5" stroke="#1A1A1A" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
           </svg>
+          )}
         </div>
 
         <p className="text-white font-black text-xl mb-1">
@@ -355,7 +359,7 @@ function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, onClos
 }
 
 // ─── Incoming call from seller ────────────────────────────────────────────────
-function BuyerIncomingCall({ sessionId, onAnswer, onReject, sellerName, sellerRole }: { sessionId: string; onAnswer: () => void; onReject: () => void; sellerName?: string | null; sellerRole?: string | null }) {
+function BuyerIncomingCall({ sessionId, onAnswer, onReject, sellerName, sellerRole, sellerAvatar }: { sessionId: string; onAnswer: () => void; onReject: () => void; sellerName?: string | null; sellerRole?: string | null; sellerAvatar?: string | null }) {
   useEffect(() => {
     const stop = startRingtone()
     return stop
@@ -372,8 +376,12 @@ function BuyerIncomingCall({ sessionId, onAnswer, onReject, sellerName, sellerRo
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.65)' }}>
       <div className="w-full max-w-[430px] rounded-t-3xl pb-10 pt-8 px-6 text-center" style={{ background: '#111' }}>
-        <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl animate-bounce"
-          style={{ background: '#FFD400' }}>📞</div>
+        <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center mx-auto mb-4 text-3xl animate-bounce border-4"
+          style={{ background: '#FFD400', borderColor: '#FFD400' }}>
+          {sellerAvatar
+            ? <img src={sellerAvatar} alt={sellerName ?? 'Kross'} className="w-full h-full object-cover" />
+            : '📞'}
+        </div>
         <p className="text-white font-black text-xl mb-1">
           {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : 'Kross'}
         </p>
@@ -451,6 +459,15 @@ export default function OrderChatPage() {
   const [showCall, setShowCall] = useState(false)
   const [sellerCalling, setSellerCalling] = useState(false)
   const [sellerTyping, setSellerTyping] = useState(false)
+
+  // Auto-open the call when arriving from a global incoming-call notification (?call=1)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('call') === '1') {
+      setShowCall(true)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -759,6 +776,7 @@ export default function OrderChatPage() {
           onReject={() => setSellerCalling(false)}
           sellerName={session?.seller_name}
           sellerRole={session?.seller_role}
+          sellerAvatar={session?.seller_avatar}
         />
       )}
 
@@ -769,6 +787,7 @@ export default function OrderChatPage() {
           buyerName={firstName}
           sellerName={session?.seller_name}
           sellerRole={session?.seller_role}
+          sellerAvatar={session?.seller_avatar}
           onClose={() => setShowCall(false)}
         />
       )}

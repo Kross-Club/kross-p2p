@@ -33,13 +33,14 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, status, token, buyer_id, seller_name')
+    .select('id, status, token, buyer_id, store_id, product_name, seller_name, seller_role, seller_avatar')
     .eq('id', session_id)
     .single()
 
   if (!session) return new Response('Not found', { status: 404, headers: corsHeaders })
 
   const displayName = seller_name || session.seller_name || 'Kross'
+  const sellerAvatar: string | null = session.seller_avatar ?? null
 
   const roomName = `order-${session.id}`
   const at = new AccessToken(
@@ -75,8 +76,36 @@ Deno.serve(async (req) => {
       url: `/p/${session.token}`,
       tag: `call-${session.id}`,
       type: 'call',
+      icon: sellerAvatar ?? undefined,
     })
   ))
+
+  // Broadcast the incoming call to a buyer-wide channel so it rings no matter
+  // where the buyer is in the app (not only inside that order's chat).
+  if (session.buyer_id) {
+    await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      },
+      body: JSON.stringify({
+        messages: [{
+          topic: `buyer:${session.buyer_id}:calls`,
+          event: 'incoming_call',
+          payload: {
+            session_id: session.id,
+            token: session.token,
+            seller_name: displayName,
+            seller_role: session.seller_role,
+            seller_avatar: sellerAvatar,
+            product_name: session.product_name,
+          },
+        }],
+      }),
+    })
+  }
 
   return new Response(
     JSON.stringify({

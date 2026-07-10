@@ -357,6 +357,7 @@ export default function VendedorPedidoPage() {
   const [sending, setSending] = useState(false)
   const [showCall, setShowCall] = useState(false)
   const [buyerTyping, setBuyerTyping] = useState(false)
+  const [buyerOnline, setBuyerOnline] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -405,6 +406,18 @@ export default function VendedorPedidoPage() {
       channelRef.current = null
     }
   }, [session?.id])
+
+  // Track the buyer's real presence (online anywhere in the app)
+  useEffect(() => {
+    if (!session?.buyer_id) return
+    const ch = supabase
+      .channel(`presence:buyer:${session.buyer_id}`)
+      .on('presence', { event: 'sync' }, () => {
+        setBuyerOnline(Object.keys(ch.presenceState()).length > 0)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [session?.buyer_id])
 
   // Scroll to bottom
   useEffect(() => {
@@ -497,15 +510,19 @@ export default function VendedorPedidoPage() {
             <ArrowLeft size={18} className="text-white" />
           </button>
 
-          <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 text-lg font-black"
-            style={{ background: '#FFD400', color: '#111' }}>
-            {(session.buyer_name || 'C')[0]}
+          <div className="relative flex-shrink-0">
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-black"
+              style={{ background: '#FFD400', color: '#111' }}>
+              {(session.buyer_name || 'C')[0]}
+            </div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
+              style={{ borderColor: '#111', background: buyerOnline ? '#4ADE80' : '#6B7280' }} />
           </div>
 
           <div className="flex-1 min-w-0">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-              {session.product_name} · {session.pack_name || `S/${session.product_price}`}
+            <p className="text-xs" style={{ color: buyerOnline ? '#4ADE80' : 'rgba(255,255,255,0.6)' }}>
+              {buyerOnline ? 'En línea ahora' : `${session.product_name} · ${session.pack_name || `S/${session.product_price}`}`}
             </p>
           </div>
 
