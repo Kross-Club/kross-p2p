@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import BottomNav from './BottomNav'
@@ -13,21 +13,26 @@ interface SellerProfile {
   nombre: string
   role_label: string
   store_id: string
+  avatar_url: string | null
 }
 
 export default function Layout() {
   const [seller, setSeller] = useState<SellerProfile | null>(null)
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session) return
       const userId = data.session.user.id
+      setAuthUserId(userId)
 
       // Load seller profile
       const { data: profile } = await supabase
         .from('sellers')
-        .select('id, nombre, role_label, store_id')
+        .select('id, nombre, role_label, store_id, avatar_url')
         .eq('auth_user_id', userId)
         .maybeSingle()
 
@@ -40,6 +45,30 @@ export default function Layout() {
       }
     })
   }, [])
+
+  const uploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !authUserId || !seller) return
+    setUploading(true)
+    try {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${authUserId}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true, contentType: file.type })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
+      // cache-bust so the new photo shows immediately
+      const url = `${pub.publicUrl}?v=${Date.now()}`
+      await supabase.from('sellers').update({ avatar_url: url }).eq('id', seller.id)
+      setSeller({ ...seller, avatar_url: url })
+    } catch {
+      alert('No se pudo subir la foto. Verifica que exista el bucket "avatars" en Supabase Storage.')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   const logout = async () => {
     await supabase.auth.signOut()
@@ -60,14 +89,30 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             {seller && (
-              <div className="text-right">
-                <p className="text-xs font-black leading-none" style={{ color: '#111' }}>
-                  {seller.nombre.split(' ')[0]}
-                </p>
-                <p className="text-xs leading-none mt-0.5" style={{ color: '#888' }}>
-                  {seller.role_label}
-                </p>
-              </div>
+              <>
+                <div className="text-right">
+                  <p className="text-xs font-black leading-none" style={{ color: '#111' }}>
+                    {seller.nombre.split(' ')[0]}
+                  </p>
+                  <p className="text-xs leading-none mt-0.5" style={{ color: '#888' }}>
+                    {seller.role_label}
+                  </p>
+                </div>
+                {/* Avatar — tap to change photo */}
+                <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                  className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
+                  style={{ border: '2px solid #55C8F5', opacity: uploading ? 0.5 : 1 }}
+                  title="Cambiar foto">
+                  {seller.avatar_url ? (
+                    <img src={seller.avatar_url} alt={seller.nombre} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="font-black text-sm" style={{ color: '#55C8F5' }}>
+                      {seller.nombre.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </button>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={uploadAvatar} />
+              </>
             )}
             <button onClick={logout} className="p-1.5 rounded-xl" style={{ color: '#ccc' }} title="Cerrar sesión">
               <LogOut size={17} />

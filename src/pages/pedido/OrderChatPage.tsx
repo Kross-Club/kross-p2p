@@ -565,6 +565,10 @@ export default function OrderChatPage() {
 
           <div className="relative flex-shrink-0">
             <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/60">
+              {session?.seller_avatar ? (
+                <img src={session.seller_avatar} alt={session.seller_name ?? 'Vendedor'}
+                  className="w-full h-full object-cover" />
+              ) : (
               <svg viewBox="0 0 64 64" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="32" cy="32" r="32" fill="#FFF9E0"/>
                 <ellipse cx="32" cy="48" rx="14" ry="11" fill="#D4A05A"/>
@@ -585,6 +589,7 @@ export default function OrderChatPage() {
                 <rect x="23" y="6" width="18" height="7" rx="3.5" fill="#2BB5EE"/>
                 <circle cx="32" cy="6" r="2.5" fill="#FFD400"/>
               </svg>
+              )}
             </div>
             <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white"
               style={{ background: '#4ADE80' }} />

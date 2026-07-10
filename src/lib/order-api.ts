@@ -13,6 +13,7 @@ export interface OrderSession {
   expires_at: string | null
   seller_name: string | null
   seller_role: string | null
+  seller_avatar: string | null
 }
 
 export interface OrderMessage {

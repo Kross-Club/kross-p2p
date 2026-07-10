@@ -1,6 +1,6 @@
 // Kross Service Worker — PWA + Push
 
-const CACHE_NAME = 'kross-v2'
+const CACHE_NAME = 'kross-v3'
 const OFFLINE_URL = '/'
 
 self.addEventListener('install', (event) => {
@@ -28,8 +28,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: body || 'Tienes una novedad',
-    icon: '/favicon.svg',
-    badge: '/favicon.svg',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     tag: tag || 'kross',
     data: { url: url || '/' },
     vibrate: isCall ? [500, 200, 500, 200, 500, 200, 500] : [200, 100, 200],
