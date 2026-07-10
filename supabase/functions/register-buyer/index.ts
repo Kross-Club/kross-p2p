@@ -81,24 +81,29 @@ Deno.serve(async (req) => {
   let assignedSellerRole: string | null = null
   let assignedSellerAvatar: string | null = null
 
-  // Prefer sellers scoped to this store; fall back to all active sellers.
-  let sellerPool: { auth_user_id: string; nombre: string; role_label: string; avatar_url: string | null }[] = []
+  // New orders always go to a SALES person (role Ventas) — never to Despacho,
+  // Motorizado or Admin. We prefer sellers scoped to this store; if that store
+  // has no sales rep, fall back to any Ventas rep across stores.
+  type Seller = { auth_user_id: string; nombre: string; role_label: string; avatar_url: string | null }
+  const isVentas = (s: Seller) => (s.role_label ?? '').toLowerCase().includes('venta')
+
+  let sellerPool: Seller[] = []
   {
     const { data: scoped } = await supabase
       .from('sellers')
-      .select('auth_user_id, nombre, role_label, avatar_url')
+      .select('auth_user_id, nombre, role_label, avatar_url, is_admin')
       .eq('store_id', body.store_id)
       .eq('active', true)
       .not('auth_user_id', 'is', null)
-    sellerPool = scoped ?? []
+    sellerPool = (scoped ?? []).filter((s: any) => !s.is_admin && isVentas(s))
 
     if (sellerPool.length === 0) {
       const { data: all } = await supabase
         .from('sellers')
-        .select('auth_user_id, nombre, role_label, avatar_url')
+        .select('auth_user_id, nombre, role_label, avatar_url, is_admin')
         .eq('active', true)
         .not('auth_user_id', 'is', null)
-      sellerPool = all ?? []
+      sellerPool = (all ?? []).filter((s: any) => !s.is_admin && isVentas(s))
     }
   }
 

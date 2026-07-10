@@ -99,8 +99,25 @@ CREATE POLICY "sellers_self_update" ON sellers
   FOR UPDATE TO authenticated USING (auth_user_id = auth.uid());
 
 
+-- ─── 8. ADMIN / DUEÑO (uxbriel) ─────────────────────────────────────────────
+-- Columna que marca quién es administrador (ve a TODO el equipo y puede
+-- "entrar como" cualquier miembro). Los admin NO reciben pedidos nuevos.
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false;
+
+-- Crea (o actualiza) la fila de vendedor para el admin uxbriel@gmail.com,
+-- ligándola a su usuario de Supabase Auth y usando el mismo store_id del equipo.
+INSERT INTO sellers (auth_user_id, store_id, nombre, role_label, is_admin, active)
+SELECT u.id,
+       COALESCE((SELECT store_id FROM sellers WHERE store_id IS NOT NULL LIMIT 1), 't1'),
+       'Uxbriel', 'Admin', true, true
+FROM auth.users u
+WHERE lower(u.email) = 'uxbriel@gmail.com'
+ON CONFLICT (auth_user_id)
+DO UPDATE SET is_admin = true, role_label = 'Admin';
+
+
 -- ============================================================================
---  7. DATOS DE PRUEBA
+--  9. DATOS DE PRUEBA
 -- ============================================================================
 
 -- Ligar el DNI 48296862 al comprador con teléfono 925951393 (para tu prueba).
