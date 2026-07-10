@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { startRingtone } from '../lib/ringtone'
+import { sendCallReject, listenCallCancel } from '../lib/call-signal'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -127,6 +128,7 @@ export default function IncomingCallOverlay({ storeId, disabled }: { storeId?: s
   }
 
   const reject = () => {
+    if (incoming) sendCallReject(incoming.session_id)
     stopRingtoneRef.current?.(); stopRingtoneRef.current = null
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
@@ -134,6 +136,15 @@ export default function IncomingCallOverlay({ storeId, disabled }: { storeId?: s
     isInCallRef.current = false
     setIncoming(null)
   }
+
+  // The buyer hung up before we answered — stop ringing
+  useEffect(() => {
+    if (!incoming || phase !== 'ringing') return
+    return listenCallCancel(incoming.session_id, () => {
+      stopRingtoneRef.current?.(); stopRingtoneRef.current = null
+      setIncoming(null)
+    })
+  }, [incoming?.session_id, phase])
 
   const toggleMute = () => {
     const lp = roomRef.current?.localParticipant

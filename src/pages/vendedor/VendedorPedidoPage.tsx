@@ -4,6 +4,7 @@ import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, B
 import { supabase } from '../../lib/supabase'
 import { useKrossStore } from '../../store'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
+import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -59,6 +60,14 @@ function SellerCallModal({
           }
         })
 
+        // Only mark "connected" when the buyer actually answers
+        room.on(RoomEvent.ParticipantConnected, () => {
+          if (!cancelled) {
+            setCallState('connected')
+            if (!timerRef.current) timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+          }
+        })
+
         room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === Track.Kind.Audio) {
             const el = track.attach()
@@ -89,8 +98,12 @@ function SellerCallModal({
             })
             navigator.mediaSession.playbackState = 'playing'
           }
-          setCallState('connected')
-          timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+          // If the buyer is somehow already in the room, connect right away;
+          // otherwise stay "Esperando que conteste…" until ParticipantConnected
+          if (room.remoteParticipants.size > 0) {
+            setCallState('connected')
+            timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+          }
           // Notify buyer that seller is calling
           channelRef.current?.send({
             type: 'broadcast',
@@ -122,16 +135,25 @@ function SellerCallModal({
     setMuted(!muted)
   }
 
-  const hangUp = () => {
+  const endCall = (notifyRemote: boolean) => {
     if (timerRef.current) clearInterval(timerRef.current)
     wakeLockRef.current?.release(); wakeLockRef.current = null
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
+    // Buyer never answered — tell their phone to stop ringing
+    if (notifyRemote && (roomRef.current?.remoteParticipants.size ?? 0) === 0) {
+      sendCallCancel(sessionId)
+    }
     roomRef.current?.disconnect()
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
     setCallState('ended')
     setTimeout(onClose, 1200)
   }
+
+  const hangUp = () => endCall(true)
+
+  // Buyer rejected the call — end on this side too
+  useEffect(() => listenCallReject(sessionId, () => endCall(false)), [sessionId])
 
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`
 

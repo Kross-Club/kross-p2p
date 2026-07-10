@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush } from '../../lib/push'
 import { startRingtone } from '../../lib/ringtone'
+import { sendCallReject, sendCallCancel, listenCallReject, listenCallCancel } from '../../lib/call-signal'
 import InstallBanner from '../../components/InstallBanner'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -147,7 +148,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
 // ─── Call modal (buyer initiates or answers seller call) ──────────────────────
 type CallState = 'connecting' | 'connected' | 'ended' | 'error'
 
-function CallModal({ token, buyerName, sellerName, sellerRole, onClose }: { token: string; buyerName: string; sellerName?: string | null; sellerRole?: string | null; onClose: () => void }) {
+function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, onClose }: { token: string; sessionId: string; buyerName: string; sellerName?: string | null; sellerRole?: string | null; onClose: () => void }) {
   const [callState, setCallState] = useState<CallState>('connecting')
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -185,6 +186,14 @@ function CallModal({ token, buyerName, sellerName, sellerRole, onClose }: { toke
           }
         })
 
+        // Only mark "connected" when the other party actually joins
+        room.on(RoomEvent.ParticipantConnected, () => {
+          if (!cancelled) {
+            setCallState('connected')
+            if (!timerRef.current) timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+          }
+        })
+
         room.on(RoomEvent.TrackSubscribed, (track) => {
           if (track.kind === Track.Kind.Audio) {
             const el = track.attach()
@@ -214,8 +223,12 @@ function CallModal({ token, buyerName, sellerName, sellerRole, onClose }: { toke
             })
             navigator.mediaSession.playbackState = 'playing'
           }
-          setCallState('connected')
-          timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+          // Answering a seller call: they're already in the room → connected.
+          // Buyer-initiated call: wait for the seller to answer.
+          if (room.remoteParticipants.size > 0) {
+            setCallState('connected')
+            timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000)
+          }
         }
       } catch {
         if (!cancelled) setCallState('error')
@@ -242,16 +255,25 @@ function CallModal({ token, buyerName, sellerName, sellerRole, onClose }: { toke
     setMuted(!muted)
   }
 
-  const hangUp = () => {
+  const endCall = (notifyRemote: boolean) => {
     if (timerRef.current) clearInterval(timerRef.current)
     wakeLockRef.current?.release(); wakeLockRef.current = null
     audioEls.current.forEach(el => { el.srcObject = null; el.remove() })
     audioEls.current = []
+    // If the other side never joined the room, tell them to stop ringing
+    if (notifyRemote && (roomRef.current?.remoteParticipants.size ?? 0) === 0) {
+      sendCallCancel(sessionId)
+    }
     roomRef.current?.disconnect()
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
     setCallState('ended')
     setTimeout(onClose, 1200)
   }
+
+  const hangUp = () => endCall(true)
+
+  // The callee rejected while we were still waiting — end on this side too
+  useEffect(() => listenCallReject(sessionId, () => endCall(false)), [sessionId])
 
   const fmt = (s: number) => `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`
 
@@ -285,7 +307,7 @@ function CallModal({ token, buyerName, sellerName, sellerRole, onClose }: { toke
           {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : 'Kross'}
         </p>
         <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.55)' }}>
-          {callState === 'connecting' && 'Conectando…'}
+          {callState === 'connecting' && 'Llamando…'}
           {callState === 'connected' && `En llamada · ${fmt(elapsed)}`}
           {callState === 'ended' && 'Llamada finalizada'}
           {callState === 'error' && 'No se pudo conectar'}
@@ -333,11 +355,19 @@ function CallModal({ token, buyerName, sellerName, sellerRole, onClose }: { toke
 }
 
 // ─── Incoming call from seller ────────────────────────────────────────────────
-function BuyerIncomingCall({ onAnswer, onReject, sellerName, sellerRole }: { onAnswer: () => void; onReject: () => void; sellerName?: string | null; sellerRole?: string | null }) {
+function BuyerIncomingCall({ sessionId, onAnswer, onReject, sellerName, sellerRole }: { sessionId: string; onAnswer: () => void; onReject: () => void; sellerName?: string | null; sellerRole?: string | null }) {
   useEffect(() => {
     const stop = startRingtone()
     return stop
   }, [])
+
+  // The seller hung up before we answered — stop ringing
+  useEffect(() => listenCallCancel(sessionId, onReject), [sessionId])
+
+  const reject = () => {
+    sendCallReject(sessionId)
+    onReject()
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.65)' }}>
@@ -352,7 +382,7 @@ function BuyerIncomingCall({ onAnswer, onReject, sellerName, sellerRole }: { onA
         </p>
         <div className="flex items-center justify-center gap-10">
           <div className="flex flex-col items-center gap-2">
-            <button onClick={onReject}
+            <button onClick={reject}
               className="w-16 h-16 rounded-full flex items-center justify-center"
               style={{ background: '#EF4444' }}>
               <PhoneOff size={26} className="text-white" />
@@ -716,6 +746,7 @@ export default function OrderChatPage() {
       {/* ── Call modals ── */}
       {sellerCalling && !showCall && (
         <BuyerIncomingCall
+          sessionId={session.id}
           onAnswer={() => { setSellerCalling(false); setShowCall(true) }}
           onReject={() => setSellerCalling(false)}
           sellerName={session?.seller_name}
@@ -726,6 +757,7 @@ export default function OrderChatPage() {
       {showCall && token && (
         <CallModal
           token={token}
+          sessionId={session.id}
           buyerName={firstName}
           sellerName={session?.seller_name}
           sellerRole={session?.seller_role}
