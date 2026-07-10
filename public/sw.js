@@ -1,6 +1,6 @@
 // Kross Service Worker — PWA + Push
 
-const CACHE_NAME = 'kross-v3'
+const CACHE_NAME = 'kross-v4'
 const OFFLINE_URL = '/'
 
 self.addEventListener('install', (event) => {
@@ -18,12 +18,17 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-// Push: show notification
+// Push: show notification (works in foreground, background and when closed)
 self.addEventListener('push', (event) => {
-  if (!event.data) return
-  const data = event.data.json()
-  const { title, body, url, tag, type } = data
+  let data = {}
+  try {
+    data = event.data ? event.data.json() : {}
+  } catch (_e) {
+    // Payload wasn't JSON — fall back to plain text
+    try { data = { body: event.data.text() } } catch (_e2) { data = {} }
+  }
 
+  const { title, body, url, tag, type } = data
   const isCall = type === 'call'
 
   const options = {
@@ -31,15 +36,16 @@ self.addEventListener('push', (event) => {
     icon: '/icon-192.png',
     badge: '/icon-192.png',
     tag: tag || 'kross',
+    renotify: true, // buzz again even if a notification with the same tag exists
     data: { url: url || '/' },
     vibrate: isCall ? [500, 200, 500, 200, 500, 200, 500] : [200, 100, 200],
     requireInteraction: isCall, // call stays until dismissed
     silent: false,
-    actions: isCall
-      ? [{ action: 'open', title: '📞 Abrir app' }]
-      : [],
+    actions: isCall ? [{ action: 'open', title: '📞 Abrir app' }] : [],
   }
 
+  // MUST call showNotification for every push, otherwise Chrome/Android may
+  // revoke the push subscription for "silent push" abuse.
   event.waitUntil(
     self.registration.showNotification(title || 'Kross 📦', options)
   )

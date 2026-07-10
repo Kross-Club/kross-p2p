@@ -28,6 +28,7 @@ interface BuyerAccount {
   document_number: string
   score: number
   puntos: number
+  address: string | null
 }
 
 
@@ -54,6 +55,7 @@ export default function LandingProductoPage() {
     direccion: '',
   })
   const [buyerAccount, setBuyerAccount] = useState<BuyerAccount | null>(null)
+  const [editAddress, setEditAddress] = useState(false)
   const [chatId, setChatId] = useState<string | null>(null)
   const [openFaq, setOpenFaq] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -91,7 +93,11 @@ export default function LandingProductoPage() {
   const provincias = form.departamento ? Object.keys(GEO_PERU[form.departamento] || {}) : []
   const distritos = form.departamento && form.provincia ? (GEO_PERU[form.departamento]?.[form.provincia] || []) : []
 
-  const formValid = form.nombre && form.whatsapp.length >= 9 && form.document_number.length >= 6 && form.departamento && form.provincia && form.distrito && form.direccion
+  // A returning buyer with a saved address can order in one tap (no need to
+  // re-enter departamento/provincia/distrito/dirección).
+  const usingSavedAddress = !!(buyerAccount && buyerAccount.address && !editAddress)
+  const geoComplete = form.departamento && form.provincia && form.distrito && form.direccion
+  const formValid = form.nombre && form.whatsapp.length >= 9 && form.document_number.length >= 6 && (usingSavedAddress || geoComplete)
 
   const handleSubmit = async () => {
     if (!formValid || submitting) return
@@ -111,7 +117,9 @@ export default function LandingProductoPage() {
           buyer_phone: form.whatsapp,
           document_type: form.document_type,
           document_number: form.document_number,
-          address: `${form.direccion}, ${form.distrito}, ${form.provincia}, ${form.departamento}`,
+          address: usingSavedAddress
+            ? buyerAccount!.address
+            : `${form.direccion}, ${form.distrito}, ${form.provincia}, ${form.departamento}`,
           seller_ids: vendedoras.filter(v => v.tiendaId === producto.tiendaId).map(v => v.id),
         }),
       })
@@ -578,10 +586,33 @@ export default function LandingProductoPage() {
                     <p className="text-xs" style={{ color: 'rgba(125,232,255,0.5)' }}>
                       {buyerAccount.document_type} {buyerAccount.document_number} · Score {buyerAccount.score}/100
                     </p>
+                    {buyerAccount.address && (
+                      <p className="text-xs mt-1 flex items-start gap-1 leading-snug" style={{ color: 'rgba(125,232,255,0.75)' }}>
+                        <span className="flex-shrink-0">📍</span>
+                        <span className="truncate">{buyerAccount.address}</span>
+                      </p>
+                    )}
                   </div>
-                  <button onClick={() => { setBuyerAccount(null); setForm(f => ({ ...f, nombre: '', whatsapp: '', document_number: '' })) }}
-                    className="text-xs px-2 py-1 rounded-lg" style={{ color: 'rgba(125,232,255,0.5)', background: 'rgba(255,255,255,0.05)' }}>
+                  <button onClick={() => { setBuyerAccount(null); setEditAddress(false); setForm(f => ({ ...f, nombre: '', whatsapp: '', document_number: '', departamento: '', provincia: '', distrito: '', direccion: '' })) }}
+                    className="text-xs px-2 py-1 rounded-lg self-start" style={{ color: 'rgba(125,232,255,0.5)', background: 'rgba(255,255,255,0.05)' }}>
                     Cambiar
+                  </button>
+                </div>
+              )}
+
+              {/* Returning buyer with saved address: one-tap, no re-entry */}
+              {usingSavedAddress && (
+                <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl px-4 py-3"
+                  style={{ background: '#F0FDF4', border: '1.5px solid #86EFAC' }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CheckCircle size={16} className="text-green-500 flex-shrink-0" />
+                    <p className="text-xs font-bold text-green-800 truncate">
+                      Enviaremos a tu dirección guardada
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setEditAddress(true)}
+                    className="text-xs font-black text-green-700 underline flex-shrink-0">
+                    Usar otra
                   </button>
                 </div>
               )}
@@ -643,6 +674,7 @@ export default function LandingProductoPage() {
                 </div>
                 )}
 
+                {!usingSavedAddress && (<>
                 {/* Departamento */}
                 <div>
                   <label className="text-xs font-bold text-gray-500 mb-1 block">Departamento *</label>
@@ -695,6 +727,7 @@ export default function LandingProductoPage() {
                     className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-green-300 resize-none"
                   />
                 </div>
+                </>)}
               </div>
 
               {/* Kross Club seal */}
@@ -750,7 +783,7 @@ export default function LandingProductoPage() {
                   disabled={!formValid || submitting}
                   className="flex-1 bg-gradient-to-r from-amber-400 to-yellow-400 text-gray-900 font-black py-4 rounded-2xl text-base shadow-lg shadow-amber-200 disabled:opacity-40 active:scale-95 transition-transform border-b-4 border-amber-500"
                 >
-                  {submitting ? 'Registrando…' : `¡Confirmar pedido! S/${precioBase} →`}
+                  {submitting ? 'Registrando…' : usingSavedAddress ? `Pedir en 1 clic · S/${precioBase} →` : `¡Confirmar pedido! S/${precioBase} →`}
                 </button>
               </div>
             </div>
