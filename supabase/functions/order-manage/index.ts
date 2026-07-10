@@ -114,25 +114,42 @@ Deno.serve(async (req) => {
     return new Response('Invalid stage', { status: 400, headers: corsHeaders })
   }
 
-  const update: Record<string, unknown> = { stage: next }
+  // 1) Persist the stage FIRST and on its own — this is an existing column, so
+  //    it always saves even if the value-chain columns haven't been added yet.
+  const { error: stageErr } = await supabase
+    .from('order_sessions')
+    .update({ stage: next })
+    .eq('id', session.id)
+
+  if (stageErr) {
+    return new Response(JSON.stringify({ error: stageErr.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   let newAssignment: { seller_name: string; seller_role: string; seller_avatar: string | null } | null = null
 
   const roleKeyword = HANDOFF[next]
   if (roleKeyword && session.store_id) {
     const member = await pickTeamMember(session.store_id, roleKeyword)
     if (member) {
-      update.assigned_seller_id = member.auth_user_id
-      update.seller_name = member.nombre
-      update.seller_role = member.role_label
-      update.seller_avatar = member.avatar_url
-      // New owner is the sole writer; previous agents stay as read-only observers.
-      update.writer_seller_ids = uniq([member.auth_user_id])
-      update.involved_seller_ids = uniq([...involved, member.auth_user_id])
+      // 2) Reassign owner (existing columns)
+      await supabase.from('order_sessions').update({
+        assigned_seller_id: member.auth_user_id,
+        seller_name: member.nombre,
+        seller_role: member.role_label,
+        seller_avatar: member.avatar_url,
+      }).eq('id', session.id)
+
+      // 3) Value-chain arrays (new columns) — best effort, don't block the rest
+      await supabase.from('order_sessions').update({
+        writer_seller_ids: uniq([member.auth_user_id]),
+        involved_seller_ids: uniq([...involved, member.auth_user_id]),
+      }).eq('id', session.id)
+
       newAssignment = { seller_name: member.nombre, seller_role: member.role_label, seller_avatar: member.avatar_url }
     }
   }
-
-  await supabase.from('order_sessions').update(update).eq('id', session.id)
 
   await broadcast(session.id, 'stage_update', { stage: next })
 

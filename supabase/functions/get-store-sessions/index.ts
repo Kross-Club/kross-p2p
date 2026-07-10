@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
   let query = supabase
     .from('order_sessions')
     .select(`
-      id, order_id, store_id, token, buyer_name, buyer_phone,
+      id, order_id, store_id, token, buyer_id, buyer_name, buyer_phone,
       product_name, product_price, pack_name, status, stage,
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       chat_messages ( id, sender_role, type, body, created_at, read_at )

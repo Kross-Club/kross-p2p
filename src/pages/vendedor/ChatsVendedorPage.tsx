@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, MessageCircle, ChevronRight, Phone } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
+import { supabase } from '../../lib/supabase'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -9,6 +10,7 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 interface SupabaseSession {
   id: string
   token: string
+  buyer_id: string | null
   buyer_name: string | null
   product_name: string | null
   product_price: number | null
@@ -40,6 +42,18 @@ export default function ChatsVendedorPage() {
   const [search, setSearch] = useState('')
   const [sessions, setSessions] = useState<SupabaseSession[]>([])
   const [loading, setLoading] = useState(true)
+  const [onlineBuyers, setOnlineBuyers] = useState<Set<string>>(new Set())
+
+  // Live presence of all buyers → green dot on active chats
+  useEffect(() => {
+    const ch = supabase
+      .channel('presence:buyers')
+      .on('presence', { event: 'sync' }, () => {
+        setOnlineBuyers(new Set(Object.keys(ch.presenceState())))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
 
   // Each team member sees only the leads assigned to them (Ventas: new leads,
   // Despacho: confirmed, Motorizado: en camino). The admin (not impersonating)
@@ -107,6 +121,7 @@ export default function ChatsVendedorPage() {
             const preview = lastMsg?.type === 'text' ? lastMsg.body : lastMsg?.type === 'audio' ? '🎵 Audio' : 'Sin mensajes'
             const unread = session.chat_messages?.filter(m => m.sender_role === 'buyer' && !m.read_at).length ?? 0
             const timeAgo = new Date(session.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+            const online = !!session.buyer_id && onlineBuyers.has(session.buyer_id)
 
             return (
               <button
@@ -115,9 +130,15 @@ export default function ChatsVendedorPage() {
                 className="w-full bg-white border rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
                 style={{ borderColor: '#55C8F5', borderWidth: '1.5px' }}
               >
-                <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-lg font-black flex-shrink-0"
-                  style={{ background: '#FFD400', color: '#111' }}>
-                  {(session.buyer_name || 'C')[0]}
+                <div className="relative flex-shrink-0">
+                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-lg font-black"
+                    style={{ background: '#FFD400', color: '#111' }}>
+                    {(session.buyer_name || 'C')[0]}
+                  </div>
+                  {online && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white"
+                      style={{ background: '#4ADE80' }} />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5">

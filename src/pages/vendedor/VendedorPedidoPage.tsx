@@ -389,11 +389,12 @@ export default function VendedorPedidoPage() {
 
   // Track the buyer's real presence (online anywhere in the app)
   useEffect(() => {
-    if (!session?.buyer_id) return
+    const buyerId = session?.buyer_id
+    if (!buyerId) return
     const ch = supabase
-      .channel(`presence:buyer:${session.buyer_id}`)
+      .channel('presence:buyers')
       .on('presence', { event: 'sync' }, () => {
-        setBuyerOnline(Object.keys(ch.presenceState()).length > 0)
+        setBuyerOnline(buyerId in ch.presenceState())
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
