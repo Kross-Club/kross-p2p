@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { useKrossStore } from '../../store'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
+import { useSeller } from '../../lib/seller-session'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -18,10 +18,12 @@ type CallState = 'connecting' | 'connected' | 'ended' | 'error'
 
 function SellerCallModal({
   sessionId,
+  sellerName,
   channelRef,
   onClose,
 }: {
   sessionId: string
+  sellerName: string
   channelRef: React.RefObject<RealtimeChannel | null>
   onClose: () => void
 }) {
@@ -40,7 +42,7 @@ function SellerCallModal({
         const res = await fetch(`${BASE}/seller-call-token`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
+          body: JSON.stringify({ session_id: sessionId, seller_name: sellerName }),
         })
         if (!res.ok) throw new Error('token_failed')
         const { livekit_url, livekit_token } = await res.json() as { livekit_url: string; livekit_token: string }
@@ -209,10 +211,37 @@ function SellerCallModal({
   )
 }
 
+// Least-loaded active member of a given role within a store (for lead hand-off)
+async function pickTeamMember(storeId: string, roleKeyword: string) {
+  const { data: cands } = await supabase
+    .from('sellers')
+    .select('auth_user_id, nombre, role_label, avatar_url')
+    .eq('store_id', storeId)
+    .eq('active', true)
+    .not('auth_user_id', 'is', null)
+    .ilike('role_label', `%${roleKeyword}%`)
+
+  const list = (cands ?? []).filter(c => c.auth_user_id)
+  if (list.length === 0) return null
+
+  const ids = list.map(c => c.auth_user_id as string)
+  const counts: Record<string, number> = Object.fromEntries(ids.map(id => [id, 0]))
+  const { data: active } = await supabase
+    .from('order_sessions')
+    .select('assigned_seller_id')
+    .eq('status', 'active')
+    .in('assigned_seller_id', ids)
+  for (const r of active ?? []) if (r.assigned_seller_id) counts[r.assigned_seller_id]++
+
+  ids.sort((a, b) => counts[a] - counts[b])
+  return list.find(c => c.auth_user_id === ids[0]) ?? null
+}
+
 // ─── Stage selector ───────────────────────────────────────────────────────────
-function StageSelector({ current, sessionId, channelRef, onUpdate }: {
+function StageSelector({ current, sessionId, storeId, channelRef, onUpdate }: {
   current: string
   sessionId: string
+  storeId: string | null
   channelRef: React.RefObject<RealtimeChannel | null>
   onUpdate: (s: string) => void
 }) {
@@ -220,16 +249,44 @@ function StageSelector({ current, sessionId, channelRef, onUpdate }: {
     nuevo: 'Nuevo', confirmado: 'Confirmado', preparando: 'Preparando', en_camino: 'En camino', entregado: 'Entregado'
   }
 
+  // Lead hand-off: confirmado → Despacho, en_camino → Motorizado
+  const HANDOFF: Record<string, string> = { confirmado: 'despacho', en_camino: 'motoriz' }
+
   const advance = async () => {
     const idx = STAGES.indexOf(current)
     if (idx >= STAGES.length - 1) return
     const next = STAGES[idx + 1]
     const { error } = await supabase.from('order_sessions').update({ stage: next }).eq('id', sessionId)
-    if (!error) {
-      onUpdate(next)
-      channelRef.current?.send({
-        type: 'broadcast', event: 'stage_update', payload: { stage: next }
-      })
+    if (error) return
+
+    onUpdate(next)
+    channelRef.current?.send({ type: 'broadcast', event: 'stage_update', payload: { stage: next } })
+
+    // Cede el lead al rol correspondiente
+    const roleKeyword = HANDOFF[next]
+    if (roleKeyword && storeId) {
+      const member = await pickTeamMember(storeId, roleKeyword)
+      if (member) {
+        await supabase.from('order_sessions').update({
+          assigned_seller_id: member.auth_user_id,
+          seller_name: member.nombre,
+          seller_role: member.role_label,
+          seller_avatar: member.avatar_url,
+        }).eq('id', sessionId)
+
+        const { data: msg } = await supabase.from('chat_messages').insert({
+          session_id: sessionId,
+          sender_role: 'system',
+          type: 'status_update',
+          body: `Tu pedido pasó a ${member.role_label} · te atiende ${member.nombre.split(' ')[0]}`,
+        }).select().single()
+
+        channelRef.current?.send({
+          type: 'broadcast', event: 'assignment_update',
+          payload: { seller_name: member.nombre, seller_role: member.role_label, seller_avatar: member.avatar_url },
+        })
+        if (msg) channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: msg })
+      }
     }
   }
 
@@ -290,7 +347,8 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
 export default function VendedorPedidoPage() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
-  const { currentUser } = useKrossStore()
+  const { effective } = useSeller()
+  const sellerName = effective?.nombre ?? 'Kross'
 
   const [session, setSession] = useState<OrderSession | null>(null)
   const [messages, setMessages] = useState<OrderMessage[]>([])
@@ -370,7 +428,7 @@ export default function VendedorPedidoPage() {
       id: optimisticId,
       session_id: session.id,
       sender_role: 'seller',
-      sender_name: currentUser.nombre,
+      sender_name: sellerName,
       type: 'text',
       body,
       media_url: null,
@@ -384,7 +442,7 @@ export default function VendedorPedidoPage() {
         headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: session.id,
-          seller_name: currentUser.nombre,
+          seller_name: sellerName,
           body,
           type: 'text',
         }),
@@ -401,7 +459,7 @@ export default function VendedorPedidoPage() {
     } finally {
       setSending(false)
     }
-  }, [input, session, sending, currentUser.nombre])
+  }, [input, session, sending, sellerName])
 
   if (loading) {
     return (
@@ -427,7 +485,7 @@ export default function VendedorPedidoPage() {
     <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
 
       {/* IncomingCallOverlay — disabled when seller already has a call open */}
-      <IncomingCallOverlay storeId={currentUser.tiendaId} disabled={showCall} />
+      <IncomingCallOverlay storeId={effective?.store_id ?? session.store_id ?? undefined} disabled={showCall} />
 
       {/* Header */}
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
@@ -470,6 +528,7 @@ export default function VendedorPedidoPage() {
       <StageSelector
         current={session.stage}
         sessionId={session.id}
+        storeId={session.store_id}
         channelRef={channelRef}
         onUpdate={stage => setSession(s => s ? { ...s, stage: stage as OrderSession['stage'] } : s)}
       />
@@ -524,6 +583,7 @@ export default function VendedorPedidoPage() {
       {showCall && session && (
         <SellerCallModal
           sessionId={session.id}
+          sellerName={sellerName}
           channelRef={channelRef}
           onClose={() => setShowCall(false)}
         />

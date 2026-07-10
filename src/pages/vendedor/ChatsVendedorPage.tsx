@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, MessageCircle, ChevronRight, Phone } from 'lucide-react'
-import { useSeller, roleIsVentas } from '../../lib/seller-session'
+import { useSeller } from '../../lib/seller-session'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -38,8 +38,10 @@ export default function ChatsVendedorPage() {
   const [sessions, setSessions] = useState<SupabaseSession[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Ventas → only their assigned orders. Admin / Despacho / Motorizado → all store orders.
-  const onlyMine = roleIsVentas(effective?.role_label) && !(isAdmin && !impersonating)
+  // Each team member sees only the leads assigned to them (Ventas: new leads,
+  // Despacho: confirmed, Motorizado: en camino). The admin (not impersonating)
+  // sees every order in the store.
+  const onlyMine = !!effective && !(isAdmin && !impersonating)
 
   useEffect(() => {
     if (!effective) return

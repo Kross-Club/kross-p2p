@@ -492,6 +492,14 @@ export default function OrderChatPage() {
       .on('broadcast', { event: 'stage_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, stage: payload.stage } : prev)
       })
+      .on('broadcast', { event: 'assignment_update' }, ({ payload }) => {
+        setSession(prev => prev ? {
+          ...prev,
+          seller_name: payload.seller_name ?? prev.seller_name,
+          seller_role: payload.seller_role ?? prev.seller_role,
+          seller_avatar: payload.seller_avatar ?? prev.seller_avatar,
+        } : prev)
+      })
       .on('broadcast', { event: 'seller_call_request' }, () => {
         setSellerCalling(true)
       })

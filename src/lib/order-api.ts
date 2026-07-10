@@ -4,6 +4,7 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 export interface OrderSession {
   id: string
   order_id: string
+  store_id: string | null
   buyer_name: string | null
   product_name: string | null
   product_price: number | null

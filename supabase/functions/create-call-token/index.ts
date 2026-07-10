@@ -92,8 +92,8 @@ Deno.serve(async (req) => {
     const buyerFirstName = (session.buyer_name ?? 'Cliente').split(' ')[0]
     await Promise.all((subs ?? []).map(row =>
       trySendPush(row.subscription, {
-        title: `📞 ${buyerFirstName} te llama`,
-        body: session.product_name ? `Sobre: ${session.product_name}` : 'Llamada de voz entrante',
+        title: '📞 Llamada entrante',
+        body: `${buyerFirstName} te está llamando`,
         url: `/vendedor/chats`,
         tag: `call-${session.id}`,
         type: 'call',
