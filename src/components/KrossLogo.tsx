@@ -8,11 +8,12 @@ export function KrossIcon({ size = 40 }: { size?: number }) {
           <stop offset="100%" stopColor="#00BFFF"/>
         </linearGradient>
       </defs>
-      <rect x="110" y="90" width="52" height="320" fill="url(#kg)" rx="4"/>
-      <polygon points="162,250 162,90 360,90 285,250" fill="url(#kg)"/>
-      <polygon points="162,250 162,410 360,410 285,250" fill="url(#kg)"/>
-      <polygon points="175,112 310,112 250,240 175,240" fill="#060C1A"/>
-      <polygon points="175,260 250,260 310,388 175,388" fill="#060C1A"/>
+      {/* Left vertical bar */}
+      <rect x="118" y="88" width="56" height="324" fill="url(#kg)" rx="6"/>
+      {/* Upper diagonal arm */}
+      <polygon points="174,88 346,88 260,252 174,252" fill="url(#kg)"/>
+      {/* Lower diagonal arm */}
+      <polygon points="174,248 260,248 346,412 174,412" fill="url(#kg)"/>
     </svg>
   )
 }
