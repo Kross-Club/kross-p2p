@@ -27,9 +27,10 @@ async function trySendPush(sub: object, payload: object) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { session_id, seller_name, body, type } = await req.json() as {
+  const { session_id, seller_name, seller_role, body, type } = await req.json() as {
     session_id: string
     seller_name: string
+    seller_role?: string
     body: string
     type: 'text' | 'audio' | 'image'
   }
@@ -44,6 +45,7 @@ Deno.serve(async (req) => {
       session_id,
       sender_role: 'seller',
       sender_name: seller_name || 'Kross',
+      sender_role_label: seller_role ?? null,
       type: type || 'text',
       body,
     })

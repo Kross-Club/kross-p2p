@@ -153,6 +153,8 @@ Deno.serve(async (req) => {
       status: 'active',
       stage: 'nuevo',
       assigned_seller_id: assignedSellerId,
+      involved_seller_ids: assignedSellerId ? [assignedSellerId] : [],
+      writer_seller_ids: assignedSellerId ? [assignedSellerId] : [],
     })
     .select('id, token')
     .single()
@@ -167,6 +169,7 @@ Deno.serve(async (req) => {
     session_id: data.id,
     sender_role: 'seller',
     sender_name: assignedSellerName ?? 'Kross',
+    sender_role_label: assignedSellerRole ?? 'Ventas',
     type: 'text',
     body: `¡Hola ${body.buyer_name.split(' ')[0]}! 🎉 Tu ${body.product_name} (S/${body.product_price}) llegará a tu puerta sin adelanto.\n\nEscríbeme cualquier duda o toca el ícono 📞 para llamarme directamente.`,
   })

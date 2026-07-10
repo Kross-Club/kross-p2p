@@ -130,6 +130,13 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
   return (
     <div className={`flex ${isBuyer ? 'justify-end' : 'justify-start'} mb-3`}>
       <div className={`max-w-[80%] flex flex-col ${isBuyer ? 'items-end' : 'items-start'}`}>
+        {/* Who is writing — so the buyer knows which agent (Ventas/Despacho/Motorizado) */}
+        {!isBuyer && (msg.sender_name || msg.sender_role_label) && (
+          <p className="text-[9px] mb-0.5 mx-1 font-bold" style={{ color: '#111' }}>
+            {msg.sender_name?.split(' ')[0]}
+            {msg.sender_role_label && <span className="text-gray-400 font-semibold"> · {msg.sender_role_label}</span>}
+          </p>
+        )}
         <div className="px-4 py-2.5 rounded-2xl text-sm"
           style={isBuyer
             ? { background: '#55C8F5', color: 'white', borderRadius: '18px 18px 4px 18px' }

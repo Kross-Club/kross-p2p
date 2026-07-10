@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
@@ -211,82 +211,37 @@ function SellerCallModal({
   )
 }
 
-// Least-loaded active member of a given role within a store (for lead hand-off)
-async function pickTeamMember(storeId: string, roleKeyword: string) {
-  const { data: cands } = await supabase
-    .from('sellers')
-    .select('auth_user_id, nombre, role_label, avatar_url')
-    .eq('store_id', storeId)
-    .eq('active', true)
-    .not('auth_user_id', 'is', null)
-    .ilike('role_label', `%${roleKeyword}%`)
-
-  const list = (cands ?? []).filter(c => c.auth_user_id)
-  if (list.length === 0) return null
-
-  const ids = list.map(c => c.auth_user_id as string)
-  const counts: Record<string, number> = Object.fromEntries(ids.map(id => [id, 0]))
-  const { data: active } = await supabase
-    .from('order_sessions')
-    .select('assigned_seller_id')
-    .eq('status', 'active')
-    .in('assigned_seller_id', ids)
-  for (const r of active ?? []) if (r.assigned_seller_id) counts[r.assigned_seller_id]++
-
-  ids.sort((a, b) => counts[a] - counts[b])
-  return list.find(c => c.auth_user_id === ids[0]) ?? null
-}
-
 // ─── Stage selector ───────────────────────────────────────────────────────────
-function StageSelector({ current, sessionId, storeId, channelRef, onUpdate }: {
+function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
   current: string
   sessionId: string
-  storeId: string | null
-  channelRef: React.RefObject<RealtimeChannel | null>
-  onUpdate: (s: string) => void
+  canWrite: boolean
+  onAdvanced: (next: string, handedOff: boolean) => void
 }) {
+  const [busy, setBusy] = useState(false)
   const stageLabel: Record<string, string> = {
     nuevo: 'Nuevo', confirmado: 'Confirmado', preparando: 'Preparando', en_camino: 'En camino', entregado: 'Entregado'
   }
 
-  // Lead hand-off: confirmado → Despacho, en_camino → Motorizado
-  const HANDOFF: Record<string, string> = { confirmado: 'despacho', en_camino: 'motoriz' }
-
   const advance = async () => {
     const idx = STAGES.indexOf(current)
-    if (idx >= STAGES.length - 1) return
+    if (idx >= STAGES.length - 1 || busy) return
     const next = STAGES[idx + 1]
-    const { error } = await supabase.from('order_sessions').update({ stage: next }).eq('id', sessionId)
-    if (error) return
-
-    onUpdate(next)
-    channelRef.current?.send({ type: 'broadcast', event: 'stage_update', payload: { stage: next } })
-
-    // Cede el lead al rol correspondiente
-    const roleKeyword = HANDOFF[next]
-    if (roleKeyword && storeId) {
-      const member = await pickTeamMember(storeId, roleKeyword)
-      if (member) {
-        await supabase.from('order_sessions').update({
-          assigned_seller_id: member.auth_user_id,
-          seller_name: member.nombre,
-          seller_role: member.role_label,
-          seller_avatar: member.avatar_url,
-        }).eq('id', sessionId)
-
-        const { data: msg } = await supabase.from('chat_messages').insert({
-          session_id: sessionId,
-          sender_role: 'system',
-          type: 'status_update',
-          body: `Tu pedido pasó a ${member.role_label} · te atiende ${member.nombre.split(' ')[0]}`,
-        }).select().single()
-
-        channelRef.current?.send({
-          type: 'broadcast', event: 'assignment_update',
-          payload: { seller_name: member.nombre, seller_role: member.role_label, seller_avatar: member.avatar_url },
-        })
-        if (msg) channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: msg })
-      }
+    setBusy(true)
+    try {
+      // Persisted server-side (service role) — client writes were blocked by RLS.
+      const res = await fetch(`${BASE}/order-manage`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'advance', session_id: sessionId, stage: next }),
+      })
+      if (!res.ok) throw new Error('advance_failed')
+      const { assignment } = await res.json() as { assignment: unknown | null }
+      onAdvanced(next, !!assignment)
+    } catch {
+      alert('No se pudo cambiar el estado. Intenta de nuevo.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -297,15 +252,24 @@ function StageSelector({ current, sessionId, storeId, channelRef, onUpdate }: {
       <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: '#55C8F5', color: 'white' }}>
         {stageLabel[current] || current}
       </span>
-      {idx < STAGES.length - 1 && (
-        <button onClick={advance}
-          className="ml-auto text-[10px] font-black px-3 py-1 rounded-full"
+      {canWrite && idx < STAGES.length - 1 && (
+        <button onClick={advance} disabled={busy}
+          className="ml-auto text-[10px] font-black px-3 py-1 rounded-full disabled:opacity-50"
           style={{ background: '#FFD400', color: '#111' }}>
-          → {stageLabel[STAGES[idx + 1]]}
+          {busy ? '…' : `→ ${stageLabel[STAGES[idx + 1]]}`}
         </button>
       )}
     </div>
   )
+}
+
+function roleColor(role?: string | null) {
+  const r = (role ?? '').toLowerCase()
+  if (r.includes('venta')) return '#55C8F5'
+  if (r.includes('despacho')) return '#863bff'
+  if (r.includes('motoriz')) return '#FF8C00'
+  if (r.includes('admin')) return '#111'
+  return '#888'
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
@@ -324,10 +288,17 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
     )
   }
 
+  const roleC = roleColor(msg.sender_role_label)
   return (
     <div className={`flex ${isSeller ? 'justify-end' : 'justify-start'} mb-3`}>
       <div className={`max-w-[80%] flex flex-col ${isSeller ? 'items-end' : 'items-start'}`}>
-        {!isSeller && <p className="text-[9px] text-gray-400 mb-0.5 ml-1">{msg.sender_name || 'Cliente'}</p>}
+        {/* Sender distinction: who wrote it + their role */}
+        <p className="text-[9px] mb-0.5 mx-1 font-bold flex items-center gap-1"
+          style={{ color: isSeller ? roleC : '#9CA3AF' }}>
+          {isSeller
+            ? <>{msg.sender_name?.split(' ')[0] || 'Kross'}{msg.sender_role_label && <span className="px-1 rounded" style={{ background: `${roleC}22` }}>{msg.sender_role_label}</span>}</>
+            : (msg.sender_name || 'Cliente')}
+        </p>
         <div className="px-4 py-2.5 rounded-2xl text-sm"
           style={isSeller
             ? { background: '#FFD400', color: '#111', fontWeight: 600, borderRadius: '18px 18px 4px 18px' }
@@ -347,8 +318,9 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
 export default function VendedorPedidoPage() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
-  const { effective } = useSeller()
+  const { effective, isAdmin } = useSeller()
   const sellerName = effective?.nombre ?? 'Kross'
+  const sellerRole = effective?.role_label ?? null
 
   const [session, setSession] = useState<OrderSession | null>(null)
   const [messages, setMessages] = useState<OrderMessage[]>([])
@@ -358,25 +330,31 @@ export default function VendedorPedidoPage() {
   const [showCall, setShowCall] = useState(false)
   const [buyerTyping, setBuyerTyping] = useState(false)
   const [buyerOnline, setBuyerOnline] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
+  const [team, setTeam] = useState<{ auth_user_id: string; nombre: string; role_label: string }[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sendTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Load session by token
-  useEffect(() => {
+  // Load session by token (also used to refresh after assignment/participant changes)
+  const reloadSession = useCallback(async (withSpinner = false) => {
     if (!token) { setLoading(false); return }
-    fetch(`${BASE}/get-session`, {
-      headers: { Authorization: `Bearer ${ANON}`, 'x-kross-token': token },
-    })
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(({ session: s, messages: m }: { session: OrderSession; messages: OrderMessage[] }) => {
-        setSession(s)
-        setMessages(m)
+    if (withSpinner) setLoading(true)
+    try {
+      const res = await fetch(`${BASE}/get-session`, {
+        headers: { Authorization: `Bearer ${ANON}`, 'x-kross-token': token },
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      if (!res.ok) return
+      const { session: s, messages: m } = await res.json() as { session: OrderSession; messages: OrderMessage[] }
+      setSession(s)
+      setMessages(m)
+    } finally {
+      setLoading(false)
+    }
   }, [token])
+
+  useEffect(() => { reloadSession(true) }, [reloadSession])
 
   // Realtime
   useEffect(() => {
@@ -392,6 +370,8 @@ export default function VendedorPedidoPage() {
       .on('broadcast', { event: 'stage_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, stage: payload.stage as OrderSession['stage'] } : prev)
       })
+      .on('broadcast', { event: 'assignment_update' }, () => { reloadSession() })
+      .on('broadcast', { event: 'participants_update' }, () => { reloadSession() })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.role === 'buyer') {
           setBuyerTyping(true)
@@ -442,6 +422,7 @@ export default function VendedorPedidoPage() {
       session_id: session.id,
       sender_role: 'seller',
       sender_name: sellerName,
+      sender_role_label: sellerRole,
       type: 'text',
       body,
       media_url: null,
@@ -456,6 +437,7 @@ export default function VendedorPedidoPage() {
         body: JSON.stringify({
           session_id: session.id,
           seller_name: sellerName,
+          seller_role: sellerRole,
           body,
           type: 'text',
         }),
@@ -472,7 +454,7 @@ export default function VendedorPedidoPage() {
     } finally {
       setSending(false)
     }
-  }, [input, session, sending, sellerName])
+  }, [input, session, sending, sellerName, sellerRole])
 
   if (loading) {
     return (
@@ -494,11 +476,40 @@ export default function VendedorPedidoPage() {
     )
   }
 
+  const meId = effective?.auth_user_id
+  const participants = session.participants ?? []
+  const canWrite = isAdmin
+    || session.assigned_seller_id === meId
+    || (session.writer_seller_ids ?? []).includes(meId ?? '')
+
+  const openInvite = async () => {
+    setShowInvite(true)
+    if (team.length === 0 && session.store_id) {
+      const { data } = await supabase
+        .from('sellers')
+        .select('auth_user_id, nombre, role_label')
+        .eq('store_id', session.store_id)
+        .eq('active', true)
+        .not('auth_user_id', 'is', null)
+      setTeam((data as any) ?? [])
+    }
+  }
+
+  const invite = async (sellerAuthId: string) => {
+    setShowInvite(false)
+    await fetch(`${BASE}/order-manage`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'invite', session_id: session.id, invite_seller_id: sellerAuthId }),
+    })
+    reloadSession()
+  }
+
   return (
     <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
 
       {/* IncomingCallOverlay — disabled when seller already has a call open */}
-      <IncomingCallOverlay storeId={effective?.store_id ?? session.store_id ?? undefined} disabled={showCall} />
+      <IncomingCallOverlay storeId={effective?.store_id ?? session.store_id ?? undefined} disabled={showCall || !canWrite} />
 
       {/* Header */}
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
@@ -533,21 +544,52 @@ export default function VendedorPedidoPage() {
             title="Invitar al cliente a activar notificaciones">
             <Bell size={16} className="text-white" />
           </button>
-          <button onClick={() => setShowCall(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: '#4ADE80' }}>
-            <Phone size={16} className="text-white" />
-          </button>
+          {canWrite && (
+            <button onClick={() => setShowCall(true)}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: '#4ADE80' }}>
+              <Phone size={16} className="text-white" />
+            </button>
+          )}
         </div>
+
+        {/* Participants of the value chain */}
+        {participants.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-3 overflow-x-auto">
+            <Users size={12} className="text-white/40 flex-shrink-0" />
+            {participants.map(p => {
+              const c = roleColor(p.role_label)
+              const isCurrent = p.id === session.assigned_seller_id
+              return (
+                <span key={p.id}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0"
+                  style={{ background: isCurrent ? c : 'rgba(255,255,255,0.1)', color: isCurrent ? '#fff' : 'rgba(255,255,255,0.7)' }}>
+                  {p.nombre.split(' ')[0]} · {p.role_label}{!p.can_write && ' 👁'}
+                </span>
+              )
+            })}
+            {canWrite && (
+              <button onClick={openInvite}
+                className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black flex-shrink-0"
+                style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>
+                <UserPlus size={11} /> Invitar
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stage selector */}
       <StageSelector
         current={session.stage}
         sessionId={session.id}
-        storeId={session.store_id}
-        channelRef={channelRef}
-        onUpdate={stage => setSession(s => s ? { ...s, stage: stage as OrderSession['stage'] } : s)}
+        canWrite={canWrite}
+        onAdvanced={(next, handedOff) => {
+          setSession(s => s ? { ...s, stage: next as OrderSession['stage'] } : s)
+          // Ceded the lead → back to my list; otherwise refresh in place
+          if (handedOff) navigate('/vendedor/chats')
+          else reloadSession()
+        }}
       />
 
       {/* Messages */}
@@ -576,26 +618,66 @@ export default function VendedorPedidoPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* Input — only writers (current owner + invited) or admin can send */}
       <div className="flex-shrink-0 border-t border-gray-100 px-3 py-3 bg-white">
-        <div className="flex items-center gap-2">
-          <input
-            value={input}
-            onChange={e => { setInput(e.target.value); broadcastTyping() }}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Escribe al cliente…"
-            className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
-            style={{ background: '#F0F0F0' }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || sending}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40"
-            style={{ background: '#111' }}>
-            <Send size={16} />
-          </button>
-        </div>
+        {canWrite ? (
+          <div className="flex items-center gap-2">
+            <input
+              value={input}
+              onChange={e => { setInput(e.target.value); broadcastTyping() }}
+              onKeyDown={e => e.key === 'Enter' && handleSend()}
+              placeholder="Escribe al cliente…"
+              className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
+              style={{ background: '#F0F0F0' }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || sending}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40"
+              style={{ background: '#111' }}>
+              <Send size={16} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 py-2 text-center">
+            <Eye size={14} className="text-gray-400" />
+            <p className="text-xs text-gray-500">
+              Solo lectura · este pedido lo atiende {session.seller_name?.split(' ')[0] || 'otro agente'}. Pídele que te invite para participar.
+            </p>
+          </div>
+        )}
       </div>
+
+      {/* Invite modal */}
+      {showInvite && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setShowInvite(false)}>
+          <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="font-black text-gray-900 mb-1">Invitar a participar</h3>
+            <p className="text-xs text-gray-400 mb-4">Podrá escribir y llamar en este pedido.</p>
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {team
+                .filter(t => !participants.some(p => p.id === t.auth_user_id && p.can_write))
+                .map(t => (
+                  <button key={t.auth_user_id} onClick={() => invite(t.auth_user_id)}
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl border border-gray-100 text-left">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0"
+                      style={{ background: `${roleColor(t.role_label)}22`, color: roleColor(t.role_label) }}>
+                      {t.nombre.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm text-gray-900">{t.nombre}</p>
+                      <p className="text-xs text-gray-400">{t.role_label}</p>
+                    </div>
+                    <UserPlus size={16} className="text-gray-300" />
+                  </button>
+                ))}
+            </div>
+            <button onClick={() => setShowInvite(false)} className="w-full mt-4 py-3 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
       {showCall && session && (
         <SellerCallModal

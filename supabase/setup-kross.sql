@@ -84,6 +84,15 @@ CREATE POLICY "avatars_update" ON storage.objects
   FOR UPDATE TO authenticated USING       (bucket_id = 'avatars');
 
 
+-- ─── 5b. CADENA DE VALOR: participación en el chat ──────────────────────────
+-- involved_seller_ids: todos los agentes que han estado en el pedido (ven el chat)
+-- writer_seller_ids:   quiénes pueden escribir/llamar ahora (dueño actual + invitados)
+-- sender_role_label:   rol del que envió cada mensaje (para el distintivo en el chat)
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS involved_seller_ids uuid[] DEFAULT '{}';
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS writer_seller_ids   uuid[] DEFAULT '{}';
+ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS sender_role_label   text;
+
+
 -- ─── 6. PERMISOS (RLS) sobre sellers ────────────────────────────────────────
 -- Los compradores nunca leen 'sellers' directo (van por Edge Functions con
 -- service role, que ignora RLS). Aquí solo permitimos que la app de vendedor

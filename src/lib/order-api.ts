@@ -16,6 +16,18 @@ export interface OrderSession {
   seller_name: string | null
   seller_role: string | null
   seller_avatar: string | null
+  assigned_seller_id?: string | null
+  involved_seller_ids?: string[] | null
+  writer_seller_ids?: string[] | null
+  participants?: Participant[]
+}
+
+export interface Participant {
+  id: string
+  nombre: string
+  role_label: string
+  avatar_url: string | null
+  can_write: boolean
 }
 
 export interface OrderMessage {
@@ -23,6 +35,7 @@ export interface OrderMessage {
   session_id: string
   sender_role: 'buyer' | 'seller' | 'courier' | 'system' | 'sofia'
   sender_name: string | null
+  sender_role_label?: string | null
   type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update'
   body: string | null
   media_url: string | null

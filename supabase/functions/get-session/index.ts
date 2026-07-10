@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
       product_name, product_price, pack_name,
       status, stage, assigned_seller_id,
       seller_name, seller_role, seller_avatar,
+      involved_seller_ids, writer_seller_ids,
       expires_at, created_at
     `)
     .eq('token', token)
@@ -63,16 +64,34 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Resolve the participants (everyone involved in the value chain) for the header
+  const involved: string[] = session.involved_seller_ids ?? []
+  let participants: { id: string; nombre: string; role_label: string; avatar_url: string | null; can_write: boolean }[] = []
+  if (involved.length > 0) {
+    const writers: string[] = session.writer_seller_ids ?? []
+    const { data: people } = await supabase
+      .from('sellers')
+      .select('auth_user_id, nombre, role_label, avatar_url')
+      .in('auth_user_id', involved)
+    participants = (people ?? []).map((p: any) => ({
+      id: p.auth_user_id,
+      nombre: p.nombre,
+      role_label: p.role_label,
+      avatar_url: p.avatar_url,
+      can_write: writers.includes(p.auth_user_id) || p.auth_user_id === session.assigned_seller_id,
+    }))
+  }
+
   // Fetch messages
   const { data: messages } = await supabase
     .from('chat_messages')
-    .select('id, session_id, sender_role, sender_name, type, body, media_url, created_at, read_at')
+    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, created_at, read_at')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
 
   return new Response(
     JSON.stringify({
-      session: { ...session, seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar },
+      session: { ...session, seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar, participants },
       messages: messages ?? [],
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

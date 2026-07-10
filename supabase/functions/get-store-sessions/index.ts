@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
     .select(`
       id, order_id, store_id, token, buyer_name, buyer_phone,
       product_name, product_price, pack_name, status, stage,
-      assigned_seller_id, created_at,
+      assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       chat_messages ( id, sender_role, type, body, created_at, read_at )
     `)
     .eq('store_id', storeId)
@@ -30,9 +30,10 @@ Deno.serve(async (req) => {
     .order('created_at', { ascending: false })
     .limit(50)
 
-  // Filter by assigned seller if provided
+  // Show every order this agent is involved in (owner now, or handled before,
+  // or invited) — not just the ones currently assigned to them.
   if (sellerId) {
-    query = query.eq('assigned_seller_id', sellerId)
+    query = query.contains('involved_seller_ids', [sellerId])
   }
 
   const { data, error } = await query

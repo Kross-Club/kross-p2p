@@ -16,6 +16,9 @@ interface SupabaseSession {
   stage: string
   created_at: string
   seller_name?: string | null
+  seller_role?: string | null
+  assigned_seller_id?: string | null
+  writer_seller_ids?: string[] | null
   chat_messages: { id: string; sender_role: string; type: string; body: string | null; created_at: string; read_at: string | null }[]
 }
 
@@ -96,6 +99,10 @@ export default function ChatsVendedorPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map(session => {
+            const meId = effective?.auth_user_id
+            const readOnly = !isAdmin
+              && session.assigned_seller_id !== meId
+              && !(session.writer_seller_ids ?? []).includes(meId ?? '')
             const lastMsg = session.chat_messages?.slice(-1)[0]
             const preview = lastMsg?.type === 'text' ? lastMsg.body : lastMsg?.type === 'audio' ? '🎵 Audio' : 'Sin mensajes'
             const unread = session.chat_messages?.filter(m => m.sender_role === 'buyer' && !m.read_at).length ?? 0
@@ -125,7 +132,10 @@ export default function ChatsVendedorPage() {
                       </span>
                     </div>
                   </div>
-                  <p className="text-[11px] text-gray-400 truncate">{session.product_name} · {session.pack_name || `S/${session.product_price}`}</p>
+                  <p className="text-[11px] text-gray-400 truncate">
+                    {readOnly && <span className="font-bold" style={{ color: '#863bff' }}>👁 {session.seller_role || 'En otro rol'} · </span>}
+                    {session.product_name} · {session.pack_name || `S/${session.product_price}`}
+                  </p>
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-gray-500 truncate flex-1">{preview}</p>
                     <span className="text-[10px] text-gray-300 flex-shrink-0 ml-1">{timeAgo}</span>
