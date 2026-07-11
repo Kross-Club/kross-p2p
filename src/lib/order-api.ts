@@ -33,8 +33,11 @@ export interface OrderSession {
 export interface OrderItem {
   product_id?: string | null
   nombre: string
-  precio: number
+  precio: number          // total de la línea (qty incluida)
+  unit_price?: number     // precio de 1 unidad
+  qty?: number
   pack_name?: string | null
+  image?: string | null
 }
 
 export interface Participant {
@@ -57,7 +60,7 @@ export interface OrderMessage {
   type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer'
   body: string | null
   media_url: string | null
-  offer?: { product_id?: string; nombre: string; precio: number; image?: string | null } | null
+  offer?: { product_id?: string; nombre: string; precio: number; image?: string | null; accepted?: boolean } | null
   created_at: string
   read_at: string | null
 }

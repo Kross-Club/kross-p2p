@@ -9,6 +9,7 @@ import { sendCallReject, sendCallCancel, listenCallReject, listenCallCancel } fr
 import InstallBanner from '../../components/InstallBanner'
 import AddressBar from '../../components/AddressBar'
 import OrderDetailModal from '../../components/OrderDetailModal'
+import OfferCard from '../../components/OfferCard'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -92,29 +93,12 @@ function AudioBubble({ durationLabel }: { durationLabel?: string }) {
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ msg, onAcceptOffer }: { msg: OrderMessage; onAcceptOffer?: (offer: NonNullable<OrderMessage['offer']>) => void }) {
+function MessageBubble({ msg, onAcceptOffer }: { msg: OrderMessage; onAcceptOffer?: (offer: NonNullable<OrderMessage['offer']>, messageId: string) => void }) {
   const isBuyer = msg.sender_role === 'buyer'
   const time = new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
 
   if (msg.offer) {
-    return (
-      <div className="flex justify-start mb-3">
-        <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>
-          {msg.offer.image && <img src={msg.offer.image} alt={msg.offer.nombre} className="w-full h-32 object-cover" />}
-          <div className="p-3">
-            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: '#D97706' }}>🎁 Oferta especial para ti</p>
-            <p className="font-black text-gray-900 text-sm mt-0.5">{msg.offer.nombre}</p>
-            <p className="font-black text-xl" style={{ color: '#16A34A' }}>S/{msg.offer.precio}</p>
-            {onAcceptOffer && (
-              <button onClick={() => onAcceptOffer(msg.offer!)}
-                className="w-full mt-2 py-2.5 rounded-xl font-black text-sm text-white" style={{ background: '#16A34A' }}>
-                Aceptar oferta
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    )
+    return <OfferCard offer={msg.offer} role="buyer" onAccept={onAcceptOffer ? () => onAcceptOffer(msg.offer!, msg.id) : undefined} />
   }
 
   if (msg.type === 'audio') {
@@ -563,6 +547,9 @@ export default function OrderChatPage() {
       .on('broadcast', { event: 'items_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, items: payload.items, product_price: payload.total } : prev)
       })
+      .on('broadcast', { event: 'message_update' }, ({ payload }) => {
+        setMessages(prev => prev.map(m => m.id === payload.id ? { ...m, offer: payload.offer } : m))
+      })
       .on('broadcast', { event: 'seller_call_request' }, () => {
         setSellerCalling(true)
       })
@@ -636,12 +623,12 @@ export default function OrderChatPage() {
     }
   }, [input, token, session, sending])
 
-  const acceptOffer = useCallback(async (offer: NonNullable<OrderMessage['offer']>) => {
+  const acceptOffer = useCallback(async (offer: NonNullable<OrderMessage['offer']>, messageId: string) => {
     if (!session) return
     try {
       const res = await fetch(`${BASE}/order-manage`, {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'accept_offer', session_id: session.id, offer }),
+        body: JSON.stringify({ action: 'accept_offer', session_id: session.id, offer, message_id: messageId }),
       })
       const r = await res.json()
       // Merged into the same order → stay here (items_update refreshes the cart).

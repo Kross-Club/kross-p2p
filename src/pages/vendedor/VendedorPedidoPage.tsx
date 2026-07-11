@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import OrderDetailModal from '../../components/OrderDetailModal'
+import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { useSeller } from '../../lib/seller-session'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -291,18 +292,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
   }
 
   if (msg.offer) {
-    return (
-      <div className="flex justify-end mb-3">
-        <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>
-          {msg.offer.image && <img src={msg.offer.image} alt={msg.offer.nombre} className="w-full h-28 object-cover" />}
-          <div className="p-3">
-            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: '#D97706' }}>🎁 Oferta enviada</p>
-            <p className="font-black text-gray-900 text-sm mt-0.5">{msg.offer.nombre}</p>
-            <p className="font-black text-lg" style={{ color: '#16A34A' }}>S/{msg.offer.precio}</p>
-          </div>
-        </div>
-      </div>
-    )
+    return <OfferCard offer={msg.offer} role="seller" />
   }
 
   const roleC = roleColor(msg.sender_role_label)
@@ -417,6 +407,9 @@ export default function VendedorPedidoPage() {
       })
       .on('broadcast', { event: 'items_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, items: payload.items, product_price: payload.total } : prev)
+      })
+      .on('broadcast', { event: 'message_update' }, ({ payload }) => {
+        setMessages(prev => prev.map(m => m.id === payload.id ? { ...m, offer: payload.offer } : m))
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.role === 'buyer') {

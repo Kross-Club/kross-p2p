@@ -154,6 +154,13 @@ Deno.serve(async (req) => {
     }
   }
 
+  // First product image for the cart thumbnail
+  let firstImage: string | null = null
+  if (body.product_id) {
+    const { data: prod } = await supabase.from('products').select('images').eq('id', body.product_id).maybeSingle()
+    firstImage = (prod?.images as string[] | undefined)?.[0] ?? null
+  }
+
   const token = randomToken()
   const orderId = `ORD-${Date.now()}`
 
@@ -179,7 +186,7 @@ Deno.serve(async (req) => {
       product_name: body.product_name,
       product_price: body.product_price,
       pack_name: body.pack_name ?? null,
-      items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: body.product_price, pack_name: body.pack_name ?? null }],
+      items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: body.product_price, unit_price: body.product_price, qty: 1, pack_name: body.pack_name ?? null, image: firstImage }],
       status: 'active',
       stage: 'nuevo',
       assigned_seller_id: assignedSellerId,

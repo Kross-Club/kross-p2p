@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, Package, AlertTriangle, RefreshCw } from 'lucide-react'
+import { X, Package, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
 
@@ -35,6 +35,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
   const [busy, setBusy] = useState(false)
   const [images, setImages] = useState<string[]>([])
   const [viewer, setViewer] = useState<number | null>(null)
+  const [removingIdx, setRemovingIdx] = useState<number | null>(null)
 
   useEffect(() => {
     if (!session.product_id) return
@@ -68,6 +69,26 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
     await post({ action: 'set_nota', session_id: session.id, nota })
   }
 
+  const setQty = async (index: number, qty: number) => {
+    setBusy(true)
+    try {
+      const res = await post({ action: 'set_qty', session_id: session.id, index, qty })
+      const r = await res.json()
+      if (r.items) onPatch({ items: r.items, product_price: r.total })
+    } finally { setBusy(false) }
+  }
+
+  const removeItem = async (index: number) => {
+    setBusy(true)
+    try {
+      const res = await post({ action: 'remove_item', session_id: session.id, index, by: role })
+      const r = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(r.error === 'last_item' ? 'No puedes quitar el único producto. Si ya no lo quieres, cancela el pedido.' : 'No se pudo quitar el producto.'); return }
+      onPatch({ items: r.items, product_price: r.total })
+      setRemovingIdx(null)
+    } finally { setBusy(false) }
+  }
+
   const cancelled = session.status === 'cancelado'
   const stageText = cancelled ? '❌ Pedido cancelado' : (STAGE_LABEL[session.stage] ?? session.stage)
 
@@ -97,19 +118,45 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
           )}
 
           {(() => {
-            const items = (session.items && session.items.length ? session.items : [{ nombre: session.product_name || 'Producto', precio: session.product_price ?? 0, pack_name: session.pack_name }])
+            const items = (session.items && session.items.length ? session.items : [{ nombre: session.product_name || 'Producto', precio: session.product_price ?? 0, pack_name: session.pack_name, image: null, qty: 1 }])
             const total = items.reduce((s, it) => s + (Number(it.precio) || 0), 0)
             return (
-              <div className="rounded-2xl p-4 mb-3" style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A' }}>
+              <div className="rounded-2xl p-3 mb-3" style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A' }}>
                 {items.length > 1 && <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 mb-2">🛒 {items.length} productos</p>}
                 <div className="space-y-2">
                   {items.map((it, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-black text-gray-900 text-sm truncate">{it.nombre}</p>
-                        {it.pack_name && <p className="text-[11px] text-gray-500">{it.pack_name}</p>}
+                    <div key={i}>
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-11 h-11 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
+                          {it.image ? <img src={it.image} alt={it.nombre} className="w-full h-full object-cover" /> : <Package size={16} className="m-auto mt-3 text-gray-300" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-black text-gray-900 text-sm truncate">{it.nombre}</p>
+                          <p className="text-[11px] text-gray-500">{it.pack_name || `${it.qty ?? 1} und`}</p>
+                        </div>
+                        {role === 'seller' && (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button onClick={() => setQty(i, Math.max(1, (it.qty ?? 1) - 1))} disabled={busy} className="w-6 h-6 rounded-lg bg-white border text-gray-700 font-black">−</button>
+                            <span className="w-5 text-center text-sm font-black">{it.qty ?? 1}</span>
+                            <button onClick={() => setQty(i, (it.qty ?? 1) + 1)} disabled={busy} className="w-6 h-6 rounded-lg bg-white border text-gray-700 font-black">+</button>
+                          </div>
+                        )}
+                        <p className="font-bold text-gray-800 text-sm flex-shrink-0 w-14 text-right">S/{it.precio}</p>
+                        {role === 'buyer' && items.length > 1 && (
+                          <button onClick={() => setRemovingIdx(removingIdx === i ? null : i)} className="p-1.5 rounded-lg flex-shrink-0" style={{ background: '#FEE2E2' }}>
+                            <Trash2 size={13} className="text-red-500" />
+                          </button>
+                        )}
                       </div>
-                      <p className="font-bold text-gray-800 text-sm flex-shrink-0">S/{it.precio}</p>
+                      {role === 'buyer' && removingIdx === i && (
+                        <div className="mt-2 rounded-xl p-2.5" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                          <p className="text-[11px] text-red-700 font-semibold mb-2">¿Quitar este producto? Bajará tu puntuación.</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setRemovingIdx(null)} className="flex-1 py-1.5 rounded-lg text-xs font-black bg-white border text-gray-600">No</button>
+                            <button onClick={() => removeItem(i)} disabled={busy} className="flex-1 py-1.5 rounded-lg text-xs font-black text-white" style={{ background: '#DC2626' }}>{busy ? '…' : 'Sí, quitar'}</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

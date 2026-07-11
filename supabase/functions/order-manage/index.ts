@@ -61,18 +61,39 @@ function randomToken() {
   return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '').slice(0, 24)
 }
 
+const sumItems = (items: any[]) => items.reduce((s, it) => s + (Number(it.precio) || 0), 0)
+const parseQty = (nombre: string) => { const m = String(nombre ?? '').match(/\d+/); return m ? parseInt(m[0], 10) : 0 }
+
+// Line price for a given quantity following the product's pack configuration
+async function priceForQty(item: any, qty: number): Promise<{ precio: number; pack_name: string | null }> {
+  const unit = Number(item.unit_price) || Number(item.precio) || 0
+  if (item.product_id) {
+    const { data: prod } = await supabase.from('products').select('precio, packs').eq('id', item.product_id).maybeSingle()
+    const packs: any[] = prod?.packs ?? []
+    const exact = packs.find(p => parseQty(p.nombre) === qty)
+    if (exact) return { precio: Number(exact.precio) || 0, pack_name: exact.nombre }
+    const unitPack = packs.find(p => parseQty(p.nombre) === 1)
+    const u = unitPack ? Number(unitPack.precio) : (Number(prod?.precio) || unit)
+    return { precio: u * qty, pack_name: `${qty} und` }
+  }
+  return { precio: unit * qty, pack_name: `${qty} und` }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'cancel' | 'recreate' | 'set_nota' | 'accept_offer'
+    action: 'advance' | 'invite' | 'expel' | 'cancel' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item'
     session_id: string
     stage?: string
     invite_seller_id?: string
     by_seller_id?: string
     by?: 'buyer' | 'seller'
     nota?: string
-    offer?: { product_id?: string; nombre: string; precio: number }
+    offer?: { product_id?: string; nombre: string; precio: number; image?: string | null }
+    message_id?: string
+    index?: number
+    qty?: number
   }
 
   if (!body.session_id) return new Response('Missing session_id', { status: 400, headers: corsHeaders })
@@ -90,6 +111,45 @@ Deno.serve(async (req) => {
     await supabase.from('order_sessions').update({ nota: body.nota ?? null }).eq('id', session.id)
     await broadcast(session.id, 'nota_update', { nota: body.nota ?? null })
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── SET QTY (seller edits a product quantity → price follows the packs) ────
+  if (body.action === 'set_qty') {
+    const items: any[] = Array.isArray(session.items) ? session.items : []
+    const i = body.index ?? -1
+    const qty = Math.max(1, body.qty ?? 1)
+    if (!items[i]) return new Response('Invalid item', { status: 400, headers: corsHeaders })
+    const { precio, pack_name } = await priceForQty(items[i], qty)
+    items[i] = { ...items[i], qty, precio, pack_name }
+    const total = sumItems(items)
+    await supabase.from('order_sessions').update({ items, product_price: total }).eq('id', session.id)
+    await broadcast(session.id, 'items_update', { items, total })
+    return new Response(JSON.stringify({ ok: true, items, total }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── REMOVE ITEM (keep the rest of the order) ───────────────────────────────
+  if (body.action === 'remove_item') {
+    const items: any[] = Array.isArray(session.items) ? session.items : []
+    const i = body.index ?? -1
+    if (!items[i]) return new Response('Invalid item', { status: 400, headers: corsHeaders })
+    if (items.length <= 1) return new Response(JSON.stringify({ error: 'last_item' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    const removed = items[i]
+    const newItems = items.filter((_, k) => k !== i)
+    const total = sumItems(newItems)
+    await supabase.from('order_sessions').update({ items: newItems, product_price: total }).eq('id', session.id)
+
+    if (body.by === 'buyer' && session.buyer_id) {
+      const { data: b } = await supabase.from('buyers').select('score').eq('id', session.buyer_id).maybeSingle()
+      await supabase.from('buyers').update({ score: Math.max(0, (b?.score ?? 50) - 5) }).eq('id', session.buyer_id)
+    }
+
+    const { data: msg } = await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'system', type: 'status_update', visibility: 'all',
+      body: `🗑️ Se quitó ${removed.nombre} del pedido. Nuevo total: S/${total}`,
+    }).select().single()
+    await broadcast(session.id, 'items_update', { items: newItems, total })
+    if (msg) await broadcast(session.id, 'new_message', msg)
+    return new Response(JSON.stringify({ ok: true, items: newItems, total }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   // ─── RECREATE (reactivate a cancelled order — recover the sale) ──────────────
@@ -110,14 +170,26 @@ Deno.serve(async (req) => {
   if (body.action === 'accept_offer') {
     if (!body.offer) return new Response('Missing offer', { status: 400, headers: corsHeaders })
     const offer = body.offer
+
+    // Mark the offer message as accepted so it can't be added again
+    if (body.message_id) {
+      const { data: om } = await supabase.from('chat_messages').select('offer').eq('id', body.message_id).maybeSingle()
+      if (om?.offer) {
+        const updatedOffer = { ...om.offer, accepted: true }
+        await supabase.from('chat_messages').update({ offer: updatedOffer }).eq('id', body.message_id)
+        await broadcast(session.id, 'message_update', { id: body.message_id, offer: updatedOffer })
+      }
+    }
+
+    const offerItem = { product_id: offer.product_id ?? null, nombre: offer.nombre, precio: offer.precio, unit_price: offer.precio, qty: 1, image: offer.image ?? null }
     const canMerge = session.stage === 'nuevo' || session.stage === 'confirmado'
 
     if (canMerge) {
       const currentItems: any[] = Array.isArray(session.items) && session.items.length
         ? session.items
-        : [{ product_id: null, nombre: session.product_name, precio: session.product_price }]
-      const newItems = [...currentItems, { product_id: offer.product_id ?? null, nombre: offer.nombre, precio: offer.precio }]
-      const total = newItems.reduce((s, it) => s + (Number(it.precio) || 0), 0)
+        : [{ product_id: null, nombre: session.product_name, precio: session.product_price, unit_price: session.product_price, qty: 1 }]
+      const newItems = [...currentItems, offerItem]
+      const total = sumItems(newItems)
 
       await supabase.from('order_sessions').update({ items: newItems, product_price: total }).eq('id', session.id)
 
@@ -148,7 +220,7 @@ Deno.serve(async (req) => {
       product_id: offer.product_id ?? null,
       product_name: offer.nombre,
       product_price: offer.precio,
-      items: [{ product_id: offer.product_id ?? null, nombre: offer.nombre, precio: offer.precio }],
+      items: [offerItem],
       status: 'active',
       stage: 'nuevo',
       assigned_seller_id: session.assigned_seller_id,
