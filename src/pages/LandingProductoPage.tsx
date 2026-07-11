@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { X, CheckCircle } from 'lucide-react'
+import { X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { DEPARTAMENTOS_PERU } from '../data/seed'
-import { GEO_PERU } from '../data/peru-geo'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -20,7 +18,7 @@ interface Product {
 interface BuyerAccount {
   id: string; nombre: string; phone: string
   document_type: string; document_number: string
-  score: number; puntos: number; address: string | null
+  score: number; puntos: number
 }
 
 export default function LandingProductoPage() {
@@ -32,12 +30,10 @@ export default function LandingProductoPage() {
   const [showModal, setShowModal] = useState(false)
 
   const [buyerAccount, setBuyerAccount] = useState<BuyerAccount | null>(null)
-  const [editAddress, setEditAddress] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [packIdx, setPackIdx] = useState(0)
   const [form, setForm] = useState({
     nombre: '', whatsapp: '', document_type: 'DNI' as 'DNI' | 'CE' | 'PASAPORTE', document_number: '',
-    departamento: '', provincia: '', distrito: '', direccion: '',
   })
 
   useEffect(() => {
@@ -71,12 +67,7 @@ export default function LandingProductoPage() {
   const selectedPack = packs[packIdx]
   const precio = selectedPack?.precio || product.precio
 
-  const provincias = form.departamento ? Object.keys(GEO_PERU[form.departamento] || {}) : []
-  const distritos = form.departamento && form.provincia ? (GEO_PERU[form.departamento]?.[form.provincia] || []) : []
-
-  const usingSavedAddress = !!(buyerAccount && buyerAccount.address && !editAddress)
-  const geoComplete = form.departamento && form.provincia && form.distrito && form.direccion
-  const formValid = form.nombre && form.whatsapp.length >= 9 && form.document_number.length >= 6 && (usingSavedAddress || geoComplete)
+  const formValid = form.nombre && form.whatsapp.length >= 9 && form.document_number.length >= 6
 
   const handleSubmit = async () => {
     if (!formValid || submitting) return
@@ -93,7 +84,7 @@ export default function LandingProductoPage() {
           buyer_phone: form.whatsapp,
           document_type: form.document_type,
           document_number: form.document_number,
-          address: usingSavedAddress ? buyerAccount!.address : `${form.direccion}, ${form.distrito}, ${form.provincia}, ${form.departamento}`,
+          address: null, // la fija el comprador con GPS dentro del chat
         }),
       })
       if (res.ok) {
@@ -111,7 +102,6 @@ export default function LandingProductoPage() {
 
   return (
     <div className="w-full mx-auto pb-24" style={{ maxWidth: 500, background: '#fff' }}>
-      {/* Landing = imágenes a pantalla completa, sin márgenes */}
       {product.images.length === 0 ? (
         <div className="py-24 text-center text-gray-400 text-sm px-6">Este producto aún no tiene imágenes de landing.</div>
       ) : (
@@ -142,9 +132,8 @@ export default function LandingProductoPage() {
 
             <div className="px-5 pb-8 pt-2">
               <h2 className="text-xl font-black text-gray-900 mb-0.5">¡Un paso más! 🎉</h2>
-              <p className="text-sm text-gray-500 mb-4">Completa tus datos y te contactamos de inmediato.</p>
+              <p className="text-sm text-gray-500 mb-4">Completa tus datos y coordinamos la entrega por el chat.</p>
 
-              {/* Packs */}
               {packs.length > 0 && (
                 <div className="mb-4">
                   <label className="text-xs font-black text-gray-700 mb-2 block uppercase tracking-wide">Elige tu pack</label>
@@ -163,61 +152,42 @@ export default function LandingProductoPage() {
                 </div>
               )}
 
-              {/* Buyer session banner */}
               {buyerAccount && (
                 <div className="mb-3 p-3 rounded-2xl flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #060C1A, #0D1F3C)', border: '1.5px solid rgba(125,232,255,0.3)' }}>
                   <span className="text-lg">⚡</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-black" style={{ color: '#7DE8FF' }}>Comprando como {buyerAccount.nombre.split(' ')[0]}</p>
                     <p className="text-xs" style={{ color: 'rgba(125,232,255,0.5)' }}>{buyerAccount.document_type} {buyerAccount.document_number} · Score {buyerAccount.score}/100</p>
-                    {buyerAccount.address && <p className="text-xs mt-1" style={{ color: 'rgba(125,232,255,0.75)' }}>📍 {buyerAccount.address}</p>}
                   </div>
-                  <button onClick={() => { setBuyerAccount(null); setEditAddress(false); setForm(f => ({ ...f, nombre: '', whatsapp: '', document_number: '', departamento: '', provincia: '', distrito: '', direccion: '' })) }}
+                  <button onClick={() => { setBuyerAccount(null); setForm({ nombre: '', whatsapp: '', document_type: 'DNI', document_number: '' }) }}
                     className="text-xs px-2 py-1 rounded-lg self-start" style={{ color: 'rgba(125,232,255,0.5)', background: 'rgba(255,255,255,0.05)' }}>Cambiar</button>
                 </div>
               )}
 
-              {usingSavedAddress && (
-                <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl px-4 py-3" style={{ background: '#F0FDF4', border: '1.5px solid #86EFAC' }}>
-                  <div className="flex items-center gap-2 min-w-0"><CheckCircle size={16} className="text-green-500 flex-shrink-0" /><p className="text-xs font-bold text-green-800 truncate">Enviaremos a tu dirección guardada</p></div>
-                  <button type="button" onClick={() => setEditAddress(true)} className="text-xs font-black text-green-700 underline flex-shrink-0">Usar otra</button>
+              {!buyerAccount && (
+                <div className="space-y-3">
+                  <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre completo *" className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
+                  <div className="flex gap-2">
+                    <select value={form.document_type} onChange={e => setForm(f => ({ ...f, document_type: e.target.value as any, document_number: '' }))} className="bg-gray-100 rounded-2xl px-3 py-3 text-sm outline-none font-bold text-gray-700">
+                      <option value="DNI">DNI</option><option value="CE">CE</option><option value="PASAPORTE">Pasaporte</option>
+                    </select>
+                    <input value={form.document_number} onChange={e => setForm(f => ({ ...f, document_number: e.target.value.replace(/\D/g, '').slice(0, f.document_type === 'DNI' ? 8 : 12) }))} placeholder="Documento *" className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none font-mono tracking-widest" />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="bg-gray-100 rounded-2xl px-3 py-3 text-sm text-gray-500 font-bold flex items-center gap-1">🇵🇪 +51</div>
+                    <input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value.replace(/\D/g, '') }))} placeholder="WhatsApp *" type="tel" maxLength={9} className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
+                  </div>
                 </div>
               )}
 
-              <div className="space-y-3">
-                {!buyerAccount && (
-                  <>
-                    <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre completo *" className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
-                    <div className="flex gap-2">
-                      <select value={form.document_type} onChange={e => setForm(f => ({ ...f, document_type: e.target.value as any, document_number: '' }))} className="bg-gray-100 rounded-2xl px-3 py-3 text-sm outline-none font-bold text-gray-700">
-                        <option value="DNI">DNI</option><option value="CE">CE</option><option value="PASAPORTE">Pasaporte</option>
-                      </select>
-                      <input value={form.document_number} onChange={e => setForm(f => ({ ...f, document_number: e.target.value.replace(/\D/g, '').slice(0, f.document_type === 'DNI' ? 8 : 12) }))} placeholder="Documento *" className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none font-mono tracking-widest" />
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="bg-gray-100 rounded-2xl px-3 py-3 text-sm text-gray-500 font-bold flex items-center gap-1">🇵🇪 +51</div>
-                      <input value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value.replace(/\D/g, '') }))} placeholder="WhatsApp *" type="tel" maxLength={9} className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
-                    </div>
-                  </>
-                )}
-
-                {!usingSavedAddress && (<>
-                  <select value={form.departamento} onChange={e => setForm(f => ({ ...f, departamento: e.target.value, provincia: '', distrito: '' }))} className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none">
-                    <option value="">Departamento *</option>{DEPARTAMENTOS_PERU.map((d: string) => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <select value={form.provincia} onChange={e => setForm(f => ({ ...f, provincia: e.target.value, distrito: '' }))} disabled={!form.departamento} className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none disabled:opacity-40">
-                    <option value="">Provincia *</option>{provincias.map((p: string) => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                  <select value={form.distrito} onChange={e => setForm(f => ({ ...f, distrito: e.target.value }))} disabled={!form.provincia} className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none disabled:opacity-40">
-                    <option value="">Distrito *</option>{distritos.map((d: string) => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <textarea value={form.direccion} onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))} placeholder="Dirección exacta (calle, número, referencia) *" rows={2} className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none resize-none" />
-                </>)}
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-2.5 my-4">
+                <span className="text-lg">📍</span>
+                <p className="text-[11px] text-amber-800">Tu dirección la confirmas por GPS dentro del chat, con tu asesor.</p>
               </div>
 
               <button onClick={handleSubmit} disabled={!formValid || submitting}
-                className="w-full mt-4 bg-gradient-to-r from-amber-400 to-yellow-400 text-gray-900 font-black py-4 rounded-2xl text-base shadow-lg disabled:opacity-40 active:scale-95 transition-transform border-b-4 border-amber-500">
-                {submitting ? 'Registrando…' : usingSavedAddress ? `Pedir en 1 clic · S/${precio} →` : `¡Confirmar pedido! S/${precio} →`}
+                className="w-full bg-gradient-to-r from-amber-400 to-yellow-400 text-gray-900 font-black py-4 rounded-2xl text-base shadow-lg disabled:opacity-40 active:scale-95 transition-transform border-b-4 border-amber-500">
+                {submitting ? 'Registrando…' : `¡Confirmar pedido! S/${precio} →`}
               </button>
             </div>
           </div>
