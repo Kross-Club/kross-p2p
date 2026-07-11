@@ -46,14 +46,13 @@ export default function LandingProductoPage() {
   const [country, setCountry] = useState(COUNTRIES[0])
   const [resolvedName, setResolvedName] = useState<string | null>(null)
   const [looking, setLooking] = useState(false)
-  const [form, setForm] = useState({
-    whatsapp: '', document_type: 'DNI' as 'DNI' | 'CE' | 'PASAPORTE', document_number: '',
-  })
+  const [notFound, setNotFound] = useState(false)
+  const [form, setForm] = useState({ whatsapp: '', document_number: '' })
 
-  // Autocomplete the name from the DNI (RENIEC via Decolecta)
+  // Autocomplete + validate the name from the DNI (RENIEC via Decolecta)
   useEffect(() => {
-    setResolvedName(null)
-    if (form.document_type !== 'DNI' || form.document_number.length !== 8) return
+    setResolvedName(null); setNotFound(false)
+    if (form.document_number.length !== 8) return
     let alive = true
     setLooking(true)
     fetch(`${BASE}/dni-lookup`, {
@@ -61,11 +60,11 @@ export default function LandingProductoPage() {
       body: JSON.stringify({ document_number: form.document_number }),
     })
       .then(r => r.json())
-      .then(d => { if (alive) setResolvedName(d?.nombre ?? null) })
-      .catch(() => {})
+      .then(d => { if (alive) { setResolvedName(d?.nombre ?? null); setNotFound(!d?.nombre) } })
+      .catch(() => { if (alive) setNotFound(true) })
       .finally(() => { if (alive) setLooking(false) })
     return () => { alive = false }
-  }, [form.document_type, form.document_number])
+  }, [form.document_number])
 
   useEffect(() => {
     if (!landingId) return
@@ -89,7 +88,6 @@ export default function LandingProductoPage() {
         setForm(f => ({
           ...f,
           whatsapp: buyer.phone?.replace(/^51/, '') ?? f.whatsapp,
-          document_type: (buyer.document_type as any) ?? 'DNI',
           document_number: buyer.document_number ?? f.document_number,
         }))
       }
@@ -105,10 +103,9 @@ export default function LandingProductoPage() {
   const precio = selectedPack?.precio || product.precio
   const bestIdx = packs.length - 1 // el de mayor precio suele ser más unidades / mejor valor
 
-  const docLen = form.document_number.length
-  const docValid = form.document_type === 'DNI' ? docLen === 8 : docLen >= 6
+  // Only a DNI validated against RENIEC (with a resolved name) can order
   const phoneValid = form.whatsapp.length === country.len
-  const formValid = !!buyerAccount || (docValid && phoneValid)
+  const formValid = !!buyerAccount || (!!resolvedName && phoneValid)
 
   const handleSubmit = async () => {
     if (!formValid || submitting) return
@@ -124,7 +121,7 @@ export default function LandingProductoPage() {
           pack_name: selectedPack?.nombre ?? null,
           buyer_name: buyerAccount?.nombre ?? resolvedName ?? '',
           buyer_phone: buyerAccount ? buyerAccount.phone : `${country.code}${form.whatsapp}`,
-          document_type: form.document_type,
+          document_type: 'DNI',
           document_number: form.document_number,
           address: null,
         }),
@@ -215,29 +212,27 @@ export default function LandingProductoPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Documento */}
+                  {/* DNI */}
                   <div>
-                    <label className="text-xs font-bold text-gray-600 mb-1 block">Tu documento de identidad *</label>
-                    <div className="flex gap-2">
-                      <select value={form.document_type} onChange={e => setForm(f => ({ ...f, document_type: e.target.value as any, document_number: '' }))} className="bg-gray-100 rounded-2xl px-3 py-3 text-sm outline-none font-bold text-gray-700">
-                        <option value="DNI">DNI</option><option value="CE">CE</option><option value="PASAPORTE">Pasaporte</option>
-                      </select>
-                      <input value={form.document_number}
-                        onChange={e => setForm(f => ({ ...f, document_number: e.target.value.replace(f.document_type === 'PASAPORTE' ? /[^a-zA-Z0-9]/g : /\D/g, '').slice(0, f.document_type === 'DNI' ? 8 : 12) }))}
-                        placeholder={form.document_type === 'DNI' ? 'Tus 8 dígitos' : 'Nro. de documento'}
-                        className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none font-mono tracking-widest" />
-                    </div>
-                    {looking && <p className="text-[11px] text-gray-400 mt-1.5">Validando tu documento…</p>}
+                    <label className="text-xs font-bold text-gray-600 mb-1 block">Tu DNI *</label>
+                    <input value={form.document_number}
+                      onChange={e => setForm(f => ({ ...f, document_number: e.target.value.replace(/\D/g, '').slice(0, 8) }))}
+                      placeholder="Tus 8 dígitos" type="tel" inputMode="numeric"
+                      className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none font-mono tracking-widest" />
+                    {looking && <p className="text-[11px] text-gray-400 mt-1.5">Validando tu DNI…</p>}
                     {resolvedName && (
                       <div className="mt-1.5 flex items-center gap-1.5 rounded-xl px-3 py-2" style={{ background: '#F0FDF4', border: '1px solid #86EFAC' }}>
                         <ShieldCheck size={14} className="text-green-600 flex-shrink-0" />
                         <p className="text-xs font-black text-green-800 truncate">{resolvedName}</p>
                       </div>
                     )}
-                    {!resolvedName && !looking && (
+                    {notFound && !looking && (
+                      <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#DC2626' }}>No pudimos validar ese DNI. Revisa los 8 dígitos.</p>
+                    )}
+                    {!resolvedName && !looking && !notFound && (
                       <p className="text-[11px] text-gray-400 mt-1.5 flex items-start gap-1">
                         <ShieldCheck size={13} className="text-green-500 flex-shrink-0 mt-0.5" />
-                        Con tu documento validamos tu identidad y guardamos tu historial de pedidos. Es seguro y no lo compartimos.
+                        Con tu DNI validamos tu identidad y guardamos tu historial de pedidos. Es seguro y no lo compartimos.
                       </p>
                     )}
                   </div>

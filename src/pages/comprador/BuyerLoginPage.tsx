@@ -5,16 +5,12 @@ import { KrossIcon } from '../../components/KrossLogo'
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-type DocType = 'DNI' | 'CE' | 'PASAPORTE'
 
 export default function BuyerLoginPage() {
   const navigate = useNavigate()
-  const [docType, setDocType] = useState<DocType>('DNI')
   const [docNumber, setDocNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
-  const maxLen = docType === 'DNI' ? 8 : docType === 'CE' ? 12 : 20
 
   const login = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,11 +20,11 @@ export default function BuyerLoginPage() {
     const res = await fetch(`${BASE}/buyer-login`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ document_type: docType, document_number: docNumber }),
+      body: JSON.stringify({ document_type: 'DNI', document_number: docNumber }),
     })
 
     if (res.status === 404) {
-      setError('No encontramos una cuenta con ese documento. ¿Ya hiciste un pedido?')
+      setError('No encontramos una cuenta con ese DNI. ¿Ya hiciste un pedido?')
       setLoading(false)
       return
     }
@@ -60,35 +56,21 @@ export default function BuyerLoginPage() {
         <div className="rounded-3xl p-6 shadow-2xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(125,232,255,0.15)', backdropFilter: 'blur(20px)' }}>
           <h2 className="font-black text-xl mb-1 text-white">¡Hola!</h2>
           <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.5)' }}>
-            Ingresa tu documento para ver tus pedidos
+            Ingresa tu DNI para ver tus pedidos
           </p>
 
           <form onSubmit={login} className="flex flex-col gap-3">
-            {/* Doc type selector */}
-            <div className="flex gap-2">
-              {(['DNI', 'CE', 'PASAPORTE'] as DocType[]).map(t => (
-                <button key={t} type="button" onClick={() => { setDocType(t); setDocNumber('') }}
-                  className="flex-1 py-2 rounded-xl text-xs font-black transition-all"
-                  style={{
-                    background: docType === t ? '#00BFFF' : 'rgba(255,255,255,0.06)',
-                    color: docType === t ? '#060C1A' : 'rgba(255,255,255,0.4)',
-                    border: docType === t ? 'none' : '1px solid rgba(255,255,255,0.1)',
-                  }}>
-                  {t}
-                </button>
-              ))}
-            </div>
-
             <div>
               <label className="text-xs font-bold mb-1 block" style={{ color: 'rgba(125,232,255,0.7)' }}>
-                Número de {docType}
+                Tu DNI
               </label>
               <input
-                type="text"
+                type="tel"
+                inputMode="numeric"
                 value={docNumber}
-                onChange={e => setDocNumber(e.target.value.replace(/\D/g, '').slice(0, maxLen))}
+                onChange={e => setDocNumber(e.target.value.replace(/\D/g, '').slice(0, 8))}
                 required
-                placeholder={docType === 'DNI' ? '12345678' : docType === 'CE' ? '000123456' : 'Nro. de pasaporte'}
+                placeholder="Tus 8 dígitos"
                 className="w-full px-4 py-3 rounded-2xl text-sm outline-none font-mono tracking-widest"
                 style={{ background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(125,232,255,0.2)', color: '#fff' }}
               />
@@ -98,10 +80,10 @@ export default function BuyerLoginPage() {
               <p className="text-xs font-semibold text-center" style={{ color: '#FF6B6B' }}>{error}</p>
             )}
 
-            <button type="submit" disabled={loading || docNumber.length < 6}
+            <button type="submit" disabled={loading || docNumber.length !== 8}
               className="w-full py-3.5 rounded-2xl font-black text-sm mt-1 transition-all"
               style={{
-                background: (loading || docNumber.length < 6) ? 'rgba(0,191,255,0.3)' : 'linear-gradient(135deg, #00BFFF, #7DE8FF)',
+                background: (loading || docNumber.length !== 8) ? 'rgba(0,191,255,0.3)' : 'linear-gradient(135deg, #00BFFF, #7DE8FF)',
                 color: '#060C1A',
               }}>
               {loading ? 'Buscando…' : 'Ver mis pedidos'}
