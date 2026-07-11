@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X, ShoppingCart, Tag } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
@@ -640,7 +640,16 @@ export default function VendedorPedidoPage() {
         )}
       </div>
 
+      {/* Cancelado */}
+      {session.status === 'cancelado' && (
+        <div className="mx-4 mt-2 rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: '#FEE2E2', border: '1.5px solid #FECACA' }}>
+          <span>❌</span>
+          <p className="text-xs font-black" style={{ color: '#DC2626' }}>Pedido cancelado — abre “Ver pedido” para reactivarlo</p>
+        </div>
+      )}
+
       {/* Stage selector */}
+      {session.status !== 'cancelado' && (
       <StageSelector
         current={session.stage}
         sessionId={session.id}
@@ -652,6 +661,7 @@ export default function VendedorPedidoPage() {
           else reloadSession()
         }}
       />
+      )}
 
       {/* Dirección de entrega */}
       <AddressBar
@@ -697,7 +707,7 @@ export default function VendedorPedidoPage() {
             <button onClick={() => setShowOffer(true)}
               className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FEF3C7', color: '#D97706' }}
               title="Enviar oferta">
-              <Tag size={16} />
+              <PackagePlus size={16} />
             </button>
             <input
               value={input}
@@ -791,8 +801,12 @@ export default function VendedorPedidoPage() {
                 const saved: OrderMessage = await res.json()
                 setMessages(prev => prev.some(m => m.id === saved.id) ? prev : [...prev, saved])
                 channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
+              } else {
+                alert('No se pudo enviar la oferta. Falta desplegar seller-send-message y la columna "offer".')
               }
-            } catch { /* ignore */ }
+            } catch {
+              alert('No se pudo enviar la oferta. Revisa tu conexión.')
+            }
           }}
         />
       )}
@@ -830,7 +844,7 @@ function OfferSheet({ storeId, onClose, onSend }: {
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={onClose}>
       <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-black text-gray-900 flex items-center gap-2"><Tag size={18} /> Enviar oferta</h3>
+          <h3 className="font-black text-gray-900 flex items-center gap-2"><PackagePlus size={18} /> Enviar oferta</h3>
           <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
         </div>
 

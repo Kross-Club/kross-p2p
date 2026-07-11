@@ -4,6 +4,9 @@ import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle } from 'lucide
 import { subscribePush } from '../../lib/push'
 import { supabase } from '../../lib/supabase'
 
+const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
 const STAGE_LABEL: Record<string, string> = {
   nuevo:      '📋 Pedido creado',
   confirmado: '📞 Confirmado',
@@ -27,6 +30,7 @@ interface BuyerSession {
     id: string
     nombre: string
     phone: string
+    document_number?: string
     score: number
     puntos: number
     address: string | null
@@ -57,14 +61,31 @@ export default function MisPedidosPage() {
   useEffect(() => {
     const raw = localStorage.getItem('buyer_session')
     if (!raw) { navigate('/acceso', { replace: true }); return }
+    let parsed: BuyerSession
     try {
-      const parsed = JSON.parse(raw)
+      parsed = JSON.parse(raw)
       setData(parsed)
-      // Register push subscription for this buyer
       if (parsed.buyer?.id && Notification.permission === 'granted') {
         subscribePush({ buyerId: parsed.buyer.id, role: 'buyer' as const }).catch(() => {})
       }
-    } catch { navigate('/acceso', { replace: true }) }
+    } catch { navigate('/acceso', { replace: true }); return }
+
+    // Refresh from the server so cancellations, stages and unread are up to date
+    const doc = parsed.buyer?.document_number
+    if (doc) {
+      fetch(`${BASE}/buyer-login`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_number: doc }),
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .then(fresh => {
+          if (fresh?.buyer) {
+            setData(fresh)
+            try { localStorage.setItem('buyer_session', JSON.stringify(fresh)) } catch { /* */ }
+          }
+        })
+        .catch(() => {})
+    }
   }, [navigate])
 
   // Live unread: bump the counter when the seller writes, in real time

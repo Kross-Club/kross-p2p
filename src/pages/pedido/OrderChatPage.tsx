@@ -745,10 +745,21 @@ export default function OrderChatPage() {
         </button>
       </div>
 
+      {/* ── Cancelado ── */}
+      {session.status === 'cancelado' && (
+        <div className="flex-shrink-0 mx-4 mt-2 rounded-2xl px-4 py-2.5 flex items-center gap-2"
+          style={{ background: '#FEE2E2', border: '1.5px solid #FECACA' }}>
+          <span className="text-lg">❌</span>
+          <p className="text-xs font-black" style={{ color: '#DC2626' }}>Pedido cancelado</p>
+        </div>
+      )}
+
       {/* ── Tracker ── */}
+      {session.status !== 'cancelado' && (
       <div className="flex-shrink-0">
         <OrderTracker stage={session.stage} />
       </div>
+      )}
 
       {/* ── Dirección de entrega ── */}
       <div className="flex-shrink-0">
