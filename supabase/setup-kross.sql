@@ -136,6 +136,9 @@ ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS sender_role_label   text;
 -- Visibilidad del mensaje de sistema: 'all' (comprador y vendedores) o 'sellers'
 ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS visibility          text DEFAULT 'all';
 
+-- Producto del pedido (para ver sus imágenes de la landing en el detalle)
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS product_id uuid;
+
 -- Dirección de entrega + validación por GPS del comprador
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lat      double precision;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lng      double precision;

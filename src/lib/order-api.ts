@@ -5,6 +5,7 @@ export interface OrderSession {
   id: string
   order_id: string
   store_id: string | null
+  product_id: string | null
   buyer_id: string | null
   buyer_name: string | null
   product_name: string | null

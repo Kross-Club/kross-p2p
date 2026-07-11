@@ -566,7 +566,7 @@ export default function VendedorPedidoPage() {
             <p className="text-xs" style={{ color: buyerOnline ? '#4ADE80' : 'rgba(255,255,255,0.6)' }}>
               {buyerOnline ? 'En línea ahora' : `${session.product_name} · ${session.pack_name || `S/${session.product_price}`}`}
             </p>
-            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Ver pedido ›</p>
+            <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><Eye size={11} /> Ver pedido</p>
           </button>
 
           <button

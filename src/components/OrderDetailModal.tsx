@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Package, AlertTriangle } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -10,6 +11,14 @@ const STAGE_LABEL: Record<string, string> = {
   en_camino: '🚚 En camino', entregado: '✅ Entregado', cancelado: '❌ Cancelado',
 }
 
+const LOSES = [
+  'Pagar S/0 de envío',
+  'Recibir en la puerta de tu casa',
+  'Garantía de satisfacción con reembolso',
+  'Promociones y descuentos cada mes',
+  'Comprar sin adelanto',
+]
+
 export default function OrderDetailModal({ session, role, onClose, onCancelled }: {
   session: OrderSession
   role: 'buyer' | 'seller'
@@ -18,6 +27,14 @@ export default function OrderDetailModal({ session, role, onClose, onCancelled }
 }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [images, setImages] = useState<string[]>([])
+  const [viewer, setViewer] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!session.product_id) return
+    supabase.from('products').select('images').eq('id', session.product_id).maybeSingle()
+      .then(({ data }) => setImages((data?.images as string[]) ?? []))
+  }, [session.product_id])
 
   const cancel = async () => {
     setBusy(true)
@@ -35,56 +52,100 @@ export default function OrderDetailModal({ session, role, onClose, onCancelled }
   const cancelled = session.status === 'cancelado'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={onClose}>
-      <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-black text-gray-900 flex items-center gap-2"><Package size={18} /> Tu pedido</h3>
-          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
-        </div>
-
-        {/* Product info */}
-        <div className="rounded-2xl p-4 mb-3" style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A' }}>
-          <p className="font-black text-gray-900 text-base">{session.product_name || 'Producto'}</p>
-          {session.pack_name && <p className="text-xs text-gray-500 mt-0.5">{session.pack_name}</p>}
-          <p className="font-black text-2xl mt-1" style={{ color: '#16A34A' }}>S/{session.product_price ?? 0}</p>
-        </div>
-
-        <div className="space-y-2 mb-4">
-          <Row label="Estado" value={STAGE_LABEL[session.stage] ?? session.stage} />
-          {session.order_id && <Row label="N° de pedido" value={session.order_id} />}
-          {session.seller_name && <Row label="Te atiende" value={`${session.seller_name.split(' ')[0]}${session.seller_role ? ` · ${session.seller_role}` : ''}`} />}
-        </div>
-
-        {/* Cancel */}
-        {cancelled ? (
-          <div className="text-center py-2 text-sm font-bold" style={{ color: '#DC2626' }}>Este pedido está cancelado</div>
-        ) : !confirming ? (
-          <button onClick={() => setConfirming(true)}
-            className="w-full py-3 rounded-2xl font-black text-sm" style={{ background: '#FEE2E2', color: '#DC2626' }}>
-            Cancelar pedido
-          </button>
-        ) : (
-          <div className="rounded-2xl p-4" style={{ background: '#FEF2F2', border: '1.5px solid #FECACA' }}>
-            <div className="flex items-start gap-2 mb-3">
-              <AlertTriangle size={18} style={{ color: '#DC2626' }} className="flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-red-700 font-semibold">
-                {role === 'buyer'
-                  ? 'Si cancelas, bajará tu puntuación y perderás beneficios como recibir sin adelanto. ¿Seguro que quieres cancelar?'
-                  : '¿Seguro que deseas cancelar este pedido? Esta acción no se puede deshacer.'}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setConfirming(false)} disabled={busy} className="flex-1 py-2.5 rounded-xl font-black text-sm bg-white border border-gray-200 text-gray-600">
-                No, mantener
-              </button>
-              <button onClick={cancel} disabled={busy} className="flex-1 py-2.5 rounded-xl font-black text-sm text-white disabled:opacity-50" style={{ background: '#DC2626' }}>
-                {busy ? 'Cancelando…' : 'Sí, cancelar'}
-              </button>
-            </div>
+    <>
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={onClose}>
+        <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-black text-gray-900 flex items-center gap-2"><Package size={18} /> Tu pedido</h3>
+            <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
           </div>
-        )}
+
+          {/* Carrusel de imágenes del producto */}
+          {images.length > 0 && (
+            <div className="-mx-1 mb-3">
+              <div className="flex gap-2 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
+                {images.map((img, i) => (
+                  <button key={i} onClick={() => setViewer(i)}
+                    className="snap-center flex-shrink-0 rounded-2xl overflow-hidden"
+                    style={{ width: '82%' }}>
+                    <img src={img} alt={`Imagen ${i + 1}`} className="w-full h-44 object-cover" />
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-400 text-center mt-1">Toca una imagen para verla en grande →</p>
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="rounded-2xl p-4 mb-3" style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A' }}>
+            <p className="font-black text-gray-900 text-base">{session.product_name || 'Producto'}</p>
+            {session.pack_name && <p className="text-xs text-gray-500 mt-0.5">{session.pack_name}</p>}
+            <p className="font-black text-2xl mt-1" style={{ color: '#16A34A' }}>S/{session.product_price ?? 0}</p>
+          </div>
+
+          <div className="space-y-2 mb-4">
+            <Row label="Estado" value={STAGE_LABEL[session.stage] ?? session.stage} />
+            {session.order_id && <Row label="N° de pedido" value={session.order_id} />}
+            {session.seller_name && <Row label="Te atiende" value={`${session.seller_name.split(' ')[0]}${session.seller_role ? ` · ${session.seller_role}` : ''}`} />}
+          </div>
+
+          {/* Cancel */}
+          {cancelled ? (
+            <div className="text-center py-2 text-sm font-bold" style={{ color: '#DC2626' }}>Este pedido está cancelado</div>
+          ) : !confirming ? (
+            <button onClick={() => setConfirming(true)}
+              className="w-full py-3 rounded-2xl font-black text-sm" style={{ background: '#FEE2E2', color: '#DC2626' }}>
+              Cancelar pedido
+            </button>
+          ) : (
+            <div className="rounded-2xl p-4" style={{ background: '#FEF2F2', border: '1.5px solid #FECACA' }}>
+              <div className="flex items-start gap-2 mb-2">
+                <AlertTriangle size={18} style={{ color: '#DC2626' }} className="flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700 font-black">
+                  {role === 'buyer' ? 'Si cancelas, perderás:' : '¿Seguro que deseas cancelar este pedido?'}
+                </p>
+              </div>
+              {role === 'buyer' && (
+                <ul className="space-y-1 mb-3 pl-1">
+                  {LOSES.map(l => (
+                    <li key={l} className="flex items-start gap-2 text-xs text-red-700">
+                      <span className="font-black flex-shrink-0" style={{ color: '#DC2626' }}>✕</span>
+                      <span>{l}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {role === 'buyer' && <p className="text-xs text-red-600 font-semibold mb-3">Además bajará tu puntuación. ¿Seguro que quieres cancelar?</p>}
+              {role === 'seller' && <p className="text-xs text-red-600 mb-3">Esta acción no se puede deshacer.</p>}
+              <div className="flex gap-2">
+                <button onClick={() => setConfirming(false)} disabled={busy} className="flex-1 py-2.5 rounded-xl font-black text-sm bg-white border border-gray-200 text-gray-600">No, mantener</button>
+                <button onClick={cancel} disabled={busy} className="flex-1 py-2.5 rounded-xl font-black text-sm text-white disabled:opacity-50" style={{ background: '#DC2626' }}>{busy ? 'Cancelando…' : 'Sí, cancelar'}</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Visor a pantalla completa (swipe entre imágenes) */}
+      {viewer !== null && images.length > 0 && (
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col" onClick={() => setViewer(null)}>
+          <div className="flex justify-end p-4">
+            <button onClick={() => setViewer(null)} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
+              <X size={20} className="text-white" />
+            </button>
+          </div>
+          <div className="flex-1 flex overflow-x-auto snap-x snap-mandatory items-center" onClick={e => e.stopPropagation()}>
+            {images.map((img, i) => (
+              <div key={i} className="snap-center flex-shrink-0 w-full h-full flex items-center justify-center px-2"
+                ref={el => { if (el && i === viewer) el.scrollIntoView({ inline: 'center' }) }}>
+                <img src={img} alt={`Imagen ${i + 1}`} className="max-w-full max-h-full object-contain" />
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-white/50 text-xs pb-4">Desliza para ver más ‹ ›</p>
+        </div>
+      )}
+    </>
   )
 }
 

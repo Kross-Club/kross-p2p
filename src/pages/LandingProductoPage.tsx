@@ -77,6 +77,7 @@ export default function LandingProductoPage() {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           store_id: product.store_id,
+          product_id: product.id,
           product_name: product.nombre,
           product_price: precio,
           pack_name: selectedPack?.nombre ?? null,

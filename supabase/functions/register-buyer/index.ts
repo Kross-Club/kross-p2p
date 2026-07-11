@@ -21,6 +21,7 @@ Deno.serve(async (req) => {
 
   const body = await req.json() as {
     store_id: string
+    product_id?: string
     product_name: string
     product_price: number
     pack_name?: string
@@ -170,6 +171,7 @@ Deno.serve(async (req) => {
       seller_name: assignedSellerName,
       seller_role: assignedSellerRole,
       seller_avatar: assignedSellerAvatar,
+      product_id: body.product_id ?? null,
       product_name: body.product_name,
       product_price: body.product_price,
       pack_name: body.pack_name ?? null,

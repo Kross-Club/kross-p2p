@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft } from 'lucide-react'
+import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, Eye } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush } from '../../lib/push'
@@ -696,8 +696,8 @@ export default function OrderChatPage() {
           className="mt-3 w-full rounded-2xl px-3 py-2 flex items-center justify-between text-left"
           style={{ background: 'rgba(255,255,255,0.2)' }}>
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>
-              {session.pack_name || 'Tu pedido'} · ver detalle
+            <p className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
+              <Eye size={11} /> {session.pack_name || 'Tu pedido'} · ver detalle
             </p>
             <p className="text-sm font-black text-white truncate max-w-[200px]">
               {session.product_name || 'Producto Kross'}
