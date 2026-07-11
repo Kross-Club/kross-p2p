@@ -26,9 +26,18 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
     try {
       const coords = await new Promise<GeolocationCoordinates | null>(resolve => {
         if (!navigator.geolocation) return resolve(null)
-        navigator.geolocation.getCurrentPosition(p => resolve(p.coords), () => resolve(null), { enableHighAccuracy: true, timeout: 10000 })
+        // maximumAge:0 forces a fresh fix (not a cached, stale/coarse one)
+        navigator.geolocation.getCurrentPosition(
+          p => resolve(p.coords), () => resolve(null),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        )
       })
       if (!coords) { alert('Activa tu ubicación GPS para verificar tu dirección de entrega.'); return }
+      // Reject imprecise fixes (typically a laptop/WiFi location) so no bad pin is saved
+      if (typeof coords.accuracy === 'number' && coords.accuracy > 100) {
+        alert(`Tu ubicación es poco precisa (±${Math.round(coords.accuracy)} m). Actívala en "Precisión alta" o sal a un lugar más abierto y toca Verificar GPS otra vez. Mejor hazlo desde tu celular.`)
+        return
+      }
       const res = await fetch(`${BASE}/update-address`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
@@ -74,7 +83,7 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
       {/* Map links + coords (once GPS-located). Seller also gets Waze. */}
       {hasCoords && (
         <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: '1px dashed #eee' }}>
-          <a href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`} target="_blank" rel="noreferrer"
+          <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
             className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#E8F0FE', color: '#1A73E8' }}>
             <Navigation size={11} /> Google Maps
           </a>
