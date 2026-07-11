@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle } from 'lucide-react'
 import { subscribePush } from '../../lib/push'
+import { supabase } from '../../lib/supabase'
 
 const STAGE_LABEL: Record<string, string> = {
   nuevo:      '📋 Pedido recibido',
@@ -50,6 +51,8 @@ export default function MisPedidosPage() {
   const [data, setData] = useState<BuyerSession | null>(null)
 
   const [notifGranted, setNotifGranted] = useState(Notification.permission === 'granted')
+  const [bumps, setBumps] = useState<Record<string, number>>({})
+  const seenRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     const raw = localStorage.getItem('buyer_session')
@@ -64,12 +67,45 @@ export default function MisPedidosPage() {
     } catch { navigate('/acceso', { replace: true }) }
   }, [navigate])
 
+  // Live unread: bump the counter when the seller writes, in real time
+  const sessionIds = (data?.sessions ?? []).map(s => s.id).join(',')
+  useEffect(() => {
+    const sess = data?.sessions ?? []
+    if (sess.length === 0) return
+    const channels = sess.map(s =>
+      supabase.channel(`order:${s.id}`)
+        .on('broadcast', { event: 'new_message' }, ({ payload }) => {
+          const m = payload as { id: string; sender_role: string; visibility?: string }
+          // Count only messages the buyer would see, from the other side
+          if (m.sender_role === 'buyer' || m.visibility === 'sellers' || seenRef.current.has(m.id)) return
+          seenRef.current.add(m.id)
+          setBumps(b => ({ ...b, [s.id]: (b[s.id] ?? 0) + 1 }))
+        })
+        .subscribe()
+    )
+    return () => channels.forEach(c => supabase.removeChannel(c))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionIds])
+
   const enableNotifications = async () => {
     const raw = localStorage.getItem('buyer_session')
     if (!raw) return
     const { buyer } = JSON.parse(raw)
     const ok = await subscribePush({ buyerId: buyer.id, role: 'buyer' as const })
     if (ok) setNotifGranted(true)
+  }
+
+  const openOrder = (s: { id: string; token: string }) => {
+    // Optimistically clear this order's unread so it doesn't reappear on return
+    setBumps(b => ({ ...b, [s.id]: 0 }))
+    setData(d => {
+      if (!d) return d
+      const sessions = d.sessions.map(x => x.id === s.id ? { ...x, unread_count: 0 } : x)
+      const nd = { ...d, sessions }
+      try { localStorage.setItem('buyer_session', JSON.stringify(nd)) } catch { /* ignore */ }
+      return nd
+    })
+    navigate(`/p/${s.token}`)
   }
 
   const logout = () => {
@@ -159,10 +195,10 @@ export default function MisPedidosPage() {
               })
               const stageColor = STAGE_COLOR[s.stage] ?? '#ccc'
               const stageLabel = STAGE_LABEL[s.stage] ?? s.stage
-              const unread = s.unread_count ?? 0
+              const unread = (s.unread_count ?? 0) + (bumps[s.id] ?? 0)
 
               return (
-                <button key={s.id} onClick={() => navigate(`/p/${s.token}`)}
+                <button key={s.id} onClick={() => openOrder(s)}
                   className="w-full text-left p-4 rounded-2xl shadow-sm flex items-center gap-3"
                   style={{ background: '#fff', border: unread > 0 ? '1.5px solid #55C8F5' : '1.5px solid #f0f0f0' }}>
                   <div className="relative w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"

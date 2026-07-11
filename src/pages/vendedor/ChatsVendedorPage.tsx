@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
@@ -43,6 +43,8 @@ export default function ChatsVendedorPage() {
   const [sessions, setSessions] = useState<SupabaseSession[]>([])
   const [loading, setLoading] = useState(true)
   const [onlineBuyers, setOnlineBuyers] = useState<Set<string>>(new Set())
+  const [bumps, setBumps] = useState<Record<string, number>>({})
+  const seenRef = useRef<Set<string>>(new Set())
 
   // Live presence of all buyers → green dot on active chats
   useEffect(() => {
@@ -71,10 +73,31 @@ export default function ChatsVendedorPage() {
 
     fetch(`${BASE}/get-store-sessions`, { headers })
       .then(r => (r.ok ? r.json() : []))
-      .then((data: SupabaseSession[]) => setSessions(Array.isArray(data) ? data : []))
+      .then((data: SupabaseSession[]) => {
+        setSessions(Array.isArray(data) ? data : [])
+        setBumps({}); seenRef.current.clear()
+      })
       .catch(() => setSessions([]))
       .finally(() => setLoading(false))
   }, [effective?.auth_user_id, effective?.store_id, onlyMine])
+
+  // Live unread: listen to each order's channel and bump the counter in real time
+  const sessionIds = sessions.map(s => s.id).join(',')
+  useEffect(() => {
+    if (sessions.length === 0) return
+    const channels = sessions.map(s =>
+      supabase.channel(`order:${s.id}`)
+        .on('broadcast', { event: 'new_message' }, ({ payload }) => {
+          const m = payload as { id: string; sender_role: string }
+          if (m.sender_role !== 'buyer' || seenRef.current.has(m.id)) return
+          seenRef.current.add(m.id)
+          setBumps(b => ({ ...b, [s.id]: (b[s.id] ?? 0) + 1 }))
+        })
+        .subscribe()
+    )
+    return () => channels.forEach(c => supabase.removeChannel(c))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionIds])
 
   const filtered = sessions.filter(s =>
     !search ||
@@ -119,7 +142,8 @@ export default function ChatsVendedorPage() {
               && !(session.writer_seller_ids ?? []).includes(meId ?? '')
             const lastMsg = session.chat_messages?.slice(-1)[0]
             const preview = lastMsg?.type === 'text' ? lastMsg.body : lastMsg?.type === 'audio' ? '🎵 Audio' : 'Sin mensajes'
-            const unread = session.chat_messages?.filter(m => m.sender_role === 'buyer' && !m.read_at).length ?? 0
+            const baseUnread = session.chat_messages?.filter(m => m.sender_role === 'buyer' && !m.read_at).length ?? 0
+            const unread = baseUnread + (bumps[session.id] ?? 0)
             const timeAgo = new Date(session.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
             const online = !!session.buyer_id && onlineBuyers.has(session.buyer_id)
 

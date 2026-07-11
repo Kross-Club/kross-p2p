@@ -76,11 +76,17 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
             </p>
             <p className="text-xs font-semibold text-gray-700 truncate">{address || 'Sin dirección'}</p>
           </div>
-          <button onClick={() => { setValue(address ?? ''); setEditing(true) }}
-            className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0"
-            style={{ background: '#EEF9FF', color: '#55C8F5' }}>
-            <Pencil size={11} /> Editar
-          </button>
+          {(() => {
+            // Buyer: "Validar" until GPS-confirmed, then "Editar". Seller: always "Editar".
+            const needsValidate = role === 'buyer' && !verified
+            return (
+              <button onClick={() => { setValue(address ?? ''); setEditing(true) }}
+                className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0"
+                style={needsValidate ? { background: '#FFF7ED', color: '#EA580C' } : { background: '#EEF9FF', color: '#55C8F5' }}>
+                {needsValidate ? <><Navigation size={11} /> Validar</> : <><Pencil size={11} /> Editar</>}
+              </button>
+            )
+          })()}
         </div>
       ) : null}
 
