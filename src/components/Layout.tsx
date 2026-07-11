@@ -21,14 +21,6 @@ export default function Layout() {
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])
   useEffect(() => { if (real) setAvailable(real.available !== false) }, [real?.id, real?.available])
 
-  const toggleAvailable = async () => {
-    if (!real) return
-    const next = !available
-    setAvailable(next)
-    const { error } = await supabase.from('sellers').update({ available: next }).eq('id', real.id)
-    if (error) setAvailable(!next) // revert on failure
-  }
-
   // Register push for the real logged-in seller
   useEffect(() => {
     if (real && Notification.permission === 'granted') {
@@ -99,13 +91,13 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-3">
             {real && !impersonating && (
-              <button onClick={toggleAvailable}
+              <span
                 className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black"
                 style={{ background: available ? '#DCFCE7' : '#FEE2E2', color: available ? '#16A34A' : '#DC2626' }}
-                title="Tu turno">
+                title="Tu turno (lo asigna el admin)">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: available ? '#16A34A' : '#DC2626' }} />
-                {available ? 'Disponible' : 'Ausente'}
-              </button>
+                {available ? 'En turno' : 'Fuera de turno'}
+              </span>
             )}
             {effective && (
               <>

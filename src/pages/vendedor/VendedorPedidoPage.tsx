@@ -495,9 +495,9 @@ export default function VendedorPedidoPage() {
 
   const meId = effective?.auth_user_id
   const participants = session.participants ?? []
+  const onShift = effective?.available !== false // turno (lo asigna el admin)
   const canWrite = isAdmin
-    || session.assigned_seller_id === meId
-    || (session.writer_seller_ids ?? []).includes(meId ?? '')
+    || (onShift && (session.assigned_seller_id === meId || (session.writer_seller_ids ?? []).includes(meId ?? '')))
 
   const openInvite = async () => {
     setShowInvite(true)
@@ -686,7 +686,9 @@ export default function VendedorPedidoPage() {
           <div className="flex items-center justify-center gap-2 py-2 text-center">
             <Eye size={14} className="text-gray-400" />
             <p className="text-xs text-gray-500">
-              Solo lectura · este pedido lo atiende {session.seller_name?.split(' ')[0] || 'otro agente'}. Pídele que te invite para participar.
+              {!onShift
+                ? 'Estás fuera de turno · el administrador debe activarte para poder atender.'
+                : `Solo lectura · este pedido lo atiende ${session.seller_name?.split(' ')[0] || 'otro agente'}. Pídele que te invite para participar.`}
             </p>
           </div>
         )}
