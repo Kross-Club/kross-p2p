@@ -52,7 +52,9 @@ Deno.serve(async (req) => {
           const geo = await r.json()
           if (geo?.display_name) {
             // Prefer the mapped street address; keep the buyer's note as reference
-            update.address = `${geo.display_name} — Ref: ${address}`
+            // only if there already was one.
+            const ref = (address ?? '').trim()
+            update.address = ref ? `${geo.display_name} — Ref: ${ref}` : geo.display_name
           }
         }
       } catch { /* keep typed address if geocoding fails */ }

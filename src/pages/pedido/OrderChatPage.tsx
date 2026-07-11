@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
-import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff } from 'lucide-react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush } from '../../lib/push'
@@ -458,6 +458,7 @@ function ErrorPage({ type }: { type: 'not_found' | 'expired' | 'error' }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function OrderChatPage() {
   const { token } = useParams<{ token: string }>()
+  const navigate = useNavigate()
   const [state, setState] = useState<'loading' | 'not_found' | 'expired' | 'error' | 'ok'>('loading')
   const [session, setSession] = useState<OrderSession | null>(null)
   const [messages, setMessages] = useState<OrderMessage[]>([])
@@ -626,10 +627,12 @@ export default function OrderChatPage() {
       <div className="flex-shrink-0 px-4 pt-3 pb-5 text-white"
         style={{ background: '#55C8F5', borderRadius: '0 0 32px 32px' }}>
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'rgba(255,255,255,0.25)' }}>
-            <span className="text-white font-black text-base">K</span>
-          </div>
+          <button onClick={() => navigate('/mis-pedidos')}
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'rgba(255,255,255,0.25)' }}
+            title="Mis pedidos">
+            <ArrowLeft size={18} className="text-white" />
+          </button>
 
           <div className="relative flex-shrink-0">
             <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/60">
