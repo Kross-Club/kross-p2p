@@ -43,8 +43,7 @@ export default function LandingProductoPage() {
   useEffect(() => {
     if (!landingId) return
     supabase.from('products').select('id, store_id, nombre, precio, images, packs').eq('id', landingId).maybeSingle()
-      .then(({ data }) => { setProduct(data as Product); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(({ data }) => { setProduct(data as Product | null); setLoading(false) })
   }, [landingId])
 
   useEffect(() => {
