@@ -12,11 +12,10 @@ const STAGE_LABEL: Record<string, string> = {
 }
 
 const LOSES = [
-  'Pagar S/0 de envío',
+  'Comprar sin pagar adelanto',
   'Recibir en la puerta de tu casa',
   'Garantía de satisfacción con reembolso',
   'Promociones y descuentos cada mes',
-  'Comprar sin adelanto',
 ]
 
 export default function OrderDetailModal({ session, role, onClose, onCancelled }: {
@@ -102,20 +101,22 @@ export default function OrderDetailModal({ session, role, onClose, onCancelled }
               <div className="flex items-start gap-2 mb-2">
                 <AlertTriangle size={18} style={{ color: '#DC2626' }} className="flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-red-700 font-black">
-                  {role === 'buyer' ? 'Si cancelas, perderás:' : '¿Seguro que deseas cancelar este pedido?'}
+                  {role === 'buyer' ? 'Si cancelas, bajarás tu puntuación y perderás la posibilidad de:' : '¿Seguro que deseas cancelar este pedido?'}
                 </p>
               </div>
               {role === 'buyer' && (
-                <ul className="space-y-1 mb-3 pl-1">
-                  {LOSES.map(l => (
-                    <li key={l} className="flex items-start gap-2 text-xs text-red-700">
-                      <span className="font-black flex-shrink-0" style={{ color: '#DC2626' }}>✕</span>
-                      <span>{l}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="space-y-1.5 mb-3 pl-1">
+                    {LOSES.map(l => (
+                      <li key={l} className="flex items-start gap-2 text-xs text-red-700">
+                        <span className="font-black flex-shrink-0" style={{ color: '#DC2626' }}>✕</span>
+                        <span>{l}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-red-600 font-black mb-3">¿Seguro que quieres cancelar?</p>
+                </>
               )}
-              {role === 'buyer' && <p className="text-xs text-red-600 font-semibold mb-3">Además bajará tu puntuación. ¿Seguro que quieres cancelar?</p>}
               {role === 'seller' && <p className="text-xs text-red-600 mb-3">Esta acción no se puede deshacer.</p>}
               <div className="flex gap-2">
                 <button onClick={() => setConfirming(false)} disabled={busy} className="flex-1 py-2.5 rounded-xl font-black text-sm bg-white border border-gray-200 text-gray-600">No, mantener</button>
