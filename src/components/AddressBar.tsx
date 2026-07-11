@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapPin, Check, Navigation, Copy } from 'lucide-react'
+import { MapPin, Navigation, Copy } from 'lucide-react'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -48,18 +48,15 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
 
   return (
     <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid #F0F0F0' }}>
+      {/* Row 1: icon + title + badge + button, all in one line */}
       <div className="flex items-center gap-2">
         <MapPin size={15} style={{ color: '#EF4444' }} className="flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 flex items-center gap-1">
-            Dirección de entrega
-            {verified
-              ? <span className="flex items-center gap-0.5" style={{ color: '#16A34A' }}><Check size={10} /> Ubicación verificada</span>
-              : <span style={{ color: '#F59E0B' }}>· sin verificar</span>}
-          </p>
-          <p className="text-xs font-semibold text-gray-700 truncate">{address || (role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')}</p>
-        </div>
-
+        <p className="flex-1 min-w-0 truncate text-[10px] font-black uppercase tracking-wide text-gray-400">
+          Dirección de entrega
+          {verified
+            ? <span className="ml-1" style={{ color: '#16A34A' }}>✓ Ubicación verificada</span>
+            : <span className="ml-1" style={{ color: '#F59E0B' }}>· sin verificar</span>}
+        </p>
         {role === 'buyer' && (
           <button onClick={verifyGps} disabled={busy}
             className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0 disabled:opacity-50"
@@ -68,6 +65,11 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
           </button>
         )}
       </div>
+
+      {/* Full address — may span several lines */}
+      <p className="text-xs font-semibold text-gray-700 mt-1.5 break-words">
+        {address || (role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')}
+      </p>
 
       {/* Map links + coords (once GPS-located). Seller also gets Waze. */}
       {hasCoords && (
