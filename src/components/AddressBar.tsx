@@ -20,22 +20,34 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  // Collect GPS readings for a few seconds and keep the most accurate one, so
+  // the pin lands on the house (not the first, coarse fix on the road). This is
+  // what ride-hailing apps do — let the GPS converge.
+  const getBestFix = () => new Promise<GeolocationCoordinates | null>(resolve => {
+    if (!navigator.geolocation) return resolve(null)
+    let best: GeolocationCoordinates | null = null
+    let done = false
+    const finish = () => { if (done) return; done = true; try { navigator.geolocation.clearWatch(id) } catch { /* */ } resolve(best) }
+    const id = navigator.geolocation.watchPosition(
+      p => {
+        if (!best || p.coords.accuracy < best.accuracy) best = p.coords
+        if (best.accuracy <= 12) finish() // already precise enough
+      },
+      () => { if (!best) finish() },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
+    )
+    setTimeout(finish, 9000) // let it settle up to ~9s
+  })
+
   const verifyGps = async () => {
     if (busy) return
     setBusy(true)
     try {
-      const coords = await new Promise<GeolocationCoordinates | null>(resolve => {
-        if (!navigator.geolocation) return resolve(null)
-        // maximumAge:0 forces a fresh fix (not a cached, stale/coarse one)
-        navigator.geolocation.getCurrentPosition(
-          p => resolve(p.coords), () => resolve(null),
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        )
-      })
+      const coords = await getBestFix()
       if (!coords) { alert('Activa tu ubicación GPS para verificar tu dirección de entrega.'); return }
       // Reject imprecise fixes (typically a laptop/WiFi location) so no bad pin is saved
-      if (typeof coords.accuracy === 'number' && coords.accuracy > 100) {
-        alert(`Tu ubicación es poco precisa (±${Math.round(coords.accuracy)} m). Actívala en "Precisión alta" o sal a un lugar más abierto y toca Verificar GPS otra vez. Mejor hazlo desde tu celular.`)
+      if (typeof coords.accuracy === 'number' && coords.accuracy > 80) {
+        alert(`Tu ubicación es poco precisa (±${Math.round(coords.accuracy)} m). Sal a un lugar más abierto (o párate en tu puerta) y toca Verificar GPS otra vez. Mejor desde tu celular.`)
         return
       }
       const res = await fetch(`${BASE}/update-address`, {
@@ -70,7 +82,7 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
           <button onClick={verifyGps} disabled={busy}
             className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0 disabled:opacity-50"
             style={verified ? { background: '#EEF9FF', color: '#55C8F5' } : { background: '#FFF7ED', color: '#EA580C' }}>
-            {busy ? 'Ubicando…' : verified ? <><Navigation size={11} /> Cambiar</> : <><Navigation size={11} /> Verificar GPS</>}
+            {busy ? 'Afinando GPS…' : verified ? <><Navigation size={11} /> Cambiar</> : <><Navigation size={11} /> Verificar GPS</>}
           </button>
         )}
       </div>
