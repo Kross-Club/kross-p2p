@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import BuyerLoginPage from './pages/comprador/BuyerLoginPage'
 import MisPedidosPage from './pages/comprador/MisPedidosPage'
+import ScorePage from './pages/comprador/ScorePage'
 import LandingProductoPage from './pages/LandingProductoPage'
 import ChatsPage from './pages/comprador/ChatsPage'
 import ChatDetalleComprador from './pages/comprador/ChatDetalleComprador'
@@ -81,6 +82,7 @@ export default function App() {
 
         {/* Buyer PWA pages */}
         <Route path="/mis-pedidos" element={<MisPedidosPage />} />
+        <Route path="/mi-score" element={<ScorePage />} />
 
         {/* Public routes */}
         <Route path="/p/:token" element={<OrderChatPage />} />

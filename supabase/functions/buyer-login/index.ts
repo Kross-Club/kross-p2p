@@ -101,6 +101,21 @@ Deno.serve(async (req) => {
 
   const sessions = byId ?? []
 
+  // Count unread seller messages per order (for the "sin leer" badge)
+  if (sessions.length > 0) {
+    const ids = sessions.map(s => s.id)
+    const { data: unreadMsgs } = await supabase
+      .from('chat_messages')
+      .select('session_id')
+      .in('session_id', ids)
+      .in('sender_role', ['seller', 'system'])
+      .is('read_at', null)
+
+    const counts: Record<string, number> = {}
+    for (const m of unreadMsgs ?? []) counts[m.session_id] = (counts[m.session_id] ?? 0) + 1
+    for (const s of sessions as any[]) s.unread_count = counts[s.id] ?? 0
+  }
+
   return new Response(
     JSON.stringify({ buyer, sessions }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

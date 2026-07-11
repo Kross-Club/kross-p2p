@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, ChevronRight, Star, LogOut, Bell } from 'lucide-react'
+import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle } from 'lucide-react'
 import { subscribePush } from '../../lib/push'
 
 const STAGE_LABEL: Record<string, string> = {
@@ -41,6 +41,7 @@ interface BuyerSession {
     status: string
     created_at: string
     address: string | null
+    unread_count?: number
   }>
 }
 
@@ -111,10 +112,11 @@ export default function MisPedidosPage() {
           <p className="text-white/70 text-sm">Hola,</p>
           <h1 className="font-black text-2xl">{buyer.nombre.split(' ')[0]}</h1>
 
-          {/* Score card */}
-          <div className="mt-4 p-4 rounded-2xl flex items-center gap-4"
+          {/* Score card — tap to see how to level up */}
+          <button onClick={() => navigate('/mi-score')}
+            className="mt-4 w-full p-4 rounded-2xl flex items-center gap-4 text-left"
             style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}>
-            <div className="relative w-14 h-14">
+            <div className="relative w-14 h-14 flex-shrink-0">
               <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
                 <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="3" />
                 <circle cx="18" cy="18" r="15.9" fill="none" stroke={scoreColor} strokeWidth="3"
@@ -124,19 +126,17 @@ export default function MisPedidosPage() {
                 <span className="font-black text-sm text-white">{buyer.score}</span>
               </div>
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="font-black text-white text-sm">{scoreLabel}</p>
               <div className="flex items-center gap-1 mt-0.5">
                 <Star size={12} fill="#FFD400" color="#FFD400" />
                 <span className="text-xs text-white/80">{buyer.puntos} puntos acumulados</span>
               </div>
-              {buyer.score < 80 && (
-                <p className="text-xs text-white/60 mt-0.5">
-                  Sube tu score para recibir sin adelanto
-                </p>
-              )}
+              <p className="text-xs font-bold text-white/90 mt-0.5 flex items-center gap-1">
+                Ver cómo subir tu score <ChevronRight size={12} />
+              </p>
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -159,14 +159,19 @@ export default function MisPedidosPage() {
               })
               const stageColor = STAGE_COLOR[s.stage] ?? '#ccc'
               const stageLabel = STAGE_LABEL[s.stage] ?? s.stage
+              const unread = s.unread_count ?? 0
 
               return (
                 <button key={s.id} onClick={() => navigate(`/p/${s.token}`)}
                   className="w-full text-left p-4 rounded-2xl shadow-sm flex items-center gap-3"
-                  style={{ background: '#fff', border: '1.5px solid #f0f0f0' }}>
-                  <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#fff', border: unread > 0 ? '1.5px solid #55C8F5' : '1.5px solid #f0f0f0' }}>
+                  <div className="relative w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: `${stageColor}22` }}>
                     <Package size={20} style={{ color: stageColor }} />
+                    {unread > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full flex items-center justify-center text-white text-[10px] font-black"
+                        style={{ background: '#EF4444' }}>{unread}</span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-black text-sm truncate" style={{ color: '#111' }}>
@@ -175,10 +180,17 @@ export default function MisPedidosPage() {
                     <p className="text-xs mt-0.5" style={{ color: '#888' }}>
                       S/{s.product_price} · {date}
                     </p>
-                    <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-bold"
-                      style={{ background: `${stageColor}22`, color: stageColor }}>
-                      {stageLabel}
-                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-bold"
+                        style={{ background: `${stageColor}22`, color: stageColor }}>
+                        {stageLabel}
+                      </span>
+                      {unread > 0 && (
+                        <span className="inline-flex items-center gap-1 text-xs font-black" style={{ color: '#55C8F5' }}>
+                          <MessageCircle size={12} /> Leer chat
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <ChevronRight size={16} style={{ color: '#ccc' }} />
                 </button>

@@ -26,6 +26,17 @@ ALTER TABLE buyers ADD COLUMN IF NOT EXISTS nombre          text;
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS address         text;
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS score           integer DEFAULT 50;
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS puntos          integer DEFAULT 0;
+-- Llamadas salientes del comprador: solo para clientes TOP (se activa a mano)
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS can_call        boolean DEFAULT false;
+
+-- Acciones de gamificación completadas (para subir el score)
+CREATE TABLE IF NOT EXISTS buyer_actions (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  buyer_id   uuid REFERENCES buyers(id),
+  action_key text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE (buyer_id, action_key)
+);
 
 -- Únicos COMPLETOS (permiten varios NULL, pero no duplican DNI ni teléfono).
 -- Deben ser índices únicos completos — NO parciales — para que el upsert

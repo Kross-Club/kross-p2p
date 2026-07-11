@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, CheckCircle2, Truck, MicOff } from 'lucide-react'
+import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush } from '../../lib/push'
@@ -668,12 +668,14 @@ export default function OrderChatPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setShowCall(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white"
-            style={{ border: '2px solid #111' }}>
-            <Phone size={16} style={{ color: '#111' }} />
-          </button>
+          {session?.buyer_can_call && (
+            <button
+              onClick={() => setShowCall(true)}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white"
+              style={{ border: '2px solid #111' }}>
+              <Phone size={16} style={{ color: '#111' }} />
+            </button>
+          )}
         </div>
 
         <div className="mt-3 rounded-2xl px-3 py-2 flex items-center justify-between"
@@ -742,16 +744,6 @@ export default function OrderChatPage() {
         )}
 
         <div ref={bottomRef} />
-      </div>
-
-      {/* ── Nota llamada Kross ── */}
-      <div className="flex-shrink-0 mx-4 mb-2 flex items-center gap-2 bg-white rounded-2xl px-3 py-2"
-        style={{ border: '1px solid #E5E7EB' }}>
-        <Phone size={12} style={{ color: '#55C8F5' }} />
-        <p className="text-[10px] text-gray-500 flex-1">
-          Toca el ícono 📞 arriba para llamar a Teddy directamente
-        </p>
-        <CheckCircle2 size={12} style={{ color: '#55C8F5' }} />
       </div>
 
       {/* ── Input ── */}

@@ -64,6 +64,17 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Whether this buyer may place outbound calls (enabled manually for top clients)
+  let buyerCanCall = false
+  if (session.buyer_id) {
+    const { data: b } = await supabase
+      .from('buyers')
+      .select('can_call')
+      .eq('id', session.buyer_id)
+      .maybeSingle()
+    buyerCanCall = !!b?.can_call
+  }
+
   // Resolve the participants (everyone involved in the value chain) for the header
   const involved: string[] = session.involved_seller_ids ?? []
   let participants: { id: string; nombre: string; role_label: string; avatar_url: string | null; can_write: boolean }[] = []
@@ -91,7 +102,7 @@ Deno.serve(async (req) => {
 
   return new Response(
     JSON.stringify({
-      session: { ...session, seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar, participants },
+      session: { ...session, seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar, participants, buyer_can_call: buyerCanCall },
       messages: messages ?? [],
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
