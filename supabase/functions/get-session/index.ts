@@ -15,6 +15,7 @@ Deno.serve(async (req) => {
 
   const token = req.headers.get('x-kross-token')
   if (!token) return new Response('Unauthorized', { status: 401, headers: corsHeaders })
+  const viewerIsSeller = req.headers.get('x-viewer-role') === 'seller'
 
   // Fetch session
   const { data: session, error } = await supabase
@@ -24,8 +25,8 @@ Deno.serve(async (req) => {
       product_name, product_price, pack_name,
       status, stage, assigned_seller_id,
       seller_name, seller_role, seller_avatar,
-      involved_seller_ids, writer_seller_ids,
-      address, address_verified,
+      involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,
+      address, address_verified, address_lat, address_lng,
       expires_at, created_at
     `)
     .eq('token', token)
@@ -76,34 +77,47 @@ Deno.serve(async (req) => {
     buyerCanCall = !!b?.can_call
   }
 
-  // Resolve the participants (everyone involved in the value chain) for the header
-  const involved: string[] = session.involved_seller_ids ?? []
-  let participants: { id: string; nombre: string; role_label: string; avatar_url: string | null; can_write: boolean }[] = []
-  if (involved.length > 0) {
-    const writers: string[] = session.writer_seller_ids ?? []
+  // Header participants = current OWNER + people EXPLICITLY invited (not the
+  // whole hand-off history). Each carries who invited them so the client can
+  // show an expel button only to the inviter.
+  const invited: string[] = session.invited_seller_ids ?? []
+  const invitedBy: Record<string, string | null> = session.invited_by ?? {}
+  const chipIds = [session.assigned_seller_id, ...invited].filter(Boolean) as string[]
+  let participants: {
+    id: string; nombre: string; role_label: string; avatar_url: string | null
+    can_write: boolean; is_owner: boolean; invited_by: string | null
+  }[] = []
+  if (chipIds.length > 0) {
     const { data: people } = await supabase
       .from('sellers')
       .select('auth_user_id, nombre, role_label, avatar_url')
-      .in('auth_user_id', involved)
+      .in('auth_user_id', chipIds)
     participants = (people ?? []).map((p: any) => ({
       id: p.auth_user_id,
       nombre: p.nombre,
       role_label: p.role_label,
       avatar_url: p.avatar_url,
-      can_write: writers.includes(p.auth_user_id) || p.auth_user_id === session.assigned_seller_id,
+      is_owner: p.auth_user_id === session.assigned_seller_id,
+      can_write: true,
+      invited_by: invitedBy[p.auth_user_id] ?? null,
     }))
+    // keep owner first, then invited in order
+    participants.sort((a, b) => (a.is_owner === b.is_owner ? 0 : a.is_owner ? -1 : 1))
   }
 
-  // Fetch messages
-  const { data: messages } = await supabase
+  // Fetch messages — the buyer never sees seller-only entries (e.g. expulsions)
+  let mq = supabase
     .from('chat_messages')
-    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, created_at, read_at')
+    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, visibility, created_at, read_at')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
+  if (!viewerIsSeller) mq = mq.or('visibility.is.null,visibility.eq.all')
+  const { data: messages } = await mq
 
   return new Response(
     JSON.stringify({
       session: { ...session, seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar, participants, buyer_can_call: buyerCanCall },
+      viewer_is_seller: viewerIsSeller,
       messages: messages ?? [],
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

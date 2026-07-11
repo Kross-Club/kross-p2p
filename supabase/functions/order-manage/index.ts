@@ -59,17 +59,18 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite'
+    action: 'advance' | 'invite' | 'expel'
     session_id: string
     stage?: string
     invite_seller_id?: string
+    by_seller_id?: string
   }
 
   if (!body.session_id) return new Response('Missing session_id', { status: 400, headers: corsHeaders })
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, store_id, stage, assigned_seller_id, involved_seller_ids, writer_seller_ids')
+    .select('id, store_id, stage, assigned_seller_id, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by')
     .eq('id', body.session_id)
     .single()
 
@@ -77,6 +78,14 @@ Deno.serve(async (req) => {
 
   const involved: string[] = session.involved_seller_ids ?? []
   const writers: string[] = session.writer_seller_ids ?? []
+  const invited: string[] = session.invited_seller_ids ?? []
+  const invitedBy: Record<string, string> = session.invited_by ?? {}
+
+  const isAdmin = async (sellerAuthId?: string) => {
+    if (!sellerAuthId) return false
+    const { data } = await supabase.from('sellers').select('is_admin').eq('auth_user_id', sellerAuthId).maybeSingle()
+    return !!data?.is_admin
+  }
 
   // ─── INVITE ───────────────────────────────────────────────────────────────
   if (body.action === 'invite') {
@@ -91,13 +100,57 @@ Deno.serve(async (req) => {
     await supabase.from('order_sessions').update({
       involved_seller_ids: uniq([...involved, body.invite_seller_id]),
       writer_seller_ids: uniq([...writers, body.invite_seller_id]),
+      invited_seller_ids: uniq([...invited, body.invite_seller_id]),
+      invited_by: { ...invitedBy, [body.invite_seller_id]: body.by_seller_id ?? null },
     }).eq('id', session.id)
 
+    // Visible to buyer too ("invitó a alguien")
     const { data: msg } = await supabase.from('chat_messages').insert({
       session_id: session.id,
       sender_role: 'system',
       type: 'status_update',
-      body: `${member?.nombre?.split(' ')[0] ?? 'Un agente'} (${member?.role_label ?? 'equipo'}) fue invitado a participar`,
+      visibility: 'all',
+      body: `${member?.nombre?.split(' ')[0] ?? 'Un agente'} (${member?.role_label ?? 'equipo'}) se unió al chat`,
+    }).select().single()
+
+    await broadcast(session.id, 'participants_update', {})
+    if (msg) await broadcast(session.id, 'new_message', msg)
+
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  // ─── EXPEL ──────────────────────────────────────────────────────────────────
+  if (body.action === 'expel') {
+    if (!body.invite_seller_id) return new Response('Missing invite_seller_id', { status: 400, headers: corsHeaders })
+
+    // Only the person who invited them (or an admin) can expel.
+    const allowed = invitedBy[body.invite_seller_id] === body.by_seller_id || await isAdmin(body.by_seller_id)
+    if (!allowed) return new Response('Not allowed', { status: 403, headers: corsHeaders })
+
+    const { data: member } = await supabase
+      .from('sellers')
+      .select('nombre, role_label')
+      .eq('auth_user_id', body.invite_seller_id)
+      .maybeSingle()
+
+    const nextInvitedBy = { ...invitedBy }
+    delete nextInvitedBy[body.invite_seller_id]
+
+    await supabase.from('order_sessions').update({
+      writer_seller_ids: writers.filter(w => w !== body.invite_seller_id),
+      invited_seller_ids: invited.filter(i => i !== body.invite_seller_id),
+      invited_by: nextInvitedBy,
+    }).eq('id', session.id)
+
+    // Sellers-only history — the buyer never sees expulsions
+    const { data: msg } = await supabase.from('chat_messages').insert({
+      session_id: session.id,
+      sender_role: 'system',
+      type: 'status_update',
+      visibility: 'sellers',
+      body: `${member?.nombre?.split(' ')[0] ?? 'Un agente'} (${member?.role_label ?? 'equipo'}) fue retirado del chat`,
     }).select().single()
 
     await broadcast(session.id, 'participants_update', {})
@@ -142,10 +195,13 @@ Deno.serve(async (req) => {
         seller_avatar: member.avatar_url,
       }).eq('id', session.id)
 
-      // 3) Value-chain arrays (new columns) — best effort, don't block the rest
+      // 3) Value-chain arrays (new columns) — best effort, don't block the rest.
+      //    A hand-off resets the invited list (new owner starts clean).
       await supabase.from('order_sessions').update({
         writer_seller_ids: uniq([member.auth_user_id]),
         involved_seller_ids: uniq([...involved, member.auth_user_id]),
+        invited_seller_ids: [],
+        invited_by: {},
       }).eq('id', session.id)
 
       newAssignment = { seller_name: member.nombre, seller_role: member.role_label, seller_avatar: member.avatar_url }
@@ -159,6 +215,7 @@ Deno.serve(async (req) => {
       session_id: session.id,
       sender_role: 'system',
       type: 'status_update',
+      visibility: 'all',
       body: `Tu pedido pasó a ${newAssignment.seller_role} · te atiende ${newAssignment.seller_name.split(' ')[0]}`,
     }).select().single()
 

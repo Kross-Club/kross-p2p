@@ -1,21 +1,24 @@
 import { useState } from 'react'
-import { MapPin, Check, Pencil, X, Navigation } from 'lucide-react'
+import { MapPin, Check, Pencil, X, Navigation, Copy } from 'lucide-react'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 // Delivery address shown in the chat. Both buyer and seller can edit it, but a
 // buyer edit must be confirmed with the phone's GPS (that's what "verified" means).
-export default function AddressBar({ sessionId, address, verified, role, onUpdated }: {
+export default function AddressBar({ sessionId, address, verified, lat, lng, role, onUpdated }: {
   sessionId: string
   address: string | null
   verified: boolean
+  lat?: number | null
+  lng?: number | null
   role: 'buyer' | 'seller'
-  onUpdated: (address: string, verified: boolean) => void
+  onUpdated: (address: string, verified: boolean, lat: number | null, lng: number | null) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(address ?? '')
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const post = async (payload: Record<string, unknown>) => {
     const res = await fetch(`${BASE}/update-address`, {
@@ -24,7 +27,7 @@ export default function AddressBar({ sessionId, address, verified, role, onUpdat
       body: JSON.stringify(payload),
     })
     if (!res.ok) throw new Error('update_failed')
-    return res.json() as Promise<{ address: string; address_verified: boolean }>
+    return res.json() as Promise<{ address: string; address_verified: boolean; address_lat: number | null; address_lng: number | null }>
   }
 
   const save = async () => {
@@ -46,10 +49,10 @@ export default function AddressBar({ sessionId, address, verified, role, onUpdat
           return
         }
         const r = await post({ session_id: sessionId, address: v, lat: coords.latitude, lng: coords.longitude, by: 'buyer' })
-        onUpdated(r.address, r.address_verified)
+        onUpdated(r.address, r.address_verified, r.address_lat, r.address_lng)
       } else {
         const r = await post({ session_id: sessionId, address: v, by: 'seller' })
-        onUpdated(r.address, r.address_verified)
+        onUpdated(r.address, r.address_verified, r.address_lat, r.address_lng)
       }
       setEditing(false)
     } catch {
@@ -79,7 +82,30 @@ export default function AddressBar({ sessionId, address, verified, role, onUpdat
             <Pencil size={11} /> Editar
           </button>
         </div>
-      ) : (
+      ) : null}
+
+      {/* Map links for the courier (when validated by GPS) */}
+      {!editing && typeof lat === 'number' && typeof lng === 'number' && (
+        <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: '1px dashed #eee' }}>
+          <a href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg"
+            style={{ background: '#E8F0FE', color: '#1A73E8' }}>
+            <Navigation size={11} /> Google Maps
+          </a>
+          <a href={`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg"
+            style={{ background: '#E7FBFF', color: '#33CCFF' }}>
+            <Navigation size={11} /> Waze
+          </a>
+          <button onClick={() => { navigator.clipboard?.writeText(`${lat},${lng}`); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+            className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto"
+            style={{ background: '#F3F4F6', color: '#555' }}>
+            <Copy size={11} /> {copied ? '¡Copiado!' : 'Coords'}
+          </button>
+        </div>
+      )}
+
+      {editing && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Dirección de entrega</p>

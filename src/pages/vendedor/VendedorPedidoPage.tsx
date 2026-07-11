@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
@@ -344,7 +344,7 @@ export default function VendedorPedidoPage() {
     if (withSpinner) setLoading(true)
     try {
       const res = await fetch(`${BASE}/get-session`, {
-        headers: { Authorization: `Bearer ${ANON}`, 'x-kross-token': token },
+        headers: { Authorization: `Bearer ${ANON}`, 'x-kross-token': token, 'x-viewer-role': 'seller' },
       })
       if (!res.ok) return
       const { session: s, messages: m } = await res.json() as { session: OrderSession; messages: OrderMessage[] }
@@ -386,7 +386,7 @@ export default function VendedorPedidoPage() {
       .on('broadcast', { event: 'assignment_update' }, () => { reloadSession() })
       .on('broadcast', { event: 'participants_update' }, () => { reloadSession() })
       .on('broadcast', { event: 'address_update' }, ({ payload }) => {
-        setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified } : prev)
+        setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified, address_lat: payload.address_lat, address_lng: payload.address_lng } : prev)
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.role === 'buyer') {
@@ -517,7 +517,16 @@ export default function VendedorPedidoPage() {
     await fetch(`${BASE}/order-manage`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'invite', session_id: session.id, invite_seller_id: sellerAuthId }),
+      body: JSON.stringify({ action: 'invite', session_id: session.id, invite_seller_id: sellerAuthId, by_seller_id: meId }),
+    })
+    reloadSession()
+  }
+
+  const expel = async (sellerAuthId: string) => {
+    await fetch(`${BASE}/order-manage`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'expel', session_id: session.id, invite_seller_id: sellerAuthId, by_seller_id: meId }),
     })
     reloadSession()
   }
@@ -576,12 +585,19 @@ export default function VendedorPedidoPage() {
             <Users size={12} className="text-white/40 flex-shrink-0" />
             {participants.map(p => {
               const c = roleColor(p.role_label)
-              const isCurrent = p.id === session.assigned_seller_id
+              const isCurrent = !!p.is_owner
+              // Only whoever invited them (or an admin) can expel an invited guest
+              const canExpel = !isCurrent && (p.invited_by === meId || isAdmin)
               return (
                 <span key={p.id}
                   className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0"
-                  style={{ background: isCurrent ? c : 'rgba(255,255,255,0.1)', color: isCurrent ? '#fff' : 'rgba(255,255,255,0.7)' }}>
-                  {p.nombre.split(' ')[0]} · {p.role_label}{!p.can_write && ' 👁'}
+                  style={{ background: isCurrent ? c : 'rgba(255,255,255,0.12)', color: isCurrent ? '#fff' : 'rgba(255,255,255,0.85)' }}>
+                  {p.nombre.split(' ')[0]} · {p.role_label}
+                  {canExpel && (
+                    <button onClick={() => expel(p.id)} title="Retirar del chat" className="ml-0.5">
+                      <X size={11} />
+                    </button>
+                  )}
                 </span>
               )
             })}
@@ -614,8 +630,10 @@ export default function VendedorPedidoPage() {
         sessionId={session.id}
         address={session.address ?? null}
         verified={!!session.address_verified}
+        lat={session.address_lat}
+        lng={session.address_lng}
         role="seller"
-        onUpdated={(address, address_verified) => setSession(s => s ? { ...s, address, address_verified } : s)}
+        onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
       />
 
       {/* Messages */}

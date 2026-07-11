@@ -508,6 +508,8 @@ export default function OrderChatPage() {
       .channel(`order:${session.id}`)
       .on('broadcast', { event: 'new_message' }, ({ payload }) => {
         const msg = payload as OrderMessage
+        // The buyer never sees seller-only entries (e.g. expulsions)
+        if (msg.visibility === 'sellers') return
         setMessages(prev => {
           if (prev.some(m => m.id === msg.id)) return prev
           // Replace optimistic message from same role if exists
@@ -526,7 +528,7 @@ export default function OrderChatPage() {
         } : prev)
       })
       .on('broadcast', { event: 'address_update' }, ({ payload }) => {
-        setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified } : prev)
+        setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified, address_lat: payload.address_lat, address_lng: payload.address_lng } : prev)
       })
       .on('broadcast', { event: 'seller_call_request' }, () => {
         setSellerCalling(true)
@@ -709,8 +711,10 @@ export default function OrderChatPage() {
           sessionId={session.id}
           address={session.address ?? null}
           verified={!!session.address_verified}
+          lat={session.address_lat}
+          lng={session.address_lng}
           role="buyer"
-          onUpdated={(address, address_verified) => setSession(s => s ? { ...s, address, address_verified } : s)}
+          onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
         />
       </div>
 

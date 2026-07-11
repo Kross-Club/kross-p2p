@@ -103,7 +103,12 @@ CREATE POLICY "avatars_update" ON storage.objects
 -- sender_role_label:   rol del que envió cada mensaje (para el distintivo en el chat)
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS involved_seller_ids uuid[] DEFAULT '{}';
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS writer_seller_ids   uuid[] DEFAULT '{}';
+-- Invitados EXPLÍCITOS (para el chip bar) + quién invitó a cada uno (para expulsar)
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS invited_seller_ids  uuid[] DEFAULT '{}';
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS invited_by          jsonb  DEFAULT '{}';
 ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS sender_role_label   text;
+-- Visibilidad del mensaje de sistema: 'all' (comprador y vendedores) o 'sellers'
+ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS visibility          text DEFAULT 'all';
 
 -- Dirección de entrega + validación por GPS del comprador
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lat      double precision;

@@ -35,41 +35,69 @@ Deno.serve(async (req) => {
   if (!session_id || !address || !by) return new Response('Missing fields', { status: 400, headers: corsHeaders })
 
   const hasGps = typeof lat === 'number' && typeof lng === 'number'
-
   const update: Record<string, unknown> = { address }
+
   if (by === 'buyer') {
-    // A buyer edit is only "verified" when confirmed with GPS.
     update.address_verified = hasGps
-    if (hasGps) { update.address_lat = lat; update.address_lng = lng }
+    if (hasGps) {
+      update.address_lat = lat
+      update.address_lng = lng
+      // Correct the text to the real map-ordered address (reverse geocoding)
+      try {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=es`,
+          { headers: { 'User-Agent': 'KrossApp/1.0 (delivery)' } }
+        )
+        if (r.ok) {
+          const geo = await r.json()
+          if (geo?.display_name) {
+            // Prefer the mapped street address; keep the buyer's note as reference
+            update.address = `${geo.display_name} — Ref: ${address}`
+          }
+        }
+      } catch { /* keep typed address if geocoding fails */ }
+    }
+  } else {
+    // A seller edit invalidates the GPS — the buyer must confirm it again.
+    update.address_verified = false
+    update.address_lat = null
+    update.address_lng = null
   }
-  // A seller edit keeps whatever GPS verification existed (they can't self-verify).
 
   const { data: session } = await supabase
     .from('order_sessions')
     .update(update)
     .eq('id', session_id)
-    .select('id, buyer_id, address, address_verified')
+    .select('id, buyer_id, address, address_verified, address_lat, address_lng')
     .single()
 
   if (!session) return new Response('Not found', { status: 404, headers: corsHeaders })
 
-  // Keep the buyer's account default address in sync when the buyer edits
   if (by === 'buyer' && session.buyer_id) {
-    await supabase.from('buyers').update({ address }).eq('id', session.buyer_id)
+    await supabase.from('buyers').update({ address: session.address }).eq('id', session.buyer_id)
   }
 
-  // Log it in the chat + notify both sides
   await supabase.from('chat_messages').insert({
     session_id,
     sender_role: 'system',
     type: 'status_update',
+    visibility: 'all',
     body: by === 'buyer'
-      ? `📍 El comprador actualizó la dirección de entrega${hasGps ? ' (validada por GPS)' : ''}`
-      : '📍 Se actualizó la dirección de entrega',
+      ? '📍 El comprador validó su dirección de entrega con GPS'
+      : '📍 El vendedor corrigió la dirección — falta que el comprador la valide con GPS',
   })
-  await broadcast(session_id, 'address_update', { address: session.address, address_verified: session.address_verified })
+  await broadcast(session_id, 'address_update', {
+    address: session.address,
+    address_verified: session.address_verified,
+    address_lat: session.address_lat,
+    address_lng: session.address_lng,
+  })
 
-  return new Response(JSON.stringify({ ok: true, address: session.address, address_verified: session.address_verified }), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  })
+  return new Response(JSON.stringify({
+    ok: true,
+    address: session.address,
+    address_verified: session.address_verified,
+    address_lat: session.address_lat,
+    address_lng: session.address_lng,
+  }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 })
