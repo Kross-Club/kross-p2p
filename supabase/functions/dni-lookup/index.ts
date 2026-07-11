@@ -27,9 +27,20 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ nombre: null }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
     const data = await r.json()
-    const nombre = data?.full_name
-      || [data?.first_name, data?.first_last_name, data?.second_last_name].filter(Boolean).join(' ')
-      || null
+
+    const cap = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : ''
+    const title = (s: string) => (s ?? '').trim().split(/\s+/).filter(Boolean).map(cap).join(' ')
+
+    const primerNombre = ((data?.first_name ?? '') as string).trim().split(/\s+/)[0] || ''
+    const primerApellido = ((data?.first_last_name ?? '') as string).trim().split(/\s+/)[0] || ''
+
+    let nombre: string | null = null
+    if (primerNombre || primerApellido) {
+      nombre = title(`${primerNombre} ${primerApellido}`).trim() || null
+    } else if (data?.full_name) {
+      // Fallback: RENIEC full_name comes as "APELLIDOS NOMBRES"; take a couple of tokens
+      nombre = title(String(data.full_name).split(/\s+/).slice(0, 2).join(' ')) || null
+    }
     return new Response(JSON.stringify({ nombre }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch {
     return new Response(JSON.stringify({ nombre: null }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
