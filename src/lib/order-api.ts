@@ -10,7 +10,7 @@ export interface OrderSession {
   product_name: string | null
   product_price: number | null
   pack_name: string | null
-  status: 'active' | 'delivered' | 'rejected' | 'expired'
+  status: 'active' | 'delivered' | 'rejected' | 'expired' | 'cancelado'
   stage: 'nuevo' | 'confirmado' | 'preparando' | 'en_camino' | 'entregado'
   expires_at: string | null
   seller_name: string | null

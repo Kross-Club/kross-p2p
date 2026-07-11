@@ -28,15 +28,17 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
     let best: GeolocationCoordinates | null = null
     let done = false
     const finish = () => { if (done) return; done = true; try { navigator.geolocation.clearWatch(id) } catch { /* */ } resolve(best) }
+    const start = Date.now()
     const id = navigator.geolocation.watchPosition(
       p => {
         if (!best || p.coords.accuracy < best.accuracy) best = p.coords
-        if (best.accuracy <= 12) finish() // already precise enough
+        // Stop early only if it's very precise AND we've given GPS a moment to settle
+        if (best.accuracy <= 8 && Date.now() - start > 3500) finish()
       },
       () => { if (!best) finish() },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     )
-    setTimeout(finish, 9000) // let it settle up to ~9s
+    setTimeout(finish, 15000) // let it converge up to ~15s
   })
 
   const verifyGps = async () => {
@@ -82,7 +84,7 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
           <button onClick={verifyGps} disabled={busy}
             className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0 disabled:opacity-50"
             style={verified ? { background: '#EEF9FF', color: '#55C8F5' } : { background: '#FFF7ED', color: '#EA580C' }}>
-            {busy ? 'Afinando GPS…' : verified ? <><Navigation size={11} /> Cambiar</> : <><Navigation size={11} /> Verificar GPS</>}
+            {busy ? 'Ubicando…' : verified ? <><Navigation size={11} /> Cambiar</> : <><Navigation size={11} /> Verificar GPS</>}
           </button>
         )}
       </div>

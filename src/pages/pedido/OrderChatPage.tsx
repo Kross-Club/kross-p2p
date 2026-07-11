@@ -8,6 +8,7 @@ import { startRingtone } from '../../lib/ringtone'
 import { sendCallReject, sendCallCancel, listenCallReject, listenCallCancel } from '../../lib/call-signal'
 import InstallBanner from '../../components/InstallBanner'
 import AddressBar from '../../components/AddressBar'
+import OrderDetailModal from '../../components/OrderDetailModal'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -466,6 +467,7 @@ export default function OrderChatPage() {
   const [sending, setSending] = useState(false)
   const [showPushBanner, setShowPushBanner] = useState(false)
   const [showCall, setShowCall] = useState(false)
+  const [showDetail, setShowDetail] = useState(false)
   const [sellerCalling, setSellerCalling] = useState(false)
   const [sellerTyping, setSellerTyping] = useState(false)
 
@@ -530,6 +532,9 @@ export default function OrderChatPage() {
       })
       .on('broadcast', { event: 'address_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified, address_lat: payload.address_lat, address_lng: payload.address_lng } : prev)
+      })
+      .on('broadcast', { event: 'order_cancelled' }, () => {
+        setSession(prev => prev ? { ...prev, status: 'cancelado' } : prev)
       })
       .on('broadcast', { event: 'seller_call_request' }, () => {
         setSellerCalling(true)
@@ -687,11 +692,12 @@ export default function OrderChatPage() {
           )}
         </div>
 
-        <div className="mt-3 rounded-2xl px-3 py-2 flex items-center justify-between"
+        <button onClick={() => setShowDetail(true)}
+          className="mt-3 w-full rounded-2xl px-3 py-2 flex items-center justify-between text-left"
           style={{ background: 'rgba(255,255,255,0.2)' }}>
           <div className="min-w-0">
             <p className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>
-              {session.pack_name || 'Tu pedido'}
+              {session.pack_name || 'Tu pedido'} · ver detalle
             </p>
             <p className="text-sm font-black text-white truncate max-w-[200px]">
               {session.product_name || 'Producto Kross'}
@@ -700,7 +706,7 @@ export default function OrderChatPage() {
           <p className="font-black text-lg text-white flex-shrink-0 ml-2">
             {session.product_price ? `S/${session.product_price}` : ''}
           </p>
-        </div>
+        </button>
       </div>
 
       {/* ── Tracker ── */}
@@ -810,6 +816,15 @@ export default function OrderChatPage() {
           sellerRole={session?.seller_role}
           sellerAvatar={session?.seller_avatar}
           onClose={() => setShowCall(false)}
+        />
+      )}
+
+      {showDetail && (
+        <OrderDetailModal
+          session={session}
+          role="buyer"
+          onClose={() => setShowDetail(false)}
+          onCancelled={() => setSession(s => s ? { ...s, status: 'cancelado' } : s)}
         />
       )}
     </div>

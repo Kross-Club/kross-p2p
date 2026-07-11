@@ -59,22 +59,46 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel'
+    action: 'advance' | 'invite' | 'expel' | 'cancel'
     session_id: string
     stage?: string
     invite_seller_id?: string
     by_seller_id?: string
+    by?: 'buyer' | 'seller'
   }
 
   if (!body.session_id) return new Response('Missing session_id', { status: 400, headers: corsHeaders })
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, store_id, stage, assigned_seller_id, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by')
+    .select('id, store_id, stage, buyer_id, assigned_seller_id, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by')
     .eq('id', body.session_id)
     .single()
 
   if (!session) return new Response('Not found', { status: 404, headers: corsHeaders })
+
+  // ─── CANCEL ─────────────────────────────────────────────────────────────────
+  if (body.action === 'cancel') {
+    await supabase.from('order_sessions').update({ status: 'cancelado' }).eq('id', session.id)
+
+    let scorePenalty = 0
+    if (body.by === 'buyer' && session.buyer_id) {
+      const { data: b } = await supabase.from('buyers').select('score').eq('id', session.buyer_id).maybeSingle()
+      const newScore = Math.max(0, (b?.score ?? 50) - 15)
+      scorePenalty = (b?.score ?? 50) - newScore
+      await supabase.from('buyers').update({ score: newScore }).eq('id', session.buyer_id)
+    }
+
+    const { data: msg } = await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'system', type: 'status_update', visibility: 'all',
+      body: body.by === 'buyer' ? '❌ El comprador canceló el pedido' : '❌ El pedido fue cancelado',
+    }).select().single()
+
+    await broadcast(session.id, 'order_cancelled', { by: body.by })
+    if (msg) await broadcast(session.id, 'new_message', msg)
+
+    return new Response(JSON.stringify({ ok: true, score_penalty: scorePenalty }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
 
   const involved: string[] = session.involved_seller_ids ?? []
   const writers: string[] = session.writer_seller_ids ?? []

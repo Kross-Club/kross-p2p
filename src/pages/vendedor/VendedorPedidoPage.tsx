@@ -4,6 +4,7 @@ import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, B
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
+import OrderDetailModal from '../../components/OrderDetailModal'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { useSeller } from '../../lib/seller-session'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -332,6 +333,7 @@ export default function VendedorPedidoPage() {
   const [buyerTyping, setBuyerTyping] = useState(false)
   const [buyerOnline, setBuyerOnline] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
+  const [showDetail, setShowDetail] = useState(false)
   const [team, setTeam] = useState<{ auth_user_id: string; nombre: string; role_label: string }[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -387,6 +389,9 @@ export default function VendedorPedidoPage() {
       .on('broadcast', { event: 'participants_update' }, () => { reloadSession() })
       .on('broadcast', { event: 'address_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified, address_lat: payload.address_lat, address_lng: payload.address_lng } : prev)
+      })
+      .on('broadcast', { event: 'order_cancelled' }, () => {
+        setSession(prev => prev ? { ...prev, status: 'cancelado' } : prev)
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.role === 'buyer') {
@@ -556,12 +561,13 @@ export default function VendedorPedidoPage() {
               style={{ borderColor: '#111', background: buyerOnline ? '#4ADE80' : '#6B7280' }} />
           </div>
 
-          <div className="flex-1 min-w-0">
+          <button onClick={() => setShowDetail(true)} className="flex-1 min-w-0 text-left">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
             <p className="text-xs" style={{ color: buyerOnline ? '#4ADE80' : 'rgba(255,255,255,0.6)' }}>
               {buyerOnline ? 'En línea ahora' : `${session.product_name} · ${session.pack_name || `S/${session.product_price}`}`}
             </p>
-          </div>
+            <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Ver pedido ›</p>
+          </button>
 
           <button
             onClick={() => channelRef.current?.send({ type: 'broadcast', event: 'request_push_permission', payload: {} })}
@@ -731,6 +737,15 @@ export default function VendedorPedidoPage() {
           sellerName={sellerName}
           channelRef={channelRef}
           onClose={() => setShowCall(false)}
+        />
+      )}
+
+      {showDetail && (
+        <OrderDetailModal
+          session={session}
+          role="seller"
+          onClose={() => setShowDetail(false)}
+          onCancelled={() => setSession(s => s ? { ...s, status: 'cancelado' } : s)}
         />
       )}
     </div>
