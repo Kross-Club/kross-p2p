@@ -4,6 +4,7 @@ import { LogOut, Eye, X } from 'lucide-react'
 import BottomNav from './BottomNav'
 import IncomingCallOverlay from './IncomingCallOverlay'
 import InstallBanner from './InstallBanner'
+import SellerPresenceTracker from './SellerPresenceTracker'
 import { KrossIcon } from './KrossLogo'
 import { subscribePush } from '../lib/push'
 import { supabase } from '../lib/supabase'
@@ -68,6 +69,7 @@ export default function Layout() {
     <div className="min-h-screen bg-gray-50 flex justify-center">
       <div className="w-full max-w-[430px] min-h-screen bg-white relative flex flex-col shadow-2xl">
         {effective && <IncomingCallOverlay storeId={effective.store_id} />}
+        <SellerPresenceTracker authUserId={real?.auth_user_id} />
         <InstallBanner />
 
         {/* Impersonation banner */}

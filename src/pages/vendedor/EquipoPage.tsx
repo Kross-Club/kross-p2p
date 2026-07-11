@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Eye, ShieldCheck, LogIn } from 'lucide-react'
+import { Users, Eye, ShieldCheck, LogIn, UserPlus, X, Pencil } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
 
+const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
+const ROLES = ['Ventas', 'Despacho', 'Motorizado']
 const ROLE_ORDER = ['venta', 'despacho', 'motorizado', 'admin']
-
-function roleRank(role: string) {
-  const r = role.toLowerCase()
-  const idx = ROLE_ORDER.findIndex(k => r.includes(k))
-  return idx === -1 ? 99 : idx
-}
-
+const roleRank = (r: string) => { const i = ROLE_ORDER.findIndex(k => r.toLowerCase().includes(k)); return i === -1 ? 99 : i }
 function roleColor(role: string) {
-  const r = role.toLowerCase()
+  const r = (role ?? '').toLowerCase()
   if (r.includes('venta')) return '#55C8F5'
   if (r.includes('despacho')) return '#863bff'
   if (r.includes('motoriz')) return '#FF8C00'
@@ -26,41 +24,63 @@ export default function EquipoPage() {
   const { real, effective, isAdmin, impersonating, actAs, stopActing } = useSeller()
   const [team, setTeam] = useState<SellerProfile[]>([])
   const [loading, setLoading] = useState(true)
+  const [online, setOnline] = useState<Set<string>>(new Set())
+  const [profile, setProfile] = useState<SellerProfile | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
+  const loadTeam = () => {
     if (!real) return
-    supabase
-      .from('sellers')
+    supabase.from('sellers')
       .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, available')
       .eq('store_id', real.store_id)
-      .then(({ data }) => {
-        setTeam((data as SellerProfile[]) ?? [])
-        setLoading(false)
+      .then(({ data }) => { setTeam((data as SellerProfile[]) ?? []); setLoading(false) })
+  }
+  useEffect(() => { loadTeam() /* eslint-disable-next-line */ }, [real?.store_id])
+
+  // Real connection presence
+  useEffect(() => {
+    const ch = supabase.channel('presence:sellers')
+      .on('presence', { event: 'sync' }, () => setOnline(new Set(Object.keys(ch.presenceState()))))
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  const enterAs = (s: SellerProfile) => { if (s.auth_user_id === real?.auth_user_id) stopActing(); else actAs(s); navigate('/vendedor/chats') }
+
+  const setAvailable = async (s: SellerProfile, available: boolean) => {
+    setBusy(true)
+    try {
+      const res = await fetch(`${BASE}/admin-team`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_available', admin_auth_id: real?.auth_user_id, seller_id: s.auth_user_id, available }),
       })
-  }, [real?.store_id])
-
-  const enterAs = (s: SellerProfile) => {
-    if (s.auth_user_id === real?.auth_user_id) stopActing()
-    else actAs(s)
-    navigate('/vendedor/chats')
+      const r = await res.json().catch(() => ({}))
+      if (!res.ok) { alert('No se pudo cambiar el turno.'); return }
+      if (r.reassigned > 0) alert(`Turno cerrado. Se cedieron ${r.reassigned} pedido(s) a otro ${s.role_label}.`)
+      loadTeam()
+    } finally { setBusy(false) }
   }
 
-  if (loading) {
-    return <div className="flex justify-center py-16">
-      <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" />
-    </div>
+  const setRole = async (s: SellerProfile, role_label: string) => {
+    setBusy(true)
+    try {
+      await fetch(`${BASE}/admin-team`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_role', admin_auth_id: real?.auth_user_id, seller_id: s.auth_user_id, role_label }),
+      })
+      setProfile(null); loadTeam()
+    } finally { setBusy(false) }
   }
+
+  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" /></div>
 
   if (!isAdmin) {
     return (
       <div className="px-4 py-4">
-        <h1 className="text-xl font-black text-gray-900 mb-4 flex items-center gap-2">
-          <Users size={20} /> Mi cuenta
-        </h1>
-        {effective && <MemberCard s={effective} isSelf highlight />}
-        <p className="text-xs text-gray-400 mt-4 text-center">
-          Solo el administrador puede ver y administrar todo el equipo.
-        </p>
+        <h1 className="text-xl font-black text-gray-900 mb-4 flex items-center gap-2"><Users size={20} /> Mi cuenta</h1>
+        {effective && <MemberCard s={effective} isSelf online={online} />}
+        <p className="text-xs text-gray-400 mt-4 text-center">Solo el administrador administra el equipo.</p>
       </div>
     )
   }
@@ -70,95 +90,162 @@ export default function EquipoPage() {
   return (
     <div className="px-4 py-4">
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-black text-gray-900 flex items-center gap-2">
-          <Users size={20} /> Mi equipo
-        </h1>
-        <span className="text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1"
-          style={{ background: '#EEF9FF', color: '#111' }}>
-          <ShieldCheck size={11} /> Admin
-        </span>
+        <h1 className="text-xl font-black text-gray-900 flex items-center gap-2"><Users size={20} /> Mi equipo</h1>
+        <button onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#55C8F5', color: '#fff' }}>
+          <UserPlus size={13} /> Agregar
+        </button>
       </div>
-      <p className="text-xs text-gray-400 mb-4">
-        Toca <b>Entrar como</b> para ver y atender lo que ve cada miembro del equipo.
-      </p>
+      <p className="text-xs text-gray-400 mb-4">Punto verde = conectado ahora. El switch controla su turno.</p>
 
       {impersonating && (
-        <div className="mb-4 flex items-center justify-between rounded-2xl px-4 py-3"
-          style={{ background: 'linear-gradient(90deg, #7C3AED, #4F46E5)' }}>
-          <p className="text-xs font-bold text-white flex items-center gap-2">
-            <Eye size={14} /> Estás viendo como {effective?.nombre.split(' ')[0]}
-          </p>
-          <button onClick={stopActing}
-            className="text-xs font-black px-3 py-1 rounded-lg text-white"
-            style={{ background: 'rgba(255,255,255,0.2)' }}>
-            Volver a admin
-          </button>
+        <div className="mb-4 flex items-center justify-between rounded-2xl px-4 py-3" style={{ background: 'linear-gradient(90deg, #7C3AED, #4F46E5)' }}>
+          <p className="text-xs font-bold text-white flex items-center gap-2"><Eye size={14} /> Viendo como {effective?.nombre.split(' ')[0]}</p>
+          <button onClick={stopActing} className="text-xs font-black px-3 py-1 rounded-lg text-white" style={{ background: 'rgba(255,255,255,0.2)' }}>Volver a admin</button>
         </div>
       )}
 
       <div className="space-y-3">
         {sorted.map(s => (
-          <MemberCard
-            key={s.id}
-            s={s}
-            isSelf={s.auth_user_id === real?.auth_user_id}
-            highlight={s.auth_user_id === effective?.auth_user_id}
-            onEnter={() => enterAs(s)}
-          />
+          <MemberCard key={s.id} s={s} isSelf={s.auth_user_id === real?.auth_user_id} online={online}
+            admin onEnter={() => enterAs(s)} onToggle={(v) => setAvailable(s, v)} onProfile={() => setProfile(s)} busy={busy} />
         ))}
+      </div>
 
-        {sorted.length === 0 && (
-          <div className="text-center py-12">
-            <Users size={48} className="text-gray-200 mx-auto mb-3" />
-            <p className="text-gray-400 text-sm">Aún no hay miembros en tu equipo.</p>
+      {/* Profile / change role */}
+      {profile && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setProfile(null)}>
+          <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-black text-gray-900">{profile.nombre}</h3>
+              <button onClick={() => setProfile(null)}><X size={18} className="text-gray-400" /></button>
+            </div>
+            {profile.is_admin ? (
+              <p className="text-sm text-gray-400">Es administrador.</p>
+            ) : (
+              <>
+                <p className="text-xs font-bold text-gray-500 mb-2">Cambiar rol</p>
+                <div className="space-y-2">
+                  {ROLES.map(r => (
+                    <button key={r} onClick={() => setRole(profile, r)} disabled={busy}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl border text-left disabled:opacity-50"
+                      style={{ borderColor: profile.role_label === r ? roleColor(r) : '#f0f0f0', borderWidth: profile.role_label === r ? 2 : 1 }}>
+                      <span className="font-bold text-sm" style={{ color: roleColor(r) }}>{r}</span>
+                      {profile.role_label === r && <span className="text-[10px] font-black" style={{ color: roleColor(r) }}>Actual</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <button onClick={() => setProfile(null)} className="w-full mt-4 py-3 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm">Cerrar</button>
           </div>
+        </div>
+      )}
+
+      {showAdd && <AddMember storeId={real?.store_id ?? ''} adminId={real?.auth_user_id ?? ''} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); loadTeam() }} />}
+    </div>
+  )
+}
+
+function MemberCard({ s, isSelf, online, admin, onEnter, onToggle, onProfile, busy }: {
+  s: SellerProfile; isSelf?: boolean; online: Set<string>
+  admin?: boolean; onEnter?: () => void; onToggle?: (v: boolean) => void; onProfile?: () => void; busy?: boolean
+}) {
+  const color = roleColor(s.is_admin ? 'admin' : s.role_label)
+  const isOnline = online.has(s.auth_user_id)
+  const available = s.available !== false
+  return (
+    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid #f0f0f0' }}>
+      <div className="flex items-center gap-3">
+        <div className="relative flex-shrink-0">
+          <div className="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: `${color}22` }}>
+            {s.avatar_url ? <img src={s.avatar_url} alt={s.nombre} className="w-full h-full object-cover" /> : <span className="font-black text-lg" style={{ color }}>{s.nombre.charAt(0).toUpperCase()}</span>}
+          </div>
+          <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white" style={{ background: isOnline ? '#4ADE80' : '#9CA3AF' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-black text-gray-900 text-sm truncate">{s.nombre}{isSelf && <span className="text-gray-400 font-bold"> · tú</span>}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: `${color}22`, color }}>{s.is_admin ? 'Admin' : s.role_label}</span>
+            <span className="text-[10px] font-bold" style={{ color: isOnline ? '#16A34A' : '#9CA3AF' }}>{isOnline ? 'Conectado' : 'Desconectado'}</span>
+          </div>
+        </div>
+        {admin && onProfile && !s.is_admin && (
+          <button onClick={onProfile} className="p-2 rounded-xl" style={{ background: '#F3F4F6', color: '#666' }} title="Editar"><Pencil size={14} /></button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 mt-3">
+        {admin && !s.is_admin && onToggle && (
+          <button onClick={() => onToggle(!available)} disabled={busy}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-black disabled:opacity-50"
+            style={{ background: available ? '#DCFCE7' : '#FEE2E2', color: available ? '#16A34A' : '#DC2626' }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: available ? '#16A34A' : '#DC2626' }} />
+            {available ? 'En turno' : 'Fuera de turno'}
+          </button>
+        )}
+        {onEnter && (
+          <button onClick={onEnter}
+            className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-black"
+            style={{ background: isSelf ? '#f0f0f0' : color, color: isSelf ? '#666' : '#fff' }}>
+            <LogIn size={13} /> {isSelf ? 'Mi vista' : 'Entrar como'}
+          </button>
         )}
       </div>
     </div>
   )
 }
 
-function MemberCard({ s, isSelf, highlight, onEnter }: {
-  s: SellerProfile
-  isSelf?: boolean
-  highlight?: boolean
-  onEnter?: () => void
-}) {
-  const color = roleColor(s.is_admin ? 'admin' : s.role_label)
+function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adminId: string; onClose: () => void; onDone: () => void }) {
+  const [nombre, setNombre] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState('Ventas')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const submit = async () => {
+    if (!nombre || !email || password.length < 6) { setErr('Completa nombre, correo y contraseña (mín. 6).'); return }
+    setBusy(true); setErr('')
+    try {
+      const res = await fetch(`${BASE}/admin-team`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', admin_auth_id: adminId, store_id: storeId, nombre, email, password, role_label: role }),
+      })
+      const r = await res.json().catch(() => ({}))
+      if (!res.ok) { setErr(r.error || 'No se pudo crear el miembro.'); return }
+      onDone()
+    } finally { setBusy(false) }
+  }
+
   return (
-    <div className="bg-white border rounded-2xl p-4 shadow-sm flex items-center gap-3"
-      style={{ borderColor: highlight ? color : '#f0f0f0', borderWidth: highlight ? 2 : 1 }}>
-      <div className="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0"
-        style={{ background: `${color}22` }}>
-        {s.avatar_url
-          ? <img src={s.avatar_url} alt={s.nombre} className="w-full h-full object-cover" />
-          : <span className="font-black text-lg" style={{ color }}>{s.nombre.charAt(0).toUpperCase()}</span>}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-black text-gray-900 text-sm truncate">
-          {s.nombre}{isSelf && <span className="text-gray-400 font-bold"> · tú</span>}
-        </p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold"
-            style={{ background: `${color}22`, color }}>
-            {s.is_admin ? 'Admin' : s.role_label}
-          </span>
-          {!s.is_admin && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold"
-              style={{ color: s.available === false ? '#DC2626' : '#16A34A' }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.available === false ? '#DC2626' : '#16A34A' }} />
-              {s.available === false ? 'Ausente' : 'Disponible'}
-            </span>
-          )}
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={onClose}>
+      <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black text-gray-900">Agregar miembro</h3>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
         </div>
-      </div>
-      {onEnter && (
-        <button onClick={onEnter}
-          className="text-xs font-black px-3 py-2 rounded-xl flex items-center gap-1 flex-shrink-0"
-          style={{ background: isSelf ? '#f0f0f0' : color, color: isSelf ? '#666' : '#fff' }}>
-          <LogIn size={13} /> {isSelf ? 'Mi vista' : 'Entrar como'}
+        <div className="space-y-2">
+          <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre completo"
+            className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
+          <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Correo (para su login)"
+            className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
+          <input value={password} onChange={e => setPassword(e.target.value)} type="text" placeholder="Contraseña (mín. 6)"
+            className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
+          <div className="flex gap-2">
+            {ROLES.map(r => (
+              <button key={r} onClick={() => setRole(r)}
+                className="flex-1 py-2 rounded-xl text-xs font-black"
+                style={{ background: role === r ? roleColor(r) : '#f0f0f0', color: role === r ? '#fff' : '#888' }}>{r}</button>
+            ))}
+          </div>
+        </div>
+        {err && <p className="text-xs font-semibold text-center mt-2" style={{ color: '#DC2626' }}>{err}</p>}
+        <button onClick={submit} disabled={busy}
+          className="w-full mt-4 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
+          {busy ? 'Creando…' : 'Crear miembro'}
         </button>
-      )}
+      </div>
     </div>
   )
 }

@@ -1,17 +1,19 @@
 import { NavLink } from 'react-router-dom'
-import { MessageCircle, User, ShoppingBag, BarChart2, Users, Bot, Package } from 'lucide-react'
-import { useKrossStore } from '../store'
+import { MessageCircle, ShoppingBag, BarChart2, Users, Bot, Package } from 'lucide-react'
+import { useSeller } from '../lib/seller-session'
 
 export default function BottomNav() {
-  const { currentUser } = useKrossStore()
-  const isVendedor = currentUser.tipo === 'vendedor' || currentUser.tipo === 'vendedora'
+  const { isAdmin, impersonating } = useSeller()
+  // Admin (not impersonating) sees the full toolset; team members see only
+  // Chats, CRM and their Stats.
+  const adminView = isAdmin && !impersonating
 
-  const compradorLinks = [
-    { to: '/comprador/chats', icon: MessageCircle, label: 'Chats' },
-    { to: '/comprador/perfil', icon: User, label: 'Mi perfil' },
+  const memberLinks = [
+    { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
+    { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
+    { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
   ]
-
-  const vendedorLinks = [
+  const adminLinks = [
     { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
     { to: '/vendedor/productos', icon: Package, label: 'Productos' },
     { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
@@ -19,8 +21,7 @@ export default function BottomNav() {
     { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
     { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
   ]
-
-  const links = isVendedor ? vendedorLinks : compradorLinks
+  const links = adminView ? adminLinks : memberLinks
 
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-gray-100 z-30 safe-area-inset-bottom">
