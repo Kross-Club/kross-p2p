@@ -29,13 +29,14 @@ async function broadcast(sessionId: string, event: string, payload: unknown) {
 async function pickTeamMember(storeId: string, roleKeyword: string) {
   const { data: cands } = await supabase
     .from('sellers')
-    .select('auth_user_id, nombre, role_label, avatar_url')
+    .select('auth_user_id, nombre, role_label, avatar_url, available')
     .eq('store_id', storeId)
     .eq('active', true)
     .not('auth_user_id', 'is', null)
     .ilike('role_label', `%${roleKeyword}%`)
 
-  const list = (cands ?? []).filter((c: any) => c.auth_user_id)
+  // Skip anyone off-shift (available=false). Missing column → treated as available.
+  const list = (cands ?? []).filter((c: any) => c.auth_user_id && c.available !== false)
   if (list.length === 0) return null
 
   const ids = list.map((c: any) => c.auth_user_id as string)

@@ -85,46 +85,66 @@ Deno.serve(async (req) => {
   // Motorizado or Admin. We prefer sellers scoped to this store; if that store
   // has no sales rep, fall back to any Ventas rep across stores.
   type Seller = { auth_user_id: string; nombre: string; role_label: string; avatar_url: string | null }
-  const isVentas = (s: Seller) => (s.role_label ?? '').toLowerCase().includes('venta')
+  const isVentas = (s: any) => (s.role_label ?? '').toLowerCase().includes('venta')
+  // A seller off-shift (available=false) doesn't receive new orders. Missing
+  // column (undefined) is treated as available so it works before the migration.
+  const isAvailable = (s: any) => s.available !== false
 
   let sellerPool: Seller[] = []
   {
     const { data: scoped } = await supabase
       .from('sellers')
-      .select('auth_user_id, nombre, role_label, avatar_url, is_admin')
+      .select('auth_user_id, nombre, role_label, avatar_url, is_admin, available')
       .eq('store_id', body.store_id)
       .eq('active', true)
       .not('auth_user_id', 'is', null)
-    sellerPool = (scoped ?? []).filter((s: any) => !s.is_admin && isVentas(s))
+    sellerPool = (scoped ?? []).filter((s: any) => !s.is_admin && isVentas(s) && isAvailable(s))
 
     if (sellerPool.length === 0) {
       const { data: all } = await supabase
         .from('sellers')
-        .select('auth_user_id, nombre, role_label, avatar_url, is_admin')
+        .select('auth_user_id, nombre, role_label, avatar_url, is_admin, available')
         .eq('active', true)
         .not('auth_user_id', 'is', null)
-      sellerPool = (all ?? []).filter((s: any) => !s.is_admin && isVentas(s))
+      sellerPool = (all ?? []).filter((s: any) => !s.is_admin && isVentas(s) && isAvailable(s))
     }
   }
 
   if (sellerPool.length > 0) {
     const ids = sellerPool.map(s => s.auth_user_id)
-    const counts: Record<string, number> = {}
-    for (const id of ids) counts[id] = 0
 
-    const { data: existing } = await supabase
+    // CONTINUITY FIRST: if this buyer already has active orders with an available
+    // Ventas rep, keep them with the same person.
+    let chosen: Seller | undefined
+    const { data: buyerOrders } = await supabase
       .from('order_sessions')
-      .select('assigned_seller_id')
+      .select('assigned_seller_id, created_at')
+      .eq('buyer_id', buyer.id as string)
       .eq('status', 'active')
       .in('assigned_seller_id', ids)
+      .order('created_at', { ascending: false })
 
-    for (const row of existing ?? []) {
-      if (row.assigned_seller_id) counts[row.assigned_seller_id] = (counts[row.assigned_seller_id] ?? 0) + 1
+    const stickyId = buyerOrders?.[0]?.assigned_seller_id
+    if (stickyId) chosen = sellerPool.find(s => s.auth_user_id === stickyId)
+
+    // Otherwise least-loaded among available Ventas reps
+    if (!chosen) {
+      const counts: Record<string, number> = {}
+      for (const id of ids) counts[id] = 0
+      const { data: existing } = await supabase
+        .from('order_sessions')
+        .select('assigned_seller_id')
+        .eq('status', 'active')
+        .in('assigned_seller_id', ids)
+      for (const row of existing ?? []) {
+        if (row.assigned_seller_id) counts[row.assigned_seller_id] = (counts[row.assigned_seller_id] ?? 0) + 1
+      }
+      const leastId = ids.reduce((a, b) => counts[a] <= counts[b] ? a : b)
+      chosen = sellerPool.find(s => s.auth_user_id === leastId)
     }
 
-    assignedSellerId = ids.reduce((a, b) => counts[a] <= counts[b] ? a : b)
-    const chosen = sellerPool.find(s => s.auth_user_id === assignedSellerId)
     if (chosen) {
+      assignedSellerId = chosen.auth_user_id
       assignedSellerName = chosen.nombre
       assignedSellerRole = chosen.role_label
       assignedSellerAvatar = chosen.avatar_url

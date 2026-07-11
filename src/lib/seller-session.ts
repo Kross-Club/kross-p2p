@@ -9,6 +9,7 @@ export interface SellerProfile {
   store_id: string
   avatar_url: string | null
   is_admin: boolean
+  available: boolean
 }
 
 const ACTING_KEY = 'acting_seller'
@@ -45,7 +46,7 @@ export function useSeller() {
       if (!data.session) { if (alive) setLoading(false); return }
       const { data: profile } = await supabase
         .from('sellers')
-        .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin')
+        .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, available')
         .eq('auth_user_id', data.session.user.id)
         .maybeSingle()
       if (alive) { setReal((profile as SellerProfile) ?? null); setLoading(false) }

@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS sellers (
 
 ALTER TABLE sellers ADD COLUMN IF NOT EXISTS avatar_url text;
 ALTER TABLE sellers ADD COLUMN IF NOT EXISTS active     boolean DEFAULT true;
+-- Turno on/off: si está en false, no recibe pedidos nuevos ni de sus clientes recurrentes
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS available  boolean DEFAULT true;
 
 CREATE INDEX IF NOT EXISTS idx_sellers_auth  ON sellers(auth_user_id);
 CREATE INDEX IF NOT EXISTS idx_sellers_store ON sellers(store_id);

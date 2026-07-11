@@ -13,10 +13,20 @@ export default function Layout() {
   const { real, effective, impersonating, stopActing } = useSeller()
   const [uploading, setUploading] = useState(false)
   const [avatar, setAvatar] = useState<string | null>(null)
+  const [available, setAvailable] = useState(true)
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])
+  useEffect(() => { if (real) setAvailable(real.available !== false) }, [real?.id, real?.available])
+
+  const toggleAvailable = async () => {
+    if (!real) return
+    const next = !available
+    setAvailable(next)
+    const { error } = await supabase.from('sellers').update({ available: next }).eq('id', real.id)
+    if (error) setAvailable(!next) // revert on failure
+  }
 
   // Register push for the real logged-in seller
   useEffect(() => {
@@ -86,6 +96,15 @@ export default function Layout() {
             <span className="font-black text-lg tracking-tight" style={{ color: '#060C1A' }}>kross</span>
           </div>
           <div className="flex items-center gap-3">
+            {real && !impersonating && (
+              <button onClick={toggleAvailable}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black"
+                style={{ background: available ? '#DCFCE7' : '#FEE2E2', color: available ? '#16A34A' : '#DC2626' }}
+                title="Tu turno">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: available ? '#16A34A' : '#DC2626' }} />
+                {available ? 'Disponible' : 'Ausente'}
+              </button>
+            )}
             {effective && (
               <>
                 <div className="text-right">

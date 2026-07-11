@@ -31,7 +31,7 @@ export default function EquipoPage() {
     if (!real) return
     supabase
       .from('sellers')
-      .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin')
+      .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, available')
       .eq('store_id', real.store_id)
       .then(({ data }) => {
         setTeam((data as SellerProfile[]) ?? [])
@@ -138,10 +138,19 @@ function MemberCard({ s, isSelf, highlight, onEnter }: {
         <p className="font-black text-gray-900 text-sm truncate">
           {s.nombre}{isSelf && <span className="text-gray-400 font-bold"> · tú</span>}
         </p>
-        <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold"
-          style={{ background: `${color}22`, color }}>
-          {s.is_admin ? 'Admin' : s.role_label}
-        </span>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold"
+            style={{ background: `${color}22`, color }}>
+            {s.is_admin ? 'Admin' : s.role_label}
+          </span>
+          {!s.is_admin && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold"
+              style={{ color: s.available === false ? '#DC2626' : '#16A34A' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.available === false ? '#DC2626' : '#16A34A' }} />
+              {s.available === false ? 'Ausente' : 'Disponible'}
+            </span>
+          )}
+        </div>
       </div>
       {onEnter && (
         <button onClick={onEnter}
