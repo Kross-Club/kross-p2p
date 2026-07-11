@@ -207,7 +207,7 @@ export default function LandingProductoPage() {
                     <p className="text-xs font-black" style={{ color: '#7DE8FF' }}>Comprando como {buyerAccount.nombre?.split(' ')[0] || 'ti'}</p>
                     <p className="text-xs" style={{ color: 'rgba(125,232,255,0.5)' }}>{buyerAccount.document_type} {buyerAccount.document_number} · Score {buyerAccount.score}/100</p>
                   </div>
-                  <button onClick={() => { setBuyerAccount(null); setForm({ whatsapp: '', document_type: 'DNI', document_number: '' }) }}
+                  <button onClick={() => { setBuyerAccount(null); setForm({ whatsapp: '', document_number: '' }) }}
                     className="text-xs px-2 py-1 rounded-lg self-start" style={{ color: 'rgba(125,232,255,0.5)', background: 'rgba(255,255,255,0.05)' }}>Cambiar</button>
                 </div>
               ) : (
