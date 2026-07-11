@@ -15,7 +15,9 @@ Deno.serve(async (req) => {
 
   const token = req.headers.get('x-kross-token')
   if (!token) return new Response('Unauthorized', { status: 401, headers: corsHeaders })
-  const viewerIsSeller = req.headers.get('x-viewer-role') === 'seller'
+  // Read viewer from the URL query (avoids adding a custom CORS header)
+  const viewerIsSeller = new URL(req.url).searchParams.get('viewer') === 'seller'
+    || req.headers.get('x-viewer-role') === 'seller'
 
   // Fetch session
   const { data: session, error } = await supabase

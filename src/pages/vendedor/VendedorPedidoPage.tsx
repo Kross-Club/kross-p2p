@@ -343,8 +343,8 @@ export default function VendedorPedidoPage() {
     if (!token) { setLoading(false); return }
     if (withSpinner) setLoading(true)
     try {
-      const res = await fetch(`${BASE}/get-session`, {
-        headers: { Authorization: `Bearer ${ANON}`, 'x-kross-token': token, 'x-viewer-role': 'seller' },
+      const res = await fetch(`${BASE}/get-session?viewer=seller`, {
+        headers: { Authorization: `Bearer ${ANON}`, 'x-kross-token': token },
       })
       if (!res.ok) return
       const { session: s, messages: m } = await res.json() as { session: OrderSession; messages: OrderMessage[] }
