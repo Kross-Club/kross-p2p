@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Eye, ShieldCheck, LogIn, UserPlus, X, Pencil } from 'lucide-react'
+import { Users, Eye, LogIn, UserPlus, X, Pencil } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
 
