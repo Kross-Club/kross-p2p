@@ -44,9 +44,28 @@ export default function LandingProductoPage() {
   const [submitting, setSubmitting] = useState(false)
   const [packIdx, setPackIdx] = useState(0)
   const [country, setCountry] = useState(COUNTRIES[0])
+  const [resolvedName, setResolvedName] = useState<string | null>(null)
+  const [looking, setLooking] = useState(false)
   const [form, setForm] = useState({
     whatsapp: '', document_type: 'DNI' as 'DNI' | 'CE' | 'PASAPORTE', document_number: '',
   })
+
+  // Autocomplete the name from the DNI (RENIEC via Decolecta)
+  useEffect(() => {
+    setResolvedName(null)
+    if (form.document_type !== 'DNI' || form.document_number.length !== 8) return
+    let alive = true
+    setLooking(true)
+    fetch(`${BASE}/dni-lookup`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_number: form.document_number }),
+    })
+      .then(r => r.json())
+      .then(d => { if (alive) setResolvedName(d?.nombre ?? null) })
+      .catch(() => {})
+      .finally(() => { if (alive) setLooking(false) })
+    return () => { alive = false }
+  }, [form.document_type, form.document_number])
 
   useEffect(() => {
     if (!landingId) return
@@ -103,7 +122,7 @@ export default function LandingProductoPage() {
           product_name: product.nombre,
           product_price: precio,
           pack_name: selectedPack?.nombre ?? null,
-          buyer_name: buyerAccount?.nombre ?? '',
+          buyer_name: buyerAccount?.nombre ?? resolvedName ?? '',
           buyer_phone: buyerAccount ? buyerAccount.phone : `${country.code}${form.whatsapp}`,
           document_type: form.document_type,
           document_number: form.document_number,
@@ -208,10 +227,19 @@ export default function LandingProductoPage() {
                         placeholder={form.document_type === 'DNI' ? 'Tus 8 dígitos' : 'Nro. de documento'}
                         className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none font-mono tracking-widest" />
                     </div>
-                    <p className="text-[11px] text-gray-400 mt-1.5 flex items-start gap-1">
-                      <ShieldCheck size={13} className="text-green-500 flex-shrink-0 mt-0.5" />
-                      Con tu documento validamos tu identidad y guardamos tu historial de pedidos. Es seguro y no lo compartimos.
-                    </p>
+                    {looking && <p className="text-[11px] text-gray-400 mt-1.5">Validando tu documento…</p>}
+                    {resolvedName && (
+                      <div className="mt-1.5 flex items-center gap-1.5 rounded-xl px-3 py-2" style={{ background: '#F0FDF4', border: '1px solid #86EFAC' }}>
+                        <ShieldCheck size={14} className="text-green-600 flex-shrink-0" />
+                        <p className="text-xs font-black text-green-800 truncate">{resolvedName}</p>
+                      </div>
+                    )}
+                    {!resolvedName && !looking && (
+                      <p className="text-[11px] text-gray-400 mt-1.5 flex items-start gap-1">
+                        <ShieldCheck size={13} className="text-green-500 flex-shrink-0 mt-0.5" />
+                        Con tu documento validamos tu identidad y guardamos tu historial de pedidos. Es seguro y no lo compartimos.
+                      </p>
+                    )}
                   </div>
 
                   {/* WhatsApp */}
