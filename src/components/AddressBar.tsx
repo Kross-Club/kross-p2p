@@ -54,7 +54,7 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
         <p className="flex-1 min-w-0 truncate text-[10px] font-black uppercase tracking-wide text-gray-400">
           Dirección de entrega
           {verified
-            ? <span className="ml-1" style={{ color: '#16A34A' }}>✓ Ubicación verificada</span>
+            ? <span className="ml-1" style={{ color: '#16A34A' }}>✓ Verificada</span>
             : <span className="ml-1" style={{ color: '#F59E0B' }}>· sin verificar</span>}
         </p>
         {role === 'buyer' && (
