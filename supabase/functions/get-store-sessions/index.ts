@@ -15,19 +15,20 @@ Deno.serve(async (req) => {
 
   const storeId = req.headers.get('x-store-id')
   const sellerId = req.headers.get('x-seller-id')
+  const includeCancelled = req.headers.get('x-include-cancelled') === '1'
   if (!storeId) return new Response('Missing store id', { status: 400, headers: corsHeaders })
 
   let query = supabase
     .from('order_sessions')
     .select(`
       id, order_id, store_id, token, buyer_id, buyer_name, buyer_phone,
-      product_name, product_price, pack_name, status, stage,
+      product_name, product_price, pack_name, status, stage, nota,
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       chat_messages ( id, sender_role, type, body, created_at, read_at )
     `)
-    .eq('status', 'active')
+    .in('status', includeCancelled ? ['active', 'cancelado'] : ['active'])
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(80)
 
   // A specific agent → every order they're involved in, regardless of the
   // store_id label (orders and sellers can carry different store ids).

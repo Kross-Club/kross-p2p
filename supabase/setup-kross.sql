@@ -138,6 +138,10 @@ ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS visibility          text DEF
 
 -- Producto del pedido (para ver sus imágenes de la landing en el detalle)
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS product_id uuid;
+-- Nota/sub-tag del CRM: cancelado, no_contesta, recuperado, anulado…
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS nota text;
+-- Oferta de upsell adjunta a un mensaje del chat
+ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS offer jsonb;
 
 -- Dirección de entrega + validación por GPS del comprador
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lat      double precision;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, Eye } from 'lucide-react'
+import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush } from '../../lib/push'
@@ -92,9 +92,30 @@ function AudioBubble({ durationLabel }: { durationLabel?: string }) {
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ msg }: { msg: OrderMessage }) {
+function MessageBubble({ msg, onAcceptOffer }: { msg: OrderMessage; onAcceptOffer?: (offer: NonNullable<OrderMessage['offer']>) => void }) {
   const isBuyer = msg.sender_role === 'buyer'
   const time = new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+
+  if (msg.type === 'offer' && msg.offer) {
+    return (
+      <div className="flex justify-start mb-3">
+        <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>
+          {msg.offer.image && <img src={msg.offer.image} alt={msg.offer.nombre} className="w-full h-32 object-cover" />}
+          <div className="p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: '#D97706' }}>🎁 Oferta especial para ti</p>
+            <p className="font-black text-gray-900 text-sm mt-0.5">{msg.offer.nombre}</p>
+            <p className="font-black text-xl" style={{ color: '#16A34A' }}>S/{msg.offer.precio}</p>
+            {onAcceptOffer && (
+              <button onClick={() => onAcceptOffer(msg.offer!)}
+                className="w-full mt-2 py-2.5 rounded-xl font-black text-sm text-white" style={{ background: '#16A34A' }}>
+                Aceptar oferta
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (msg.type === 'audio') {
     return (
@@ -536,6 +557,9 @@ export default function OrderChatPage() {
       .on('broadcast', { event: 'order_cancelled' }, () => {
         setSession(prev => prev ? { ...prev, status: 'cancelado' } : prev)
       })
+      .on('broadcast', { event: 'order_recreated' }, () => {
+        setSession(prev => prev ? { ...prev, status: 'active', stage: 'nuevo' } : prev)
+      })
       .on('broadcast', { event: 'seller_call_request' }, () => {
         setSellerCalling(true)
       })
@@ -608,6 +632,18 @@ export default function OrderChatPage() {
       setSending(false)
     }
   }, [input, token, session, sending])
+
+  const acceptOffer = useCallback(async (offer: NonNullable<OrderMessage['offer']>) => {
+    if (!session) return
+    try {
+      const res = await fetch(`${BASE}/order-manage`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'accept_offer', session_id: session.id, offer }),
+      })
+      const r = await res.json()
+      if (r.token) navigate(`/p/${r.token}`)
+    } catch { /* ignore */ }
+  }, [session, navigate])
 
   const handlePushPermission = async () => {
     setShowPushBanner(false)
@@ -697,7 +733,7 @@ export default function OrderChatPage() {
           style={{ background: 'rgba(255,255,255,0.2)' }}>
           <div className="min-w-0">
             <p className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
-              <Eye size={11} /> {session.pack_name || 'Tu pedido'} · ver detalle
+              <ShoppingCart size={11} /> {session.pack_name || 'Tu pedido'} · ver detalle
             </p>
             <p className="text-sm font-black text-white truncate max-w-[200px]">
               {session.product_name || 'Producto Kross'}
@@ -756,7 +792,7 @@ export default function OrderChatPage() {
             <p className="text-sm text-gray-400">Tu pedido está en camino.<br/>Pronto recibirás novedades aquí.</p>
           </div>
         )}
-        {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
+        {messages.map(msg => <MessageBubble key={msg.id} msg={msg} onAcceptOffer={acceptOffer} />)}
 
         {/* Typing indicator */}
         {sellerTyping && (
@@ -824,7 +860,7 @@ export default function OrderChatPage() {
           session={session}
           role="buyer"
           onClose={() => setShowDetail(false)}
-          onCancelled={() => setSession(s => s ? { ...s, status: 'cancelado' } : s)}
+          onPatch={(patch) => setSession(s => s ? { ...s, ...patch } : s)}
         />
       )}
     </div>

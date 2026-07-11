@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
       status, stage, assigned_seller_id,
       seller_name, seller_role, seller_avatar,
       involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,
-      address, address_verified, address_lat, address_lng,
+      address, address_verified, address_lat, address_lng, nota,
       expires_at, created_at
     `)
     .eq('token', token)
@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
   // Fetch messages — the buyer never sees seller-only entries (e.g. expulsions)
   let mq = supabase
     .from('chat_messages')
-    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, visibility, created_at, read_at')
+    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, offer, visibility, created_at, read_at')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
   if (!viewerIsSeller) mq = mq.or('visibility.is.null,visibility.eq.all')

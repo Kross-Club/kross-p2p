@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X, ShoppingCart, Tag } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
@@ -290,6 +290,21 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
     )
   }
 
+  if (msg.type === 'offer' && msg.offer) {
+    return (
+      <div className="flex justify-end mb-3">
+        <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>
+          {msg.offer.image && <img src={msg.offer.image} alt={msg.offer.nombre} className="w-full h-28 object-cover" />}
+          <div className="p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: '#D97706' }}>🎁 Oferta enviada</p>
+            <p className="font-black text-gray-900 text-sm mt-0.5">{msg.offer.nombre}</p>
+            <p className="font-black text-lg" style={{ color: '#16A34A' }}>S/{msg.offer.precio}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const roleC = roleColor(msg.sender_role_label)
   return (
     <div className={`flex ${isSeller ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -334,6 +349,7 @@ export default function VendedorPedidoPage() {
   const [buyerOnline, setBuyerOnline] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
+  const [showOffer, setShowOffer] = useState(false)
   const [team, setTeam] = useState<{ auth_user_id: string; nombre: string; role_label: string }[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -392,6 +408,12 @@ export default function VendedorPedidoPage() {
       })
       .on('broadcast', { event: 'order_cancelled' }, () => {
         setSession(prev => prev ? { ...prev, status: 'cancelado' } : prev)
+      })
+      .on('broadcast', { event: 'order_recreated' }, () => {
+        setSession(prev => prev ? { ...prev, status: 'active', stage: 'nuevo' } : prev)
+      })
+      .on('broadcast', { event: 'nota_update' }, ({ payload }) => {
+        setSession(prev => prev ? { ...prev, nota: payload.nota } : prev)
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.role === 'buyer') {
@@ -566,7 +588,7 @@ export default function VendedorPedidoPage() {
             <p className="text-xs" style={{ color: buyerOnline ? '#4ADE80' : 'rgba(255,255,255,0.6)' }}>
               {buyerOnline ? 'En línea ahora' : `${session.product_name} · ${session.pack_name || `S/${session.product_price}`}`}
             </p>
-            <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><Eye size={11} /> Ver pedido</p>
+            <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><ShoppingCart size={11} /> Ver pedido</p>
           </button>
 
           <button
@@ -672,6 +694,11 @@ export default function VendedorPedidoPage() {
       <div className="flex-shrink-0 border-t border-gray-100 px-3 py-3 bg-white">
         {canWrite ? (
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowOffer(true)}
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FEF3C7', color: '#D97706' }}
+              title="Enviar oferta">
+              <Tag size={16} />
+            </button>
             <input
               value={input}
               onChange={e => { setInput(e.target.value); broadcastTyping() }}
@@ -745,9 +772,100 @@ export default function VendedorPedidoPage() {
           session={session}
           role="seller"
           onClose={() => setShowDetail(false)}
-          onCancelled={() => setSession(s => s ? { ...s, status: 'cancelado' } : s)}
+          onPatch={(patch) => setSession(s => s ? { ...s, ...patch } : s)}
         />
       )}
+
+      {showOffer && (
+        <OfferSheet
+          storeId={effective?.store_id ?? session.store_id ?? ''}
+          onClose={() => setShowOffer(false)}
+          onSend={async (offer) => {
+            setShowOffer(false)
+            try {
+              const res = await fetch(`${BASE}/seller-send-message`, {
+                method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: session.id, seller_name: sellerName, seller_role: sellerRole, type: 'offer', offer, body: `🎁 Oferta: ${offer.nombre} — S/${offer.precio}` }),
+              })
+              if (res.ok) {
+                const saved: OrderMessage = await res.json()
+                setMessages(prev => prev.some(m => m.id === saved.id) ? prev : [...prev, saved])
+                channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
+              }
+            } catch { /* ignore */ }
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Offer / upsell composer ──────────────────────────────────────────────────
+function OfferSheet({ storeId, onClose, onSend }: {
+  storeId: string
+  onClose: () => void
+  onSend: (offer: { product_id?: string; nombre: string; precio: number; image?: string | null }) => void
+}) {
+  const [products, setProducts] = useState<{ id: string; nombre: string; precio: number; images: string[] }[]>([])
+  const [productId, setProductId] = useState<string | undefined>()
+  const [nombre, setNombre] = useState('')
+  const [precio, setPrecio] = useState('')
+  const [image, setImage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!storeId) return
+    supabase.from('products').select('id, nombre, precio, images').eq('store_id', storeId)
+      .then(({ data }) => setProducts((data as any) ?? []))
+  }, [storeId])
+
+  const pick = (p: { id: string; nombre: string; precio: number; images: string[] }) => {
+    setProductId(p.id); setNombre(p.nombre); setPrecio(String(p.precio || '')); setImage(p.images?.[0] ?? null)
+  }
+  const send = () => {
+    if (!nombre.trim() || !precio) return
+    onSend({ product_id: productId, nombre: nombre.trim(), precio: Number(precio) || 0, image })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={onClose}>
+      <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black text-gray-900 flex items-center gap-2"><Tag size={18} /> Enviar oferta</h3>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+
+        {products.length > 0 && (
+          <>
+            <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Elige un producto</p>
+            <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+              {products.map(p => (
+                <button key={p.id} onClick={() => pick(p)}
+                  className="flex-shrink-0 w-24 rounded-xl overflow-hidden border text-left"
+                  style={{ borderColor: productId === p.id ? '#16A34A' : '#f0f0f0', borderWidth: productId === p.id ? 2 : 1 }}>
+                  {p.images?.[0]
+                    ? <img src={p.images[0]} alt={p.nombre} className="w-full h-20 object-cover" />
+                    : <div className="w-full h-20 bg-gray-100" />}
+                  <div className="p-1.5">
+                    <p className="text-[10px] font-bold text-gray-800 truncate">{p.nombre}</p>
+                    <p className="text-[10px] font-black" style={{ color: '#16A34A' }}>S/{p.precio}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-1">O escribe la oferta</p>
+        <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre de la oferta"
+          className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-2" />
+        <input value={precio} onChange={e => setPrecio(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder="Precio S/"
+          className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-4" />
+
+        <button onClick={send} disabled={!nombre.trim() || !precio}
+          className="w-full py-3 rounded-2xl font-black text-sm text-white disabled:opacity-40" style={{ background: '#16A34A' }}>
+          Enviar oferta al cliente
+        </button>
+      </div>
     </div>
   )
 }

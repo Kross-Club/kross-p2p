@@ -5,7 +5,7 @@ import { subscribePush } from '../../lib/push'
 import { supabase } from '../../lib/supabase'
 
 const STAGE_LABEL: Record<string, string> = {
-  nuevo:      '📋 Pedido recibido',
+  nuevo:      '📋 Pedido creado',
   confirmado: '📞 Confirmado',
   preparando: '📦 Preparando',
   en_camino:  '🚚 En camino',
@@ -193,8 +193,9 @@ export default function MisPedidosPage() {
               const date = new Date(s.created_at).toLocaleDateString('es-PE', {
                 day: 'numeric', month: 'short', year: 'numeric'
               })
-              const stageColor = STAGE_COLOR[s.stage] ?? '#ccc'
-              const stageLabel = STAGE_LABEL[s.stage] ?? s.stage
+              const isCancelled = s.status === 'cancelado'
+              const stageColor = isCancelled ? '#EF4444' : (STAGE_COLOR[s.stage] ?? '#ccc')
+              const stageLabel = isCancelled ? '❌ Pedido cancelado' : (STAGE_LABEL[s.stage] ?? s.stage)
               const unread = (s.unread_count ?? 0) + (bumps[s.id] ?? 0)
 
               return (

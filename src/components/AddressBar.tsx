@@ -74,11 +74,11 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
       {/* Row 1: icon + title + badge + button, all in one line */}
       <div className="flex items-center gap-2">
         <MapPin size={15} style={{ color: '#EF4444' }} className="flex-shrink-0" />
-        <p className="flex-1 min-w-0 truncate text-[10px] font-black uppercase tracking-wide text-gray-400">
+        <p className="flex-1 min-w-0 text-[9px] font-black uppercase tracking-wide text-gray-400 leading-tight">
           Dirección de entrega
           {verified
-            ? <span className="ml-1" style={{ color: '#16A34A' }}>✓ Verificada</span>
-            : <span className="ml-1" style={{ color: '#F59E0B' }}>· sin verificar</span>}
+            ? <span className="ml-1 whitespace-nowrap" style={{ color: '#16A34A' }}>✓ Verificada</span>
+            : <span className="ml-1 whitespace-nowrap" style={{ color: '#F59E0B' }}>· Sin verificar</span>}
         </p>
         {role === 'buyer' && (
           <button onClick={verifyGps} disabled={busy}

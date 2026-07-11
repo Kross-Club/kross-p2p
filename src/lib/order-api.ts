@@ -21,6 +21,7 @@ export interface OrderSession {
   address_verified?: boolean
   address_lat?: number | null
   address_lng?: number | null
+  nota?: string | null
   buyer_can_call?: boolean
   assigned_seller_id?: string | null
   involved_seller_ids?: string[] | null
@@ -45,9 +46,10 @@ export interface OrderMessage {
   sender_name: string | null
   sender_role_label?: string | null
   visibility?: 'all' | 'sellers' | null
-  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update'
+  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer'
   body: string | null
   media_url: string | null
+  offer?: { product_id?: string; nombre: string; precio: number; image?: string | null } | null
   created_at: string
   read_at: string | null
 }

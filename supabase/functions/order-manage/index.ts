@@ -55,27 +55,89 @@ async function pickTeamMember(storeId: string, roleKeyword: string) {
 const uniq = (arr: (string | null | undefined)[]) =>
   [...new Set(arr.filter(Boolean) as string[])]
 
+function randomToken() {
+  const bytes = new Uint8Array(18)
+  crypto.getRandomValues(bytes)
+  return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, '').slice(0, 24)
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'cancel'
+    action: 'advance' | 'invite' | 'expel' | 'cancel' | 'recreate' | 'set_nota' | 'accept_offer'
     session_id: string
     stage?: string
     invite_seller_id?: string
     by_seller_id?: string
     by?: 'buyer' | 'seller'
+    nota?: string
+    offer?: { product_id?: string; nombre: string; precio: number }
   }
 
   if (!body.session_id) return new Response('Missing session_id', { status: 400, headers: corsHeaders })
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, store_id, stage, buyer_id, assigned_seller_id, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by')
+    .select('id, store_id, stage, status, buyer_id, buyer_name, buyer_phone, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by')
     .eq('id', body.session_id)
     .single()
 
   if (!session) return new Response('Not found', { status: 404, headers: corsHeaders })
+
+  // ─── SET NOTA (CRM sub-tag) ─────────────────────────────────────────────────
+  if (body.action === 'set_nota') {
+    await supabase.from('order_sessions').update({ nota: body.nota ?? null }).eq('id', session.id)
+    await broadcast(session.id, 'nota_update', { nota: body.nota ?? null })
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── RECREATE (reactivate a cancelled order — recover the sale) ──────────────
+  if (body.action === 'recreate') {
+    await supabase.from('order_sessions').update({ status: 'active', stage: 'nuevo', nota: 'recuperado' }).eq('id', session.id)
+    const { data: msg } = await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'system', type: 'status_update', visibility: 'all',
+      body: '🔄 El pedido fue reactivado',
+    }).select().single()
+    await broadcast(session.id, 'order_recreated', {})
+    if (msg) await broadcast(session.id, 'new_message', msg)
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── ACCEPT OFFER (buyer accepts an upsell → new order) ─────────────────────
+  if (body.action === 'accept_offer') {
+    if (!body.offer) return new Response('Missing offer', { status: 400, headers: corsHeaders })
+    const token = randomToken()
+    const orderId = `ORD-${Date.now()}`
+    const { data: created } = await supabase.from('order_sessions').insert({
+      order_id: orderId,
+      store_id: session.store_id,
+      token,
+      buyer_id: session.buyer_id,
+      buyer_name: session.buyer_name,
+      buyer_phone: session.buyer_phone,
+      product_id: body.offer.product_id ?? null,
+      product_name: body.offer.nombre,
+      product_price: body.offer.precio,
+      status: 'active',
+      stage: 'nuevo',
+      assigned_seller_id: session.assigned_seller_id,
+      seller_name: session.seller_name,
+      seller_role: session.seller_role,
+      seller_avatar: session.seller_avatar,
+      involved_seller_ids: session.assigned_seller_id ? [session.assigned_seller_id] : [],
+      writer_seller_ids: session.assigned_seller_id ? [session.assigned_seller_id] : [],
+    }).select('id, token').single()
+
+    if (created) {
+      await supabase.from('chat_messages').insert({
+        session_id: created.id, sender_role: 'seller', sender_name: session.seller_name ?? 'Kross',
+        sender_role_label: session.seller_role ?? 'Ventas', type: 'text',
+        body: `¡Gracias por aprovechar la oferta! 🎉 Tu ${body.offer.nombre} (S/${body.offer.precio}) también llegará a tu puerta.`,
+      })
+    }
+    return new Response(JSON.stringify({ ok: true, token: created?.token }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
 
   // ─── CANCEL ─────────────────────────────────────────────────────────────────
   if (body.action === 'cancel') {

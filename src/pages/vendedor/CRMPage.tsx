@@ -23,8 +23,17 @@ interface Sess {
   product_price: number | null
   pack_name: string | null
   stage: string
+  status?: string
+  nota?: string | null
   seller_name?: string | null
   seller_role?: string | null
+}
+
+const NOTA_META: Record<string, { label: string; color: string }> = {
+  no_contesta: { label: 'No contesta', color: '#F59E0B' },
+  recuperado: { label: 'Recuperado', color: '#16A34A' },
+  cancelado: { label: 'Cancelado', color: '#DC2626' },
+  anulado: { label: 'Anulado', color: '#6B7280' },
 }
 
 export default function CRMPage() {
@@ -39,7 +48,7 @@ export default function CRMPage() {
   useEffect(() => {
     if (!effective) return
     setLoading(true)
-    const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': effective.store_id }
+    const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': effective.store_id, 'x-include-cancelled': '1' }
     if (onlyMine) headers['x-seller-id'] = effective.auth_user_id
     fetch(`${BASE}/get-store-sessions`, { headers })
       .then(r => (r.ok ? r.json() : []))
@@ -55,7 +64,15 @@ export default function CRMPage() {
         <div className="min-w-0">
           <p className="font-bold text-gray-800 text-sm truncate">{s.buyer_name || 'Comprador'}</p>
           <p className="text-xs text-gray-400 truncate">{s.product_name} · {s.pack_name || `S/${s.product_price}`}</p>
-          {s.seller_name && <p className="text-[10px] text-gray-400 mt-0.5">Atiende: {s.seller_name.split(' ')[0]}{s.seller_role ? ` · ${s.seller_role}` : ''}</p>}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {s.seller_name && <span className="text-[10px] text-gray-400">Atiende: {s.seller_name.split(' ')[0]}</span>}
+            {s.nota && NOTA_META[s.nota] && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                style={{ background: `${NOTA_META[s.nota].color}22`, color: NOTA_META[s.nota].color }}>
+                {NOTA_META[s.nota].label}
+              </span>
+            )}
+          </div>
         </div>
         <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1" />
       </div>
@@ -80,7 +97,7 @@ export default function CRMPage() {
       ) : view === 'lista' ? (
         <div className="space-y-5">
           {ETAPAS.map(etapa => {
-            const items = sessions.filter(s => s.stage === etapa.key)
+            const items = sessions.filter(s => s.status !== 'cancelado' && s.stage === etapa.key)
             return (
               <div key={etapa.key}>
                 <div className="flex items-center gap-2 mb-2">
@@ -97,11 +114,24 @@ export default function CRMPage() {
               </div>
             )
           })}
+          {(() => {
+            const cancel = sessions.filter(s => s.status === 'cancelado')
+            if (cancel.length === 0) return null
+            return (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-black px-3 py-1 rounded-full" style={{ background: '#FEE2E2', color: '#DC2626' }}>❌ Cancelados / notas</span>
+                  <span className="text-xs text-gray-400 font-semibold">{cancel.length}</span>
+                </div>
+                <div className="space-y-2">{cancel.map(s => <Card key={s.id} s={s} />)}</div>
+              </div>
+            )
+          })()}
         </div>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-4">
           {ETAPAS.map(etapa => {
-            const items = sessions.filter(s => s.stage === etapa.key)
+            const items = sessions.filter(s => s.status !== 'cancelado' && s.stage === etapa.key)
             return (
               <div key={etapa.key} className="flex-shrink-0 w-56">
                 <div className="text-[11px] font-black px-3 py-1.5 rounded-xl mb-2 text-center" style={{ background: etapa.bg, color: etapa.color }}>
