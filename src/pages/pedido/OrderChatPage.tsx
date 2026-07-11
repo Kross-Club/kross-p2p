@@ -96,7 +96,7 @@ function MessageBubble({ msg, onAcceptOffer }: { msg: OrderMessage; onAcceptOffe
   const isBuyer = msg.sender_role === 'buyer'
   const time = new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
 
-  if (msg.type === 'offer' && msg.offer) {
+  if (msg.offer) {
     return (
       <div className="flex justify-start mb-3">
         <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>

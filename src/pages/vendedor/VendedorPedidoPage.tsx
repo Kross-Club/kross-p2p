@@ -290,7 +290,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
     )
   }
 
-  if (msg.type === 'offer' && msg.offer) {
+  if (msg.offer) {
     return (
       <div className="flex justify-end mb-3">
         <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>
@@ -795,7 +795,7 @@ export default function VendedorPedidoPage() {
             try {
               const res = await fetch(`${BASE}/seller-send-message`, {
                 method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: session.id, seller_name: sellerName, seller_role: sellerRole, type: 'offer', offer, body: `🎁 Oferta: ${offer.nombre} — S/${offer.precio}` }),
+                body: JSON.stringify({ session_id: session.id, seller_name: sellerName, seller_role: sellerRole, type: 'text', offer, body: `🎁 Oferta: ${offer.nombre} — S/${offer.precio}` }),
               })
               if (res.ok) {
                 const saved: OrderMessage = await res.json()
