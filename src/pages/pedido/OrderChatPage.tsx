@@ -7,6 +7,7 @@ import { subscribePush } from '../../lib/push'
 import { startRingtone } from '../../lib/ringtone'
 import { sendCallReject, sendCallCancel, listenCallReject, listenCallCancel } from '../../lib/call-signal'
 import InstallBanner from '../../components/InstallBanner'
+import AddressBar from '../../components/AddressBar'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -524,6 +525,9 @@ export default function OrderChatPage() {
           seller_avatar: payload.seller_avatar ?? prev.seller_avatar,
         } : prev)
       })
+      .on('broadcast', { event: 'address_update' }, ({ payload }) => {
+        setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified } : prev)
+      })
       .on('broadcast', { event: 'seller_call_request' }, () => {
         setSellerCalling(true)
       })
@@ -697,6 +701,17 @@ export default function OrderChatPage() {
       {/* ── Tracker ── */}
       <div className="flex-shrink-0">
         <OrderTracker stage={session.stage} />
+      </div>
+
+      {/* ── Dirección de entrega ── */}
+      <div className="flex-shrink-0">
+        <AddressBar
+          sessionId={session.id}
+          address={session.address ?? null}
+          verified={!!session.address_verified}
+          role="buyer"
+          onUpdated={(address, address_verified) => setSession(s => s ? { ...s, address, address_verified } : s)}
+        />
       </div>
 
       {/* ── Push banner ── */}

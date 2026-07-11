@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
+import AddressBar from '../../components/AddressBar'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { useSeller } from '../../lib/seller-session'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -356,6 +357,17 @@ export default function VendedorPedidoPage() {
 
   useEffect(() => { reloadSession(true) }, [reloadSession])
 
+  // Mark the buyer's messages as read whenever the seller has this chat open
+  const markRead = useCallback((sid: string) => {
+    fetch(`${BASE}/mark-chat-read`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sid, reader: 'seller' }),
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => { if (session?.id) markRead(session.id) }, [session?.id, markRead])
+
   // Realtime
   useEffect(() => {
     if (!session) return
@@ -366,12 +378,16 @@ export default function VendedorPedidoPage() {
           if (prev.some(m => m.id === msg.id)) return prev
           return [...prev.filter(m => !(m.id.startsWith('opt-') && m.sender_role === msg.sender_role)), msg]
         })
+        if (msg.sender_role === 'buyer') markRead(session.id)
       })
       .on('broadcast', { event: 'stage_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, stage: payload.stage as OrderSession['stage'] } : prev)
       })
       .on('broadcast', { event: 'assignment_update' }, () => { reloadSession() })
       .on('broadcast', { event: 'participants_update' }, () => { reloadSession() })
+      .on('broadcast', { event: 'address_update' }, ({ payload }) => {
+        setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified } : prev)
+      })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.role === 'buyer') {
           setBuyerTyping(true)
@@ -591,6 +607,15 @@ export default function VendedorPedidoPage() {
           if (handedOff) navigate('/vendedor/chats')
           else reloadSession()
         }}
+      />
+
+      {/* Dirección de entrega */}
+      <AddressBar
+        sessionId={session.id}
+        address={session.address ?? null}
+        verified={!!session.address_verified}
+        role="seller"
+        onUpdated={(address, address_verified) => setSession(s => s ? { ...s, address, address_verified } : s)}
       />
 
       {/* Messages */}

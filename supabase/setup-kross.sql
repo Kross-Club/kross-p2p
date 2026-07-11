@@ -103,6 +103,11 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS involved_seller_ids uuid[] D
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS writer_seller_ids   uuid[] DEFAULT '{}';
 ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS sender_role_label   text;
 
+-- Dirección de entrega + validación por GPS del comprador
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lat      double precision;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lng      double precision;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_verified boolean DEFAULT false;
+
 
 -- ─── 6. PERMISOS (RLS) sobre sellers ────────────────────────────────────────
 -- Los compradores nunca leen 'sellers' directo (van por Edge Functions con

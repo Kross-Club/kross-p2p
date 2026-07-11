@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, MessageCircle, ChevronRight, Phone } from 'lucide-react'
+import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { supabase } from '../../lib/supabase'
 
@@ -169,10 +169,6 @@ export default function ChatsVendedorPage() {
         </div>
       )}
 
-      <div className="mt-6 flex items-center gap-2 px-3 py-2 rounded-2xl bg-gray-50 border border-gray-100">
-        <Phone size={12} style={{ color: '#55C8F5' }} />
-        <p className="text-[10px] text-gray-400">Cuando un cliente llame, verás el popup de llamada entrante aquí</p>
-      </div>
     </div>
   )
 }

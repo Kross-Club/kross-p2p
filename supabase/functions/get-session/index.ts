@@ -25,6 +25,7 @@ Deno.serve(async (req) => {
       status, stage, assigned_seller_id,
       seller_name, seller_role, seller_avatar,
       involved_seller_ids, writer_seller_ids,
+      address, address_verified,
       expires_at, created_at
     `)
     .eq('token', token)

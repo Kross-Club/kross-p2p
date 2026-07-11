@@ -16,6 +16,8 @@ export interface OrderSession {
   seller_name: string | null
   seller_role: string | null
   seller_avatar: string | null
+  address?: string | null
+  address_verified?: boolean
   buyer_can_call?: boolean
   assigned_seller_id?: string | null
   involved_seller_ids?: string[] | null
