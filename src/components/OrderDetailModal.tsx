@@ -96,11 +96,30 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
             </div>
           )}
 
-          <div className="rounded-2xl p-4 mb-3" style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A' }}>
-            <p className="font-black text-gray-900 text-base">{session.product_name || 'Producto'}</p>
-            {session.pack_name && <p className="text-xs text-gray-500 mt-0.5">{session.pack_name}</p>}
-            <p className="font-black text-2xl mt-1" style={{ color: '#16A34A' }}>S/{session.product_price ?? 0}</p>
-          </div>
+          {(() => {
+            const items = (session.items && session.items.length ? session.items : [{ nombre: session.product_name || 'Producto', precio: session.product_price ?? 0, pack_name: session.pack_name }])
+            const total = items.reduce((s, it) => s + (Number(it.precio) || 0), 0)
+            return (
+              <div className="rounded-2xl p-4 mb-3" style={{ background: '#FFFBEB', border: '1.5px solid #FDE68A' }}>
+                {items.length > 1 && <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 mb-2">🛒 {items.length} productos</p>}
+                <div className="space-y-2">
+                  {items.map((it, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-black text-gray-900 text-sm truncate">{it.nombre}</p>
+                        {it.pack_name && <p className="text-[11px] text-gray-500">{it.pack_name}</p>}
+                      </div>
+                      <p className="font-bold text-gray-800 text-sm flex-shrink-0">S/{it.precio}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-2" style={{ borderTop: '1px dashed #FDE68A' }}>
+                  <p className="text-xs font-black text-gray-500 uppercase">Total</p>
+                  <p className="font-black text-2xl" style={{ color: '#16A34A' }}>S/{total}</p>
+                </div>
+              </div>
+            )
+          })()}
 
           <div className="space-y-2 mb-4">
             <Row label="Estado" value={stageText} />

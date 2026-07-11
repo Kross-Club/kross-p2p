@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
   }
 
   // Upsert buyer account — document_number as unique key if provided, fallback to phone
-  let buyer: { id: string; score: number; puntos: number } | null = null
+  let buyer: { id: string; score: number; puntos: number; address: string | null; address_lat: number | null; address_lng: number | null; address_verified: boolean } | null = null
   let buyerErr: { message: string } | null = null
 
   if (body.document_number) {
@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
         },
         { onConflict: 'document_number', ignoreDuplicates: false }
       )
-      .select('id, score, puntos')
+      .select('id, score, puntos, address, address_lat, address_lng, address_verified')
       .single()
     buyer = data
     buyerErr = error
@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
         { phone: body.buyer_phone, nombre: body.buyer_name, address: body.address ?? null },
         { onConflict: 'phone', ignoreDuplicates: false }
       )
-      .select('id, score, puntos')
+      .select('id, score, puntos, address, address_lat, address_lng, address_verified')
       .single()
     buyer = data
     buyerErr = error
@@ -167,7 +167,11 @@ Deno.serve(async (req) => {
       buyer_id: buyer.id,
       buyer_name: body.buyer_name,
       buyer_phone: body.buyer_phone,
-      address: body.address ?? null,
+      // Inherit the buyer's already-verified address (so no need to re-verify)
+      address: buyer.address ?? body.address ?? null,
+      address_lat: buyer.address_lat ?? null,
+      address_lng: buyer.address_lng ?? null,
+      address_verified: buyer.address_verified ?? false,
       seller_name: assignedSellerName,
       seller_role: assignedSellerRole,
       seller_avatar: assignedSellerAvatar,
@@ -175,6 +179,7 @@ Deno.serve(async (req) => {
       product_name: body.product_name,
       product_price: body.product_price,
       pack_name: body.pack_name ?? null,
+      items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: body.product_price, pack_name: body.pack_name ?? null }],
       status: 'active',
       stage: 'nuevo',
       assigned_seller_id: assignedSellerId,

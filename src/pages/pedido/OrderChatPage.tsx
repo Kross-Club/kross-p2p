@@ -560,6 +560,9 @@ export default function OrderChatPage() {
       .on('broadcast', { event: 'order_recreated' }, () => {
         setSession(prev => prev ? { ...prev, status: 'active', stage: 'nuevo' } : prev)
       })
+      .on('broadcast', { event: 'items_update' }, ({ payload }) => {
+        setSession(prev => prev ? { ...prev, items: payload.items, product_price: payload.total } : prev)
+      })
       .on('broadcast', { event: 'seller_call_request' }, () => {
         setSellerCalling(true)
       })
@@ -641,7 +644,9 @@ export default function OrderChatPage() {
         body: JSON.stringify({ action: 'accept_offer', session_id: session.id, offer }),
       })
       const r = await res.json()
-      if (r.token) navigate(`/p/${r.token}`)
+      // Merged into the same order → stay here (items_update refreshes the cart).
+      // New separate order → open it.
+      if (!r.merged && r.token) navigate(`/p/${r.token}`)
     } catch { /* ignore */ }
   }, [session, navigate])
 
@@ -733,10 +738,12 @@ export default function OrderChatPage() {
           style={{ background: 'rgba(255,255,255,0.2)' }}>
           <div className="min-w-0">
             <p className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
-              <ShoppingCart size={11} /> {session.pack_name || 'Tu pedido'} · ver detalle
+              <ShoppingCart size={11} /> {(session.items && session.items.length > 1) ? `${session.items.length} productos` : (session.pack_name || 'Tu pedido')} · ver detalle
             </p>
             <p className="text-sm font-black text-white truncate max-w-[200px]">
-              {session.product_name || 'Producto Kross'}
+              {(session.items && session.items.length > 1)
+                ? `${session.items[0].nombre} +${session.items.length - 1} más`
+                : (session.product_name || 'Producto Kross')}
             </p>
           </div>
           <p className="font-black text-lg text-white flex-shrink-0 ml-2">

@@ -138,6 +138,13 @@ ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS visibility          text DEF
 
 -- Producto del pedido (para ver sus imágenes de la landing en el detalle)
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS product_id uuid;
+-- Carrito multi-producto: [{ product_id, nombre, precio, pack_name }]. product_price = total del pedido
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS items jsonb DEFAULT '[]';
+
+-- Dirección verificada a nivel de comprador (aplica a todos sus pedidos)
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS address_lat      double precision;
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS address_lng      double precision;
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS address_verified boolean DEFAULT false;
 -- Nota/sub-tag del CRM: cancelado, no_contesta, recuperado, anulado…
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS nota text;
 -- Oferta de upsell adjunta a un mensaje del chat

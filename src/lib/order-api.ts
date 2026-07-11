@@ -22,11 +22,19 @@ export interface OrderSession {
   address_lat?: number | null
   address_lng?: number | null
   nota?: string | null
+  items?: OrderItem[] | null
   buyer_can_call?: boolean
   assigned_seller_id?: string | null
   involved_seller_ids?: string[] | null
   writer_seller_ids?: string[] | null
   participants?: Participant[]
+}
+
+export interface OrderItem {
+  product_id?: string | null
+  nombre: string
+  precio: number
+  pack_name?: string | null
 }
 
 export interface Participant {

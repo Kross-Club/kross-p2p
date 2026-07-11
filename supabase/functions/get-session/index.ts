@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
     .from('order_sessions')
     .select(`
       id, order_id, store_id, buyer_name, buyer_phone, buyer_id,
-      product_id, product_name, product_price, pack_name,
+      product_id, product_name, product_price, pack_name, items,
       status, stage, assigned_seller_id,
       seller_name, seller_role, seller_avatar,
       involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,

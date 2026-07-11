@@ -415,6 +415,9 @@ export default function VendedorPedidoPage() {
       .on('broadcast', { event: 'nota_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, nota: payload.nota } : prev)
       })
+      .on('broadcast', { event: 'items_update' }, ({ payload }) => {
+        setSession(prev => prev ? { ...prev, items: payload.items, product_price: payload.total } : prev)
+      })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.role === 'buyer') {
           setBuyerTyping(true)
@@ -586,7 +589,7 @@ export default function VendedorPedidoPage() {
           <button onClick={() => setShowDetail(true)} className="flex-1 min-w-0 text-left">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
             <p className="text-xs" style={{ color: buyerOnline ? '#4ADE80' : 'rgba(255,255,255,0.6)' }}>
-              {buyerOnline ? 'En línea ahora' : `${session.product_name} · ${session.pack_name || `S/${session.product_price}`}`}
+              {buyerOnline ? 'En línea ahora' : ((session.items && session.items.length > 1) ? `${session.items.length} productos · S/${session.product_price}` : `${session.product_name} · S/${session.product_price}`)}
             </p>
             <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><ShoppingCart size={11} /> Ver pedido</p>
           </button>

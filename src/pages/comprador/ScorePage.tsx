@@ -67,12 +67,20 @@ export default function ScorePage() {
   }
 
   const verifyGps = () => {
-    if (!('geolocation' in navigator)) { claim('address_gps'); return }
+    if (!buyerId || !('geolocation' in navigator)) { alert('Activa tu GPS para verificar tu dirección.'); return }
     setBusy('address_gps')
     navigator.geolocation.getCurrentPosition(
-      () => claim('address_gps'),
+      async pos => {
+        try {
+          await fetch(`${BASE}/update-address`, {
+            method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ buyer_id: buyerId, lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          })
+        } catch { /* ignore */ }
+        claim('address_gps')
+      },
       () => { setBusy(null); alert('Necesitamos tu ubicación para verificar la dirección.') },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     )
   }
 

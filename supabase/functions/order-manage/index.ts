@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, store_id, stage, status, buyer_id, buyer_name, buyer_phone, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by')
+    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by')
     .eq('id', body.session_id)
     .single()
 
@@ -104,9 +104,36 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
-  // ─── ACCEPT OFFER (buyer accepts an upsell → new order) ─────────────────────
+  // ─── ACCEPT OFFER ───────────────────────────────────────────────────────────
+  // Before "preparando" → add the product to the SAME order (one cart, one chat,
+  // one delivery). From "preparando" on → it's a separate new order.
   if (body.action === 'accept_offer') {
     if (!body.offer) return new Response('Missing offer', { status: 400, headers: corsHeaders })
+    const offer = body.offer
+    const canMerge = session.stage === 'nuevo' || session.stage === 'confirmado'
+
+    if (canMerge) {
+      const currentItems: any[] = Array.isArray(session.items) && session.items.length
+        ? session.items
+        : [{ product_id: null, nombre: session.product_name, precio: session.product_price }]
+      const newItems = [...currentItems, { product_id: offer.product_id ?? null, nombre: offer.nombre, precio: offer.precio }]
+      const total = newItems.reduce((s, it) => s + (Number(it.precio) || 0), 0)
+
+      await supabase.from('order_sessions').update({ items: newItems, product_price: total }).eq('id', session.id)
+
+      const { data: msg } = await supabase.from('chat_messages').insert({
+        session_id: session.id, sender_role: 'seller', sender_name: session.seller_name ?? 'Kross',
+        sender_role_label: session.seller_role ?? 'Ventas', type: 'text',
+        body: `✅ Agregué ${offer.nombre} a tu pedido. Nuevo total: S/${total} — llega todo junto en una sola entrega. 📦`,
+      }).select().single()
+
+      await broadcast(session.id, 'items_update', { items: newItems, total })
+      if (msg) await broadcast(session.id, 'new_message', msg)
+
+      return new Response(JSON.stringify({ ok: true, merged: true, total }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // New separate order (already being prepared / shipped)
     const token = randomToken()
     const orderId = `ORD-${Date.now()}`
     const { data: created } = await supabase.from('order_sessions').insert({
@@ -116,9 +143,12 @@ Deno.serve(async (req) => {
       buyer_id: session.buyer_id,
       buyer_name: session.buyer_name,
       buyer_phone: session.buyer_phone,
-      product_id: body.offer.product_id ?? null,
-      product_name: body.offer.nombre,
-      product_price: body.offer.precio,
+      // inherit the already-verified address
+      address: session.address, address_lat: session.address_lat, address_lng: session.address_lng, address_verified: session.address_verified,
+      product_id: offer.product_id ?? null,
+      product_name: offer.nombre,
+      product_price: offer.precio,
+      items: [{ product_id: offer.product_id ?? null, nombre: offer.nombre, precio: offer.precio }],
       status: 'active',
       stage: 'nuevo',
       assigned_seller_id: session.assigned_seller_id,
@@ -133,10 +163,10 @@ Deno.serve(async (req) => {
       await supabase.from('chat_messages').insert({
         session_id: created.id, sender_role: 'seller', sender_name: session.seller_name ?? 'Kross',
         sender_role_label: session.seller_role ?? 'Ventas', type: 'text',
-        body: `¡Gracias por aprovechar la oferta! 🎉 Tu ${body.offer.nombre} (S/${body.offer.precio}) también llegará a tu puerta.`,
+        body: `¡Gracias por aprovechar la oferta! 🎉 Tu ${offer.nombre} (S/${offer.precio}) también llegará a tu puerta.`,
       })
     }
-    return new Response(JSON.stringify({ ok: true, token: created?.token }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ ok: true, merged: false, token: created?.token }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   // ─── CANCEL ─────────────────────────────────────────────────────────────────
