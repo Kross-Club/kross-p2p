@@ -25,15 +25,17 @@ Deno.serve(async (req) => {
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       chat_messages ( id, sender_role, type, body, created_at, read_at )
     `)
-    .eq('store_id', storeId)
     .eq('status', 'active')
     .order('created_at', { ascending: false })
     .limit(50)
 
-  // Show every order this agent is involved in (owner now, or handled before,
-  // or invited) — not just the ones currently assigned to them.
+  // A specific agent → every order they're involved in, regardless of the
+  // store_id label (orders and sellers can carry different store ids).
+  // The admin (no seller filter) → all active orders in their store.
   if (sellerId) {
     query = query.contains('involved_seller_ids', [sellerId])
+  } else {
+    query = query.eq('store_id', storeId)
   }
 
   const { data, error } = await query

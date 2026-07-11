@@ -80,11 +80,12 @@ Deno.serve(async (req) => {
   let assignedSellerName: string | null = null
   let assignedSellerRole: string | null = null
   let assignedSellerAvatar: string | null = null
+  let assignedSellerStore: string | null = null
 
   // New orders always go to a SALES person (role Ventas) — never to Despacho,
   // Motorizado or Admin. We prefer sellers scoped to this store; if that store
   // has no sales rep, fall back to any Ventas rep across stores.
-  type Seller = { auth_user_id: string; nombre: string; role_label: string; avatar_url: string | null }
+  type Seller = { auth_user_id: string; nombre: string; role_label: string; avatar_url: string | null; store_id?: string }
   const isVentas = (s: any) => (s.role_label ?? '').toLowerCase().includes('venta')
   // A seller off-shift (available=false) doesn't receive new orders. Missing
   // column (undefined) is treated as available so it works before the migration.
@@ -94,7 +95,7 @@ Deno.serve(async (req) => {
   {
     const { data: scoped } = await supabase
       .from('sellers')
-      .select('auth_user_id, nombre, role_label, avatar_url, is_admin, available')
+      .select('auth_user_id, nombre, role_label, avatar_url, is_admin, available, store_id')
       .eq('store_id', body.store_id)
       .eq('active', true)
       .not('auth_user_id', 'is', null)
@@ -103,7 +104,7 @@ Deno.serve(async (req) => {
     if (sellerPool.length === 0) {
       const { data: all } = await supabase
         .from('sellers')
-        .select('auth_user_id, nombre, role_label, avatar_url, is_admin, available')
+        .select('auth_user_id, nombre, role_label, avatar_url, is_admin, available, store_id')
         .eq('active', true)
         .not('auth_user_id', 'is', null)
       sellerPool = (all ?? []).filter((s: any) => !s.is_admin && isVentas(s) && isAvailable(s))
@@ -148,6 +149,7 @@ Deno.serve(async (req) => {
       assignedSellerName = chosen.nombre
       assignedSellerRole = chosen.role_label
       assignedSellerAvatar = chosen.avatar_url
+      assignedSellerStore = chosen.store_id ?? null
     }
   }
 
@@ -158,7 +160,8 @@ Deno.serve(async (req) => {
     .from('order_sessions')
     .insert({
       order_id: orderId,
-      store_id: body.store_id,
+      // Align the order to the assigned seller's store so it shows in the team's lists
+      store_id: assignedSellerStore ?? body.store_id,
       token,
       buyer_id: buyer.id,
       buyer_name: body.buyer_name,
