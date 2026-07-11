@@ -97,6 +97,32 @@ CREATE POLICY "avatars_update" ON storage.objects
   FOR UPDATE TO authenticated USING       (bucket_id = 'avatars');
 
 
+-- ─── 5a. PRODUCTOS (landing por imágenes que sube el admin) ─────────────────
+CREATE TABLE IF NOT EXISTS products (
+  id         uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  store_id   text,
+  nombre     text        NOT NULL,
+  precio     numeric     DEFAULT 0,
+  images     text[]      DEFAULT '{}',   -- imágenes de la landing (full-bleed, en orden)
+  packs      jsonb       DEFAULT '[]',   -- [{ nombre, descripcion, precio }]
+  active     boolean     DEFAULT true,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS products_read ON products;
+CREATE POLICY products_read ON products FOR SELECT TO public USING (true);
+
+-- Bucket para las imágenes de producto (lectura pública, sube el vendedor autenticado)
+INSERT INTO storage.buckets (id, name, public) VALUES ('products', 'products', true)
+ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS products_img_read   ON storage.objects;
+CREATE POLICY products_img_read   ON storage.objects FOR SELECT TO public        USING (bucket_id = 'products');
+DROP POLICY IF EXISTS products_img_upload ON storage.objects;
+CREATE POLICY products_img_upload ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'products');
+DROP POLICY IF EXISTS products_img_update ON storage.objects;
+CREATE POLICY products_img_update ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'products');
+
+
 -- ─── 5b. CADENA DE VALOR: participación en el chat ──────────────────────────
 -- involved_seller_ids: todos los agentes que han estado en el pedido (ven el chat)
 -- writer_seller_ids:   quiénes pueden escribir/llamar ahora (dueño actual + invitados)
