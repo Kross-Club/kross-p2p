@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
     sender_name: assignedSellerName ?? 'Kross',
     sender_role_label: assignedSellerRole ?? 'Ventas',
     type: 'text',
-    body: `¡Hola ${body.buyer_name.split(' ')[0]}! 🎉 Tu ${body.product_name} (S/${body.product_price}) llegará a tu puerta sin adelanto.\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊`,
+    body: `¡Hola${body.buyer_name ? ' ' + body.buyer_name.split(' ')[0] : ''}! 🎉 Tu ${body.product_name} (S/${body.product_price}) llegará a tu puerta sin adelanto.\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊`,
   })
 
   return new Response(
