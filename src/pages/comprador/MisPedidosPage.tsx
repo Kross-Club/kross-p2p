@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle } from 'lucide-react'
-import { subscribePush } from '../../lib/push'
+import { subscribePush, notifPermission } from '../../lib/push'
 import { supabase } from '../../lib/supabase'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -54,7 +54,7 @@ export default function MisPedidosPage() {
   const navigate = useNavigate()
   const [data, setData] = useState<BuyerSession | null>(null)
 
-  const [notifGranted, setNotifGranted] = useState(Notification.permission === 'granted')
+  const [notifGranted, setNotifGranted] = useState(notifPermission() === 'granted')
   const [bumps, setBumps] = useState<Record<string, number>>({})
   const seenRef = useRef<Set<string>>(new Set())
 
@@ -65,7 +65,7 @@ export default function MisPedidosPage() {
     try {
       parsed = JSON.parse(raw)
       setData(parsed)
-      if (parsed.buyer?.id && Notification.permission === 'granted') {
+      if (parsed.buyer?.id && notifPermission() === 'granted') {
         subscribePush({ buyerId: parsed.buyer.id, role: 'buyer' as const }).catch(() => {})
       }
     } catch { navigate('/acceso', { replace: true }); return }

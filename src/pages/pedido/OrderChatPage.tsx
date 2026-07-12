@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
-import { subscribePush } from '../../lib/push'
+import { subscribePush, notifPermission } from '../../lib/push'
 import { startRingtone } from '../../lib/ringtone'
 import { sendCallReject, sendCallCancel, listenCallReject, listenCallCancel } from '../../lib/call-signal'
 import InstallBanner from '../../components/InstallBanner'
@@ -513,9 +513,9 @@ export default function OrderChatPage() {
         setState('ok')
         markRead(token).catch(() => {})
         // If already granted, subscribe silently; else show banner after delay
-        if (Notification.permission === 'granted') {
+        if (notifPermission() === 'granted') {
           subscribePush({ sessionId: s.id, role: 'buyer' }).catch(() => {})
-        } else if (Notification.permission === 'default') {
+        } else if (notifPermission() === 'default') {
           setTimeout(() => setShowPushBanner(true), 3000)
         }
       })
@@ -567,7 +567,7 @@ export default function OrderChatPage() {
         setSellerCalling(true)
       })
       .on('broadcast', { event: 'request_push_permission' }, () => {
-        if (Notification.permission !== 'granted') {
+        if (notifPermission() !== 'granted') {
           setShowPushBanner(true)
         }
       })

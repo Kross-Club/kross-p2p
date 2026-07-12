@@ -6,7 +6,7 @@ import IncomingCallOverlay from './IncomingCallOverlay'
 import InstallBanner from './InstallBanner'
 import SellerPresenceTracker from './SellerPresenceTracker'
 import { KrossIcon } from './KrossLogo'
-import { subscribePush } from '../lib/push'
+import { subscribePush, notifPermission } from '../lib/push'
 import { supabase } from '../lib/supabase'
 import { useSeller } from '../lib/seller-session'
 
@@ -23,7 +23,7 @@ export default function Layout() {
 
   // Register push for the real logged-in seller
   useEffect(() => {
-    if (real && Notification.permission === 'granted') {
+    if (real && notifPermission() === 'granted') {
       subscribePush({ sellerId: real.auth_user_id, role: 'seller' as const }).catch(() => {})
     }
   }, [real?.auth_user_id])

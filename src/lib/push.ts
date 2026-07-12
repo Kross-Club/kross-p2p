@@ -11,6 +11,11 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
 }
 
+// Safe helpers — Safari on iOS (outside an installed PWA) has no Notification API,
+// and touching it throws, which would blank the whole page.
+export const notifSupported = () => typeof window !== 'undefined' && 'Notification' in window
+export const notifPermission = (): NotificationPermission => (notifSupported() ? Notification.permission : 'default')
+
 export async function subscribePush(opts: {
   sessionId?: string
   sellerId?: string
@@ -18,7 +23,7 @@ export async function subscribePush(opts: {
   role: 'buyer' | 'seller'
 }): Promise<boolean> {
   try {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !notifSupported()) return false
 
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') return false
