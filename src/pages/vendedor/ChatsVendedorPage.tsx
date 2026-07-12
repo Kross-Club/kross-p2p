@@ -19,9 +19,17 @@ interface SupabaseSession {
   created_at: string
   seller_name?: string | null
   seller_role?: string | null
+  nota?: string | null
   assigned_seller_id?: string | null
   writer_seller_ids?: string[] | null
   chat_messages: { id: string; sender_role: string; type: string; body: string | null; created_at: string; read_at: string | null }[]
+}
+
+const NOTA_META: Record<string, { label: string; color: string }> = {
+  no_contesta: { label: 'No contesta', color: '#F59E0B' },
+  recuperado: { label: 'Recuperado', color: '#16A34A' },
+  cancelado: { label: 'Cancelado', color: '#DC2626' },
+  anulado: { label: 'Anulado', color: '#6B7280' },
 }
 
 const stageColor: Record<string, string> = {
@@ -171,6 +179,12 @@ export default function ChatsVendedorPage() {
                       {unread > 0 && (
                         <span className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center"
                           style={{ background: '#55C8F5' }}>{unread}</span>
+                      )}
+                      {session.nota && NOTA_META[session.nota] && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                          style={{ background: `${NOTA_META[session.nota].color}22`, color: NOTA_META[session.nota].color }}>
+                          {NOTA_META[session.nota].label}
+                        </span>
                       )}
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${stageColor[session.stage] || 'bg-gray-100 text-gray-500'}`}>
                         {stageLabel[session.stage] || session.stage}

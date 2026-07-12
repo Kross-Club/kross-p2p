@@ -28,39 +28,52 @@ const STAGE_ORDER = ['nuevo','confirmado','preparando','en_camino','entregado']
 
 function OrderTracker({ stage }: { stage: string }) {
   const currentIdx = Math.max(0, STAGE_ORDER.indexOf(stage))
+  const ACCENT = '#55C8F5'
+  const current = STAGES[currentIdx]
+  const pct = STAGES.length > 1 ? (currentIdx / (STAGES.length - 1)) * 100 : 0
+
   return (
-    <div className="mx-4 mt-3 mb-1 bg-white rounded-2xl px-4 py-3 shadow-sm" style={{ border: '1.5px solid #F0F0F0' }}>
-      <p className="text-[10px] font-black uppercase tracking-widest mb-2.5" style={{ color: '#55C8F5' }}>
-        Estado de tu pedido
-      </p>
-      <div className="flex items-center">
-        {STAGES.map((s, i) => {
-          const done = STAGE_ORDER.indexOf(s.key) <= currentIdx
-          const isCurrent = STAGE_ORDER.indexOf(s.key) === currentIdx
-          return (
-            <div key={s.key} className="flex items-center flex-1 last:flex-none">
-              <div className="flex flex-col items-center gap-0.5">
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-sm"
+    <div className="mx-4 mt-3 mb-1 bg-white rounded-2xl px-4 py-3.5 shadow-sm" style={{ border: '1.5px solid #F0F0F0' }}>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#9CA3AF' }}>Estado de tu pedido</p>
+        <p className="text-[11px] font-black" style={{ color: ACCENT }}>{current?.emoji} {current?.label}</p>
+      </div>
+
+      <div className="relative">
+        {/* connector line (behind the dots) */}
+        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full" style={{ background: '#EEF1F4' }} />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full transition-all" style={{ background: ACCENT, width: `${pct}%` }} />
+
+        <div className="relative flex items-center justify-between">
+          {STAGES.map((s, i) => {
+            const done = i < currentIdx
+            const isCurrent = i === currentIdx
+            return (
+              <div key={s.key} className="flex flex-col items-center" style={{ width: 20 }}>
+                <div className="rounded-full flex items-center justify-center"
                   style={isCurrent
-                    ? { background: '#FFD400', border: '2.5px solid #111', fontSize: 15 }
+                    ? { width: 20, height: 20, background: ACCENT, boxShadow: `0 0 0 4px ${ACCENT}33` }
                     : done
-                    ? { background: '#55C8F5', fontSize: 14 }
-                    : { background: '#F3F4F6', fontSize: 14 }
-                  }
-                >
-                  {s.emoji}
+                    ? { width: 16, height: 16, background: ACCENT }
+                    : { width: 16, height: 16, background: '#fff', border: '2px solid #E5E7EB' }
+                  }>
+                  {done && <svg width="9" height="9" viewBox="0 0 24 24"><path d="M5 12l5 5L20 6" stroke="#fff" strokeWidth="3.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                 </div>
-                <p className="text-[8px] font-bold text-center leading-tight w-12"
-                  style={{ color: isCurrent ? '#111' : done ? '#55C8F5' : '#9CA3AF' }}>
-                  {s.label}
-                </p>
               </div>
-              {i < STAGES.length - 1 && (
-                <div className="flex-1 h-0.5 mx-1 mb-4 rounded-full"
-                  style={{ background: STAGE_ORDER.indexOf(STAGES[i+1].key) <= currentIdx ? '#55C8F5' : '#E5E7EB' }} />
-              )}
-            </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* labels */}
+      <div className="flex items-center justify-between mt-1.5">
+        {STAGES.map((s, i) => {
+          const isCurrent = i === currentIdx
+          return (
+            <p key={s.key} className="text-[8px] font-bold text-center leading-tight" style={{ width: 46, color: isCurrent ? '#111' : i < currentIdx ? ACCENT : '#C4C9CF' }}>
+              {s.label}
+            </p>
           )
         })}
       </div>
@@ -732,7 +745,7 @@ export default function OrderChatPage() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
-              <ShoppingCart size={11} /> {(session.items && session.items.length > 1) ? `${session.items.length} productos` : (session.pack_name || 'Tu pedido')} · ver detalle
+              <ShoppingCart size={11} /> Ver pedido
             </p>
             <p className="text-sm font-black text-white truncate max-w-[180px]">
               {(session.items && session.items.length > 1)

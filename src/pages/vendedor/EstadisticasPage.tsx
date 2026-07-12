@@ -28,7 +28,14 @@ function roleCat(role: string) {
   return 'Otro'
 }
 
-interface Sess { id: string; stage: string; assigned_seller_id: string | null; seller_name?: string | null; seller_role?: string | null }
+interface Sess { id: string; stage: string; status?: string; nota?: string | null; assigned_seller_id: string | null; seller_name?: string | null; seller_role?: string | null }
+
+const NOTA_META: Record<string, { label: string; color: string }> = {
+  no_contesta: { label: 'No contesta', color: '#F59E0B' },
+  recuperado: { label: 'Recuperado', color: '#16A34A' },
+  cancelado: { label: 'Cancelado', color: '#DC2626' },
+  anulado: { label: 'Anulado', color: '#6B7280' },
+}
 
 export default function EstadisticasPage() {
   const { effective, isAdmin, impersonating } = useSeller()
@@ -41,7 +48,7 @@ export default function EstadisticasPage() {
   useEffect(() => {
     if (!effective) return
     setLoading(true)
-    const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': effective.store_id }
+    const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': effective.store_id, 'x-include-cancelled': '1' }
     if (onlyMine) headers['x-seller-id'] = effective.auth_user_id
     fetch(`${BASE}/get-store-sessions`, { headers })
       .then(r => (r.ok ? r.json() : []))
@@ -52,12 +59,18 @@ export default function EstadisticasPage() {
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" /></div>
 
-  const total = sessions.length
-  const byStage = STAGES.map(s => ({ ...s, count: sessions.filter(x => x.stage === s.key).length }))
+  const active = sessions.filter(s => s.status !== 'cancelado')
+  const total = active.length
+  const byStage = STAGES.map(s => ({ ...s, count: active.filter(x => x.stage === s.key).length }))
   const maxStage = Math.max(1, ...byStage.map(s => s.count))
 
+  // Notas breakdown (across active + cancelled)
+  const notaMap: Record<string, number> = {}
+  for (const s of sessions) { if (s.nota) notaMap[s.nota] = (notaMap[s.nota] ?? 0) + 1 }
+  const notaKeys = Object.keys(NOTA_META).filter(k => notaMap[k])
+
   const memberMap: Record<string, { name: string; role: string; count: number }> = {}
-  for (const s of sessions) {
+  for (const s of active) {
     const id = s.assigned_seller_id ?? 'sin'
     if (!memberMap[id]) memberMap[id] = { name: s.seller_name ?? 'Sin asignar', role: s.seller_role ?? '', count: 0 }
     memberMap[id].count++
@@ -65,7 +78,7 @@ export default function EstadisticasPage() {
   const members = Object.values(memberMap).sort((a, b) => b.count - a.count)
 
   const roleMap: Record<string, number> = {}
-  for (const s of sessions) { const c = roleCat(s.seller_role ?? ''); roleMap[c] = (roleMap[c] ?? 0) + 1 }
+  for (const s of active) { const c = roleCat(s.seller_role ?? ''); roleMap[c] = (roleMap[c] ?? 0) + 1 }
 
   return (
     <div className="px-4 py-4">
@@ -90,6 +103,20 @@ export default function EstadisticasPage() {
           </div>
         ))}
       </div>
+
+      {notaKeys.length > 0 && (
+        <>
+          <h2 className="font-black text-sm text-gray-900 mb-2">Notas / seguimiento</h2>
+          <div className="flex flex-wrap gap-2 mb-6">
+            {notaKeys.map(k => (
+              <div key={k} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: `${NOTA_META[k].color}18` }}>
+                <span className="font-black text-lg" style={{ color: NOTA_META[k].color }}>{notaMap[k]}</span>
+                <span className="text-xs font-bold" style={{ color: NOTA_META[k].color }}>{NOTA_META[k].label}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {adminView && (
         <>

@@ -119,11 +119,22 @@ Deno.serve(async (req) => {
     const i = body.index ?? -1
     const qty = Math.max(1, body.qty ?? 1)
     if (!items[i]) return new Response('Invalid item', { status: 400, headers: corsHeaders })
+    const prevQty = items[i].qty ?? 1
     const { precio, pack_name } = await priceForQty(items[i], qty)
+    const nombre = items[i].nombre
     items[i] = { ...items[i], qty, precio, pack_name }
     const total = sumItems(items)
     await supabase.from('order_sessions').update({ items, product_price: total }).eq('id', session.id)
+
+    const verb = qty > prevQty ? 'Agregué' : 'Actualicé'
+    const { data: msg } = await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'seller', sender_name: session.seller_name ?? 'Kross',
+      sender_role_label: session.seller_role ?? 'Ventas', type: 'text',
+      body: `🔢 ${verb} ${nombre} a ${qty} unidad(es). Nuevo total: S/${total} 📦`,
+    }).select().single()
+
     await broadcast(session.id, 'items_update', { items, total })
+    if (msg) await broadcast(session.id, 'new_message', msg)
     return new Response(JSON.stringify({ ok: true, items, total }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
