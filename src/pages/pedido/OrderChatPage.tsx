@@ -625,6 +625,8 @@ export default function OrderChatPage() {
 
   const acceptOffer = useCallback(async (offer: NonNullable<OrderMessage['offer']>, messageId: string) => {
     if (!session) return
+    // Disable the button immediately so it can't be accepted twice
+    setMessages(prev => prev.map(m => m.id === messageId && m.offer ? { ...m, offer: { ...m.offer, accepted: true } } : m))
     try {
       const res = await fetch(`${BASE}/order-manage`, {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
@@ -721,19 +723,24 @@ export default function OrderChatPage() {
         </div>
 
         <button onClick={() => setShowDetail(true)}
-          className="mt-3 w-full rounded-2xl px-3 py-2 flex items-center justify-between text-left"
+          className="mt-3 w-full rounded-2xl px-2.5 py-2 flex items-center gap-2.5 text-left"
           style={{ background: 'rgba(255,255,255,0.2)' }}>
-          <div className="min-w-0">
+          <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'rgba(255,255,255,0.25)' }}>
+            {session.items?.[0]?.image
+              ? <img src={session.items[0].image!} alt="" className="w-full h-full object-cover" />
+              : <ShoppingCart size={16} className="m-auto mt-3 text-white/70" />}
+          </div>
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
               <ShoppingCart size={11} /> {(session.items && session.items.length > 1) ? `${session.items.length} productos` : (session.pack_name || 'Tu pedido')} · ver detalle
             </p>
-            <p className="text-sm font-black text-white truncate max-w-[200px]">
+            <p className="text-sm font-black text-white truncate max-w-[180px]">
               {(session.items && session.items.length > 1)
                 ? `${session.items[0].nombre} +${session.items.length - 1} más`
                 : (session.product_name || 'Producto Kross')}
             </p>
           </div>
-          <p className="font-black text-lg text-white flex-shrink-0 ml-2">
+          <p className="font-black text-lg text-white flex-shrink-0 ml-1">
             {session.product_price ? `S/${session.product_price}` : ''}
           </p>
         </button>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { X, Package, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { X, Package, AlertTriangle, RefreshCw, Trash2, Eye } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
 
@@ -33,15 +33,20 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
 }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [images, setImages] = useState<string[]>([])
-  const [viewer, setViewer] = useState<number | null>(null)
+  const [viewerImgs, setViewerImgs] = useState<string[]>([])
+  const [viewerIdx, setViewerIdx] = useState<number | null>(null)
   const [removingIdx, setRemovingIdx] = useState<number | null>(null)
 
-  useEffect(() => {
-    if (!session.product_id) return
-    supabase.from('products').select('images').eq('id', session.product_id).maybeSingle()
-      .then(({ data }) => setImages((data?.images as string[]) ?? []))
-  }, [session.product_id])
+  // Open the fullscreen gallery for a specific product (its landing images)
+  const openItemViewer = async (it: { product_id?: string | null; image?: string | null }) => {
+    let imgs = it.image ? [it.image] : []
+    if (it.product_id) {
+      const { data } = await supabase.from('products').select('images').eq('id', it.product_id).maybeSingle()
+      const arr = (data?.images as string[]) ?? []
+      if (arr.length) imgs = arr
+    }
+    if (imgs.length) { setViewerImgs(imgs); setViewerIdx(0) }
+  }
 
   const post = (payload: Record<string, unknown>) =>
     fetch(`${BASE}/order-manage`, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -101,22 +106,6 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
             <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
           </div>
 
-          {/* Carrusel angosto (imágenes verticales, se ve más info) */}
-          {images.length > 0 && (
-            <div className="-mx-1 mb-3">
-              <div className="flex gap-2 overflow-x-auto px-1 pb-1 snap-x">
-                {images.map((img, i) => (
-                  <button key={i} onClick={() => setViewer(i)}
-                    className="snap-start flex-shrink-0 rounded-xl overflow-hidden bg-gray-100"
-                    style={{ width: 96 }}>
-                    <img src={img} alt={`Imagen ${i + 1}`} className="w-full object-cover" style={{ height: 128 }} />
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-gray-400 text-center mt-1">Desliza y toca para ver en grande →</p>
-            </div>
-          )}
-
           {(() => {
             const items = (session.items && session.items.length ? session.items : [{ nombre: session.product_name || 'Producto', precio: session.product_price ?? 0, pack_name: session.pack_name, image: null, qty: 1 }])
             const total = items.reduce((s, it) => s + (Number(it.precio) || 0), 0)
@@ -127,9 +116,13 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
                   {items.map((it, i) => (
                     <div key={i}>
                       <div className="flex items-center gap-2.5">
-                        <div className="w-11 h-11 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
+                        <button onClick={() => openItemViewer(it)}
+                          className="relative w-11 h-11 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 group">
                           {it.image ? <img src={it.image} alt={it.nombre} className="w-full h-full object-cover" /> : <Package size={16} className="m-auto mt-3 text-gray-300" />}
-                        </div>
+                          <span className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.35)' }}>
+                            <Eye size={15} className="text-white" />
+                          </span>
+                        </button>
                         <div className="flex-1 min-w-0">
                           <p className="font-black text-gray-900 text-sm truncate">{it.nombre}</p>
                           <p className="text-[11px] text-gray-500">{it.pack_name || `${it.qty ?? 1} und`}</p>
@@ -238,17 +231,17 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
         </div>
       </div>
 
-      {viewer !== null && images.length > 0 && (
-        <div className="fixed inset-0 z-[60] bg-black flex flex-col" onClick={() => setViewer(null)}>
+      {viewerIdx !== null && viewerImgs.length > 0 && (
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col" onClick={() => setViewerIdx(null)}>
           <div className="flex justify-end p-4">
-            <button onClick={() => setViewer(null)} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <button onClick={() => setViewerIdx(null)} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
               <X size={20} className="text-white" />
             </button>
           </div>
           <div className="flex-1 flex overflow-x-auto snap-x snap-mandatory items-center" onClick={e => e.stopPropagation()}>
-            {images.map((img, i) => (
+            {viewerImgs.map((img, i) => (
               <div key={i} className="snap-center flex-shrink-0 w-full h-full flex items-center justify-center px-2"
-                ref={el => { if (el && i === viewer) el.scrollIntoView({ inline: 'center' }) }}>
+                ref={el => { if (el && i === viewerIdx) el.scrollIntoView({ inline: 'center' }) }}>
                 <img src={img} alt={`Imagen ${i + 1}`} className="max-w-full max-h-full object-contain" />
               </div>
             ))}

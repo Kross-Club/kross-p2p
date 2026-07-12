@@ -171,9 +171,12 @@ Deno.serve(async (req) => {
     if (!body.offer) return new Response('Missing offer', { status: 400, headers: corsHeaders })
     const offer = body.offer
 
-    // Mark the offer message as accepted so it can't be added again
+    // Guard against double-accept: if this offer is already accepted, do nothing
     if (body.message_id) {
       const { data: om } = await supabase.from('chat_messages').select('offer').eq('id', body.message_id).maybeSingle()
+      if (om?.offer?.accepted) {
+        return new Response(JSON.stringify({ ok: true, already: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
       if (om?.offer) {
         const updatedOffer = { ...om.offer, accepted: true }
         await supabase.from('chat_messages').update({ offer: updatedOffer }).eq('id', body.message_id)
