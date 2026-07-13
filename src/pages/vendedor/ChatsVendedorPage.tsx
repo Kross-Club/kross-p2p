@@ -126,13 +126,13 @@ export default function ChatsVendedorPage() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por cliente o producto..."
-          className="w-full bg-gray-100 rounded-2xl pl-9 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#55C8F5]/30"
+          className="w-full bg-gray-100 rounded-2xl pl-9 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
         />
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" />
+          <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12">
@@ -160,7 +160,7 @@ export default function ChatsVendedorPage() {
                 key={session.id}
                 onClick={() => navigate(`/vendedor/pedido/${session.token}`)}
                 className="w-full bg-white border rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
-                style={{ borderColor: '#55C8F5', borderWidth: '1.5px' }}
+                style={{ borderColor: 'var(--brand)', borderWidth: '1.5px' }}
               >
                 <div className="relative flex-shrink-0">
                   <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-lg font-black"
@@ -178,7 +178,7 @@ export default function ChatsVendedorPage() {
                     <div className="flex items-center gap-1 flex-shrink-0 ml-1">
                       {unread > 0 && (
                         <span className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center"
-                          style={{ background: '#55C8F5' }}>{unread}</span>
+                          style={{ background: 'var(--brand)' }}>{unread}</span>
                       )}
                       {session.nota && NOTA_META[session.nota] && (
                         <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"

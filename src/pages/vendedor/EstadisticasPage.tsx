@@ -57,7 +57,7 @@ export default function EstadisticasPage() {
       .finally(() => setLoading(false))
   }, [effective?.auth_user_id, effective?.store_id, onlyMine])
 
-  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" /></div>
+  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
   const active = sessions.filter(s => s.status !== 'cancelado')
   const total = active.length
@@ -85,7 +85,7 @@ export default function EstadisticasPage() {
       <h1 className="text-xl font-black text-gray-900 flex items-center gap-2 mb-1"><BarChart2 size={20} /> Estadísticas</h1>
       <p className="text-xs text-gray-400 mb-4">{adminView ? 'Toda la tienda' : `Tus pedidos · ${effective?.role_label}`}</p>
 
-      <div className="rounded-2xl p-4 mb-4 text-white" style={{ background: 'linear-gradient(135deg, #55C8F5, #863bff)' }}>
+      <div className="rounded-2xl p-4 mb-4 text-white" style={{ background: 'linear-gradient(135deg, var(--brand), #863bff)' }}>
         <p className="text-white/70 text-xs font-bold">Pedidos activos</p>
         <p className="font-black text-4xl">{total}</p>
       </div>

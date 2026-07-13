@@ -94,7 +94,7 @@ export default function LandingProductoPage() {
     } catch { /* ignore */ }
   }, [])
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ background: '#FFFDF5' }}><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" /></div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ background: '#FFFDF5' }}><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
   if (!product) return <div className="min-h-screen flex items-center justify-center text-gray-400">Producto no encontrado</div>
 
   // Packs ordenados por precio (menor → mayor) para incentivar llevar más

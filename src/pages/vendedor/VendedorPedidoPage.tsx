@@ -252,7 +252,7 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
   return (
     <div className="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-100">
       <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Estado:</span>
-      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: '#55C8F5', color: 'white' }}>
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--brand)', color: 'white' }}>
         {stageLabel[current] || current}
       </span>
       {canWrite && idx < STAGES.length - 1 && (
@@ -283,9 +283,9 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
   if (msg.type === 'status_update') {
     return (
       <div className="flex justify-center mb-3">
-        <div className="flex items-center gap-1.5 bg-white rounded-full px-3 py-1 shadow-sm" style={{ border: '1px solid #55C8F5' }}>
-          <Package size={11} style={{ color: '#55C8F5' }} />
-          <p className="text-[11px] font-semibold" style={{ color: '#55C8F5' }}>{msg.body}</p>
+        <div className="flex items-center gap-1.5 bg-white rounded-full px-3 py-1 shadow-sm" style={{ border: '1px solid var(--brand)' }}>
+          <Package size={11} style={{ color: 'var(--brand)' }} />
+          <p className="text-[11px] font-semibold" style={{ color: 'var(--brand)' }}>{msg.body}</p>
         </div>
       </div>
     )
@@ -309,7 +309,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
         <div className="px-4 py-2.5 rounded-2xl text-sm"
           style={isSeller
             ? { background: '#FFD400', color: '#111', fontWeight: 600, borderRadius: '18px 18px 4px 18px' }
-            : { background: '#55C8F5', color: 'white', borderRadius: '18px 18px 18px 4px' }
+            : { background: 'var(--brand)', color: 'white', borderRadius: '18px 18px 18px 4px' }
           }>
           {(msg.body || '').split('\n').map((line, i, arr) => (
             <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
@@ -499,7 +499,7 @@ export default function VendedorPedidoPage() {
   if (loading) {
     return (
       <div className="flex flex-col h-screen items-center justify-center" style={{ background: '#FFFDF5' }}>
-        <div className="w-10 h-10 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" />
+        <div className="w-10 h-10 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" />
       </div>
     )
   }
@@ -509,7 +509,7 @@ export default function VendedorPedidoPage() {
       <div className="flex flex-col h-screen items-center justify-center px-8 text-center" style={{ background: '#FFFDF5' }}>
         <Package size={40} className="text-gray-300 mb-4" />
         <p className="font-black text-gray-800">Sesión no encontrada</p>
-        <button onClick={() => navigate('/vendedor/chats')} className="mt-4 text-sm text-[#55C8F5] font-semibold">
+        <button onClick={() => navigate('/vendedor/chats')} className="mt-4 text-sm text-[var(--brand)] font-semibold">
           Volver a chats
         </button>
       </div>
@@ -684,7 +684,7 @@ export default function VendedorPedidoPage() {
         {buyerTyping && (
           <div className="flex justify-start mb-3">
             <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl"
-              style={{ background: '#55C8F5', borderRadius: '18px 18px 18px 4px' }}>
+              style={{ background: 'var(--brand)', borderRadius: '18px 18px 18px 4px' }}>
               {[0,1,2].map(i => (
                 <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce"
                   style={{ background: 'white', animationDelay: `${i * 150}ms` }} />

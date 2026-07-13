@@ -12,9 +12,9 @@ export default function ChatsPage() {
   if (!cliente) {
     return (
       <div className="flex flex-col items-center justify-center h-64 px-8 text-center">
-        <MessageCircle size={48} className="text-[#55C8F5]/30 mb-4" />
+        <MessageCircle size={48} className="text-[var(--brand)]/30 mb-4" />
         <p className="text-gray-500 text-sm">Aún no tienes chats. Busca un producto y empieza a chatear.</p>
-        <button onClick={() => navigate('/landing/l1')} className="mt-4 bg-[#55C8F5] text-white px-6 py-3 rounded-2xl font-bold text-sm">
+        <button onClick={() => navigate('/landing/l1')} className="mt-4 bg-[var(--brand)] text-white px-6 py-3 rounded-2xl font-bold text-sm">
           Ver productos
         </button>
       </div>
@@ -27,9 +27,9 @@ export default function ChatsPage() {
 
       {misChats.length === 0 ? (
         <div className="text-center py-12">
-          <MessageCircle size={48} className="text-[#55C8F5]/30 mx-auto mb-3" />
+          <MessageCircle size={48} className="text-[var(--brand)]/30 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No tienes chats abiertos aún.</p>
-          <button onClick={() => navigate('/landing/l1')} className="mt-4 bg-[#55C8F5] text-white px-6 py-3 rounded-2xl font-bold text-sm">
+          <button onClick={() => navigate('/landing/l1')} className="mt-4 bg-[var(--brand)] text-white px-6 py-3 rounded-2xl font-bold text-sm">
             Ver productos
           </button>
         </div>

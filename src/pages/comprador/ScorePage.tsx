@@ -94,7 +94,7 @@ export default function ScorePage() {
 
   if (!state) {
     return <div className="min-h-screen flex items-center justify-center" style={{ background: '#FFFDF5' }}>
-      <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" />
+      <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" />
     </div>
   }
 
@@ -112,7 +112,7 @@ export default function ScorePage() {
   return (
     <div className="min-h-screen" style={{ background: '#FFFDF5' }}>
       {/* Header */}
-      <div className="px-4 pt-10 pb-8 text-white" style={{ background: 'linear-gradient(135deg, #55C8F5 0%, #863bff 100%)' }}>
+      <div className="px-4 pt-10 pb-8 text-white" style={{ background: 'linear-gradient(135deg, var(--brand) 0%, #863bff 100%)' }}>
         <div className="max-w-[430px] mx-auto">
           <button onClick={() => navigate('/mis-pedidos')} className="w-9 h-9 rounded-full flex items-center justify-center mb-4" style={{ background: 'rgba(255,255,255,0.2)' }}>
             <ArrowLeft size={18} />
@@ -168,7 +168,7 @@ export default function ScorePage() {
               <div key={a.key} className="flex items-center gap-3 p-3 rounded-2xl bg-white" style={{ border: '1.5px solid #f0f0f0' }}>
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: isDone ? '#DCFCE7' : '#EEF9FF' }}>
-                  <a.icon size={18} style={{ color: isDone ? '#16A34A' : '#55C8F5' }} />
+                  <a.icon size={18} style={{ color: isDone ? '#16A34A' : 'var(--brand)' }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-black text-sm" style={{ color: '#111' }}>{a.title}</p>
@@ -179,7 +179,7 @@ export default function ScorePage() {
                 ) : (
                   <button onClick={a.onClick} disabled={busy === a.key}
                     className="text-xs font-black px-3 py-2 rounded-xl disabled:opacity-50"
-                    style={{ background: '#55C8F5', color: '#fff' }}>
+                    style={{ background: 'var(--brand)', color: '#fff' }}>
                     {busy === a.key ? '…' : 'Hacer'}
                   </button>
                 )}

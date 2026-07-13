@@ -38,7 +38,7 @@ export default function BottomNav() {
           >
             {({ isActive }) => (
               <>
-                <div className="p-1.5 rounded-xl transition-colors" style={isActive ? { color: '#55C8F5', background: '#EEF9FF' } : {}}>
+                <div className="p-1.5 rounded-xl transition-colors" style={isActive ? { color: 'var(--brand)', background: '#EEF9FF' } : {}}>
                   <Icon size={20} />
                 </div>
                 <span className="text-[10px] font-medium truncate">{label}</span>

@@ -28,7 +28,7 @@ const STAGE_ORDER = ['nuevo','confirmado','preparando','en_camino','entregado']
 
 function OrderTracker({ stage }: { stage: string }) {
   const currentIdx = Math.max(0, STAGE_ORDER.indexOf(stage))
-  const ACCENT = '#55C8F5'
+  const ACCENT = 'var(--brand)'
   const current = STAGES[currentIdx]
   const pct = STAGES.length > 1 ? (currentIdx / (STAGES.length - 1)) * 100 : 0
 
@@ -128,9 +128,9 @@ function MessageBubble({ msg, onAcceptOffer }: { msg: OrderMessage; onAcceptOffe
   if (msg.type === 'status_update') {
     return (
       <div className="flex justify-center mb-3">
-        <div className="flex items-center gap-1.5 bg-white rounded-full px-3 py-1 shadow-sm" style={{ border: '1px solid #55C8F5' }}>
-          <Package size={11} style={{ color: '#55C8F5' }} />
-          <p className="text-[11px] font-semibold" style={{ color: '#55C8F5' }}>{msg.body}</p>
+        <div className="flex items-center gap-1.5 bg-white rounded-full px-3 py-1 shadow-sm" style={{ border: '1px solid var(--brand)' }}>
+          <Package size={11} style={{ color: 'var(--brand)' }} />
+          <p className="text-[11px] font-semibold" style={{ color: 'var(--brand)' }}>{msg.body}</p>
         </div>
       </div>
     )
@@ -159,7 +159,7 @@ function MessageBubble({ msg, onAcceptOffer }: { msg: OrderMessage; onAcceptOffe
         )}
         <div className="px-4 py-2.5 rounded-2xl text-sm"
           style={isBuyer
-            ? { background: '#55C8F5', color: 'white', borderRadius: '18px 18px 4px 18px' }
+            ? { background: 'var(--brand)', color: 'white', borderRadius: '18px 18px 4px 18px' }
             : { background: '#FFD400', color: '#111', fontWeight: 600, borderRadius: '18px 18px 18px 4px' }
           }>
           {(msg.body || '').split('\n').map((line, i, arr) => (
@@ -441,7 +441,7 @@ function BuyerIncomingCall({ sessionId, onAnswer, onReject, sellerName, sellerRo
 // ─── Skeleton loader ──────────────────────────────────────────────────────────
 function Skeleton() {
   return (
-    <div className="flex flex-col h-screen" style={{ background: '#55C8F5' }}>
+    <div className="flex flex-col h-screen" style={{ background: 'var(--brand)' }}>
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center text-white">
           <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
@@ -673,7 +673,7 @@ export default function OrderChatPage() {
 
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-4 pt-3 pb-5 text-white"
-        style={{ background: '#55C8F5', borderRadius: '0 0 32px 32px' }}>
+        style={{ background: 'var(--brand)', borderRadius: '0 0 32px 32px' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/mis-pedidos')}
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -703,8 +703,8 @@ export default function OrderChatPage() {
                 <circle cx="38.8" cy="25.2" r="0.9" fill="white"/>
                 <ellipse cx="32" cy="31" rx="2.5" ry="1.8" fill="#1A1A1A"/>
                 <path d="M28.5 33.5 Q32 36.5 35.5 33.5" stroke="#1A1A1A" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
-                <ellipse cx="32" cy="13" rx="13" ry="4" fill="#55C8F5"/>
-                <rect x="19" y="9" width="26" height="8" rx="4" fill="#55C8F5"/>
+                <ellipse cx="32" cy="13" rx="13" ry="4" fill="var(--brand)"/>
+                <rect x="19" y="9" width="26" height="8" rx="4" fill="var(--brand)"/>
                 <rect x="23" y="6" width="18" height="7" rx="3.5" fill="#2BB5EE"/>
                 <circle cx="32" cy="6" r="2.5" fill="#FFD400"/>
               </svg>
@@ -813,7 +813,7 @@ export default function OrderChatPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <Truck size={40} style={{ color: '#55C8F5' }} className="mb-3 opacity-40" />
+            <Truck size={40} style={{ color: 'var(--brand)' }} className="mb-3 opacity-40" />
             <p className="text-sm text-gray-400">Tu pedido está en camino.<br/>Pronto recibirás novedades aquí.</p>
           </div>
         )}
@@ -850,7 +850,7 @@ export default function OrderChatPage() {
             onClick={handleSend}
             disabled={!input.trim() || sending}
             className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40"
-            style={{ background: '#55C8F5' }}>
+            style={{ background: 'var(--brand)' }}>
             <Send size={16} />
           </button>
         </div>

@@ -37,7 +37,7 @@ function HomeRedirect() {
 
   if (!dest) return (
     <div className="min-h-screen flex items-center justify-center"
-      style={{ background: 'linear-gradient(135deg, #55C8F5 0%, #863bff 100%)' }}>
+      style={{ background: 'linear-gradient(135deg, var(--brand) 0%, #863bff 100%)' }}>
       <div className="w-10 h-10 rounded-full border-4 border-white/30 border-t-white animate-spin" />
     </div>
   )
@@ -58,7 +58,7 @@ function RequireSellerAuth({ children }: { children: React.ReactNode }) {
 
   if (authed === null) return (
     <div className="min-h-screen flex items-center justify-center"
-      style={{ background: 'linear-gradient(135deg, #55C8F5 0%, #863bff 100%)' }}>
+      style={{ background: 'linear-gradient(135deg, var(--brand) 0%, #863bff 100%)' }}>
       <div className="w-10 h-10 rounded-full border-4 border-white/30 border-t-white animate-spin" />
     </div>
   )

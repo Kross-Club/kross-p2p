@@ -224,7 +224,7 @@ export default function MisPedidosPage() {
               return (
                 <button key={s.id} onClick={() => openOrder(s)}
                   className="w-full text-left p-4 rounded-2xl shadow-sm flex items-center gap-3"
-                  style={{ background: '#fff', border: unread > 0 ? '1.5px solid #55C8F5' : '1.5px solid #f0f0f0' }}>
+                  style={{ background: '#fff', border: unread > 0 ? '1.5px solid var(--brand)' : '1.5px solid #f0f0f0' }}>
                   <div className="relative w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: `${stageColor}22` }}>
                     <Package size={20} style={{ color: stageColor }} />
@@ -246,7 +246,7 @@ export default function MisPedidosPage() {
                         {stageLabel}
                       </span>
                       {unread > 0 && (
-                        <span className="inline-flex items-center gap-1 text-xs font-black" style={{ color: '#55C8F5' }}>
+                        <span className="inline-flex items-center gap-1 text-xs font-black" style={{ color: 'var(--brand)' }}>
                           <MessageCircle size={12} /> Leer chat
                         </span>
                       )}

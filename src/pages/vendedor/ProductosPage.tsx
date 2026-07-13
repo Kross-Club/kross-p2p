@@ -30,7 +30,7 @@ export default function ProductosPage() {
   }
   useEffect(() => { load() /* eslint-disable-next-line */ }, [real?.store_id])
 
-  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" /></div>
+  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
   if (!isAdmin || impersonating) {
     return <div className="px-4 py-8 text-center text-sm text-gray-400">Solo el administrador gestiona los productos.</div>
@@ -42,7 +42,7 @@ export default function ProductosPage() {
     <div className="px-4 py-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-black text-gray-900">Productos</h1>
-        <button onClick={() => setEditing(newProduct())} className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#55C8F5', color: '#fff' }}>
+        <button onClick={() => setEditing(newProduct())} className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: '#fff' }}>
           <Plus size={14} /> Nuevo
         </button>
       </div>
@@ -63,12 +63,12 @@ export default function ProductosPage() {
                 <p className="font-black text-sm text-gray-900 truncate">{p.nombre || 'Sin nombre'}</p>
                 <p className="text-xs text-gray-400">S/{p.precio} · {p.images.length} imagen(es) · {p.packs.length} pack(s)</p>
                 <button onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/landing/${p.id}`) }}
-                  className="text-[11px] font-bold mt-1 flex items-center gap-1" style={{ color: '#55C8F5' }}>
+                  className="text-[11px] font-bold mt-1 flex items-center gap-1" style={{ color: 'var(--brand)' }}>
                   <Copy size={11} /> Copiar link de landing
                 </button>
               </div>
               <a href={`/landing/${p.id}`} target="_blank" rel="noreferrer" className="p-2 rounded-xl" style={{ background: '#F3F4F6', color: '#666' }}><ExternalLink size={14} /></a>
-              <button onClick={() => setEditing(p)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#EEF9FF', color: '#55C8F5' }}>Editar</button>
+              <button onClick={() => setEditing(p)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#EEF9FF', color: 'var(--brand)' }}>Editar</button>
             </div>
           ))}
         </div>
@@ -173,7 +173,7 @@ function Editor({ product, adminId, onClose, onSaved }: { product: Product; admi
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs font-bold text-gray-500">Imágenes de la landing (en orden)</label>
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="text-[11px] font-black px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
+            className="text-[11px] font-black px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--brand)', color: '#fff' }}>
             {uploading ? 'Subiendo…' : '+ Subir'}
           </button>
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={upload} />
@@ -195,7 +195,7 @@ function Editor({ product, adminId, onClose, onSaved }: { product: Product; admi
         {/* Packs (opcional) */}
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs font-bold text-gray-500">Packs / ofertas (opcional)</label>
-          <button onClick={addPack} className="text-[11px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#EEF9FF', color: '#55C8F5' }}>+ Pack</button>
+          <button onClick={addPack} className="text-[11px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#EEF9FF', color: 'var(--brand)' }}>+ Pack</button>
         </div>
         <div className="space-y-2 mb-4">
           {packs.map((p, i) => (
@@ -212,7 +212,7 @@ function Editor({ product, adminId, onClose, onSaved }: { product: Product; admi
 
         <div className="flex gap-2">
           {product.id && <button onClick={del} disabled={busy} className="px-4 py-3 rounded-2xl font-black text-sm bg-red-50 text-red-600">Eliminar</button>}
-          <button onClick={save} disabled={busy} className="flex-1 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
+          <button onClick={save} disabled={busy} className="flex-1 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: '#fff' }}>
             {busy ? 'Guardando…' : 'Guardar producto'}
           </button>
         </div>

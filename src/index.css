@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+/* Per-brand colors (white-label). store-context overrides these at runtime
+   from the resolved store; these defaults are Kross so nothing breaks before
+   the store loads or when no brand is resolved. */
+:root {
+  --brand: #55C8F5;
+  --brand-dark: #060C1A;
+}

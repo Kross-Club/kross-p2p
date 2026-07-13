@@ -19,11 +19,19 @@ export default function Layout() {
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
-  // Brand shown in the header = the seller's OWN store (works from any domain)
+  // Brand shown in the header = the seller's OWN store (works from any domain).
+  // Also drive the --brand CSS vars from it, so the panel is branded even when
+  // the admin logs in from the apex domain (not their subdomain).
   useEffect(() => {
     if (!real?.store_id) return
-    supabase.from('stores').select('nombre, logo_url').eq('id', real.store_id).maybeSingle()
-      .then(({ data }) => { if (data) setBrand(data as { nombre: string; logo_url: string | null }) })
+    supabase.from('stores').select('nombre, logo_url, color_primary, color_dark').eq('id', real.store_id).maybeSingle()
+      .then(({ data }) => {
+        if (!data) return
+        setBrand(data as { nombre: string; logo_url: string | null })
+        const root = document.documentElement
+        if (data.color_primary) root.style.setProperty('--brand', data.color_primary)
+        if (data.color_dark) root.style.setProperty('--brand-dark', data.color_dark)
+      })
   }, [real?.store_id])
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])
@@ -121,12 +129,12 @@ export default function Layout() {
                   onClick={() => { if (!impersonating) fileRef.current?.click() }}
                   disabled={uploading || impersonating}
                   className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
-                  style={{ border: '2px solid #55C8F5', opacity: uploading ? 0.5 : 1 }}
+                  style={{ border: '2px solid var(--brand)', opacity: uploading ? 0.5 : 1 }}
                   title={impersonating ? '' : 'Cambiar foto'}>
                   {avatar ? (
                     <img src={avatar} alt={effective.nombre} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="font-black text-sm" style={{ color: '#55C8F5' }}>
+                    <span className="font-black text-sm" style={{ color: 'var(--brand)' }}>
                       {effective.nombre.charAt(0).toUpperCase()}
                     </span>
                   )}

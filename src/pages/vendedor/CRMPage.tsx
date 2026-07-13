@@ -92,7 +92,7 @@ export default function CRMPage() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" />
+          <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" />
         </div>
       ) : view === 'lista' ? (
         <div className="space-y-5">

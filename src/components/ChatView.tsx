@@ -34,7 +34,7 @@ function PreciosBubble({ contenido }: { contenido: MensajePrecioOpcion[] }) {
         <div key={i} className="bg-white border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="font-semibold text-gray-800 text-sm">{op.nombre}</span>
-            <span className="font-black text-base" style={{ color: '#55C8F5' }}>S/{op.precio}</span>
+            <span className="font-black text-base" style={{ color: 'var(--brand)' }}>S/{op.precio}</span>
           </div>
           <p className="text-xs text-gray-400 mt-0.5">{op.descripcion}</p>
         </div>
@@ -85,7 +85,7 @@ function BotonesBubble({
                 disabled={isDone}
                 className="w-full flex items-center justify-center gap-2 font-black py-3.5 rounded-2xl text-sm transition-all active:scale-95"
                 style={isDone
-                  ? { background: '#55C8F5', color: 'white' }
+                  ? { background: 'var(--brand)', color: 'white' }
                   : { background: '#FFD400', color: '#111111', border: '2px solid #111111' }
                 }
               >
@@ -102,10 +102,10 @@ function BotonesBubble({
               className="text-xs font-bold px-3 py-2 rounded-full border transition-all"
               style={
                 isChat
-                  ? { background: '#55C8F5', color: 'white', borderColor: '#55C8F5', display: 'flex', alignItems: 'center', gap: '4px' }
+                  ? { background: 'var(--brand)', color: 'white', borderColor: 'var(--brand)', display: 'flex', alignItems: 'center', gap: '4px' }
                   : selected === op
-                  ? { background: '#55C8F5', color: 'white', borderColor: '#55C8F5' }
-                  : { background: 'white', color: '#55C8F5', borderColor: '#55C8F5' }
+                  ? { background: 'var(--brand)', color: 'white', borderColor: 'var(--brand)' }
+                  : { background: 'white', color: 'var(--brand)', borderColor: 'var(--brand)' }
               }
             >
               {isChat && <MessageCircle size={11} />}
@@ -124,8 +124,8 @@ function BotonesBubble({
 
       {/* Confirmación success */}
       {selected && selected.startsWith('✅') && contenido.respuestas[selected] && (
-        <div className="rounded-2xl px-4 py-3 mt-1 flex items-start gap-2" style={{ background: '#EEF9FF', border: '1.5px solid #55C8F5' }}>
-          <CheckCircle2 size={16} style={{ color: '#55C8F5', flexShrink: 0, marginTop: 2 }} />
+        <div className="rounded-2xl px-4 py-3 mt-1 flex items-start gap-2" style={{ background: '#EEF9FF', border: '1.5px solid var(--brand)' }}>
+          <CheckCircle2 size={16} style={{ color: 'var(--brand)', flexShrink: 0, marginTop: 2 }} />
           <p className="text-sm font-semibold" style={{ color: '#1a6a8a' }}>{contenido.respuestas[selected]}</p>
         </div>
       )}
@@ -198,7 +198,7 @@ function MensajeItem({
       <div className={`max-w-[80%] ${isClient ? 'items-end' : 'items-start'} flex flex-col`}>
         <div
           className={`px-4 py-2.5 rounded-2xl text-sm ${isClient ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
-          style={isClient ? { background: '#55C8F5', color: 'white' } : { background: '#FFD400', color: '#111111', fontWeight: 600 }}
+          style={isClient ? { background: 'var(--brand)', color: 'white' } : { background: '#FFD400', color: '#111111', fontWeight: 600 }}
         >
           {msg.contenido as string}
         </div>
@@ -265,7 +265,7 @@ export default function ChatView({ chat, isVendedor, lockedUntilChat }: ChatView
               onClick={handleSend}
               disabled={!input.trim()}
               className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40 transition-opacity"
-              style={{ background: '#55C8F5' }}
+              style={{ background: 'var(--brand)' }}
             >
               <Send size={16} />
             </button>

@@ -55,7 +55,7 @@ export default function InstallBanner() {
       <div className="max-w-[430px] mx-auto">
         <div className="flex items-start gap-3">
           <div className="w-12 h-12 rounded-2xl overflow-hidden flex-shrink-0"
-            style={{ background: '#55C8F5' }}>
+            style={{ background: 'var(--brand)' }}>
             <img src="/icon-192.png" alt="Kross" className="w-full h-full object-cover" />
           </div>
           <div className="flex-1 min-w-0">

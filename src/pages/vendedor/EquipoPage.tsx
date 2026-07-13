@@ -73,7 +73,7 @@ export default function EquipoPage() {
     } finally { setBusy(false) }
   }
 
-  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" /></div>
+  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
   if (!isAdmin) {
     return (
@@ -92,7 +92,7 @@ export default function EquipoPage() {
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-black text-gray-900 flex items-center gap-2"><Users size={20} /> Mi equipo</h1>
         <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#55C8F5', color: '#fff' }}>
+          className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: '#fff' }}>
           <UserPlus size={13} /> Agregar
         </button>
       </div>
@@ -242,7 +242,7 @@ function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adm
         </div>
         {err && <p className="text-xs font-semibold text-center mt-2" style={{ color: '#DC2626' }}>{err}</p>}
         <button onClick={submit} disabled={busy}
-          className="w-full mt-4 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
+          className="w-full mt-4 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: '#fff' }}>
           {busy ? 'Creando…' : 'Crear miembro'}
         </button>
       </div>

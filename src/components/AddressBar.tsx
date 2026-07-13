@@ -83,7 +83,7 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
         {role === 'buyer' && (
           <button onClick={verifyGps} disabled={busy}
             className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0 disabled:opacity-50"
-            style={verified ? { background: '#EEF9FF', color: '#55C8F5' } : { background: '#FFF7ED', color: '#EA580C' }}>
+            style={verified ? { background: '#EEF9FF', color: 'var(--brand)' } : { background: '#FFF7ED', color: '#EA580C' }}>
             {busy ? 'Ubicando…' : verified ? <><Navigation size={11} /> Cambiar</> : <><Navigation size={11} /> Verificar GPS</>}
           </button>
         )}
