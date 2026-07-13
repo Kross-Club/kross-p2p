@@ -53,13 +53,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return <StoreContext.Provider value={{ store, loading }}>{children}</StoreContext.Provider>
 }
 
+function setMeta(name: string, content: string) {
+  let m = document.querySelector(`meta[name="${name}"]`)
+  if (!m) { m = document.createElement('meta'); m.setAttribute('name', name); document.head.appendChild(m) }
+  m.setAttribute('content', content)
+}
+function setLink(rel: string, href: string) {
+  let l = document.querySelector(`link[rel="${rel}"]`)
+  if (!l) { l = document.createElement('link'); l.setAttribute('rel', rel); document.head.appendChild(l) }
+  l.setAttribute('href', href)
+}
+
 function applyBranding(s: Store) {
   try {
     document.title = s.nombre
-    const meta = document.querySelector('meta[name="theme-color"]') || (() => {
-      const m = document.createElement('meta'); m.setAttribute('name', 'theme-color'); document.head.appendChild(m); return m
-    })()
-    meta.setAttribute('content', s.color_dark)
+    setMeta('theme-color', s.color_dark)
+    // iOS uses these (not the manifest) for the home-screen icon & name
+    setMeta('apple-mobile-web-app-title', s.nombre)
+    if (s.logo_url) {
+      setLink('apple-touch-icon', s.logo_url)
+      setLink('icon', s.logo_url)
+    }
     const root = document.documentElement
     root.style.setProperty('--brand', s.color_primary)
     root.style.setProperty('--brand-dark', s.color_dark)
