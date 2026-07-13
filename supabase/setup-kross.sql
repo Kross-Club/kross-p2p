@@ -22,6 +22,11 @@ CREATE POLICY stores_read ON stores FOR SELECT TO public USING (true);
 
 -- Compradores pasan a ser por tienda (un cliente de una marca no es de otra)
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS store_id text;
+-- El mismo DNI puede existir en varias marcas → unicidad POR TIENDA, no global
+DROP INDEX IF EXISTS idx_buyers_document_number;
+DROP INDEX IF EXISTS idx_buyers_phone;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_buyers_store_doc   ON buyers(store_id, document_number);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_buyers_store_phone ON buyers(store_id, phone);
 
 -- ─── 1. COMPRADORES (identificados por DNI) ─────────────────────────────────
 CREATE TABLE IF NOT EXISTS buyers (

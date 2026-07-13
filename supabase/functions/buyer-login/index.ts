@@ -17,6 +17,7 @@ Deno.serve(async (req) => {
     document_type?: string
     document_number?: string
     phone?: string
+    store_id?: string
   }
 
   if (!body.document_number && !body.phone) {
@@ -27,13 +28,14 @@ Deno.serve(async (req) => {
 
   let buyer: Record<string, unknown> | null = null
 
-  // 1. Try by document number (preferred — permanent identifier)
+  // 1. Try by document number (preferred — permanent identifier), scoped to the store
   if (body.document_number) {
-    const { data } = await supabase
+    let q = supabase
       .from('buyers')
       .select('id, nombre, phone, document_type, document_number, score, puntos, address')
       .eq('document_number', body.document_number)
-      .maybeSingle()
+    if (body.store_id) q = q.eq('store_id', body.store_id)
+    const { data } = await q.maybeSingle()
     buyer = data
   }
 

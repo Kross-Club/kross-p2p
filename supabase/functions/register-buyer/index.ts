@@ -42,13 +42,14 @@ Deno.serve(async (req) => {
       .from('buyers')
       .upsert(
         {
+          store_id: body.store_id,
           document_type: body.document_type ?? 'DNI',
           document_number: body.document_number,
           phone: body.buyer_phone,
           nombre: body.buyer_name,
           address: body.address ?? null,
         },
-        { onConflict: 'document_number', ignoreDuplicates: false }
+        { onConflict: 'store_id,document_number', ignoreDuplicates: false }
       )
       .select('id, score, puntos, address, address_lat, address_lng, address_verified')
       .single()
@@ -59,8 +60,8 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase
       .from('buyers')
       .upsert(
-        { phone: body.buyer_phone, nombre: body.buyer_name, address: body.address ?? null },
-        { onConflict: 'phone', ignoreDuplicates: false }
+        { store_id: body.store_id, phone: body.buyer_phone, nombre: body.buyer_name, address: body.address ?? null },
+        { onConflict: 'store_id,phone', ignoreDuplicates: false }
       )
       .select('id, score, puntos, address, address_lat, address_lng, address_verified')
       .single()
@@ -92,6 +93,7 @@ Deno.serve(async (req) => {
   // column (undefined) is treated as available so it works before the migration.
   const isAvailable = (s: any) => s.available !== false
 
+  // Only sellers of THIS store — never assign across tenants
   let sellerPool: Seller[] = []
   {
     const { data: scoped } = await supabase
@@ -101,15 +103,6 @@ Deno.serve(async (req) => {
       .eq('active', true)
       .not('auth_user_id', 'is', null)
     sellerPool = (scoped ?? []).filter((s: any) => !s.is_admin && isVentas(s) && isAvailable(s))
-
-    if (sellerPool.length === 0) {
-      const { data: all } = await supabase
-        .from('sellers')
-        .select('auth_user_id, nombre, role_label, avatar_url, is_admin, available, store_id')
-        .eq('active', true)
-        .not('auth_user_id', 'is', null)
-      sellerPool = (all ?? []).filter((s: any) => !s.is_admin && isVentas(s) && isAvailable(s))
-    }
   }
 
   if (sellerPool.length > 0) {

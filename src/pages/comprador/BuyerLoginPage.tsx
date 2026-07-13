@@ -22,7 +22,7 @@ export default function BuyerLoginPage() {
     const res = await fetch(`${BASE}/buyer-login`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ document_type: 'DNI', document_number: docNumber }),
+      body: JSON.stringify({ document_type: 'DNI', document_number: docNumber, store_id: store.id }),
     })
 
     if (res.status === 404) {

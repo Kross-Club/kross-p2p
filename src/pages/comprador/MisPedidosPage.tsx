@@ -77,7 +77,7 @@ export default function MisPedidosPage() {
     if (doc) {
       fetch(`${BASE}/buyer-login`, {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document_number: doc }),
+        body: JSON.stringify({ document_number: doc, store_id: store.id }),
       })
         .then(r => (r.ok ? r.json() : null))
         .then(fresh => {
