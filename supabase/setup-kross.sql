@@ -147,6 +147,17 @@ DROP POLICY IF EXISTS products_img_update ON storage.objects;
 CREATE POLICY products_img_update ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'products');
 
 
+-- ─── 5c. BRANDING (logos de cada marca — onboarding de tiendas) ─────────────
+INSERT INTO storage.buckets (id, name, public) VALUES ('branding', 'branding', true)
+ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS branding_read   ON storage.objects;
+CREATE POLICY branding_read   ON storage.objects FOR SELECT TO public        USING (bucket_id = 'branding');
+DROP POLICY IF EXISTS branding_upload ON storage.objects;
+CREATE POLICY branding_upload ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'branding');
+DROP POLICY IF EXISTS branding_update ON storage.objects;
+CREATE POLICY branding_update ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'branding');
+
+
 -- ─── 5b. CADENA DE VALOR: participación en el chat ──────────────────────────
 -- involved_seller_ids: todos los agentes que han estado en el pedido (ven el chat)
 -- writer_seller_ids:   quiénes pueden escribir/llamar ahora (dueño actual + invitados)
@@ -199,17 +210,26 @@ CREATE POLICY "sellers_self_update" ON sellers
 -- Columna que marca quién es administrador (ve a TODO el equipo y puede
 -- "entrar como" cualquier miembro). Los admin NO reciben pedidos nuevos.
 ALTER TABLE sellers ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false;
+-- Super admin = dueño de la PLATAFORMA (Kross). Puede dar de alta marcas nuevas
+-- (crear tienda + su primer admin) y editar el branding de cualquier tienda.
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS is_super_admin boolean DEFAULT false;
+
+-- Tienda de la plataforma (Kross). Es la marca "casa" desde donde se onboardean
+-- las demás. Su store_id es el que hereda el admin dueño.
+INSERT INTO stores (id, slug, nombre, color_primary, color_dark, active)
+VALUES ('t1', 'kross', 'Kross', '#55C8F5', '#060C1A', true)
+ON CONFLICT (id) DO NOTHING;
 
 -- Crea (o actualiza) la fila de vendedor para el admin uxbriel@gmail.com,
 -- ligándola a su usuario de Supabase Auth y usando el mismo store_id del equipo.
-INSERT INTO sellers (auth_user_id, store_id, nombre, role_label, is_admin, active)
+INSERT INTO sellers (auth_user_id, store_id, nombre, role_label, is_admin, is_super_admin, active)
 SELECT u.id,
        COALESCE((SELECT store_id FROM sellers WHERE store_id IS NOT NULL LIMIT 1), 't1'),
-       'Uxbriel', 'Admin', true, true
+       'Uxbriel', 'Admin', true, true, true
 FROM auth.users u
 WHERE lower(u.email) = 'uxbriel@gmail.com'
 ON CONFLICT (auth_user_id)
-DO UPDATE SET is_admin = true, role_label = 'Admin';
+DO UPDATE SET is_admin = true, is_super_admin = true, role_label = 'Admin';
 
 
 -- ============================================================================

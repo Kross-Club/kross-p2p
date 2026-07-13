@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { MessageCircle, ShoppingBag, BarChart2, Users, Bot, Package } from 'lucide-react'
+import { MessageCircle, ShoppingBag, BarChart2, Users, Package, Store } from 'lucide-react'
 import { useSeller } from '../lib/seller-session'
 
 export default function BottomNav() {
@@ -17,8 +17,8 @@ export default function BottomNav() {
     { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
     { to: '/vendedor/productos', icon: Package, label: 'Productos' },
     { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
-    { to: '/vendedor/bots', icon: Bot, label: 'Bot/IA' },
     { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
+    { to: '/vendedor/marca', icon: Store, label: 'Marca' },
     { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
   ]
   const links = adminView ? adminLinks : memberLinks
