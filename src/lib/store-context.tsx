@@ -46,8 +46,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .then(({ data }) => {
         const s = (data as Store) ?? DEFAULT_STORE
         setStore(s); applyBranding(s)
+        setLoading(false)
       })
-      .finally(() => setLoading(false))
   }, [])
 
   return <StoreContext.Provider value={{ store, loading }}>{children}</StoreContext.Provider>
