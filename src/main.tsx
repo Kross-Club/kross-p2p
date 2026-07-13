@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { StoreProvider } from './lib/store-context'
 
 // Register the service worker globally (all pages, buyer + seller) so push
 // notifications are delivered and shown even when the PWA is in the background
@@ -17,6 +18,8 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <StoreProvider>
+      <App />
+    </StoreProvider>
   </StrictMode>,
 )

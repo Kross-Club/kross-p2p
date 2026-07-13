@@ -4,6 +4,25 @@
 --  Es idempotente: puedes correrlo las veces que quieras, no rompe nada.
 -- ============================================================================
 
+-- ─── 0. TIENDAS (multi-tenant / white-label) ────────────────────────────────
+-- Cada marca es una tienda con su subdominio (marca.kross.app), logo y colores.
+CREATE TABLE IF NOT EXISTS stores (
+  id            text        PRIMARY KEY,          -- = order_sessions.store_id / sellers.store_id
+  slug          text        UNIQUE NOT NULL,      -- subdominio: <slug>.kross.app
+  nombre        text        NOT NULL,
+  logo_url      text,
+  color_primary text        DEFAULT '#55C8F5',
+  color_dark    text        DEFAULT '#060C1A',
+  active        boolean     DEFAULT true,
+  created_at    timestamptz DEFAULT now()
+);
+ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS stores_read ON stores;
+CREATE POLICY stores_read ON stores FOR SELECT TO public USING (true);
+
+-- Compradores pasan a ser por tienda (un cliente de una marca no es de otra)
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS store_id text;
+
 -- ─── 1. COMPRADORES (identificados por DNI) ─────────────────────────────────
 CREATE TABLE IF NOT EXISTS buyers (
   id              uuid        DEFAULT gen_random_uuid() PRIMARY KEY,

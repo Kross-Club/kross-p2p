@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { KrossIcon } from '../../components/KrossLogo'
+import { useStore } from '../../lib/store-context'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -8,6 +9,7 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 export default function BuyerLoginPage() {
   const navigate = useNavigate()
+  const { store } = useStore()
   const [docNumber, setDocNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -46,10 +48,10 @@ export default function BuyerLoginPage() {
       <div className="w-full max-w-[360px]">
 
         <div className="text-center mb-8">
-          <div className="mx-auto mb-4 w-16 h-16 rounded-2xl overflow-hidden">
-            <KrossIcon size={64} />
+          <div className="mx-auto mb-4 w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: store.logo_url ? '#fff' : 'transparent' }}>
+            {store.logo_url ? <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-cover" /> : <KrossIcon size={64} />}
           </div>
-          <h1 className="font-black text-3xl tracking-tight" style={{ color: '#7DE8FF' }}>kross</h1>
+          <h1 className="font-black text-3xl tracking-tight" style={{ color: '#7DE8FF' }}>{store.nombre}</h1>
           <p className="text-sm mt-1" style={{ color: 'rgba(125,232,255,0.5)' }}>Mis pedidos</p>
         </div>
 

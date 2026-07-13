@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle } from 'lucide-react'
 import { subscribePush, notifPermission } from '../../lib/push'
 import { supabase } from '../../lib/supabase'
+import { useStore } from '../../lib/store-context'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -52,6 +53,7 @@ interface BuyerSession {
 
 export default function MisPedidosPage() {
   const navigate = useNavigate()
+  const { store } = useStore()
   const [data, setData] = useState<BuyerSession | null>(null)
 
   const [notifGranted, setNotifGranted] = useState(notifPermission() === 'granted')
@@ -145,12 +147,12 @@ export default function MisPedidosPage() {
     <div className="min-h-screen" style={{ background: '#FFFDF5' }}>
       {/* Header */}
       <div className="px-4 pt-10 pb-6 text-white"
-        style={{ background: 'linear-gradient(135deg, #55C8F5 0%, #863bff 100%)' }}>
+        style={{ background: `linear-gradient(135deg, ${store.color_primary} 0%, #863bff 100%)` }}>
         <div className="max-w-[430px] mx-auto">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <img src="/icon-192.png" alt="Kross" className="w-8 h-8 rounded-xl" />
-              <span className="font-black text-xl tracking-tight">kross</span>
+              <img src={store.logo_url || '/icon-192.png'} alt={store.nombre} className="w-8 h-8 rounded-xl object-cover" />
+              <span className="font-black text-xl tracking-tight">{store.nombre}</span>
             </div>
             <div className="flex items-center gap-2">
               {!notifGranted && (
