@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { KrossIcon } from '../components/KrossLogo'
+import { useStore } from '../lib/store-context'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { store } = useStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -30,10 +32,10 @@ export default function LoginPage() {
       <div className="w-full max-w-[360px]">
 
         <div className="text-center mb-8">
-          <div className="mx-auto mb-4 w-16 h-16 rounded-2xl overflow-hidden">
-            <KrossIcon size={64} />
+          <div className="mx-auto mb-4 w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: store.logo_url ? '#fff' : 'transparent' }}>
+            {store.logo_url ? <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-cover" /> : <KrossIcon size={64} />}
           </div>
-          <h1 className="font-black text-3xl tracking-tight" style={{ color: '#7DE8FF' }}>kross</h1>
+          <h1 className="font-black text-3xl tracking-tight" style={{ color: '#7DE8FF' }}>{store.nombre}</h1>
           <p className="text-sm mt-1" style={{ color: 'rgba(125,232,255,0.5)' }}>Panel de vendedor</p>
         </div>
 

@@ -69,12 +69,22 @@ Deno.serve(async (req) => {
 
   // Only an admin may run these
   const { data: admin } = await supabase
-    .from('sellers').select('is_admin, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
+    .from('sellers').select('is_admin, is_super_admin, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
   if (!admin?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
+
+  // A store admin may only touch members of their OWN store. The super admin
+  // (platform owner) is allowed to reach across stores.
+  async function targetInScope(sellerAuthId: string): Promise<boolean> {
+    if (admin.is_super_admin) return true
+    const { data: t } = await supabase
+      .from('sellers').select('store_id').eq('auth_user_id', sellerAuthId).maybeSingle()
+    return !!t && t.store_id === admin.store_id
+  }
 
   // ─── SET AVAILABILITY (+ hand off clients when going off-shift) ──────────────
   if (body.action === 'set_available') {
     if (!body.seller_id || typeof body.available !== 'boolean') return new Response('Missing fields', { status: 400, headers: corsHeaders })
+    if (!(await targetInScope(body.seller_id))) return new Response('Forbidden', { status: 403, headers: corsHeaders })
 
     const { data: target } = await supabase
       .from('sellers').select('auth_user_id, nombre, role_label, store_id').eq('auth_user_id', body.seller_id).maybeSingle()
@@ -119,6 +129,7 @@ Deno.serve(async (req) => {
   // ─── SET ROLE ────────────────────────────────────────────────────────────────
   if (body.action === 'set_role') {
     if (!body.seller_id || !body.role_label) return new Response('Missing fields', { status: 400, headers: corsHeaders })
+    if (!(await targetInScope(body.seller_id))) return new Response('Forbidden', { status: 403, headers: corsHeaders })
     await supabase.from('sellers').update({ role_label: body.role_label }).eq('auth_user_id', body.seller_id)
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
@@ -128,7 +139,9 @@ Deno.serve(async (req) => {
     if (!body.email || !body.password || !body.nombre || !body.role_label) {
       return new Response('Missing fields', { status: 400, headers: corsHeaders })
     }
-    const storeId = body.store_id || admin.store_id
+    // A store admin can only create members in their own store; only the super
+    // admin may target another store explicitly.
+    const storeId = (admin.is_super_admin && body.store_id) ? body.store_id : admin.store_id
     const { data: created, error: authErr } = await supabase.auth.admin.createUser({
       email: body.email,
       password: body.password,

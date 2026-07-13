@@ -15,8 +15,16 @@ export default function Layout() {
   const [uploading, setUploading] = useState(false)
   const [avatar, setAvatar] = useState<string | null>(null)
   const [available, setAvailable] = useState(true)
+  const [brand, setBrand] = useState<{ nombre: string; logo_url: string | null } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
+
+  // Brand shown in the header = the seller's OWN store (works from any domain)
+  useEffect(() => {
+    if (!real?.store_id) return
+    supabase.from('stores').select('nombre, logo_url').eq('id', real.store_id).maybeSingle()
+      .then(({ data }) => { if (data) setBrand(data as { nombre: string; logo_url: string | null }) })
+  }, [real?.store_id])
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])
   useEffect(() => { if (real) setAvailable(real.available !== false) }, [real?.id, real?.available])
@@ -84,10 +92,10 @@ export default function Layout() {
 
         <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl overflow-hidden">
-              <KrossIcon size={32} />
+            <div className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center">
+              {brand?.logo_url ? <img src={brand.logo_url} alt={brand.nombre} className="w-full h-full object-cover" /> : <KrossIcon size={32} />}
             </div>
-            <span className="font-black text-lg tracking-tight" style={{ color: '#060C1A' }}>kross</span>
+            <span className="font-black text-lg tracking-tight" style={{ color: '#060C1A' }}>{brand?.nombre ?? 'kross'}</span>
           </div>
           <div className="flex items-center gap-3">
             {real && !impersonating && (
