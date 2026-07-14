@@ -8,7 +8,7 @@ import SellerPresenceTracker from './SellerPresenceTracker'
 import { KrossIcon } from './KrossLogo'
 import { subscribePush, notifPermission } from '../lib/push'
 import { supabase } from '../lib/supabase'
-import { useSeller } from '../lib/seller-session'
+import { useSeller, clearSellerCache } from '../lib/seller-session'
 
 export default function Layout() {
   const { real, effective, impersonating, stopActing } = useSeller()
@@ -69,6 +69,7 @@ export default function Layout() {
 
   const logout = async () => {
     stopActing()
+    clearSellerCache()
     await supabase.auth.signOut()
     navigate('/login', { replace: true })
   }

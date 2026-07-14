@@ -18,18 +18,30 @@ Deno.serve(async (req) => {
     document_number?: string
     phone?: string
     store_id?: string
+    buyer_id?: string
   }
 
-  if (!body.document_number && !body.phone) {
-    return new Response(JSON.stringify({ error: 'document_number or phone required' }), {
+  if (!body.document_number && !body.phone && !body.buyer_id) {
+    return new Response(JSON.stringify({ error: 'document_number, phone or buyer_id required' }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
   let buyer: Record<string, unknown> | null = null
 
+  // 0. Direct by buyer_id (used to auto-login a buyer who opened an order chat
+  //    from a link/push without having entered their DNI).
+  if (body.buyer_id) {
+    const { data } = await supabase
+      .from('buyers')
+      .select('id, nombre, phone, document_type, document_number, score, puntos, address')
+      .eq('id', body.buyer_id)
+      .maybeSingle()
+    buyer = data
+  }
+
   // 1. Try by document number (preferred — permanent identifier), scoped to the store
-  if (body.document_number) {
+  if (!buyer && body.document_number) {
     let q = supabase
       .from('buyers')
       .select('id, nombre, phone, document_type, document_number, score, puntos, address')

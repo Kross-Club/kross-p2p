@@ -512,6 +512,23 @@ export default function OrderChatPage() {
         setMessages(m)
         setState('ok')
         markRead(token).catch(() => {})
+        // Auto-login: if the buyer reached this chat from a link/push without a
+        // session, log them in from the order's buyer so their home (Mis pedidos +
+        // score) works on the back arrow AND the seller sees them as "En línea".
+        if (!localStorage.getItem('buyer_session') && s.buyer_id) {
+          fetch(`${BASE}/buyer-login`, {
+            method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ buyer_id: s.buyer_id, store_id: s.store_id }),
+          })
+            .then(r => (r.ok ? r.json() : null))
+            .then(session => {
+              if (session?.buyer) {
+                localStorage.setItem('buyer_session', JSON.stringify(session))
+                window.dispatchEvent(new Event('buyer-session-changed'))
+              }
+            })
+            .catch(() => {})
+        }
         // Notifications: once the PWA is installed the buyer gets push by default
         // (we turn it on for them). If it's not installed yet, invite to install
         // — that's what unlocks real-time order alerts.

@@ -16,6 +16,13 @@ export interface SellerProfile {
 const ACTING_KEY = 'acting_seller'
 const EVT = 'acting-seller-changed'
 
+// Module-level cache of the resolved seller. useSeller re-runs on every page
+// mount; without this, `real` is briefly null on each client-side navigation,
+// which left data-loading pages (e.g. Equipo) stuck on their spinner until a
+// hard refresh. Seeding state from the cache makes `real` available synchronously.
+let cachedReal: SellerProfile | null = null
+export function clearSellerCache() { cachedReal = null }
+
 export function getActingSeller(): SellerProfile | null {
   try {
     const raw = localStorage.getItem(ACTING_KEY)
@@ -37,20 +44,21 @@ export const roleIsVentas = (role?: string | null) =>
 // Central hook: resolves the REAL logged-in seller plus any admin "view as"
 // override. `effective` is who the UI should act as right now.
 export function useSeller() {
-  const [real, setReal] = useState<SellerProfile | null>(null)
+  const [real, setReal] = useState<SellerProfile | null>(cachedReal)
   const [acting, setActing] = useState<SellerProfile | null>(getActingSeller())
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!cachedReal)
 
   useEffect(() => {
     let alive = true
     supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) { if (alive) setLoading(false); return }
+      if (!data.session) { cachedReal = null; if (alive) { setReal(null); setLoading(false) } return }
       const { data: profile } = await supabase
         .from('sellers')
         .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, is_super_admin, available')
         .eq('auth_user_id', data.session.user.id)
         .maybeSingle()
-      if (alive) { setReal((profile as SellerProfile) ?? null); setLoading(false) }
+      cachedReal = (profile as SellerProfile) ?? null
+      if (alive) { setReal(cachedReal); setLoading(false) }
     })
     return () => { alive = false }
   }, [])
