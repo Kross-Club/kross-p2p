@@ -591,7 +591,7 @@ export default function VendedorPedidoPage() {
             onClick={() => channelRef.current?.send({ type: 'broadcast', event: 'request_push_permission', payload: {} })}
             className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
             style={{ background: 'rgba(255,255,255,0.15)' }}
-            title="Invitar al cliente a activar notificaciones">
+            title="Invitar al cliente a instalar la app">
             <Bell size={16} className="text-white" />
           </button>
           {canWrite && (

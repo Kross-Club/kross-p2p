@@ -6,7 +6,7 @@ import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush, notifPermission } from '../../lib/push'
 import { startRingtone } from '../../lib/ringtone'
 import { sendCallReject, sendCallCancel, listenCallReject, listenCallCancel } from '../../lib/call-signal'
-import InstallBanner from '../../components/InstallBanner'
+import InstallBanner, { isInstalled } from '../../components/InstallBanner'
 import AddressBar from '../../components/AddressBar'
 import OrderDetailModal from '../../components/OrderDetailModal'
 import OfferCard from '../../components/OfferCard'
@@ -483,7 +483,7 @@ export default function OrderChatPage() {
   const [messages, setMessages] = useState<OrderMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
-  const [showPushBanner, setShowPushBanner] = useState(false)
+  const [showInstall, setShowInstall] = useState(false)
   const [showCall, setShowCall] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [sellerCalling, setSellerCalling] = useState(false)
@@ -512,11 +512,13 @@ export default function OrderChatPage() {
         setMessages(m)
         setState('ok')
         markRead(token).catch(() => {})
-        // If already granted, subscribe silently; else show banner after delay
-        if (notifPermission() === 'granted') {
-          subscribePush({ sessionId: s.id, role: 'buyer' }).catch(() => {})
-        } else if (notifPermission() === 'default') {
-          setTimeout(() => setShowPushBanner(true), 3000)
+        // Notifications: once the PWA is installed the buyer gets push by default
+        // (we turn it on for them). If it's not installed yet, invite to install
+        // — that's what unlocks real-time order alerts.
+        if (isInstalled()) {
+          if (notifPermission() !== 'denied') subscribePush({ sessionId: s.id, role: 'buyer' }).catch(() => {})
+        } else {
+          setTimeout(() => setShowInstall(true), 3000)
         }
       })
       .catch((e: Error) => setState(e.message === 'not_found' ? 'not_found' : 'error'))
@@ -567,8 +569,12 @@ export default function OrderChatPage() {
         setSellerCalling(true)
       })
       .on('broadcast', { event: 'request_push_permission' }, () => {
-        if (notifPermission() !== 'granted') {
-          setShowPushBanner(true)
+        // Seller tapped the bell on the order. Not installed → invite to install
+        // the app; already installed → make sure push is on.
+        if (!isInstalled()) {
+          setShowInstall(true)
+        } else if (notifPermission() !== 'granted') {
+          subscribePush({ sessionId: session.id, role: 'buyer' }).catch(() => {})
         }
       })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -652,13 +658,6 @@ export default function OrderChatPage() {
     } catch { /* ignore */ }
   }, [session, navigate])
 
-  const handlePushPermission = async () => {
-    setShowPushBanner(false)
-    if (session) {
-      await subscribePush({ sessionId: session.id, role: 'buyer' })
-    }
-  }
-
   if (state === 'loading') return <Skeleton />
   if (state === 'not_found') return <ErrorPage type="not_found" />
   if (state === 'expired') return <ErrorPage type="expired" />
@@ -669,7 +668,6 @@ export default function OrderChatPage() {
 
   return (
     <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
-      <InstallBanner />
 
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-4 pt-3 pb-5 text-white"
@@ -788,24 +786,13 @@ export default function OrderChatPage() {
         />
       </div>
 
-      {/* ── Push banner ── */}
-      {showPushBanner && (
-        <div className="flex-shrink-0 mx-4 mt-2 rounded-2xl px-4 py-3 flex items-center gap-3"
-          style={{ background: '#FFFBE6', border: '1.5px solid #FFD400' }}>
-          <span className="text-xl flex-shrink-0">🔔</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-black text-gray-900">¿Te avisamos cuando el motorizado esté en camino?</p>
-            <p className="text-[10px] text-gray-500">Notificación cuando salga tu pedido</p>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button onClick={() => setShowPushBanner(false)}
-              className="text-[10px] text-gray-400 font-semibold">No</button>
-            <button onClick={handlePushPermission}
-              className="text-[10px] font-black px-3 py-1.5 rounded-full"
-              style={{ background: '#FFD400', color: '#111' }}>
-              Sí
-            </button>
-          </div>
+      {/* ── Instala la app (banner inline, no tapa el input) ── */}
+      {showInstall && (
+        <div className="flex-shrink-0">
+          <InstallBanner inline onInstalled={() => {
+            setShowInstall(false)
+            subscribePush({ sessionId: session.id, role: 'buyer' }).catch(() => {})
+          }} />
         </div>
       )}
 
