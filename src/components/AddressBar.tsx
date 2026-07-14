@@ -18,6 +18,7 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
   onUpdated: (address: string, verified: boolean, lat: number | null, lng: number | null) => void
 }) {
   const [busy, setBusy] = useState(false)
+  const [secs, setSecs] = useState(0)
   const [copied, setCopied] = useState(false)
 
   // Collect GPS readings for a few seconds and keep the most accurate one, so
@@ -38,12 +39,14 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
       () => { if (!best) finish() },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     )
-    setTimeout(finish, 15000) // let it converge up to ~15s
+    setTimeout(finish, 10000) // let it converge up to ~10s
   })
 
   const verifyGps = async () => {
     if (busy) return
     setBusy(true)
+    setSecs(10)
+    const iv = setInterval(() => setSecs(s => Math.max(0, s - 1)), 1000)
     try {
       const coords = await getBestFix()
       if (!coords) { alert('Activa tu ubicación GPS para verificar tu dirección de entrega.'); return }
@@ -63,7 +66,9 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
     } catch {
       alert('No se pudo verificar la ubicación. Intenta de nuevo.')
     } finally {
+      clearInterval(iv)
       setBusy(false)
+      setSecs(0)
     }
   }
 
@@ -84,15 +89,21 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
           <button onClick={verifyGps} disabled={busy}
             className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0 disabled:opacity-50"
             style={verified ? { background: '#EEF9FF', color: 'var(--brand)' } : { background: '#FFF7ED', color: '#EA580C' }}>
-            {busy ? 'Ubicando…' : verified ? <><Navigation size={11} /> Cambiar</> : <><Navigation size={11} /> Verificar GPS</>}
+            {busy ? `Ubicando… ${secs}s` : verified ? <><Navigation size={11} /> Cambiar</> : <><Navigation size={11} /> Verificar GPS</>}
           </button>
         )}
       </div>
 
       {/* Full address — may span several lines */}
-      <p className="text-xs font-semibold text-gray-700 mt-1.5 break-words">
-        {address || (role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')}
-      </p>
+      {busy && role === 'buyer' ? (
+        <p className="text-xs font-semibold mt-1.5 break-words" style={{ color: 'var(--brand)' }}>
+          📍 Buscando tu ubicación exacta… espera unos segundos sin cerrar.
+        </p>
+      ) : (
+        <p className="text-xs font-semibold text-gray-700 mt-1.5 break-words">
+          {address || (role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')}
+        </p>
+      )}
 
       {/* Map links + coords (once GPS-located). Seller also gets Waze. */}
       {hasCoords && (

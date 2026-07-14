@@ -15,6 +15,22 @@ const DEFAULT_STORE: Store = {
   color_primary: '#55C8F5', color_dark: '#060C1A',
 }
 
+// On a branded subdomain we DON'T know the brand yet on first paint. Showing the
+// Kross default there causes a visible "Kross → brand" flash. So we start neutral
+// (no name/logo) and, better still, seed from a per-slug cache so returning
+// visitors see their brand instantly with no flash at all.
+const NEUTRAL_STORE: Store = {
+  id: null, slug: null, nombre: '', logo_url: null,
+  color_primary: '#55C8F5', color_dark: '#060C1A',
+}
+
+function cachedStore(slug: string): Store | null {
+  try {
+    const raw = localStorage.getItem(`store:${slug}`)
+    return raw ? (JSON.parse(raw) as Store) : null
+  } catch { return null }
+}
+
 const StoreContext = createContext<{ store: Store; loading: boolean }>({ store: DEFAULT_STORE, loading: true })
 
 // Resolve the tenant slug from the host: marca.kross.app → "marca".
@@ -36,18 +52,22 @@ function resolveSlug(): string | null {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [store, setStore] = useState<Store>(DEFAULT_STORE)
-  const [loading, setLoading] = useState(true)
+  const slug = resolveSlug()
+  const initial = slug ? (cachedStore(slug) ?? NEUTRAL_STORE) : DEFAULT_STORE
+  const [store, setStore] = useState<Store>(initial)
+  const [loading, setLoading] = useState(!!slug && !cachedStore(slug))
 
   useEffect(() => {
-    const slug = resolveSlug()
-    if (!slug) { applyBranding(DEFAULT_STORE); setLoading(false); return }
+    applyBranding(initial)
+    if (!slug) { setLoading(false); return }
     supabase.from('stores').select('id, slug, nombre, logo_url, color_primary, color_dark').eq('slug', slug).eq('active', true).maybeSingle()
       .then(({ data }) => {
         const s = (data as Store) ?? DEFAULT_STORE
         setStore(s); applyBranding(s)
         setLoading(false)
+        try { localStorage.setItem(`store:${slug}`, JSON.stringify(s)) } catch { /* ignore */ }
       })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return <StoreContext.Provider value={{ store, loading }}>{children}</StoreContext.Provider>
@@ -66,10 +86,12 @@ function setLink(rel: string, href: string) {
 
 function applyBranding(s: Store) {
   try {
-    document.title = s.nombre
+    if (s.nombre) {
+      document.title = s.nombre
+      // iOS uses this (not the manifest) for the home-screen name
+      setMeta('apple-mobile-web-app-title', s.nombre)
+    }
     setMeta('theme-color', s.color_dark)
-    // iOS uses these (not the manifest) for the home-screen icon & name
-    setMeta('apple-mobile-web-app-title', s.nombre)
     if (s.logo_url) {
       setLink('apple-touch-icon', s.logo_url)
       setLink('icon', s.logo_url)
