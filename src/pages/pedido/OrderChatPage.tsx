@@ -515,9 +515,12 @@ export default function OrderChatPage() {
         // Notifications: once the PWA is installed the buyer gets push by default
         // (we turn it on for them). If it's not installed yet, invite to install
         // — that's what unlocks real-time order alerts.
+        // Only prompt buyers who already have a session (i.e. logged in / ordered),
+        // never on a first anonymous glance, so it doesn't distract them.
+        const loggedIn = !!localStorage.getItem('buyer_session')
         if (isInstalled()) {
           if (notifPermission() !== 'denied') subscribePush({ sessionId: s.id, role: 'buyer' }).catch(() => {})
-        } else {
+        } else if (loggedIn) {
           setTimeout(() => setShowInstall(true), 3000)
         }
       })

@@ -128,6 +128,19 @@ export default function LandingProductoPage() {
       })
       if (res.ok) {
         const { token } = await res.json() as { token: string }
+        // Log the buyer in so their home (Mis pedidos + score) works — e.g. when
+        // they tap the back arrow from the chat after this first order.
+        try {
+          const lr = await fetch(`${BASE}/buyer-login`, {
+            method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ document_number: form.document_number, store_id: product.store_id }),
+          })
+          if (lr.ok) {
+            const session = await lr.json()
+            localStorage.setItem('buyer_session', JSON.stringify(session))
+            window.dispatchEvent(new Event('buyer-session-changed'))
+          }
+        } catch { /* non-blocking */ }
         navigate(`/p/${token}`)
         return
       }

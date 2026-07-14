@@ -16,6 +16,17 @@ if ('serviceWorker' in navigator) {
   })
 }
 
+// Capture the install prompt as early as possible (it often fires before any
+// React component mounts). Stash it so InstallBanner can offer a 1-click button.
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  ;(window as any).__deferredInstallPrompt = e
+  window.dispatchEvent(new Event('install-prompt-ready'))
+})
+window.addEventListener('appinstalled', () => {
+  ;(window as any).__deferredInstallPrompt = null
+})
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <StoreProvider>
