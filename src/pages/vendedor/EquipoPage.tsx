@@ -21,7 +21,7 @@ function roleColor(role: string) {
 
 export default function EquipoPage() {
   const navigate = useNavigate()
-  const { real, effective, isAdmin, impersonating, actAs, stopActing } = useSeller()
+  const { real, effective, isAdmin, impersonating, loading: sellerLoading, actAs, stopActing } = useSeller()
   const [team, setTeam] = useState<SellerProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [online, setOnline] = useState<Set<string>>(new Set())
@@ -36,7 +36,14 @@ export default function EquipoPage() {
       .eq('store_id', real.store_id)
       .then(({ data }) => { setTeam((data as SellerProfile[]) ?? []); setLoading(false) })
   }
-  useEffect(() => { loadTeam() /* eslint-disable-next-line */ }, [real?.store_id])
+  // Depend on `real` itself (not real?.store_id) so the load reliably fires once
+  // the seller resolves — on a client-side nav store_id may go undefined→value
+  // in a way the previous keying could miss, leaving the spinner stuck.
+  useEffect(() => {
+    if (!real) { if (!sellerLoading) setLoading(false); return }
+    loadTeam()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [real, sellerLoading])
 
   // Real connection presence
   useEffect(() => {
