@@ -76,9 +76,17 @@ Deno.serve(async (req) => {
   // Push notification to buyer — try by buyer_id first (account-linked), fallback to session_id
   const { data: sessionRow } = await supabase
     .from('order_sessions')
-    .select('token, buyer_id, seller_avatar')
+    .select('token, buyer_id, seller_avatar, store_id')
     .eq('id', session_id)
     .single()
+
+  // Brand logo — used as the notification's large icon when the seller has no
+  // photo, so buyers see THEIR brand (not Kross).
+  let storeLogo: string | null = null
+  if (sessionRow?.store_id) {
+    const { data: store } = await supabase.from('stores').select('logo_url').eq('id', sessionRow.store_id).maybeSingle()
+    storeLogo = store?.logo_url ?? null
+  }
 
   if (sessionRow) {
     let subs: { subscription: object }[] = []
@@ -112,7 +120,8 @@ Deno.serve(async (req) => {
           url: `/p/${sessionRow.token}`,
           tag: `msg-${session_id}`,
           type: 'message',
-          icon: sessionRow.seller_avatar ?? undefined,
+          icon: sessionRow.seller_avatar ?? storeLogo ?? undefined,
+          badge: storeLogo ?? undefined,
         })
       ))
     }

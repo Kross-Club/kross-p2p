@@ -42,6 +42,13 @@ Deno.serve(async (req) => {
   const displayName = seller_name || session.seller_name || 'Kross'
   const sellerAvatar: string | null = session.seller_avatar ?? null
 
+  // Brand logo as the large-icon fallback so the buyer sees THEIR brand, not Kross
+  let storeLogo: string | null = null
+  if (session.store_id) {
+    const { data: store } = await supabase.from('stores').select('logo_url').eq('id', session.store_id).maybeSingle()
+    storeLogo = store?.logo_url ?? null
+  }
+
   const roomName = `order-${session.id}`
   const at = new AccessToken(
     Deno.env.get('LIVEKIT_API_KEY')!,
@@ -76,7 +83,8 @@ Deno.serve(async (req) => {
       url: `/p/${session.token}`,
       tag: `call-${session.id}`,
       type: 'call',
-      icon: sellerAvatar ?? undefined,
+      icon: sellerAvatar ?? storeLogo ?? undefined,
+      badge: storeLogo ?? undefined,
     })
   ))
 

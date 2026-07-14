@@ -90,6 +90,12 @@ Deno.serve(async (req) => {
       .eq('seller_id', session.assigned_seller_id)
       .eq('sub_role', 'seller')
 
+    let storeLogo: string | null = null
+    if (session.store_id) {
+      const { data: store } = await supabase.from('stores').select('logo_url').eq('id', session.store_id).maybeSingle()
+      storeLogo = store?.logo_url ?? null
+    }
+
     const buyerFirstName = (session.buyer_name ?? 'Cliente').split(' ')[0]
     const preview = type === 'text' ? (body ?? '').slice(0, 80) : '🎵 Mensaje de audio'
 
@@ -100,6 +106,8 @@ Deno.serve(async (req) => {
         url: `/vendedor/chats`,
         tag: `msg-${session.id}`,
         type: 'message',
+        icon: storeLogo ?? undefined,
+        badge: storeLogo ?? undefined,
       })
     ))
   }
