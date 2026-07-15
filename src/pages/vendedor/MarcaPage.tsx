@@ -46,12 +46,16 @@ export default function MarcaPage() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<StoreRow | null>(null)
   const [creating, setCreating] = useState(false)
+  const [waUsage, setWaUsage] = useState<Record<string, number>>({})
 
   const load = async () => {
     if (!real) return
     const { ok, data } = await call({ action: 'list', admin_auth_id: real.auth_user_id })
     if (ok) { setStores(data.stores ?? []); setIsSuper(!!data.is_super) }
     setLoading(false)
+    // WhatsApp usage this month (for the 2x-per-template billing)
+    const usage = await call({ action: 'wa_usage', admin_auth_id: real.auth_user_id })
+    if (usage.ok) setWaUsage(usage.data.usage ?? {})
   }
   useEffect(() => { load() /* eslint-disable-next-line */ }, [real?.auth_user_id])
 
@@ -76,6 +80,18 @@ export default function MarcaPage() {
         {isSuper ? 'Cada marca tiene su app en su subdominio, con su logo y colores.' : 'Personaliza el logo, nombre y colores de tu app.'}
       </p>
 
+      {isSuper && Object.values(waUsage).reduce((a, b) => a + b, 0) > 0 && (
+        <div className="rounded-2xl p-3 mb-4 flex items-center gap-3" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+          <MessageCircle size={18} style={{ color: '#16A34A' }} />
+          <div className="flex-1">
+            <p className="text-xs font-black text-gray-800">
+              {Object.values(waUsage).reduce((a, b) => a + b, 0)} plantillas WhatsApp este mes
+            </p>
+            <p className="text-[10px] text-gray-500">Total enviado por todas las marcas (base para tu cobro 2x).</p>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
         {stores.map(s => (
           <div key={s.id} className="bg-white border border-gray-100 rounded-2xl p-3 shadow-sm flex items-center gap-3">
@@ -88,6 +104,11 @@ export default function MarcaPage() {
                 className="text-[11px] font-bold flex items-center gap-1" style={{ color: '#55C8F5' }}>
                 {s.slug}.{APEX} <ExternalLink size={10} />
               </a>
+              {(waUsage[s.id] ?? 0) > 0 && (
+                <p className="text-[10px] font-bold mt-0.5 flex items-center gap-1" style={{ color: '#16A34A' }}>
+                  <MessageCircle size={10} /> {waUsage[s.id]} plantillas WhatsApp este mes
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-5 h-5 rounded-full border border-gray-200" style={{ background: s.color_primary }} />

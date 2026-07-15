@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update'
+    action: 'list' | 'create' | 'update' | 'wa_usage'
     admin_auth_id: string
     // update / create branding
     store_id?: string
@@ -73,6 +73,24 @@ Deno.serve(async (req) => {
     const { data, error } = await q
     if (error) return json({ error: error.message }, 400)
     return json({ stores: data ?? [], is_super: isSuper })
+  }
+
+  // ─── WHATSAPP USAGE (para el cobro 2x por plantilla) ─────────────────────────
+  // Cuenta las plantillas ENVIADAS por tienda en el mes actual. Super admin ve
+  // todas; un admin de tienda solo la suya.
+  if (body.action === 'wa_usage') {
+    const now = new Date()
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
+    let q = supabase.from('notifications_log').select('store_id').eq('whatsapp', 'sent').gte('created_at', start)
+    if (!isSuper) q = q.eq('store_id', me.store_id)
+    const { data, error } = await q
+    if (error) return json({ error: error.message }, 400)
+    const usage: Record<string, number> = {}
+    for (const r of data ?? []) {
+      const sid = (r as { store_id: string | null }).store_id
+      if (sid) usage[sid] = (usage[sid] ?? 0) + 1
+    }
+    return json({ usage, since: start })
   }
 
   // ─── UPDATE BRANDING ─────────────────────────────────────────────────────────
