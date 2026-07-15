@@ -43,6 +43,9 @@ Deno.serve(async (req) => {
     color_primary?: string
     color_dark?: string
     active?: boolean
+    wa_enabled?: boolean
+    wa_phone_number_id?: string
+    wa_display_phone?: string
     // create: first admin login for the new brand
     admin_email?: string
     admin_password?: string
@@ -85,6 +88,10 @@ Deno.serve(async (req) => {
     if (typeof body.color_primary === 'string') patch.color_primary = body.color_primary
     if (typeof body.color_dark === 'string') patch.color_dark = body.color_dark
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active
+    // WhatsApp fallback config (infra) — super admin only
+    if (isSuper && typeof body.wa_enabled === 'boolean') patch.wa_enabled = body.wa_enabled
+    if (isSuper && typeof body.wa_phone_number_id === 'string') patch.wa_phone_number_id = body.wa_phone_number_id.trim()
+    if (isSuper && typeof body.wa_display_phone === 'string') patch.wa_display_phone = body.wa_display_phone.trim()
 
     if (isSuper && typeof body.slug === 'string' && body.slug.trim()) {
       const slug = cleanSlug(body.slug)

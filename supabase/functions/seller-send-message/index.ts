@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import webpush from 'npm:web-push'
+import { notifyBuyer } from '../_shared/notify.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -9,19 +9,6 @@ const supabase = createClient(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
-}
-
-const VAPID_PUBLIC  = Deno.env.get('VAPID_PUBLIC_KEY') ?? ''
-const VAPID_PRIVATE = Deno.env.get('VAPID_PRIVATE_KEY') ?? ''
-const VAPID_SUBJECT = Deno.env.get('VAPID_MAILTO') ?? 'mailto:equipo@kross.club'
-
-if (VAPID_PUBLIC && VAPID_PRIVATE) {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
-}
-
-async function trySendPush(sub: object, payload: object) {
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return
-  try { await webpush.sendNotification(sub as any, JSON.stringify(payload)) } catch { /* ignore */ }
 }
 
 Deno.serve(async (req) => {
@@ -89,42 +76,22 @@ Deno.serve(async (req) => {
   }
 
   if (sessionRow) {
-    let subs: { subscription: object }[] = []
-
-    if (sessionRow.buyer_id) {
-      const { data } = await supabase
-        .from('push_subscriptions')
-        .select('subscription')
-        .eq('buyer_id', sessionRow.buyer_id)
-        .eq('sub_role', 'buyer')
-      subs = data ?? []
-    }
-
-    // Fallback to session-based subscription (older registrations)
-    if (subs.length === 0) {
-      const { data } = await supabase
-        .from('push_subscriptions')
-        .select('subscription')
-        .eq('session_id', session_id)
-        .eq('sub_role', 'buyer')
-      subs = data ?? []
-    }
-
-    if (subs.length > 0) {
-      const displayName = seller_name || 'Kross'
-      const preview = type === 'text' ? body.slice(0, 80) : '🎵 Mensaje de audio'
-      await Promise.all(subs.map(row =>
-        trySendPush(row.subscription, {
-          title: `💬 ${displayName}`,
-          body: preview,
-          url: `/p/${sessionRow.token}`,
-          tag: `msg-${session_id}`,
-          type: 'message',
-          icon: sessionRow.seller_avatar ?? storeLogo ?? undefined,
-          badge: storeLogo ?? undefined,
-        })
-      ))
-    }
+    const displayName = seller_name || 'Kross'
+    const preview = type === 'text' ? body.slice(0, 80) : '🎵 Mensaje de audio'
+    // Push first; falls back to WhatsApp if the buyer has no reachable push.
+    await notifyBuyer({
+      supabase,
+      buyerId: sessionRow.buyer_id,
+      sessionId: session_id,
+      storeId: sessionRow.store_id,
+      title: `💬 ${displayName}`,
+      body: preview,
+      url: `/p/${sessionRow.token}`,
+      tag: `msg-${session_id}`,
+      type: 'message',
+      icon: sessionRow.seller_avatar ?? storeLogo,
+      badge: storeLogo,
+    })
   }
 
   return new Response(JSON.stringify(msg), {

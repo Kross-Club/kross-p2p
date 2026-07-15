@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { AccessToken } from 'npm:livekit-server-sdk@2'
-import webpush from 'npm:web-push'
+import { notifyBuyer } from '../_shared/notify.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -10,19 +10,6 @@ const supabase = createClient(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
-}
-
-const VAPID_PUBLIC  = Deno.env.get('VAPID_PUBLIC_KEY') ?? ''
-const VAPID_PRIVATE = Deno.env.get('VAPID_PRIVATE_KEY') ?? ''
-const VAPID_SUBJECT = Deno.env.get('VAPID_MAILTO') ?? 'mailto:equipo@kross.club'
-
-if (VAPID_PUBLIC && VAPID_PRIVATE) {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
-}
-
-async function trySendPush(sub: object, payload: object) {
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return
-  try { await webpush.sendNotification(sub as any, JSON.stringify(payload)) } catch { /* ignore */ }
 }
 
 Deno.serve(async (req) => {
@@ -57,36 +44,21 @@ Deno.serve(async (req) => {
   )
   at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true })
 
-  // Push a CALL notification to the buyer so it rings even in background/closed
-  let subs: { subscription: object }[] = []
-  if (session.buyer_id) {
-    const { data } = await supabase
-      .from('push_subscriptions')
-      .select('subscription')
-      .eq('buyer_id', session.buyer_id)
-      .eq('sub_role', 'buyer')
-    subs = data ?? []
-  }
-  if (subs.length === 0) {
-    const { data } = await supabase
-      .from('push_subscriptions')
-      .select('subscription')
-      .eq('session_id', session.id)
-      .eq('sub_role', 'buyer')
-    subs = data ?? []
-  }
-
-  await Promise.all(subs.map(row =>
-    trySendPush(row.subscription, {
-      title: '📞 Llamada entrante',
-      body: `${displayName} te está llamando`,
-      url: `/p/${session.token}`,
-      tag: `call-${session.id}`,
-      type: 'call',
-      icon: sellerAvatar ?? storeLogo ?? undefined,
-      badge: storeLogo ?? undefined,
-    })
-  ))
+  // Ring the buyer even in background/closed. Push first; WhatsApp fallback if
+  // they have no reachable push (e.g. never installed the app).
+  await notifyBuyer({
+    supabase,
+    buyerId: session.buyer_id,
+    sessionId: session.id,
+    storeId: session.store_id,
+    title: '📞 Llamada entrante',
+    body: `${displayName} te está llamando`,
+    url: `/p/${session.token}`,
+    tag: `call-${session.id}`,
+    type: 'call',
+    icon: sellerAvatar ?? storeLogo,
+    badge: storeLogo,
+  })
 
   // Broadcast the incoming call to a buyer-wide channel so it rings no matter
   // where the buyer is in the app (not only inside that order's chat).

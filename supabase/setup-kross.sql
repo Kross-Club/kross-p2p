@@ -20,6 +20,13 @@ ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS stores_read ON stores;
 CREATE POLICY stores_read ON stores FOR SELECT TO public USING (true);
 
+-- Fallback por WhatsApp (Cloud API). Un token global (WHATSAPP_TOKEN, secret) +
+-- el phone_number_id de cada marca → cada tienda envía desde su propio número.
+-- Mientras wa_enabled sea false o falte el token, el fallback es no-op (no envía).
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_enabled         boolean DEFAULT false;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_phone_number_id text;   -- ID del número en WhatsApp Cloud API
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_display_phone   text;   -- número visible de la marca (informativo)
+
 -- Compradores pasan a ser por tienda (un cliente de una marca no es de otra)
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS store_id text;
 -- El mismo DNI puede existir en varias marcas → unicidad POR TIENDA, no global
@@ -103,6 +110,22 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_buyer_id ON order_sessions(buyer_i
 -- ─── 4. NOTIFICACIONES push por cuenta de comprador ─────────────────────────
 ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS buyer_id uuid REFERENCES buyers(id);
 CREATE INDEX IF NOT EXISTS idx_push_subs_buyer_id ON push_subscriptions(buyer_id, sub_role);
+
+-- Bitácora de notificaciones: qué se intentó por push y si cayó a WhatsApp.
+-- Sirve para medir cobertura de push vs. costo de WhatsApp por tienda.
+CREATE TABLE IF NOT EXISTS notifications_log (
+  id         uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  store_id   text,
+  buyer_id   uuid,
+  session_id text,
+  kind       text,       -- 'message' | 'call' | 'status'
+  push_count integer     DEFAULT 0,
+  whatsapp   text,       -- 'sent' | 'skipped' | 'failed' | 'not_needed'
+  detail     text,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE notifications_log ENABLE ROW LEVEL SECURITY; -- solo service role (Edge Functions)
+CREATE INDEX IF NOT EXISTS idx_notiflog_store ON notifications_log(store_id, created_at DESC);
 
 
 -- ─── 5. FOTOS DE PERFIL de vendedores (Storage) ─────────────────────────────
