@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, color_primary, color_dark, active, created_at')
+      .select('id, slug, nombre, logo_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q

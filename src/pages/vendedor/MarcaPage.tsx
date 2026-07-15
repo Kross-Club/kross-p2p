@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power } from 'lucide-react'
+import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 
@@ -17,6 +17,9 @@ interface StoreRow {
   color_dark: string
   active: boolean
   created_at?: string
+  wa_enabled?: boolean
+  wa_phone_number_id?: string | null
+  wa_display_phone?: string | null
 }
 
 const ERR: Record<string, string> = {
@@ -151,6 +154,9 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [cp, setCp] = useState(store.color_primary || '#55C8F5')
   const [cd, setCd] = useState(store.color_dark || '#060C1A')
   const [active, setActive] = useState(store.active)
+  const [waEnabled, setWaEnabled] = useState(!!store.wa_enabled)
+  const [waPhoneId, setWaPhoneId] = useState(store.wa_phone_number_id ?? '')
+  const [waDisplay, setWaDisplay] = useState(store.wa_display_phone ?? '')
   const [uploading, setUploading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -164,7 +170,12 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       action: 'update', admin_auth_id: adminId, store_id: store.id,
       nombre: nombre.trim(), logo_url: logo, color_primary: cp, color_dark: cd,
     }
-    if (isSuper) { payload.slug = slug; payload.active = active }
+    if (isSuper) {
+      payload.slug = slug; payload.active = active
+      payload.wa_enabled = waEnabled
+      payload.wa_phone_number_id = waPhoneId.trim()
+      payload.wa_display_phone = waDisplay.trim()
+    }
     const { ok, data } = await call(payload)
     setBusy(false)
     if (!ok) { setErr(ERR[data.error] || data.error || 'No se pudo guardar.'); return }
@@ -212,6 +223,28 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             </span>
             <Power size={16} style={{ color: active ? '#16A34A' : '#DC2626' }} />
           </button>
+        )}
+
+        {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca
+            ya tiene su número en WhatsApp Cloud API. */}
+        {isSuper && (
+          <div className="rounded-2xl p-3 mb-4" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+            <button onClick={() => setWaEnabled(v => !v)}
+              className="w-full flex items-center justify-between mb-2">
+              <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#166534' }}>
+                <MessageCircle size={14} /> Fallback por WhatsApp
+              </span>
+              <span className="text-[10px] font-black px-2 py-1 rounded-full"
+                style={{ background: waEnabled ? '#16A34A' : '#E5E7EB', color: waEnabled ? '#fff' : '#6B7280' }}>
+                {waEnabled ? 'ACTIVO' : 'APAGADO'}
+              </span>
+            </button>
+            <p className="text-[10px] text-gray-500 mb-2">Si el cliente no tiene push, el aviso se envía por WhatsApp (Cloud API).</p>
+            <input value={waPhoneId} onChange={e => setWaPhoneId(e.target.value)} placeholder="Phone Number ID (WhatsApp Cloud API)"
+              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
+            <input value={waDisplay} onChange={e => setWaDisplay(e.target.value)} placeholder="Número visible (ej: +51 999 999 999)"
+              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none" />
+          </div>
         )}
 
         {err && <p className="text-xs font-semibold text-center mb-2" style={{ color: '#DC2626' }}>{err}</p>}
