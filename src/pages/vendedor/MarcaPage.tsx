@@ -44,14 +44,13 @@ export default function MarcaPage() {
   const navigate = useNavigate()
   const { real, isAdmin, impersonating, actAs } = useSeller()
 
-  // Super admin "enters" a brand by acting as its admin → the whole store toolset
-  // (Chats, Productos, CRM, Equipo, Stats) scopes to that brand.
-  const enterStore = async (storeId: string) => {
-    const { data } = await supabase.from('sellers')
-      .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, is_super_admin, available')
-      .eq('store_id', storeId).eq('is_admin', true).limit(1).maybeSingle()
-    if (data) { actAs(data as SellerProfile); navigate('/vendedor/chats') }
-    else alert('Esta marca aún no tiene un administrador para entrar. Créalo primero.')
+  // Super admin "enters" a brand → acts as itself but scoped to that store, so the
+  // full store toolset (Chats, Productos, CRM, Equipo, Stats) works even for a brand
+  // with no team yet (that's exactly when you enter — to set it up).
+  const enterStore = (storeId: string) => {
+    if (!real) return
+    actAs({ ...real, store_id: storeId, is_admin: true, is_super_admin: false, role_label: 'Admin' } as SellerProfile)
+    navigate('/vendedor/chats')
   }
   const [stores, setStores] = useState<StoreRow[]>([])
   const [isSuper, setIsSuper] = useState(false)
