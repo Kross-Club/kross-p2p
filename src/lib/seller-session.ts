@@ -71,10 +71,11 @@ export function useSeller() {
 
   const isAdmin = !!real?.is_admin
   // Only admins may impersonate; a stale override on a non-admin is ignored.
-  // Triggers when acting is a different person OR a different store (the super
-  // admin "entering" a brand acts as itself but scoped to that store).
+  //  · super admin: ANY acting means "entered a brand" (even if it shares the
+  //    platform store id) → always impersonate.
+  //  · store admin: impersonating only when acting AS a different person (a member).
   const impersonating = isAdmin && !!acting &&
-    (acting.auth_user_id !== real?.auth_user_id || acting.store_id !== real?.store_id)
+    (!!real?.is_super_admin || acting.auth_user_id !== real?.auth_user_id)
   const effective = impersonating ? acting! : real
 
   const actAs = useCallback((s: SellerProfile) => setActingSeller(s), [])
