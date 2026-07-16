@@ -19,20 +19,20 @@ export default function Layout() {
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
-  // Brand shown in the header. The super admin (platform owner) ALWAYS sees Kross,
-  // regardless of which store row they're attached to (t1 may be renamed). A store
-  // admin sees their own store — driving the --brand CSS vars from it too.
+  // Brand shown in the header follows WHO you're acting as (effective):
+  //  · super admin on the platform → Kross (regardless of t1's name)
+  //  · inside a store (own, or a brand the super admin entered) → that store's brand
   useEffect(() => {
-    if (!real) return
-    if (real.is_super_admin) {
+    if (!effective) return
+    if (effective.is_super_admin) {
       setBrand({ nombre: 'Kross', logo_url: null })
       const root = document.documentElement
       root.style.setProperty('--brand', '#55C8F5')
       root.style.setProperty('--brand-dark', '#060C1A')
       return
     }
-    if (!real.store_id) return
-    supabase.from('stores').select('nombre, logo_url, color_primary, color_dark').eq('id', real.store_id).maybeSingle()
+    if (!effective.store_id) return
+    supabase.from('stores').select('nombre, logo_url, color_primary, color_dark').eq('id', effective.store_id).maybeSingle()
       .then(({ data }) => {
         if (!data) return
         setBrand(data as { nombre: string; logo_url: string | null })
@@ -40,7 +40,7 @@ export default function Layout() {
         if (data.color_primary) root.style.setProperty('--brand', data.color_primary)
         if (data.color_dark) root.style.setProperty('--brand-dark', data.color_dark)
       })
-  }, [real?.store_id, real?.is_super_admin])
+  }, [effective?.store_id, effective?.is_super_admin])
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])
   useEffect(() => { if (real) setAvailable(real.available !== false) }, [real?.id, real?.available])
@@ -96,13 +96,15 @@ export default function Layout() {
             <div className="flex items-center gap-2 min-w-0">
               <Eye size={14} className="flex-shrink-0" />
               <p className="text-xs font-bold truncate">
-                Viendo como {effective?.nombre.split(' ')[0]} · {effective?.role_label}
+                {real?.is_super_admin
+                  ? <>Estás en {brand?.nombre ?? 'la marca'}</>
+                  : <>Viendo como {effective?.nombre.split(' ')[0]} · {effective?.role_label}</>}
               </p>
             </div>
             <button onClick={stopActing}
               className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
               style={{ background: 'rgba(255,255,255,0.2)' }}>
-              <X size={12} /> Volver a admin
+              <X size={12} /> {real?.is_super_admin ? 'Volver a Kross' : 'Volver a admin'}
             </button>
           </div>
         )}

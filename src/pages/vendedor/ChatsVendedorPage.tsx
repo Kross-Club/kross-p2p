@@ -54,6 +54,11 @@ export default function ChatsVendedorPage() {
   const [bumps, setBumps] = useState<Record<string, number>>({})
   const seenRef = useRef<Set<string>>(new Set())
 
+  // The super admin (Kross platform) isn't a store → send them to Marcas.
+  useEffect(() => {
+    if (effective?.is_super_admin) navigate('/vendedor/marca', { replace: true })
+  }, [effective?.is_super_admin, navigate])
+
   // Live presence of all buyers → green dot on active chats
   useEffect(() => {
     const ch = supabase

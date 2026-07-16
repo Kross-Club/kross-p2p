@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { useSeller } from '../../lib/seller-session'
+import { useSeller, type SellerProfile } from '../../lib/seller-session'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -40,7 +41,18 @@ async function call(payload: Record<string, unknown>) {
 }
 
 export default function MarcaPage() {
-  const { real, isAdmin, impersonating } = useSeller()
+  const navigate = useNavigate()
+  const { real, isAdmin, impersonating, actAs } = useSeller()
+
+  // Super admin "enters" a brand by acting as its admin → the whole store toolset
+  // (Chats, Productos, CRM, Equipo, Stats) scopes to that brand.
+  const enterStore = async (storeId: string) => {
+    const { data } = await supabase.from('sellers')
+      .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, is_super_admin, available')
+      .eq('store_id', storeId).eq('is_admin', true).limit(1).maybeSingle()
+    if (data) { actAs(data as SellerProfile); navigate('/vendedor/chats') }
+    else alert('Esta marca aún no tiene un administrador para entrar. Créalo primero.')
+  }
   const [stores, setStores] = useState<StoreRow[]>([])
   const [isSuper, setIsSuper] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -115,6 +127,11 @@ export default function MarcaPage() {
               <span className="w-5 h-5 rounded-full border border-gray-200" style={{ background: s.color_dark }} />
             </div>
             <button onClick={() => setEditing(s)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#EEF9FF', color: '#55C8F5' }}>Editar</button>
+            {isSuper && (
+              <button onClick={() => enterStore(s.id)} className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: '#fff' }}>
+                <LogIn size={13} /> Entrar
+              </button>
+            )}
           </div>
         ))}
       </div>

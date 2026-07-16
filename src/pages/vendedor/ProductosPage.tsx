@@ -18,25 +18,27 @@ interface Product {
 }
 
 export default function ProductosPage() {
-  const { real, isAdmin, impersonating } = useSeller()
+  const { real, effective } = useSeller()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Product | null>(null)
 
+  // Scope to the store you're currently acting in (effective) — so a super admin
+  // who entered a brand sees THAT brand's products.
   const load = () => {
-    if (!real) return
-    supabase.from('products').select('*').eq('store_id', real.store_id).order('created_at', { ascending: false })
+    if (!effective?.store_id) { setLoading(false); return }
+    supabase.from('products').select('*').eq('store_id', effective.store_id).order('created_at', { ascending: false })
       .then(({ data }) => { setProducts((data as Product[]) ?? []); setLoading(false) })
   }
-  useEffect(() => { load() /* eslint-disable-next-line */ }, [real?.store_id])
+  useEffect(() => { load() /* eslint-disable-next-line */ }, [effective?.store_id])
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
-  if (!isAdmin || impersonating) {
+  if (!effective?.is_admin) {
     return <div className="px-4 py-8 text-center text-sm text-gray-400">Solo el administrador gestiona los productos.</div>
   }
 
-  const newProduct = (): Product => ({ id: '', store_id: real?.store_id ?? null, nombre: '', precio: 0, images: [], packs: [], active: true })
+  const newProduct = (): Product => ({ id: '', store_id: effective?.store_id ?? null, nombre: '', precio: 0, images: [], packs: [], active: true })
 
   return (
     <div className="px-4 py-4">
@@ -74,12 +76,12 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {editing && <Editor product={editing} adminId={real?.auth_user_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+      {editing && <Editor product={editing} adminId={real?.auth_user_id ?? ''} storeId={effective?.store_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
     </div>
   )
 }
 
-function Editor({ product, adminId, onClose, onSaved }: { product: Product; adminId: string; onClose: () => void; onSaved: () => void }) {
+function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Product; adminId: string; storeId: string; onClose: () => void; onSaved: () => void }) {
   const [nombre, setNombre] = useState(product.nombre)
   const [precio, setPrecio] = useState(String(product.precio || ''))
   const [images, setImages] = useState<string[]>(product.images)
@@ -131,7 +133,7 @@ function Editor({ product, adminId, onClose, onSaved }: { product: Product; admi
       const res = await fetch(`${BASE}/manage-product`, {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'save', admin_auth_id: adminId, id: product.id || undefined,
+          action: 'save', admin_auth_id: adminId, store_id: storeId || undefined, id: product.id || undefined,
           nombre: nombre.trim(), precio: Number(precio) || 0, images,
           packs: packs.filter(p => p.nombre.trim()).map(p => ({ ...p, precio: Number(p.precio) || 0 })),
         }),

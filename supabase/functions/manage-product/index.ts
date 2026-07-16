@@ -22,11 +22,15 @@ Deno.serve(async (req) => {
     images?: string[]
     packs?: { nombre: string; descripcion?: string; precio: number }[]
     active?: boolean
+    store_id?: string   // super admin: target store when managing a brand they entered
   }
 
   const { data: admin } = await supabase
-    .from('sellers').select('is_admin, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
+    .from('sellers').select('is_admin, is_super_admin, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
   if (!admin?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
+
+  // A store admin manages their own store; the super admin may target any store.
+  const targetStore = (admin.is_super_admin && body.store_id) ? body.store_id : admin.store_id
 
   if (body.action === 'delete') {
     if (!body.id) return new Response('Missing id', { status: 400, headers: corsHeaders })
@@ -36,7 +40,7 @@ Deno.serve(async (req) => {
 
   // save (create or update)
   const row = {
-    store_id: admin.store_id,
+    store_id: targetStore,
     nombre: body.nombre ?? 'Producto',
     precio: body.precio ?? 0,
     images: body.images ?? [],

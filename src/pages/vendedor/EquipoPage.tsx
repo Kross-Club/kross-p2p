@@ -29,34 +29,33 @@ export default function EquipoPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  const storeId = effective?.store_id
   const loadTeam = async () => {
-    if (!real?.store_id) return
+    if (!storeId) return
     try {
       const { data } = await supabase.from('sellers')
         .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, available')
-        .eq('store_id', real.store_id)
+        .eq('store_id', storeId)
       const list = (data as SellerProfile[]) ?? []
       setTeam(list)
-      try { localStorage.setItem(`team:${real.store_id}`, JSON.stringify(list)) } catch { /* ignore */ }
+      try { localStorage.setItem(`team:${storeId}`, JSON.stringify(list)) } catch { /* ignore */ }
     } catch { /* keep whatever we have (e.g. cache) */ }
     finally { setLoading(false) } // ALWAYS clear — a rejected query must never hang the spinner
   }
-  // Depend on `real` itself so the load fires once the seller resolves. Seed from
-  // a per-store cache so the page paints instantly on a client-side nav, then
-  // revalidate — and the finally above guarantees we never get stuck spinning.
+  // Scope to the store being acted in (effective). Seed from a per-store cache so
+  // the page paints instantly on a client-side nav, then revalidate — the finally
+  // above + the watchdog guarantee we never get stuck spinning.
   useEffect(() => {
-    if (!real) { if (!sellerLoading) setLoading(false); return }
+    if (!effective) { if (!sellerLoading) setLoading(false); return }
     try {
-      const raw = real.store_id ? localStorage.getItem(`team:${real.store_id}`) : null
+      const raw = storeId ? localStorage.getItem(`team:${storeId}`) : null
       if (raw) { setTeam(JSON.parse(raw) as SellerProfile[]); setLoading(false) }
     } catch { /* ignore */ }
     loadTeam()
-    // Watchdog: never let the spinner hang if the query stalls (Supabase auth-lock
-    // during a client-side nav can make a request never settle).
     const t = setTimeout(() => setLoading(false), 4000)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [real, sellerLoading])
+  }, [storeId, sellerLoading])
 
   // Real connection presence
   useEffect(() => {
@@ -162,7 +161,7 @@ export default function EquipoPage() {
         </div>
       )}
 
-      {showAdd && <AddMember storeId={real?.store_id ?? ''} adminId={real?.auth_user_id ?? ''} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); loadTeam() }} />}
+      {showAdd && <AddMember storeId={effective?.store_id ?? ''} adminId={real?.auth_user_id ?? ''} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); loadTeam() }} />}
     </div>
   )
 }

@@ -3,11 +3,17 @@ import { MessageCircle, ShoppingBag, BarChart2, Users, Package, Store } from 'lu
 import { useSeller } from '../lib/seller-session'
 
 export default function BottomNav() {
-  const { isAdmin, impersonating } = useSeller()
-  // Admin (not impersonating) sees the full toolset; team members see only
-  // Chats, CRM and their Stats.
-  const adminView = isAdmin && !impersonating
+  const { effective } = useSeller()
+  // Nav follows WHO you're acting as:
+  //  · super admin (Kross platform, not inside a store) → only Marcas
+  //  · store admin (or super admin who entered a store) → full store toolset
+  //  · team member → Chats, CRM, Stats
+  const platform = !!effective?.is_super_admin
+  const storeAdmin = !!effective?.is_admin && !effective?.is_super_admin
 
+  const platformLinks = [
+    { to: '/vendedor/marca', icon: Store, label: 'Marcas' },
+  ]
   const memberLinks = [
     { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
     { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
@@ -21,7 +27,7 @@ export default function BottomNav() {
     { to: '/vendedor/marca', icon: Store, label: 'Marca' },
     { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
   ]
-  const links = adminView ? adminLinks : memberLinks
+  const links = platform ? platformLinks : storeAdmin ? adminLinks : memberLinks
 
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-gray-100 z-30 safe-area-inset-bottom">
