@@ -25,7 +25,7 @@ async function trySendPush(sub: unknown, payload: object): Promise<boolean> {
   try { await webpush.sendNotification(sub as any, JSON.stringify(payload)); return true } catch { return false }
 }
 
-async function sendWhatsApp(storeId: string | null | undefined, to: string | null, var1: string, var2: string): Promise<{ result: string; error?: string }> {
+async function sendWhatsApp(storeId: string | null | undefined, to: string | null, var1: string, var2: string, var3: string): Promise<{ result: string; error?: string }> {
   const token = Deno.env.get('WHATSAPP_TOKEN')
   if (!token || !storeId || !to) return { result: 'skipped' }
   const { data: store } = await supabase.from('stores').select('wa_enabled, wa_phone_number_id, nombre').eq('id', storeId).maybeSingle()
@@ -42,8 +42,9 @@ async function sendWhatsApp(storeId: string | null | undefined, to: string | nul
       body: JSON.stringify({
         messaging_product: 'whatsapp', to: num, type: 'template',
         template: { name: template, language: { code: lang }, components: [{ type: 'body', parameters: [
-          { type: 'text', text: (var1 || 'Hola').slice(0, 60) },   // {{1}} = nombre del comprador
-          { type: 'text', text: (var2 || '').slice(0, 300) },      // {{2}} = link a su pedido
+          { type: 'text', text: (var1 || 'Hola').slice(0, 60) },       // {{1}} = nombre del comprador
+          { type: 'text', text: (var2 || 'tu pedido').slice(0, 80) },  // {{2}} = producto
+          { type: 'text', text: (var3 || '').slice(0, 300) },          // {{3}} = link a su pedido
         ] }] },
       }),
     })
@@ -57,7 +58,7 @@ interface NotifyInput {
   buyerId?: string | null; sessionId: string; storeId?: string | null
   title: string; body: string; url: string; tag: string
   type: 'message' | 'call' | 'status'; icon?: string | null; badge?: string | null
-  waName?: string; waLink?: string
+  waName?: string; waProduct?: string; waLink?: string
 }
 
 async function notifyBuyer(n: NotifyInput): Promise<void> {
@@ -84,7 +85,7 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
     let phone: string | null = null
     if (n.buyerId) { const { data: b } = await supabase.from('buyers').select('phone').eq('id', n.buyerId).maybeSingle(); phone = b?.phone ?? null }
     if (!phone) { const { data: s } = await supabase.from('order_sessions').select('buyer_phone').eq('id', n.sessionId).maybeSingle(); phone = s?.buyer_phone ?? null }
-    const r = await sendWhatsApp(n.storeId, phone, n.waName ?? 'Hola', n.waLink ?? 'https://krossclub.app')
+    const r = await sendWhatsApp(n.storeId, phone, n.waName ?? 'Hola', n.waProduct ?? 'tu pedido', n.waLink ?? 'https://krossclub.app')
     whatsapp = r.result
     waError = r.error
   }
@@ -142,6 +143,7 @@ Deno.serve(async (req) => {
     sessionId: session.id,
     storeId: session.store_id,
     waName: buyerFirst,
+    waProduct: session.product_name ?? 'tu pedido',
     waLink: orderLink,
     title: '📞 Llamada entrante',
     body: `${displayName} te está llamando`,
