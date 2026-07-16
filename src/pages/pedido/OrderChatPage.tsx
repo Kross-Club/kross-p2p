@@ -378,7 +378,7 @@ function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, seller
         )}
 
         <p className="text-[10px] mt-4" style={{ color: 'rgba(255,255,255,0.3)' }}>
-          Hola {buyerName}, solo Kross puede llamarte desde este número
+          Hola {buyerName}, solo Kross puede llamarte desde este número · 🔴 Esta llamada puede ser grabada para calidad
         </p>
       </div>
     </div>
@@ -412,9 +412,10 @@ function BuyerIncomingCall({ sessionId, onAnswer, onReject, sellerName, sellerRo
         <p className="text-white font-black text-xl mb-1">
           {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : 'Kross'}
         </p>
-        <p className="text-sm mb-8 font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
+        <p className="text-sm mb-2 font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
           Llamada entrante…
         </p>
+        <p className="text-[10px] mb-6" style={{ color: 'rgba(255,255,255,0.35)' }}>🔴 Esta llamada puede ser grabada para calidad</p>
         <div className="flex items-center justify-center gap-10">
           <div className="flex flex-col items-center gap-2">
             <button onClick={reject}

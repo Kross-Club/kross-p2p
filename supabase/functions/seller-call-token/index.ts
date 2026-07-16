@@ -1,6 +1,33 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { AccessToken } from 'npm:livekit-server-sdk@2'
+import { AccessToken, RoomServiceClient, RoomEgress, RoomCompositeEgressRequest, EncodedFileOutput, EncodedFileType, S3Upload } from 'npm:livekit-server-sdk@2'
 import webpush from 'npm:web-push'
+
+// Auto-record the call: create the room with a RoomComposite (audio-only) egress
+// that uploads to the private Supabase Storage bucket via S3. No-op until the S3
+// secrets exist, so this never breaks calls. LiveKit fires an egress webhook when
+// the recording finishes (see the livekit-webhook function).
+async function ensureCallRecording(roomName: string) {
+  const endpoint = Deno.env.get('S3_ENDPOINT')
+  const accessKey = Deno.env.get('S3_ACCESS_KEY')
+  const secret = Deno.env.get('S3_SECRET')
+  if (!endpoint || !accessKey || !secret) return false
+  try {
+    const room = new RoomServiceClient(Deno.env.get('LIVEKIT_URL')!, Deno.env.get('LIVEKIT_API_KEY')!, Deno.env.get('LIVEKIT_API_SECRET')!)
+    const fileOutput = new EncodedFileOutput({
+      fileType: EncodedFileType.MP4,
+      filepath: `${roomName}/{time}.mp4`,
+      output: { case: 's3', value: new S3Upload({
+        accessKey, secret, region: Deno.env.get('S3_REGION') ?? 'us-east-1',
+        endpoint, bucket: Deno.env.get('S3_BUCKET') ?? 'call-recordings', forcePathStyle: true,
+      }) },
+    })
+    await room.createRoom({
+      name: roomName, emptyTimeout: 300,
+      egress: new RoomEgress({ room: new RoomCompositeEgressRequest({ audioOnly: true, fileOutputs: [fileOutput] }) }),
+    })
+    return true
+  } catch { return false }
+}
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -135,6 +162,16 @@ Deno.serve(async (req) => {
     { identity: `seller-${session.id}`, name: `${displayName} · Kross`, ttl: '1h' }
   )
   at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true })
+
+  // Start recording (best effort) + log a pending row the webhook will finalize
+  const recording = await ensureCallRecording(roomName)
+  if (recording) {
+    await supabase.from('call_recordings').insert({
+      store_id: session.store_id, session_id: session.id, room_name: roomName,
+      caller_role: 'seller', caller_name: displayName, buyer_name: session.buyer_name ?? null,
+      status: 'recording',
+    })
+  }
 
   // Ring the buyer even in background/closed. Push first; WhatsApp fallback if
   // they have no reachable push (e.g. never installed the app).

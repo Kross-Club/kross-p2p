@@ -127,6 +127,30 @@ CREATE TABLE IF NOT EXISTS notifications_log (
 ALTER TABLE notifications_log ENABLE ROW LEVEL SECURITY; -- solo service role (Edge Functions)
 CREATE INDEX IF NOT EXISTS idx_notiflog_store ON notifications_log(store_id, created_at DESC);
 
+-- Grabaciones de llamadas (LiveKit Egress → Storage privado). El admin las escucha
+-- desde el panel vía URLs firmadas que genera una Edge Function.
+CREATE TABLE IF NOT EXISTS call_recordings (
+  id           uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  store_id     text,
+  session_id   text,
+  egress_id    text,
+  room_name    text,
+  caller_role  text,       -- 'seller' | 'buyer'
+  caller_name  text,
+  buyer_name   text,
+  file_path    text,       -- ruta dentro del bucket call-recordings
+  duration_sec integer,
+  status       text        DEFAULT 'recording',  -- 'recording' | 'done' | 'failed'
+  created_at   timestamptz DEFAULT now()
+);
+ALTER TABLE call_recordings ENABLE ROW LEVEL SECURITY; -- solo service role
+CREATE INDEX IF NOT EXISTS idx_callrec_store   ON call_recordings(store_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_callrec_session ON call_recordings(session_id);
+
+-- Bucket PRIVADO para los audios (acceso solo por URL firmada del admin)
+INSERT INTO storage.buckets (id, name, public) VALUES ('call-recordings', 'call-recordings', false)
+ON CONFLICT (id) DO NOTHING;
+
 
 -- ─── 5. FOTOS DE PERFIL de vendedores (Storage) ─────────────────────────────
 INSERT INTO storage.buckets (id, name, public)
