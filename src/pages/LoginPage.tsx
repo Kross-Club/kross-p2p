@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { KrossIcon } from '../components/KrossLogo'
-import { useStore } from '../lib/store-context'
+import { useStore, isPlatformHost } from '../lib/store-context'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -17,11 +17,24 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data: auth, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setError('Correo o contraseña incorrectos')
       setLoading(false)
       return
+    }
+
+    // On the platform host (krossclub.app) only the super admin may enter. Brand
+    // admins/team must use their own subdomain (marca.krossclub.app).
+    if (isPlatformHost()) {
+      const { data: me } = await supabase.from('sellers')
+        .select('is_super_admin').eq('auth_user_id', auth.user?.id).maybeSingle()
+      if (!me?.is_super_admin) {
+        await supabase.auth.signOut()
+        setError('Ingresa desde el sitio de tu marca (tumarca.krossclub.app), no desde krossclub.app.')
+        setLoading(false)
+        return
+      }
     }
     navigate('/vendedor/chats', { replace: true })
   }

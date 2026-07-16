@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { KrossIcon } from '../../components/KrossLogo'
-import { useStore } from '../../lib/store-context'
+import { useStore, isPlatformHost } from '../../lib/store-context'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -40,6 +40,27 @@ export default function BuyerLoginPage() {
     localStorage.setItem('buyer_session', JSON.stringify({ buyer, sessions }))
     window.dispatchEvent(new Event('buyer-session-changed'))
     navigate('/mis-pedidos', { replace: true })
+  }
+
+  // No hay login de clientes en el dominio de la plataforma (krossclub.app).
+  // Cada cliente usa la app de SU marca (marca.krossclub.app).
+  if (isPlatformHost()) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6 text-center"
+        style={{ background: 'linear-gradient(160deg, #060C1A 0%, #0D1F3C 60%, #0A2540 100%)' }}>
+        <div className="max-w-[360px]">
+          <div className="mx-auto mb-4 w-16 h-16"><KrossIcon size={64} /></div>
+          <h1 className="font-black text-xl text-white mb-2">Esta página es de cada marca</h1>
+          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            Para ver tus pedidos, entra desde el enlace que te compartió tu tienda
+            (por ejemplo <b>tumarca.krossclub.app</b>), no desde krossclub.app.
+          </p>
+          <a href="/login" className="inline-block mt-5 text-xs font-bold" style={{ color: '#00BFFF' }}>
+            ¿Eres administrador de Kross? Ingresar aquí
+          </a>
+        </div>
+      </div>
+    )
   }
 
   return (

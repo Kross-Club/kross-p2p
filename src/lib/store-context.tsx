@@ -103,3 +103,9 @@ function applyBranding(s: Store) {
 }
 
 export const useStore = () => useContext(StoreContext)
+
+// True on the platform host (krossclub.app / main / localhost) — i.e. NOT a brand
+// subdomain. Used to keep brand buyers/admins off the platform host.
+export function isPlatformHost(): boolean {
+  return resolveSlug() === null
+}

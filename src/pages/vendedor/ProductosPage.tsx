@@ -22,6 +22,7 @@ export default function ProductosPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Product | null>(null)
+  const [slug, setSlug] = useState<string | null>(null)
 
   // Scope to the store you're currently acting in (effective) — so a super admin
   // who entered a brand sees THAT brand's products.
@@ -31,6 +32,15 @@ export default function ProductosPage() {
       .then(({ data }) => { setProducts((data as Product[]) ?? []); setLoading(false) })
   }
   useEffect(() => { load() /* eslint-disable-next-line */ }, [effective?.store_id])
+
+  // Brand subdomain, so shared landing links always point to the brand's site
+  // (e.g. marca.krossclub.app/landing/…), even when the super admin shares them.
+  useEffect(() => {
+    if (!effective?.store_id) return
+    supabase.from('stores').select('slug').eq('id', effective.store_id).maybeSingle()
+      .then(({ data }) => setSlug(data?.slug ?? null))
+  }, [effective?.store_id])
+  const landingBase = slug ? `https://${slug}.krossclub.app` : window.location.origin
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
@@ -64,12 +74,12 @@ export default function ProductosPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-black text-sm text-gray-900 truncate">{p.nombre || 'Sin nombre'}</p>
                 <p className="text-xs text-gray-400">S/{p.precio} · {p.images.length} imagen(es) · {p.packs.length} pack(s)</p>
-                <button onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/landing/${p.id}`) }}
+                <button onClick={() => { navigator.clipboard?.writeText(`${landingBase}/landing/${p.id}`) }}
                   className="text-[11px] font-bold mt-1 flex items-center gap-1" style={{ color: 'var(--brand)' }}>
                   <Copy size={11} /> Copiar link de landing
                 </button>
               </div>
-              <a href={`/landing/${p.id}`} target="_blank" rel="noreferrer" className="p-2 rounded-xl" style={{ background: '#F3F4F6', color: '#666' }}><ExternalLink size={14} /></a>
+              <a href={`${landingBase}/landing/${p.id}`} target="_blank" rel="noreferrer" className="p-2 rounded-xl" style={{ background: '#F3F4F6', color: '#666' }}><ExternalLink size={14} /></a>
               <button onClick={() => setEditing(p)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#EEF9FF', color: 'var(--brand)' }}>Editar</button>
             </div>
           ))}
