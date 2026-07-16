@@ -7,6 +7,7 @@ import BuyerLoginPage from './pages/comprador/BuyerLoginPage'
 import MisPedidosPage from './pages/comprador/MisPedidosPage'
 import ScorePage from './pages/comprador/ScorePage'
 import LandingProductoPage from './pages/LandingProductoPage'
+import PrivacidadPage from './pages/PrivacidadPage'
 import ChatsPage from './pages/comprador/ChatsPage'
 import ChatDetalleComprador from './pages/comprador/ChatDetalleComprador'
 import PerfilPage from './pages/comprador/PerfilPage'
@@ -89,6 +90,7 @@ export default function App() {
         <Route path="/p/:token" element={<OrderChatPage />} />
         <Route path="/vendedor/pedido/:token" element={<VendedorPedidoPage />} />
         <Route path="/landing/:landingId" element={<LandingProductoPage />} />
+        <Route path="/privacidad" element={<PrivacidadPage />} />
 
         {/* Protected seller routes */}
         <Route element={<RequireSellerAuth><Layout /></RequireSellerAuth>}>
