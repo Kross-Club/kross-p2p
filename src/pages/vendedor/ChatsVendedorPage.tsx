@@ -46,7 +46,7 @@ const stageLabel: Record<string, string> = {
 
 export default function ChatsVendedorPage() {
   const navigate = useNavigate()
-  const { effective, isAdmin, impersonating } = useSeller()
+  const { effective, isAdmin } = useSeller()
   const [search, setSearch] = useState('')
   const [sessions, setSessions] = useState<SupabaseSession[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,7 +73,9 @@ export default function ChatsVendedorPage() {
   // Each team member sees only the leads assigned to them (Ventas: new leads,
   // Despacho: confirmed, Motorizado: en camino). The admin (not impersonating)
   // sees every order in the store.
-  const onlyMine = !!effective && !(isAdmin && !impersonating)
+  // Whoever you're acting AS decides scope: an admin (store admin, or the super
+  // admin who entered the store) sees all orders; a team member sees only theirs.
+  const onlyMine = !!effective && !effective.is_admin
 
   useEffect(() => {
     if (!effective) return

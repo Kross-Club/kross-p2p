@@ -48,7 +48,9 @@ export default function MarcaPage() {
   // full store toolset (Chats, Productos, CRM, Equipo, Stats) works even for a brand
   // with no team yet (that's exactly when you enter — to set it up).
   const enterStore = (storeId: string) => {
-    if (!real) return
+    if (!real) { alert('Sesión no lista, recarga la página e intenta de nuevo.'); return }
+    // eslint-disable-next-line no-console
+    console.log('[enterStore] target=', storeId, ' real.store=', real.store_id, ' real.auth=', real.auth_user_id)
     actAs({ ...real, store_id: storeId, is_admin: true, is_super_admin: false, role_label: 'Admin' } as SellerProfile)
     navigate('/vendedor/chats')
   }
