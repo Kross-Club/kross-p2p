@@ -25,14 +25,14 @@ async function trySendPush(sub: unknown, payload: object): Promise<boolean> {
   try { await webpush.sendNotification(sub as any, JSON.stringify(payload)); return true } catch { return false }
 }
 
-async function sendWhatsApp(storeId: string | null | undefined, to: string | null, var1: string, var2: string): Promise<string> {
+async function sendWhatsApp(storeId: string | null | undefined, to: string | null, var1: string, var2: string): Promise<{ result: string; error?: string }> {
   const token = Deno.env.get('WHATSAPP_TOKEN')
-  if (!token || !storeId || !to) return 'skipped'
+  if (!token || !storeId || !to) return { result: 'skipped' }
   const { data: store } = await supabase.from('stores').select('wa_enabled, wa_phone_number_id, nombre').eq('id', storeId).maybeSingle()
-  if (!store?.wa_enabled || !store?.wa_phone_number_id) return 'skipped'
+  if (!store?.wa_enabled || !store?.wa_phone_number_id) return { result: 'skipped' }
   let num = (to || '').replace(/\D/g, '')
   if (num.length === 9) num = `51${num}`
-  if (!num) return 'skipped'
+  if (!num) return { result: 'skipped' }
   const template = Deno.env.get('WHATSAPP_TEMPLATE') ?? 'pedido_novedad'
   const lang = Deno.env.get('WHATSAPP_TEMPLATE_LANG') ?? 'es'
   try {
@@ -47,8 +47,10 @@ async function sendWhatsApp(storeId: string | null | undefined, to: string | nul
         ] }] },
       }),
     })
-    return res.ok ? 'sent' : 'failed'
-  } catch { return 'failed' }
+    if (res.ok) return { result: 'sent' }
+    const errTxt = await res.text().catch(() => '')
+    return { result: 'failed', error: `[${template}/${lang}→${num}] ${errTxt}`.slice(0, 280) }
+  } catch (e) { return { result: 'failed', error: String(e).slice(0, 200) } }
 }
 
 interface NotifyInput {
@@ -77,17 +79,20 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
   }
 
   let whatsapp = 'not_needed'
+  let waError: string | undefined
   if (pushOk === 0) {
     let phone: string | null = null
     if (n.buyerId) { const { data: b } = await supabase.from('buyers').select('phone').eq('id', n.buyerId).maybeSingle(); phone = b?.phone ?? null }
     if (!phone) { const { data: s } = await supabase.from('order_sessions').select('buyer_phone').eq('id', n.sessionId).maybeSingle(); phone = s?.buyer_phone ?? null }
-    whatsapp = await sendWhatsApp(n.storeId, phone, n.waName ?? 'Hola', n.waLink ?? 'https://krossclub.app')
+    const r = await sendWhatsApp(n.storeId, phone, n.waName ?? 'Hola', n.waLink ?? 'https://krossclub.app')
+    whatsapp = r.result
+    waError = r.error
   }
 
   try {
     await supabase.from('notifications_log').insert({
       store_id: n.storeId ?? null, buyer_id: n.buyerId ?? null, session_id: n.sessionId,
-      kind: n.type, push_count: pushOk, whatsapp, detail: n.body.slice(0, 120),
+      kind: n.type, push_count: pushOk, whatsapp, detail: waError ?? n.body.slice(0, 120),
     })
   } catch { /* ignore */ }
 }
