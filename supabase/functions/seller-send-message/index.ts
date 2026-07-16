@@ -25,7 +25,7 @@ async function trySendPush(sub: unknown, payload: object): Promise<boolean> {
   try { await webpush.sendNotification(sub as any, JSON.stringify(payload)); return true } catch { return false }
 }
 
-async function sendWhatsApp(storeId: string | null | undefined, to: string | null, preview: string): Promise<string> {
+async function sendWhatsApp(storeId: string | null | undefined, to: string | null, var1: string, var2: string): Promise<string> {
   const token = Deno.env.get('WHATSAPP_TOKEN')
   if (!token || !storeId || !to) return 'skipped'
   const { data: store } = await supabase.from('stores').select('wa_enabled, wa_phone_number_id, nombre').eq('id', storeId).maybeSingle()
@@ -42,8 +42,8 @@ async function sendWhatsApp(storeId: string | null | undefined, to: string | nul
       body: JSON.stringify({
         messaging_product: 'whatsapp', to: num, type: 'template',
         template: { name: template, language: { code: lang }, components: [{ type: 'body', parameters: [
-          { type: 'text', text: (store.nombre ?? 'Tu tienda').slice(0, 60) },
-          { type: 'text', text: preview.slice(0, 200) },
+          { type: 'text', text: (var1 || 'Hola').slice(0, 60) },   // {{1}} = nombre del comprador
+          { type: 'text', text: (var2 || '').slice(0, 300) },      // {{2}} = link a su pedido
         ] }] },
       }),
     })
@@ -55,6 +55,7 @@ interface NotifyInput {
   buyerId?: string | null; sessionId: string; storeId?: string | null
   title: string; body: string; url: string; tag: string
   type: 'message' | 'call' | 'status'; icon?: string | null; badge?: string | null
+  waName?: string; waLink?: string   // WhatsApp template vars: {{1}} name, {{2}} link
 }
 
 async function notifyBuyer(n: NotifyInput): Promise<void> {
@@ -80,7 +81,7 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
     let phone: string | null = null
     if (n.buyerId) { const { data: b } = await supabase.from('buyers').select('phone').eq('id', n.buyerId).maybeSingle(); phone = b?.phone ?? null }
     if (!phone) { const { data: s } = await supabase.from('order_sessions').select('buyer_phone').eq('id', n.sessionId).maybeSingle(); phone = s?.buyer_phone ?? null }
-    whatsapp = await sendWhatsApp(n.storeId, phone, n.body)
+    whatsapp = await sendWhatsApp(n.storeId, phone, n.waName ?? 'Hola', n.waLink ?? 'https://krossclub.app')
   }
 
   try {
@@ -143,26 +144,33 @@ Deno.serve(async (req) => {
   // Push notification to buyer — try by buyer_id first (account-linked), fallback to session_id
   const { data: sessionRow } = await supabase
     .from('order_sessions')
-    .select('token, buyer_id, seller_avatar, store_id')
+    .select('token, buyer_id, buyer_name, seller_avatar, store_id')
     .eq('id', session_id)
     .single()
 
-  // Brand logo — used as the notification's large icon when the seller has no
-  // photo, so buyers see THEIR brand (not Kross).
+  // Brand logo (notification large icon) + slug (to build the buyer's order link)
   let storeLogo: string | null = null
+  let storeSlug: string | null = null
   if (sessionRow?.store_id) {
-    const { data: store } = await supabase.from('stores').select('logo_url').eq('id', sessionRow.store_id).maybeSingle()
+    const { data: store } = await supabase.from('stores').select('logo_url, slug').eq('id', sessionRow.store_id).maybeSingle()
     storeLogo = store?.logo_url ?? null
+    storeSlug = store?.slug ?? null
   }
 
   if (sessionRow) {
     const displayName = seller_name || 'Kross'
     const preview = type === 'text' ? body.slice(0, 80) : '🎵 Mensaje de audio'
+    const buyerFirst = (sessionRow.buyer_name ?? 'Hola').split(' ')[0]
+    const orderLink = storeSlug
+      ? `https://${storeSlug}.krossclub.app/p/${sessionRow.token}`
+      : `https://krossclub.app/p/${sessionRow.token}`
     // Push first; falls back to WhatsApp if the buyer has no reachable push.
     await notifyBuyer({
       buyerId: sessionRow.buyer_id,
       sessionId: session_id,
       storeId: sessionRow.store_id,
+      waName: buyerFirst,
+      waLink: orderLink,
       title: `💬 ${displayName}`,
       body: preview,
       url: `/p/${sessionRow.token}`,

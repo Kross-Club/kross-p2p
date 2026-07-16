@@ -25,7 +25,7 @@ async function trySendPush(sub: unknown, payload: object): Promise<boolean> {
   try { await webpush.sendNotification(sub as any, JSON.stringify(payload)); return true } catch { return false }
 }
 
-async function sendWhatsApp(storeId: string | null | undefined, to: string | null, preview: string): Promise<string> {
+async function sendWhatsApp(storeId: string | null | undefined, to: string | null, var1: string, var2: string): Promise<string> {
   const token = Deno.env.get('WHATSAPP_TOKEN')
   if (!token || !storeId || !to) return 'skipped'
   const { data: store } = await supabase.from('stores').select('wa_enabled, wa_phone_number_id, nombre').eq('id', storeId).maybeSingle()
@@ -42,8 +42,8 @@ async function sendWhatsApp(storeId: string | null | undefined, to: string | nul
       body: JSON.stringify({
         messaging_product: 'whatsapp', to: num, type: 'template',
         template: { name: template, language: { code: lang }, components: [{ type: 'body', parameters: [
-          { type: 'text', text: (store.nombre ?? 'Tu tienda').slice(0, 60) },
-          { type: 'text', text: preview.slice(0, 200) },
+          { type: 'text', text: (var1 || 'Hola').slice(0, 60) },   // {{1}} = nombre del comprador
+          { type: 'text', text: (var2 || '').slice(0, 300) },      // {{2}} = link a su pedido
         ] }] },
       }),
     })
@@ -55,6 +55,7 @@ interface NotifyInput {
   buyerId?: string | null; sessionId: string; storeId?: string | null
   title: string; body: string; url: string; tag: string
   type: 'message' | 'call' | 'status'; icon?: string | null; badge?: string | null
+  waName?: string; waLink?: string
 }
 
 async function notifyBuyer(n: NotifyInput): Promise<void> {
@@ -80,7 +81,7 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
     let phone: string | null = null
     if (n.buyerId) { const { data: b } = await supabase.from('buyers').select('phone').eq('id', n.buyerId).maybeSingle(); phone = b?.phone ?? null }
     if (!phone) { const { data: s } = await supabase.from('order_sessions').select('buyer_phone').eq('id', n.sessionId).maybeSingle(); phone = s?.buyer_phone ?? null }
-    whatsapp = await sendWhatsApp(n.storeId, phone, n.body)
+    whatsapp = await sendWhatsApp(n.storeId, phone, n.waName ?? 'Hola', n.waLink ?? 'https://krossclub.app')
   }
 
   try {
@@ -99,7 +100,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, status, token, buyer_id, store_id, product_name, seller_name, seller_role, seller_avatar')
+    .select('id, status, token, buyer_id, buyer_name, store_id, product_name, seller_name, seller_role, seller_avatar')
     .eq('id', session_id)
     .single()
 
@@ -108,12 +109,18 @@ Deno.serve(async (req) => {
   const displayName = seller_name || session.seller_name || 'Kross'
   const sellerAvatar: string | null = session.seller_avatar ?? null
 
-  // Brand logo as the large-icon fallback so the buyer sees THEIR brand, not Kross
+  // Brand logo (large icon) + slug (buyer order link for the WhatsApp fallback)
   let storeLogo: string | null = null
+  let storeSlug: string | null = null
   if (session.store_id) {
-    const { data: store } = await supabase.from('stores').select('logo_url').eq('id', session.store_id).maybeSingle()
+    const { data: store } = await supabase.from('stores').select('logo_url, slug').eq('id', session.store_id).maybeSingle()
     storeLogo = store?.logo_url ?? null
+    storeSlug = store?.slug ?? null
   }
+  const buyerFirst = (session.buyer_name ?? 'Hola').split(' ')[0]
+  const orderLink = storeSlug
+    ? `https://${storeSlug}.krossclub.app/p/${session.token}`
+    : `https://krossclub.app/p/${session.token}`
 
   const roomName = `order-${session.id}`
   const at = new AccessToken(
@@ -129,6 +136,8 @@ Deno.serve(async (req) => {
     buyerId: session.buyer_id,
     sessionId: session.id,
     storeId: session.store_id,
+    waName: buyerFirst,
+    waLink: orderLink,
     title: '📞 Llamada entrante',
     body: `${displayName} te está llamando`,
     url: `/p/${session.token}`,
