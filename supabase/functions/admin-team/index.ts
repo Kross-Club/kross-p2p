@@ -56,15 +56,17 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'set_available' | 'set_role' | 'create'
+    action: 'set_available' | 'set_role' | 'create' | 'set_avatar'
     admin_auth_id: string
     seller_id?: string          // sellers.auth_user_id of the target
     available?: boolean
+    avatar_url?: string
     role_label?: string
     email?: string
     password?: string
     nombre?: string
     store_id?: string
+    is_admin?: boolean          // create: make this member the brand admin
   }
 
   // Only an admin may run these
@@ -134,6 +136,14 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
+  // ─── SET AVATAR (update the photo of a member you manage / act as) ───────────
+  if (body.action === 'set_avatar') {
+    if (!body.seller_id || !body.avatar_url) return new Response('Missing fields', { status: 400, headers: corsHeaders })
+    if (!(await targetInScope(body.seller_id))) return new Response('Forbidden', { status: 403, headers: corsHeaders })
+    await supabase.from('sellers').update({ avatar_url: body.avatar_url }).eq('auth_user_id', body.seller_id)
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
   // ─── CREATE MEMBER ───────────────────────────────────────────────────────────
   if (body.action === 'create') {
     if (!body.email || !body.password || !body.nombre || !body.role_label) {
@@ -156,8 +166,8 @@ Deno.serve(async (req) => {
       auth_user_id: created.user.id,
       store_id: storeId,
       nombre: body.nombre,
-      role_label: body.role_label,
-      is_admin: false,
+      role_label: body.is_admin ? 'Admin' : body.role_label,
+      is_admin: !!body.is_admin,   // never super_admin — brand admins are store-scoped
       active: true,
       available: true,
     })

@@ -220,6 +220,7 @@ function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adm
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('Ventas')
+  const [asAdmin, setAsAdmin] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -229,7 +230,7 @@ function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adm
     try {
       const res = await fetch(`${BASE}/admin-team`, {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create', admin_auth_id: adminId, store_id: storeId, nombre, email, password, role_label: role }),
+        body: JSON.stringify({ action: 'create', admin_auth_id: adminId, store_id: storeId, nombre, email, password, role_label: role, is_admin: asAdmin }),
       })
       const r = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(r.error || 'No se pudo crear el miembro.'); return }
@@ -251,7 +252,19 @@ function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adm
             className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
           <input value={password} onChange={e => setPassword(e.target.value)} type="text" placeholder="Contraseña (mín. 6)"
             className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
-          <div className="flex gap-2">
+          <button onClick={() => setAsAdmin(a => !a)}
+            className="w-full flex items-center justify-between rounded-2xl px-4 py-3"
+            style={{ background: asAdmin ? '#111' : '#F3F4F6' }}>
+            <span className="text-xs font-black" style={{ color: asAdmin ? '#fff' : '#666' }}>
+              Administrador de la marca
+            </span>
+            <span className="text-[10px] font-black px-2 py-1 rounded-full"
+              style={{ background: asAdmin ? '#fff' : '#e5e7eb', color: asAdmin ? '#111' : '#888' }}>
+              {asAdmin ? 'SÍ' : 'NO'}
+            </span>
+          </button>
+          {asAdmin && <p className="text-[10px] text-gray-400 px-1">Podrá gestionar el equipo, productos y CRM, y entrar por su subdominio.</p>}
+          <div className="flex gap-2" style={{ opacity: asAdmin ? 0.4 : 1, pointerEvents: asAdmin ? 'none' : 'auto' }}>
             {ROLES.map(r => (
               <button key={r} onClick={() => setRole(r)}
                 className="flex-1 py-2 rounded-xl text-xs font-black"

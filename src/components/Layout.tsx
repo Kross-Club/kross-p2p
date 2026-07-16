@@ -8,7 +8,10 @@ import SellerPresenceTracker from './SellerPresenceTracker'
 import { KrossIcon } from './KrossLogo'
 import { subscribePush, notifPermission } from '../lib/push'
 import { supabase } from '../lib/supabase'
-import { useSeller, clearSellerCache } from '../lib/seller-session'
+import { useSeller, clearSellerCache, setActingSeller } from '../lib/seller-session'
+
+const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
+const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 export default function Layout() {
   const { real, effective, impersonating, stopActing } = useSeller()
@@ -54,18 +57,31 @@ export default function Layout() {
 
   const uploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !real) return
+    // Update the photo of WHOEVER you're acting as (effective) — your own, a team
+    // member you entered as, or a brand you're operating.
+    const who = effective
+    if (!file || !who) return
     setUploading(true)
     try {
       const ext = file.name.split('.').pop() || 'jpg'
-      const path = `${real.auth_user_id}.${ext}`
+      const path = `${who.auth_user_id}.${ext}`
       const { error: upErr } = await supabase.storage
         .from('avatars')
         .upload(path, file, { upsert: true, contentType: file.type })
       if (upErr) throw upErr
       const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
       const url = `${pub.publicUrl}?v=${Date.now()}`
-      await supabase.from('sellers').update({ avatar_url: url }).eq('id', real.id)
+      if (impersonating) {
+        // RLS blocks updating another seller's row from the client → go through the
+        // admin edge function (authorized because the caller is an admin).
+        await fetch(`${BASE}/admin-team`, {
+          method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_avatar', admin_auth_id: real?.auth_user_id, seller_id: who.auth_user_id, avatar_url: url }),
+        })
+        setActingSeller({ ...who, avatar_url: url })   // keep the acting profile in sync
+      } else {
+        await supabase.from('sellers').update({ avatar_url: url }).eq('id', who.id)
+      }
       setAvatar(url)
     } catch {
       alert('No se pudo subir la foto. Verifica que exista el bucket "avatars" en Supabase Storage.')
@@ -137,11 +153,11 @@ export default function Layout() {
                   </p>
                 </div>
                 <button
-                  onClick={() => { if (!impersonating) fileRef.current?.click() }}
-                  disabled={uploading || impersonating}
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
                   className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
                   style={{ border: '2px solid var(--brand)', opacity: uploading ? 0.5 : 1 }}
-                  title={impersonating ? '' : 'Cambiar foto'}>
+                  title="Cambiar foto">
                   {avatar ? (
                     <img src={avatar} alt={effective.nombre} className="w-full h-full object-cover" />
                   ) : (
