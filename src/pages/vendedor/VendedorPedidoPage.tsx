@@ -269,7 +269,8 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
 function roleColor(role?: string | null) {
   const r = (role ?? '').toLowerCase()
   if (r.includes('venta')) return '#55C8F5'
-  if (r.includes('despacho')) return '#863bff'
+  if (r.includes('logist') || r.includes('despacho')) return '#863bff'
+  if (r.includes('soporte')) return '#14B8A6'
   if (r.includes('motoriz')) return '#FF8C00'
   if (r.includes('admin')) return '#111'
   return '#888'

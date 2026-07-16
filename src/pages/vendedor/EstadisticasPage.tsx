@@ -16,14 +16,16 @@ const STAGES = [
 function roleColor(role: string) {
   const r = (role ?? '').toLowerCase()
   if (r.includes('venta')) return '#55C8F5'
-  if (r.includes('despacho')) return '#863bff'
+  if (r.includes('logist') || r.includes('despacho')) return '#863bff'
+  if (r.includes('soporte')) return '#14B8A6'
   if (r.includes('motoriz')) return '#FF8C00'
   return '#888'
 }
 function roleCat(role: string) {
   const r = (role ?? '').toLowerCase()
   if (r.includes('venta')) return 'Ventas'
-  if (r.includes('despacho')) return 'Despacho'
+  if (r.includes('logist') || r.includes('despacho')) return 'Logística'
+  if (r.includes('soporte')) return 'Soporte'
   if (r.includes('motoriz')) return 'Motorizado'
   return 'Otro'
 }
@@ -122,7 +124,7 @@ export default function EstadisticasPage() {
         <>
           <h2 className="font-black text-sm text-gray-900 mb-2">Por categoría de rol</h2>
           <div className="grid grid-cols-3 gap-2 mb-6">
-            {['Ventas', 'Despacho', 'Motorizado'].map(cat => (
+            {['Ventas', 'Logística', 'Soporte', 'Motorizado'].map(cat => (
               <div key={cat} className="rounded-2xl p-3 text-center" style={{ background: `${roleColor(cat)}18` }}>
                 <p className="font-black text-2xl" style={{ color: roleColor(cat) }}>{roleMap[cat] ?? 0}</p>
                 <p className="text-[10px] font-bold" style={{ color: roleColor(cat) }}>{cat}</p>

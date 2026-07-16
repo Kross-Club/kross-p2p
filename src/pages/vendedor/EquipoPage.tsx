@@ -7,13 +7,14 @@ import { useSeller, type SellerProfile } from '../../lib/seller-session'
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-const ROLES = ['Ventas', 'Despacho', 'Motorizado']
-const ROLE_ORDER = ['venta', 'despacho', 'motorizado', 'admin']
+const ROLES = ['Ventas', 'Logística', 'Soporte', 'Motorizado']
+const ROLE_ORDER = ['venta', 'logist', 'despacho', 'soporte', 'motoriz', 'admin']
 const roleRank = (r: string) => { const i = ROLE_ORDER.findIndex(k => r.toLowerCase().includes(k)); return i === -1 ? 99 : i }
 function roleColor(role: string) {
   const r = (role ?? '').toLowerCase()
   if (r.includes('venta')) return '#55C8F5'
-  if (r.includes('despacho')) return '#863bff'
+  if (r.includes('logist') || r.includes('despacho')) return '#863bff'
+  if (r.includes('soporte')) return '#14B8A6'
   if (r.includes('motoriz')) return '#FF8C00'
   if (r.includes('admin')) return '#111'
   return '#888'

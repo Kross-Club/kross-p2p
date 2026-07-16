@@ -11,8 +11,18 @@ const corsHeaders = {
 }
 
 const STAGES = ['nuevo', 'confirmado', 'preparando', 'en_camino', 'entregado']
-// Lead hand-off: reaching this stage cedes the order to the given role.
-const HANDOFF: Record<string, string> = { confirmado: 'despacho', en_camino: 'motoriz' }
+// Lead hand-off (pipeline COD): reaching this stage cedes the order to the role.
+//  nuevo → Ventas · confirmado → Logística · preparando → Soporte · en_camino → Motorizado
+const HANDOFF: Record<string, string> = { confirmado: 'logist', preparando: 'soporte', en_camino: 'motoriz' }
+
+// role keyword → the role_label patterns that match it (logística also matches the
+// legacy "Despacho" label so old teams keep working).
+const ROLE_PATTERNS: Record<string, string[]> = {
+  venta: ['venta'],
+  logist: ['logist', 'despacho'],
+  soporte: ['soporte'],
+  motoriz: ['motoriz'],
+}
 
 async function broadcast(sessionId: string, event: string, payload: unknown) {
   await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
@@ -27,13 +37,15 @@ async function broadcast(sessionId: string, event: string, payload: unknown) {
 }
 
 async function pickTeamMember(storeId: string, roleKeyword: string) {
+  const patterns = ROLE_PATTERNS[roleKeyword] ?? [roleKeyword]
+  const orFilter = patterns.map(p => `role_label.ilike.%${p}%`).join(',')
   const { data: cands } = await supabase
     .from('sellers')
     .select('auth_user_id, nombre, role_label, avatar_url, available')
     .eq('store_id', storeId)
     .eq('active', true)
     .not('auth_user_id', 'is', null)
-    .ilike('role_label', `%${roleKeyword}%`)
+    .or(orFilter)
 
   // Skip anyone off-shift (available=false). Missing column → treated as available.
   const list = (cands ?? []).filter((c: any) => c.auth_user_id && c.available !== false)

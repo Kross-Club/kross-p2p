@@ -22,12 +22,21 @@ async function broadcast(sessionId: string, event: string, payload: unknown) {
   })
 }
 
+// Canonical role keyword. Logística also matches the legacy "Despacho" label.
 function roleKeyword(roleLabel: string): string {
   const r = (roleLabel ?? '').toLowerCase()
   if (r.includes('venta')) return 'venta'
-  if (r.includes('despacho')) return 'despacho'
+  if (r.includes('logist') || r.includes('despacho')) return 'logist'
+  if (r.includes('soporte')) return 'soporte'
   if (r.includes('motoriz')) return 'motoriz'
   return r
+}
+const ROLE_PATTERNS: Record<string, string[]> = {
+  venta: ['venta'], logist: ['logist', 'despacho'], soporte: ['soporte'], motoriz: ['motoriz'],
+}
+function matchesRole(roleLabel: string, keyword: string): boolean {
+  const r = (roleLabel ?? '').toLowerCase()
+  return (ROLE_PATTERNS[keyword] ?? [keyword]).some(p => r.includes(p))
 }
 
 // Least-loaded available member of a role in a store, excluding one id
@@ -40,7 +49,7 @@ async function pickReplacement(storeId: string, keyword: string, excludeId: stri
     .not('auth_user_id', 'is', null)
   const list = (cands ?? []).filter((c: any) =>
     c.auth_user_id && c.auth_user_id !== excludeId && !c.is_admin &&
-    c.available !== false && (c.role_label ?? '').toLowerCase().includes(keyword)
+    c.available !== false && matchesRole(c.role_label, keyword)
   )
   if (list.length === 0) return null
   const ids = list.map((c: any) => c.auth_user_id as string)
