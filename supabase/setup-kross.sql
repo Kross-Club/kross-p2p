@@ -237,21 +237,21 @@ ALTER TABLE sellers ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false;
 -- (crear tienda + su primer admin) y editar el branding de cualquier tienda.
 ALTER TABLE sellers ADD COLUMN IF NOT EXISTS is_super_admin boolean DEFAULT false;
 
--- Tienda de la plataforma (Kross). Es la marca "casa" desde donde se onboardean
--- las demás. Su store_id es el que hereda el admin dueño.
+-- Tienda de la PLATAFORMA (Kross HQ). NO es una marca visible: es la "casa" del
+-- super admin, separada de las marcas de clientes. Id dedicado 'platform'.
 INSERT INTO stores (id, slug, nombre, color_primary, color_dark, active)
-VALUES ('t1', 'kross', 'Kross', '#55C8F5', '#060C1A', true)
+VALUES ('platform', 'kross', 'Kross', '#55C8F5', '#060C1A', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Crea (o actualiza) la fila de vendedor para el admin uxbriel@gmail.com.
--- El super admin SIEMPRE pertenece a la tienda plataforma 't1' (Kross), para que
--- su panel muestre la marca Kross y no la de una tienda cliente/demo.
+-- El super admin SIEMPRE pertenece a la tienda plataforma 'platform' (Kross HQ),
+-- separada de cualquier marca de cliente/demo.
 INSERT INTO sellers (auth_user_id, store_id, nombre, role_label, is_admin, is_super_admin, active)
-SELECT u.id, 't1', 'Uxbriel', 'Admin', true, true, true
+SELECT u.id, 'platform', 'Uxbriel', 'Admin', true, true, true
 FROM auth.users u
 WHERE lower(u.email) = 'uxbriel@gmail.com'
 ON CONFLICT (auth_user_id)
-DO UPDATE SET is_admin = true, is_super_admin = true, role_label = 'Admin', store_id = 't1';
+DO UPDATE SET is_admin = true, is_super_admin = true, role_label = 'Admin', store_id = 'platform';
 
 
 -- ============================================================================
