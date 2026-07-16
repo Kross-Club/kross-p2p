@@ -19,11 +19,19 @@ export default function Layout() {
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
-  // Brand shown in the header = the seller's OWN store (works from any domain).
-  // Also drive the --brand CSS vars from it, so the panel is branded even when
-  // the admin logs in from the apex domain (not their subdomain).
+  // Brand shown in the header. The super admin (platform owner) ALWAYS sees Kross,
+  // regardless of which store row they're attached to (t1 may be renamed). A store
+  // admin sees their own store — driving the --brand CSS vars from it too.
   useEffect(() => {
-    if (!real?.store_id) return
+    if (!real) return
+    if (real.is_super_admin) {
+      setBrand({ nombre: 'Kross', logo_url: null })
+      const root = document.documentElement
+      root.style.setProperty('--brand', '#55C8F5')
+      root.style.setProperty('--brand-dark', '#060C1A')
+      return
+    }
+    if (!real.store_id) return
     supabase.from('stores').select('nombre, logo_url, color_primary, color_dark').eq('id', real.store_id).maybeSingle()
       .then(({ data }) => {
         if (!data) return
@@ -32,7 +40,7 @@ export default function Layout() {
         if (data.color_primary) root.style.setProperty('--brand', data.color_primary)
         if (data.color_dark) root.style.setProperty('--brand-dark', data.color_dark)
       })
-  }, [real?.store_id])
+  }, [real?.store_id, real?.is_super_admin])
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])
   useEffect(() => { if (real) setAvailable(real.available !== false) }, [real?.id, real?.available])

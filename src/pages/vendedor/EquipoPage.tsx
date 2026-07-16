@@ -51,6 +51,10 @@ export default function EquipoPage() {
       if (raw) { setTeam(JSON.parse(raw) as SellerProfile[]); setLoading(false) }
     } catch { /* ignore */ }
     loadTeam()
+    // Watchdog: never let the spinner hang if the query stalls (Supabase auth-lock
+    // during a client-side nav can make a request never settle).
+    const t = setTimeout(() => setLoading(false), 4000)
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [real, sellerLoading])
 
