@@ -243,16 +243,15 @@ INSERT INTO stores (id, slug, nombre, color_primary, color_dark, active)
 VALUES ('t1', 'kross', 'Kross', '#55C8F5', '#060C1A', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Crea (o actualiza) la fila de vendedor para el admin uxbriel@gmail.com,
--- ligándola a su usuario de Supabase Auth y usando el mismo store_id del equipo.
+-- Crea (o actualiza) la fila de vendedor para el admin uxbriel@gmail.com.
+-- El super admin SIEMPRE pertenece a la tienda plataforma 't1' (Kross), para que
+-- su panel muestre la marca Kross y no la de una tienda cliente/demo.
 INSERT INTO sellers (auth_user_id, store_id, nombre, role_label, is_admin, is_super_admin, active)
-SELECT u.id,
-       COALESCE((SELECT store_id FROM sellers WHERE store_id IS NOT NULL LIMIT 1), 't1'),
-       'Uxbriel', 'Admin', true, true, true
+SELECT u.id, 't1', 'Uxbriel', 'Admin', true, true, true
 FROM auth.users u
 WHERE lower(u.email) = 'uxbriel@gmail.com'
 ON CONFLICT (auth_user_id)
-DO UPDATE SET is_admin = true, is_super_admin = true, role_label = 'Admin';
+DO UPDATE SET is_admin = true, is_super_admin = true, role_label = 'Admin', store_id = 't1';
 
 
 -- ============================================================================
