@@ -411,9 +411,13 @@ Deno.serve(async (req) => {
 
       // 3) Value-chain arrays (new columns) — best effort, don't block the rest.
       //    A hand-off resets the invited list (new owner starts clean).
+      //    En 'en_camino', Soporte (el dueño previo, de 'preparando') SIGUE
+      //    acompañando: queda como co-escritor junto al Motorizado.
+      const prevOwner = session.assigned_seller_id
+      const keepCowriter = next === 'en_camino' && prevOwner ? [prevOwner] : []
       await supabase.from('order_sessions').update({
-        writer_seller_ids: uniq([member.auth_user_id]),
-        involved_seller_ids: uniq([...involved, member.auth_user_id]),
+        writer_seller_ids: uniq([member.auth_user_id, ...keepCowriter]),
+        involved_seller_ids: uniq([...involved, member.auth_user_id, ...keepCowriter]),
         invited_seller_ids: [],
         invited_by: {},
       }).eq('id', session.id)
