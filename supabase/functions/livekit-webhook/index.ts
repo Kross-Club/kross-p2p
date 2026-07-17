@@ -1,67 +1,90 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { WebhookReceiver } from 'npm:livekit-server-sdk@2'
+import { WebhookReceiver, EgressClient, EncodedFileOutput, EncodedFileType, S3Upload } from 'npm:livekit-server-sdk@2'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
 
-const receiver = new WebhookReceiver(
-  Deno.env.get('LIVEKIT_API_KEY')!,
-  Deno.env.get('LIVEKIT_API_SECRET')!
-)
+const LK_URL = Deno.env.get('LIVEKIT_URL')!
+const LK_KEY = Deno.env.get('LIVEKIT_API_KEY')!
+const LK_SECRET = Deno.env.get('LIVEKIT_API_SECRET')!
 
-// Receives LiveKit webhooks. On 'egress_ended' it finalizes the matching
-// call_recordings row (file path + duration). Configure the URL in LiveKit:
-// Settings → Webhooks → https://<ref>.supabase.co/functions/v1/livekit-webhook
+const receiver = new WebhookReceiver(LK_KEY, LK_SECRET)
+const egress = new EgressClient(LK_URL, LK_KEY, LK_SECRET)
+
+function s3Output(roomName: string): EncodedFileOutput | null {
+  const endpoint = Deno.env.get('S3_ENDPOINT')
+  const accessKey = Deno.env.get('S3_ACCESS_KEY')
+  const secret = Deno.env.get('S3_SECRET')
+  if (!endpoint || !accessKey || !secret) return null
+  return new EncodedFileOutput({
+    fileType: EncodedFileType.MP4,
+    filepath: `${roomName}/{time}.mp4`,
+    output: { case: 's3', value: new S3Upload({
+      accessKey, secret, region: Deno.env.get('S3_REGION') ?? 'us-east-1',
+      endpoint, bucket: Deno.env.get('S3_BUCKET') ?? 'call-recordings', forcePathStyle: true,
+    }) },
+  })
+}
+
+async function activeEgress(roomName: string) {
+  try { return (await egress.listEgress({ roomName, active: true })) ?? [] } catch { return [] }
+}
+
+// LiveKit webhooks. Records ONLY the connected call: starts when both parties are
+// in the room, stops when one hangs up. Configure in LiveKit → Settings → Webhooks:
+// https://<ref>.supabase.co/functions/v1/livekit-webhook
 Deno.serve(async (req) => {
   const body = await req.text()
   const auth = req.headers.get('Authorization') ?? ''
 
   let event: any
-  try {
-    event = await receiver.receive(body, auth)
-  } catch {
-    return new Response('invalid signature', { status: 401 })
+  try { event = await receiver.receive(body, auth) } catch { return new Response('invalid signature', { status: 401 }) }
+
+  const room = event?.room
+  const roomName: string = room?.name ?? ''
+
+  // ── Both parties connected → start recording (once) ──
+  if (event?.event === 'participant_joined' && roomName && (room?.numParticipants ?? 0) >= 2) {
+    const existing = await activeEgress(roomName)
+    if (existing.length === 0) {
+      const out = s3Output(roomName)
+      if (out) {
+        try {
+          const info = await egress.startRoomCompositeEgress(roomName, { file: out } as any, { audioOnly: true } as any)
+          const sessionId = roomName.startsWith('order-') ? roomName.slice(6) : null
+          let storeId: string | null = null, buyerName: string | null = null, sellerName: string | null = null
+          if (sessionId) {
+            const { data: s } = await supabase.from('order_sessions').select('store_id, buyer_name, seller_name').eq('id', sessionId).maybeSingle()
+            storeId = s?.store_id ?? null; buyerName = s?.buyer_name ?? null; sellerName = s?.seller_name ?? null
+          }
+          await supabase.from('call_recordings').insert({
+            store_id: storeId, session_id: sessionId, room_name: roomName, egress_id: info.egressId,
+            caller_role: 'seller', caller_name: sellerName, buyer_name: buyerName, status: 'recording',
+          })
+        } catch { /* egress not available / not configured */ }
+      }
+    }
   }
 
+  // ── One party hung up (or room closed) → stop recording promptly ──
+  if ((event?.event === 'participant_left' && (room?.numParticipants ?? 0) <= 1) || event?.event === 'room_finished') {
+    for (const e of await activeEgress(roomName)) {
+      try { await egress.stopEgress(e.egressId) } catch { /* ignore */ }
+    }
+  }
+
+  // ── Recording finished & uploaded → finalize the row ──
   if (event?.event === 'egress_ended' && event.egressInfo) {
     const info = event.egressInfo
-    const roomName: string = info.roomName ?? ''
     const fileRes = (info.fileResults && info.fileResults[0]) || null
     const filePath: string | null = fileRes?.filename ?? null
     const durNs = Number(fileRes?.duration ?? info.duration ?? 0)
-    const durationSec = durNs > 100000 ? Math.round(durNs / 1e9) : Math.round(durNs) // ns → s (or already s)
-
-    // Finalize the latest pending recording for this room…
-    const { data: rec } = await supabase
-      .from('call_recordings')
-      .select('id')
-      .eq('room_name', roomName)
-      .eq('status', 'recording')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (rec) {
-      await supabase.from('call_recordings').update({
-        egress_id: info.egressId, file_path: filePath, duration_sec: durationSec, status: 'done',
-      }).eq('id', rec.id)
-    } else {
-      // …or create one (e.g. a call started outside seller-call-token)
-      const sessionId = roomName.startsWith('order-') ? roomName.slice(6) : null
-      let storeId: string | null = null
-      let buyerName: string | null = null
-      if (sessionId) {
-        const { data: s } = await supabase.from('order_sessions').select('store_id, buyer_name').eq('id', sessionId).maybeSingle()
-        storeId = s?.store_id ?? null
-        buyerName = s?.buyer_name ?? null
-      }
-      await supabase.from('call_recordings').insert({
-        store_id: storeId, session_id: sessionId, room_name: roomName, egress_id: info.egressId,
-        buyer_name: buyerName, file_path: filePath, duration_sec: durationSec, status: 'done',
-      })
-    }
+    const durationSec = durNs > 100000 ? Math.round(durNs / 1e9) : Math.round(durNs)
+    await supabase.from('call_recordings')
+      .update({ file_path: filePath, duration_sec: durationSec, status: 'done' })
+      .eq('egress_id', info.egressId)
   }
 
   return new Response('ok')
