@@ -54,11 +54,15 @@ Deno.serve(async (req) => {
   // ── Both parties connected → start recording (once) ──
   if (event?.event === 'participant_joined' && roomName && (room?.numParticipants ?? 0) >= 2) {
     const existing = await activeEgress(roomName)
+    console.log('[livekit-webhook] 2 participants — existing egress:', existing.length)
     if (existing.length === 0) {
       const out = s3Output(roomName)
-      if (out) {
+      if (!out) {
+        console.log('[livekit-webhook] no S3 config — cannot record')
+      } else {
         try {
           const info = await egress.startRoomCompositeEgress(roomName, { file: out } as any, { audioOnly: true } as any)
+          console.log('[livekit-webhook] egress STARTED', info.egressId)
           const sessionId = roomName.startsWith('order-') ? roomName.slice(6) : null
           let storeId: string | null = null, buyerName: string | null = null, sellerName: string | null = null
           if (sessionId) {
@@ -69,7 +73,9 @@ Deno.serve(async (req) => {
             store_id: storeId, session_id: sessionId, room_name: roomName, egress_id: info.egressId,
             caller_role: 'seller', caller_name: sellerName, buyer_name: buyerName, status: 'recording',
           })
-        } catch { /* egress not available / not configured */ }
+        } catch (e) {
+          console.log('[livekit-webhook] egress START FAILED:', String((e as any)?.message ?? e).slice(0, 400))
+        }
       }
     }
   }
