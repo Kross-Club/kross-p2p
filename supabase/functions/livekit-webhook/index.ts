@@ -40,10 +40,16 @@ Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization') ?? ''
 
   let event: any
-  try { event = await receiver.receive(body, auth) } catch { return new Response('invalid signature', { status: 401 }) }
+  try {
+    event = await receiver.receive(body, auth)
+  } catch (e) {
+    console.log('[livekit-webhook] SIGNATURE FAIL', String(e).slice(0, 200))
+    return new Response('invalid signature', { status: 401 })
+  }
 
   const room = event?.room
   const roomName: string = room?.name ?? ''
+  console.log('[livekit-webhook] event=', event?.event, 'room=', roomName, 'participants=', room?.numParticipants)
 
   // ── Both parties connected → start recording (once) ──
   if (event?.event === 'participant_joined' && roomName && (room?.numParticipants ?? 0) >= 2) {
