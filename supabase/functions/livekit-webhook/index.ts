@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { WebhookReceiver, EgressClient, EncodedFileOutput, EncodedFileType, S3Upload } from 'npm:livekit-server-sdk@2'
+import { WebhookReceiver, EgressClient, RoomServiceClient, EncodedFileOutput, EncodedFileType, S3Upload } from 'npm:livekit-server-sdk@2'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -12,6 +12,12 @@ const LK_SECRET = Deno.env.get('LIVEKIT_API_SECRET')!
 
 const receiver = new WebhookReceiver(LK_KEY, LK_SECRET)
 const egress = new EgressClient(LK_URL, LK_KEY, LK_SECRET)
+const rooms = new RoomServiceClient(LK_URL, LK_KEY, LK_SECRET)
+
+// The webhook's room.numParticipants is unreliable (comes as 0), so ask the API.
+async function participantCount(roomName: string): Promise<number> {
+  try { return (await rooms.listParticipants(roomName)).length } catch { return 0 }
+}
 
 function s3Output(roomName: string): EncodedFileOutput | null {
   const endpoint = Deno.env.get('S3_ENDPOINT')
@@ -52,7 +58,7 @@ Deno.serve(async (req) => {
   console.log('[livekit-webhook] event=', event?.event, 'room=', roomName, 'participants=', room?.numParticipants)
 
   // ── Both parties connected → start recording (once) ──
-  if (event?.event === 'participant_joined' && roomName && (room?.numParticipants ?? 0) >= 2) {
+  if (event?.event === 'participant_joined' && roomName && (await participantCount(roomName)) >= 2) {
     const existing = await activeEgress(roomName)
     console.log('[livekit-webhook] 2 participants — existing egress:', existing.length)
     if (existing.length === 0) {
@@ -81,7 +87,7 @@ Deno.serve(async (req) => {
   }
 
   // ── One party hung up (or room closed) → stop recording promptly ──
-  if ((event?.event === 'participant_left' && (room?.numParticipants ?? 0) <= 1) || event?.event === 'room_finished') {
+  if ((event?.event === 'participant_left' && (await participantCount(roomName)) <= 1) || event?.event === 'room_finished') {
     for (const e of await activeEgress(roomName)) {
       try { await egress.stopEgress(e.egressId) } catch { /* ignore */ }
     }
