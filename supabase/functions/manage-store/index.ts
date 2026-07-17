@@ -40,6 +40,7 @@ Deno.serve(async (req) => {
     nombre?: string
     slug?: string
     logo_url?: string | null
+    notif_icon_url?: string | null
     color_primary?: string
     color_dark?: string
     active?: boolean
@@ -67,7 +68,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -103,6 +104,7 @@ Deno.serve(async (req) => {
     const patch: Record<string, unknown> = {}
     if (typeof body.nombre === 'string' && body.nombre.trim()) patch.nombre = body.nombre.trim()
     if (body.logo_url !== undefined) patch.logo_url = body.logo_url
+    if (body.notif_icon_url !== undefined) patch.notif_icon_url = body.notif_icon_url
     if (typeof body.color_primary === 'string') patch.color_primary = body.color_primary
     if (typeof body.color_dark === 'string') patch.color_dark = body.color_dark
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active

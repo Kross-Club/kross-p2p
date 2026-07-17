@@ -25,7 +25,7 @@ async function trySendPush(sub: unknown, payload: object): Promise<boolean> {
   try { await webpush.sendNotification(sub as any, JSON.stringify(payload)); return true } catch { return false }
 }
 
-async function sendWhatsApp(storeId: string | null | undefined, to: string | null, var1: string, var2: string, var3: string): Promise<{ result: string; error?: string }> {
+async function sendWhatsApp(storeId: string | null | undefined, to: string | null, template: string, var1: string, var2: string, var3: string): Promise<{ result: string; error?: string }> {
   const token = Deno.env.get('WHATSAPP_TOKEN')
   if (!token || !storeId || !to) return { result: 'skipped' }
   const { data: store } = await supabase.from('stores').select('wa_enabled, wa_phone_number_id, nombre').eq('id', storeId).maybeSingle()
@@ -33,7 +33,6 @@ async function sendWhatsApp(storeId: string | null | undefined, to: string | nul
   let num = (to || '').replace(/\D/g, '')
   if (num.length === 9) num = `51${num}`
   if (!num) return { result: 'skipped' }
-  const template = Deno.env.get('WHATSAPP_TEMPLATE') ?? 'pedido_novedad'
   const lang = Deno.env.get('WHATSAPP_TEMPLATE_LANG') ?? 'es'
   try {
     const res = await fetch(`https://graph.facebook.com/v21.0/${store.wa_phone_number_id}/messages`, {
@@ -82,12 +81,26 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
   let whatsapp = 'not_needed'
   let waError: string | undefined
   if (pushOk === 0) {
-    let phone: string | null = null
-    if (n.buyerId) { const { data: b } = await supabase.from('buyers').select('phone').eq('id', n.buyerId).maybeSingle(); phone = b?.phone ?? null }
-    if (!phone) { const { data: s } = await supabase.from('order_sessions').select('buyer_phone').eq('id', n.sessionId).maybeSingle(); phone = s?.buyer_phone ?? null }
-    const r = await sendWhatsApp(n.storeId, phone, n.waName ?? 'Hola', n.waProduct ?? 'tu pedido', n.waLink ?? 'https://krossclub.app')
-    whatsapp = r.result
-    waError = r.error
+    let allowed = true
+    if (n.type === 'message') {
+      const since = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+      const { data: recent } = await supabase.from('notifications_log')
+        .select('id').eq('session_id', n.sessionId).eq('whatsapp', 'sent').gte('created_at', since).limit(1)
+      if (recent && recent.length > 0) allowed = false
+    }
+    if (!allowed) {
+      whatsapp = 'throttled'
+    } else {
+      const template = n.type === 'call'
+        ? (Deno.env.get('WHATSAPP_TEMPLATE_CALL') ?? Deno.env.get('WHATSAPP_TEMPLATE') ?? 'pedido_novedad')
+        : (Deno.env.get('WHATSAPP_TEMPLATE') ?? 'pedido_novedad')
+      let phone: string | null = null
+      if (n.buyerId) { const { data: b } = await supabase.from('buyers').select('phone').eq('id', n.buyerId).maybeSingle(); phone = b?.phone ?? null }
+      if (!phone) { const { data: s } = await supabase.from('order_sessions').select('buyer_phone').eq('id', n.sessionId).maybeSingle(); phone = s?.buyer_phone ?? null }
+      const r = await sendWhatsApp(n.storeId, phone, template, n.waName ?? 'Hola', n.waProduct ?? 'tu pedido', n.waLink ?? 'https://krossclub.app')
+      whatsapp = r.result
+      waError = r.error
+    }
   }
 
   try {
@@ -115,12 +128,14 @@ Deno.serve(async (req) => {
   const displayName = seller_name || session.seller_name || 'Kross'
   const sellerAvatar: string | null = session.seller_avatar ?? null
 
-  // Brand logo (large icon) + slug (buyer order link for the WhatsApp fallback)
+  // Brand notification icon + logo + slug (buyer order link for the WhatsApp fallback)
   let storeLogo: string | null = null
+  let storeIcon: string | null = null
   let storeSlug: string | null = null
   if (session.store_id) {
-    const { data: store } = await supabase.from('stores').select('logo_url, slug').eq('id', session.store_id).maybeSingle()
+    const { data: store } = await supabase.from('stores').select('logo_url, notif_icon_url, slug').eq('id', session.store_id).maybeSingle()
     storeLogo = store?.logo_url ?? null
+    storeIcon = store?.notif_icon_url ?? store?.logo_url ?? null
     storeSlug = store?.slug ?? null
   }
   const buyerFirst = (session.buyer_name ?? 'Hola').split(' ')[0]
@@ -152,8 +167,8 @@ Deno.serve(async (req) => {
     url: `/p/${session.token}`,
     tag: `call-${session.id}`,
     type: 'call',
-    icon: sellerAvatar ?? storeLogo,
-    badge: storeLogo,
+    icon: sellerAvatar ?? storeIcon,
+    badge: storeIcon,
   })
 
   // Broadcast the incoming call to a buyer-wide channel so it rings no matter

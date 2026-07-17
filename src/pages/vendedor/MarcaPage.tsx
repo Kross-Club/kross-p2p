@@ -14,6 +14,7 @@ interface StoreRow {
   slug: string
   nombre: string
   logo_url: string | null
+  notif_icon_url?: string | null
   color_primary: string
   color_dark: string
   active: boolean
@@ -162,19 +163,19 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
   )
 }
 
-function LogoPicker({ logo, uploading, onPick }: { logo: string | null; uploading: boolean; onPick: (f: File) => void }) {
+function LogoPicker({ logo, uploading, onPick, round, help }: { logo: string | null; uploading: boolean; onPick: (f: File) => void; round?: boolean; help?: string }) {
   const fileRef = useRef<HTMLInputElement>(null)
   return (
     <div className="flex items-center gap-3">
-      <div className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center">
+      <div className={`w-16 h-16 overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center ${round ? 'rounded-full' : 'rounded-2xl'}`}>
         {logo ? <img src={logo} alt="" className="w-full h-full object-cover" /> : <StoreIcon size={22} className="text-gray-300" />}
       </div>
       <div className="flex-1">
         <button onClick={() => fileRef.current?.click()} disabled={uploading}
           className="text-xs font-black px-3 py-2 rounded-xl disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
-          {uploading ? 'Subiendo…' : logo ? 'Cambiar logo' : 'Subir logo'}
+          {uploading ? 'Subiendo…' : logo ? 'Cambiar' : 'Subir'}
         </button>
-        <p className="text-[10px] text-gray-400 mt-1">PNG cuadrado, 512×512 recomendado.</p>
+        <p className="text-[10px] text-gray-400 mt-1">{help ?? 'PNG cuadrado, 512×512 recomendado.'}</p>
       </div>
       <input ref={fileRef} type="file" accept="image/*" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) onPick(f); if (fileRef.current) fileRef.current.value = '' }} />
@@ -188,6 +189,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [nombre, setNombre] = useState(store.nombre)
   const [slug, setSlug] = useState(store.slug)
   const [logo, setLogo] = useState<string | null>(store.logo_url)
+  const [notifIcon, setNotifIcon] = useState<string | null>(store.notif_icon_url ?? null)
   const [cp, setCp] = useState(store.color_primary || '#55C8F5')
   const [cd, setCd] = useState(store.color_dark || '#060C1A')
   const [active, setActive] = useState(store.active)
@@ -195,17 +197,19 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [waPhoneId, setWaPhoneId] = useState(store.wa_phone_number_id ?? '')
   const [waDisplay, setWaDisplay] = useState(store.wa_display_phone ?? '')
   const [uploading, setUploading] = useState(false)
+  const [uploadingIcon, setUploadingIcon] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
   const pick = async (f: File) => { setUploading(true); const url = await uploadLogo(f, adminId); if (url) setLogo(url); setUploading(false) }
+  const pickIcon = async (f: File) => { setUploadingIcon(true); const url = await uploadLogo(f, adminId); if (url) setNotifIcon(url); setUploadingIcon(false) }
 
   const save = async () => {
     if (!nombre.trim()) { setErr('Ponle un nombre a la marca.'); return }
     setBusy(true); setErr('')
     const payload: Record<string, unknown> = {
       action: 'update', admin_auth_id: adminId, store_id: store.id,
-      nombre: nombre.trim(), logo_url: logo, color_primary: cp, color_dark: cd,
+      nombre: nombre.trim(), logo_url: logo, notif_icon_url: notifIcon, color_primary: cp, color_dark: cd,
     }
     if (isSuper) {
       payload.slug = slug; payload.active = active
@@ -244,6 +248,12 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
 
         <label className="text-xs font-bold text-gray-500 mb-1 block">Logo</label>
         <div className="mb-4"><LogoPicker logo={logo} uploading={uploading} onPick={pick} /></div>
+
+        <label className="text-xs font-bold text-gray-500 mb-1 block">Ícono de notificación</label>
+        <div className="mb-4">
+          <LogoPicker logo={notifIcon} uploading={uploadingIcon} onPick={pickIcon} round
+            help="PNG con fondo transparente y borde redondo (como WhatsApp). Si no lo pones, usa el logo." />
+        </div>
 
         <label className="text-xs font-bold text-gray-500 mb-1 block">Colores</label>
         <div className="space-y-2 mb-4">

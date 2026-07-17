@@ -27,6 +27,10 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_enabled         boolean DEFAULT f
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_phone_number_id text;   -- ID del número en WhatsApp Cloud API
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_display_phone   text;   -- número visible de la marca (informativo)
 
+-- Ícono de notificación (PNG transparente/circular). Se muestra en los push como
+-- el ícono de la tienda. Si falta, cae al logo.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS notif_icon_url     text;
+
 -- Compradores pasan a ser por tienda (un cliente de una marca no es de otra)
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS store_id text;
 -- El mismo DNI puede existir en varias marcas → unicidad POR TIENDA, no global
