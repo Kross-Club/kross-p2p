@@ -828,14 +828,29 @@ export default function VendedorPedidoPage() {
   )
 }
 
-// Seller picks a WhatsApp template to send to the buyer of this order.
+// Catalog of order variables a template variable can map to
+const WA_VARS = [
+  { key: 'name', label: 'Nombre del cliente' },
+  { key: 'product', label: 'Producto' },
+  { key: 'link', label: 'Link del pedido' },
+  { key: 'price', label: 'Precio' },
+  { key: 'address', label: 'Dirección' },
+  { key: 'order_id', label: 'N° de pedido' },
+]
+const DEFAULT_MAP = ['name', 'product', 'link', 'price', 'address', 'order_id']
+
+interface WaTemplate { name: string; language: string; params: number; preview: string }
+
+// Seller picks a WhatsApp template + maps each variable, then sends to the buyer.
 function WaTemplatesSheet({ storeId, sessionId, sellerName, onClose }: {
   storeId: string; sessionId: string; sellerName: string; onClose: () => void
 }) {
-  const [templates, setTemplates] = useState<{ name: string; language: string; params: number; preview: string }[]>([])
+  const [templates, setTemplates] = useState<WaTemplate[]>([])
   const [loading, setLoading] = useState(true)
-  const [sending, setSending] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
   const [done, setDone] = useState<string | null>(null)
+  const [open, setOpen] = useState<WaTemplate | null>(null)     // the template being configured
+  const [mapping, setMapping] = useState<string[]>([])
 
   useEffect(() => {
     fetch(`${BASE}/list-wa-templates`, {
@@ -848,17 +863,22 @@ function WaTemplatesSheet({ storeId, sessionId, sellerName, onClose }: {
       .finally(() => setLoading(false))
   }, [storeId])
 
-  const send = async (t: { name: string; language: string; params: number }) => {
-    setSending(t.name)
+  const pick = (t: WaTemplate) => {
+    if (t.params === 0) { send(t, []) }               // no variables → send directly
+    else { setOpen(t); setMapping(DEFAULT_MAP.slice(0, t.params)) }
+  }
+
+  const send = async (t: WaTemplate, map: string[]) => {
+    setSending(true)
     try {
       const res = await fetch(`${BASE}/send-wa-template`, {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, template: t.name, language: t.language, params: t.params, seller_name: sellerName }),
+        body: JSON.stringify({ session_id: sessionId, template: t.name, language: t.language, params: t.params, mapping: map, seller_name: sellerName }),
       })
       const r = await res.json().catch(() => ({}))
       if (r.ok) { setDone(t.name); setTimeout(onClose, 900) }
       else alert('No se pudo enviar: ' + (r.error || 'revisa la plantilla o el número.'))
-    } finally { setSending(null) }
+    } finally { setSending(false) }
   }
 
   return (
@@ -866,30 +886,58 @@ function WaTemplatesSheet({ storeId, sessionId, sellerName, onClose }: {
       <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h3 className="font-black text-gray-900 flex items-center gap-2"><MessageCircle size={18} style={{ color: '#25D366' }} /> Enviar por WhatsApp</h3>
-          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+          <button onClick={() => (open ? setOpen(null) : onClose())}><X size={18} className="text-gray-400" /></button>
         </div>
-        <p className="text-xs text-gray-400 mb-4">Elige la plantilla que le llegará al cliente. Tú decides cuándo enviar.</p>
 
-        {loading ? (
-          <div className="flex justify-center py-10"><div className="w-7 h-7 rounded-full border-4 border-gray-200 border-t-[#25D366] animate-spin" /></div>
-        ) : templates.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">No hay plantillas disponibles. Revisa que la marca tenga su WABA ID y plantillas aprobadas.</p>
-        ) : (
-          <div className="space-y-2">
-            {templates.map(t => (
-              <button key={t.name + t.language} onClick={() => send(t)} disabled={!!sending}
-                className="w-full text-left p-3 rounded-2xl border disabled:opacity-50"
-                style={{ borderColor: done === t.name ? '#25D366' : '#eee', borderWidth: 1.5 }}>
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-sm text-gray-900">{t.name}</span>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#16A34A' }}>
-                    {done === t.name ? 'Enviado ✓' : sending === t.name ? 'Enviando…' : 'Enviar'}
-                  </span>
+        {open ? (
+          // ── Configure the template's variables ──
+          <>
+            <p className="text-xs text-gray-500 mb-3">Plantilla <b>{open.name}</b>. Elige qué dato va en cada variable:</p>
+            <div className="space-y-2 mb-4">
+              {mapping.map((mk, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs font-black text-gray-500 w-10">{`{{${i + 1}}}`}</span>
+                  <select value={mk} onChange={e => setMapping(m => m.map((x, k) => k === i ? e.target.value : x))}
+                    className="flex-1 bg-gray-100 rounded-xl px-3 py-2.5 text-sm outline-none">
+                    {WA_VARS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
+                  </select>
                 </div>
-                {t.preview && <p className="text-[11px] text-gray-400 mt-1 line-clamp-2">{t.preview}</p>}
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setOpen(null)} className="px-4 py-3 rounded-2xl font-black text-sm bg-gray-100 text-gray-600">Atrás</button>
+              <button onClick={() => send(open, mapping)} disabled={sending}
+                className="flex-1 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-50" style={{ background: '#25D366' }}>
+                {sending ? 'Enviando…' : 'Enviar WhatsApp'}
               </button>
-            ))}
-          </div>
+            </div>
+          </>
+        ) : (
+          // ── List of templates ──
+          <>
+            <p className="text-xs text-gray-400 mb-4">Elige la plantilla que le llegará al cliente. Tú decides cuándo enviar.</p>
+            {loading ? (
+              <div className="flex justify-center py-10"><div className="w-7 h-7 rounded-full border-4 border-gray-200 border-t-[#25D366] animate-spin" /></div>
+            ) : templates.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">No hay plantillas disponibles. Revisa que la marca tenga su WABA ID y plantillas aprobadas.</p>
+            ) : (
+              <div className="space-y-2">
+                {templates.map(t => (
+                  <button key={t.name + t.language} onClick={() => pick(t)} disabled={sending}
+                    className="w-full text-left p-3 rounded-2xl border disabled:opacity-50"
+                    style={{ borderColor: done === t.name ? '#25D366' : '#eee', borderWidth: 1.5 }}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-sm text-gray-900">{t.name}</span>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#16A34A' }}>
+                        {done === t.name ? 'Enviado ✓' : `${t.params} var${t.params === 1 ? '' : 's'}`}
+                      </span>
+                    </div>
+                    {t.preview && <p className="text-[11px] text-gray-400 mt-1 line-clamp-2">{t.preview}</p>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

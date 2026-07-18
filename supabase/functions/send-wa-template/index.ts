@@ -11,20 +11,35 @@ const corsHeaders = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-// Manually send a chosen WhatsApp template to the buyer of an order. Convention:
-// {{1}} = buyer name, {{2}} = product, {{3}} = order link (sends only as many as
-// the template has). Called by the seller from the order.
+async function broadcast(sessionId: string, event: string, payload: unknown) {
+  try {
+    await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      },
+      body: JSON.stringify({ messages: [{ topic: `order:${sessionId}`, event, payload }] }),
+    })
+  } catch { /* ignore */ }
+}
+
+// Manually send a chosen WhatsApp template to the buyer of an order. `mapping` is
+// an ordered list of variable keys (one per {{n}} in the template): name | product
+// | link | price | address | order_id. Resolved server-side so the link is correct.
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { session_id, template, language, params, seller_name } = await req.json() as {
-    session_id: string; template: string; language?: string; params?: number; seller_name?: string
+  const { session_id, template, language, params, mapping, seller_name } = await req.json() as {
+    session_id: string; template: string; language?: string; params?: number
+    mapping?: string[]; seller_name?: string
   }
   if (!session_id || !template) return json({ error: 'missing_fields' }, 400)
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('store_id, buyer_id, buyer_name, buyer_phone, product_name, token')
+    .select('store_id, buyer_id, buyer_name, buyer_phone, product_name, product_price, order_id, address, token')
     .eq('id', session_id).maybeSingle()
   if (!session) return json({ error: 'session_not_found' }, 404)
 
@@ -41,11 +56,22 @@ Deno.serve(async (req) => {
   if (num.length === 9) num = `51${num}`
   if (!num) return json({ error: 'no_phone' }, 400)
 
-  const name = (session.buyer_name ?? 'Hola').split(' ')[0]
+  // Catalog of variable values, resolved from the order
   const link = store.slug ? `https://${store.slug}.krossclub.app/p/${session.token}` : `https://krossclub.app/p/${session.token}`
-  const all = [name, session.product_name ?? 'tu pedido', link]
-  const n = typeof params === 'number' ? Math.max(0, Math.min(3, params)) : 3
-  const parameters = all.slice(0, n).map(t => ({ type: 'text', text: String(t).slice(0, 300) }))
+  const catalog: Record<string, string> = {
+    name: (session.buyer_name ?? 'Hola').split(' ')[0],
+    product: session.product_name ?? 'tu pedido',
+    link,
+    price: session.product_price != null ? `S/${session.product_price}` : '',
+    address: session.address ?? '',
+    order_id: session.order_id ?? '',
+  }
+
+  // Which keys go in which {{n}} — from mapping, or the default order
+  const count = typeof params === 'number' ? Math.max(0, Math.min(10, params)) : (mapping?.length ?? 3)
+  const keys = (mapping && mapping.length ? mapping : ['name', 'product', 'link']).slice(0, count)
+  while (keys.length < count) keys.push('name') // safety, shouldn't happen
+  const parameters = keys.map(k => ({ type: 'text', text: String(catalog[k] ?? '').slice(0, 300) }))
   const lang = language || Deno.env.get('WHATSAPP_TEMPLATE_LANG') || 'es'
 
   let result = 'failed', error: string | undefined
@@ -62,17 +88,18 @@ Deno.serve(async (req) => {
     else error = (await res.text()).slice(0, 280)
   } catch (e) { error = String(e).slice(0, 200) }
 
-  // Log + a seller-only note in the chat
+  // Log + a seller-only note in the chat (broadcast so it shows live)
   try {
     await supabase.from('notifications_log').insert({
       store_id: session.store_id, buyer_id: session.buyer_id, session_id,
       kind: 'manual_wa', push_count: 0, whatsapp: result, detail: error ?? `plantilla ${template}`,
     })
     if (result === 'sent') {
-      await supabase.from('chat_messages').insert({
+      const { data: msg } = await supabase.from('chat_messages').insert({
         session_id, sender_role: 'system', type: 'status_update', visibility: 'sellers',
         body: `📲 ${seller_name ? seller_name.split(' ')[0] + ' envió' : 'Se envió'} un WhatsApp al cliente (${template})`,
-      })
+      }).select().single()
+      if (msg) await broadcast(session_id, 'new_message', msg)
     }
   } catch { /* ignore */ }
 
