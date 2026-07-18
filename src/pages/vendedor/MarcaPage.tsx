@@ -22,6 +22,7 @@ interface StoreRow {
   wa_enabled?: boolean
   wa_phone_number_id?: string | null
   wa_display_phone?: string | null
+  wa_business_account_id?: string | null
 }
 
 const ERR: Record<string, string> = {
@@ -196,6 +197,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [waEnabled, setWaEnabled] = useState(!!store.wa_enabled)
   const [waPhoneId, setWaPhoneId] = useState(store.wa_phone_number_id ?? '')
   const [waDisplay, setWaDisplay] = useState(store.wa_display_phone ?? '')
+  const [waBiz, setWaBiz] = useState(store.wa_business_account_id ?? '')
   const [uploading, setUploading] = useState(false)
   const [uploadingIcon, setUploadingIcon] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -216,6 +218,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       payload.wa_enabled = waEnabled
       payload.wa_phone_number_id = waPhoneId.trim()
       payload.wa_display_phone = waDisplay.trim()
+      payload.wa_business_account_id = waBiz.trim()
     }
     const { ok, data } = await call(payload)
     setBusy(false)
@@ -288,6 +291,8 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             </button>
             <p className="text-[10px] text-gray-500 mb-2">Si el cliente no tiene push, el aviso se envía por WhatsApp (Cloud API).</p>
             <input value={waPhoneId} onChange={e => setWaPhoneId(e.target.value)} placeholder="Phone Number ID (WhatsApp Cloud API)"
+              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
+            <input value={waBiz} onChange={e => setWaBiz(e.target.value)} placeholder="WABA ID (para listar plantillas)"
               className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
             <input value={waDisplay} onChange={e => setWaDisplay(e.target.value)} placeholder="Número visible (ej: +51 999 999 999)"
               className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none" />

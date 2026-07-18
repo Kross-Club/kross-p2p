@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
     wa_enabled?: boolean
     wa_phone_number_id?: string
     wa_display_phone?: string
+    wa_business_account_id?: string
     // create: first admin login for the new brand
     admin_email?: string
     admin_password?: string
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -112,6 +113,7 @@ Deno.serve(async (req) => {
     if (isSuper && typeof body.wa_enabled === 'boolean') patch.wa_enabled = body.wa_enabled
     if (isSuper && typeof body.wa_phone_number_id === 'string') patch.wa_phone_number_id = body.wa_phone_number_id.trim()
     if (isSuper && typeof body.wa_display_phone === 'string') patch.wa_display_phone = body.wa_display_phone.trim()
+    if (isSuper && typeof body.wa_business_account_id === 'string') patch.wa_business_account_id = body.wa_business_account_id.trim()
 
     if (isSuper && typeof body.slug === 'string' && body.slug.trim()) {
       const slug = cleanSlug(body.slug)

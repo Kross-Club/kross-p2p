@@ -26,6 +26,7 @@ CREATE POLICY stores_read ON stores FOR SELECT TO public USING (true);
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_enabled         boolean DEFAULT false;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_phone_number_id text;   -- ID del número en WhatsApp Cloud API
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_display_phone   text;   -- número visible de la marca (informativo)
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_business_account_id text; -- WABA ID (para listar plantillas)
 
 -- Ícono de notificación (PNG transparente/circular). Se muestra en los push como
 -- el ícono de la tienda. Si falta, cae al logo.

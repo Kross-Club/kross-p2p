@@ -81,9 +81,9 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
 
   let whatsapp = 'not_needed'
   let waError: string | undefined
-  if (pushOk === 0) {
-    // Anti-spam: for chat messages, at most 1 WhatsApp per order every 10 min.
-    // Calls always notify (they're intentional) and use their own template.
+  // WhatsApp fallback is now MANUAL (the seller sends templates from the order).
+  // The automatic path stays here but off unless WA_AUTO_FALLBACK=on.
+  if (pushOk === 0 && Deno.env.get('WA_AUTO_FALLBACK') === 'on') {
     let allowed = true
     if (n.type === 'message') {
       const since = new Date(Date.now() - 10 * 60 * 1000).toISOString()

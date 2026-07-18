@@ -80,7 +80,8 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
 
   let whatsapp = 'not_needed'
   let waError: string | undefined
-  if (pushOk === 0) {
+  // WhatsApp fallback is now MANUAL (seller-controlled); auto path off unless WA_AUTO_FALLBACK=on.
+  if (pushOk === 0 && Deno.env.get('WA_AUTO_FALLBACK') === 'on') {
     let allowed = true
     if (n.type === 'message') {
       const since = new Date(Date.now() - 10 * 60 * 1000).toISOString()

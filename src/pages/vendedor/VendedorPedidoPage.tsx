@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
@@ -341,6 +341,7 @@ export default function VendedorPedidoPage() {
   const [showInvite, setShowInvite] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [showOffer, setShowOffer] = useState(false)
+  const [showWa, setShowWa] = useState(false)
   const [team, setTeam] = useState<{ auth_user_id: string; nombre: string; role_label: string }[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -595,6 +596,13 @@ export default function VendedorPedidoPage() {
             title="Invitar al cliente a instalar la app">
             <Bell size={16} className="text-white" />
           </button>
+          <button
+            onClick={() => setShowWa(true)}
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: '#25D366' }}
+            title="Enviar aviso por WhatsApp">
+            <MessageCircle size={16} className="text-white" />
+          </button>
           {canWrite && (
             <button onClick={() => setShowCall(true)}
               className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
@@ -807,6 +815,83 @@ export default function VendedorPedidoPage() {
           }}
         />
       )}
+
+      {showWa && (
+        <WaTemplatesSheet
+          storeId={effective?.store_id ?? session.store_id ?? ''}
+          sessionId={session.id}
+          sellerName={sellerName}
+          onClose={() => setShowWa(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// Seller picks a WhatsApp template to send to the buyer of this order.
+function WaTemplatesSheet({ storeId, sessionId, sellerName, onClose }: {
+  storeId: string; sessionId: string; sellerName: string; onClose: () => void
+}) {
+  const [templates, setTemplates] = useState<{ name: string; language: string; params: number; preview: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`${BASE}/list-wa-templates`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ store_id: storeId }),
+    })
+      .then(r => (r.ok ? r.json() : { templates: [] }))
+      .then(d => setTemplates(d.templates ?? []))
+      .catch(() => setTemplates([]))
+      .finally(() => setLoading(false))
+  }, [storeId])
+
+  const send = async (t: { name: string; language: string; params: number }) => {
+    setSending(t.name)
+    try {
+      const res = await fetch(`${BASE}/send-wa-template`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, template: t.name, language: t.language, params: t.params, seller_name: sellerName }),
+      })
+      const r = await res.json().catch(() => ({}))
+      if (r.ok) { setDone(t.name); setTimeout(onClose, 900) }
+      else alert('No se pudo enviar: ' + (r.error || 'revisa la plantilla o el número.'))
+    } finally { setSending(null) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={onClose}>
+      <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-black text-gray-900 flex items-center gap-2"><MessageCircle size={18} style={{ color: '#25D366' }} /> Enviar por WhatsApp</h3>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">Elige la plantilla que le llegará al cliente. Tú decides cuándo enviar.</p>
+
+        {loading ? (
+          <div className="flex justify-center py-10"><div className="w-7 h-7 rounded-full border-4 border-gray-200 border-t-[#25D366] animate-spin" /></div>
+        ) : templates.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">No hay plantillas disponibles. Revisa que la marca tenga su WABA ID y plantillas aprobadas.</p>
+        ) : (
+          <div className="space-y-2">
+            {templates.map(t => (
+              <button key={t.name + t.language} onClick={() => send(t)} disabled={!!sending}
+                className="w-full text-left p-3 rounded-2xl border disabled:opacity-50"
+                style={{ borderColor: done === t.name ? '#25D366' : '#eee', borderWidth: 1.5 }}>
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-sm text-gray-900">{t.name}</span>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#16A34A' }}>
+                    {done === t.name ? 'Enviado ✓' : sending === t.name ? 'Enviando…' : 'Enviar'}
+                  </span>
+                </div>
+                {t.preview && <p className="text-[11px] text-gray-400 mt-1 line-clamp-2">{t.preview}</p>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
