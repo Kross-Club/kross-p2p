@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import BuyerLoginPage from './pages/comprador/BuyerLoginPage'
 import MisPedidosPage from './pages/comprador/MisPedidosPage'
 import ScorePage from './pages/comprador/ScorePage'
+import TiendaPage from './pages/comprador/TiendaPage'
 import LandingProductoPage from './pages/LandingProductoPage'
 import PrivacidadPage from './pages/PrivacidadPage'
 import ChatsPage from './pages/comprador/ChatsPage'
@@ -86,6 +87,7 @@ export default function App() {
 
         {/* Buyer PWA pages */}
         <Route path="/mis-pedidos" element={<MisPedidosPage />} />
+        <Route path="/tienda" element={<TiendaPage />} />
         <Route path="/mi-score" element={<ScorePage />} />
 
         {/* Public routes */}

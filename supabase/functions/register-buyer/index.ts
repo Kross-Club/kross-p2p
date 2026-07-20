@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     document_number?: string
     address?: string
     seller_ids?: string[]
+    redeem_points?: number   // puntos que el cliente quiere canjear por descuento
   }
 
   // Upsert buyer account — document_number as unique key if provided, fallback to phone
@@ -147,6 +148,24 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Points redemption → discount on this order. usedPoints capped by balance AND
+  // by the order price, so you can't over-redeem.
+  let finalPrice = body.product_price
+  let discount = 0
+  if (body.redeem_points && body.redeem_points > 0) {
+    const { data: st } = await supabase.from('stores').select('points_rate').eq('id', body.store_id).maybeSingle()
+    const rate = Number(st?.points_rate ?? 0)
+    if (rate > 0) {
+      const maxByPrice = Math.floor(body.product_price / rate)
+      const usedPoints = Math.min(body.redeem_points, buyer.puntos ?? 0, maxByPrice)
+      if (usedPoints > 0) {
+        discount = usedPoints * rate
+        finalPrice = Math.max(0, body.product_price - discount)
+        await supabase.from('buyers').update({ puntos: (buyer.puntos ?? 0) - usedPoints }).eq('id', buyer.id)
+      }
+    }
+  }
+
   // First product image for the cart thumbnail
   let firstImage: string | null = null
   if (body.product_id) {
@@ -177,9 +196,9 @@ Deno.serve(async (req) => {
       seller_avatar: assignedSellerAvatar,
       product_id: body.product_id ?? null,
       product_name: body.product_name,
-      product_price: body.product_price,
+      product_price: finalPrice,
       pack_name: body.pack_name ?? null,
-      items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: body.product_price, unit_price: body.product_price, qty: 1, pack_name: body.pack_name ?? null, image: firstImage }],
+      items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: finalPrice, unit_price: finalPrice, qty: 1, pack_name: body.pack_name ?? null, image: firstImage }],
       status: 'active',
       stage: 'nuevo',
       assigned_seller_id: assignedSellerId,
@@ -201,7 +220,7 @@ Deno.serve(async (req) => {
     sender_name: assignedSellerName ?? 'Kross',
     sender_role_label: assignedSellerRole ?? 'Ventas',
     type: 'text',
-    body: `¡Hola${body.buyer_name ? ' ' + body.buyer_name.split(' ')[0] : ''}! 🎉 Tu ${body.product_name} (S/${body.product_price}) llegará a tu puerta sin adelanto.\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊`,
+    body: `¡Hola${body.buyer_name ? ' ' + body.buyer_name.split(' ')[0] : ''}! 🎉 Tu ${body.product_name} (S/${finalPrice}${discount > 0 ? ` · usaste puntos: −S/${discount}` : ''}) llegará a tu puerta sin adelanto.\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊`,
   })
 
   return new Response(

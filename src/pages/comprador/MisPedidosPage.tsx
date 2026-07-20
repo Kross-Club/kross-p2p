@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle } from 'lucide-react'
+import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle, RefreshCw, ShoppingBag } from 'lucide-react'
 import { subscribePush, notifPermission } from '../../lib/push'
 import { supabase } from '../../lib/supabase'
 import { useStore } from '../../lib/store-context'
@@ -141,6 +141,23 @@ export default function MisPedidosPage() {
     navigate('/acceso', { replace: true })
   }
 
+  const [reordering, setReordering] = useState<string | null>(null)
+  const reorder = async (s: { id: string; product_name: string; product_price: number; pack_name: string | null }) => {
+    if (!data || !store.id) return
+    setReordering(s.id)
+    try {
+      const res = await fetch(`${BASE}/register-buyer`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: store.id, product_name: s.product_name, product_price: s.product_price, pack_name: s.pack_name,
+          buyer_name: data.buyer.nombre, buyer_phone: data.buyer.phone, document_type: 'DNI', document_number: data.buyer.document_number,
+        }),
+      })
+      if (res.ok) { const { token } = await res.json(); navigate(`/p/${token}`) }
+      else alert('No se pudo repetir el pedido. Intenta de nuevo.')
+    } finally { setReordering(null) }
+  }
+
   if (!data) return null
 
   const { buyer, sessions } = data
@@ -217,6 +234,15 @@ export default function MisPedidosPage() {
         </div>
       )}
 
+      {/* Repurchase CTA — the whole point of retention */}
+      <div className="max-w-[430px] mx-auto px-4 pt-4">
+        <button onClick={() => navigate('/tienda')}
+          className="w-full py-3.5 rounded-2xl font-black text-sm text-white flex items-center justify-center gap-2 shadow-sm"
+          style={{ background: `linear-gradient(135deg, ${store.color_primary} 0%, #863bff 100%)` }}>
+          <ShoppingBag size={16} /> Comprar de nuevo
+        </button>
+      </div>
+
       {/* Orders list */}
       <div className="max-w-[430px] mx-auto px-4 py-5">
         <h2 className="font-black text-lg mb-3" style={{ color: '#111' }}>
@@ -240,9 +266,10 @@ export default function MisPedidosPage() {
               const unread = (s.unread_count ?? 0) + (bumps[s.id] ?? 0)
 
               return (
-                <button key={s.id} onClick={() => openOrder(s)}
-                  className="w-full text-left p-4 rounded-2xl shadow-sm flex items-center gap-3"
+                <div key={s.id} className="rounded-2xl shadow-sm overflow-hidden"
                   style={{ background: '#fff', border: unread > 0 ? '1.5px solid var(--brand)' : '1.5px solid #f0f0f0' }}>
+                <button onClick={() => openOrder(s)}
+                  className="w-full text-left p-4 flex items-center gap-3">
                   <div className="relative w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: `${stageColor}22` }}>
                     <Package size={20} style={{ color: stageColor }} />
@@ -272,6 +299,14 @@ export default function MisPedidosPage() {
                   </div>
                   <ChevronRight size={16} style={{ color: '#ccc' }} />
                 </button>
+                {!isCancelled && (
+                  <button onClick={() => reorder(s)} disabled={reordering === s.id}
+                    className="w-full py-2.5 text-xs font-black flex items-center justify-center gap-1.5 border-t disabled:opacity-50"
+                    style={{ color: 'var(--brand)', borderColor: '#f0f0f0' }}>
+                    <RefreshCw size={13} /> {reordering === s.id ? 'Creando…' : 'Volver a pedir'}
+                  </button>
+                )}
+                </div>
               )
             })}
           </div>

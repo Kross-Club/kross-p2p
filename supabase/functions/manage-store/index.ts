@@ -37,6 +37,7 @@ Deno.serve(async (req) => {
     admin_auth_id: string
     welcome_points?: number
     welcome_msg?: string
+    points_rate?: number
     // update / create branding
     store_id?: string
     nombre?: string
@@ -126,6 +127,7 @@ Deno.serve(async (req) => {
     // Welcome reward — a store admin controls their own retention config
     if (typeof body.welcome_points === 'number') patch.welcome_points = Math.max(0, Math.floor(body.welcome_points))
     if (typeof body.welcome_msg === 'string') patch.welcome_msg = body.welcome_msg.slice(0, 200)
+    if (typeof body.points_rate === 'number') patch.points_rate = Math.max(0, body.points_rate)
     if (typeof body.color_primary === 'string') patch.color_primary = body.color_primary
     if (typeof body.color_dark === 'string') patch.color_dark = body.color_dark
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active

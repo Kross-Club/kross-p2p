@@ -35,6 +35,8 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS notif_icon_url     text;
 -- Retención: recompensa de bienvenida al reclamar (puntos) + mensaje.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS welcome_points     integer DEFAULT 0;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS welcome_msg        text;
+-- Canje de puntos: cuánto vale 1 punto en soles (0 = canje desactivado).
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS points_rate        numeric DEFAULT 0;
 
 -- Compradores pasan a ser por tienda (un cliente de una marca no es de otra)
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS store_id text;

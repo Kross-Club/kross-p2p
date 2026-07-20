@@ -37,6 +37,7 @@ export default function ClientesPage() {
   const [slug, setSlug] = useState<string | null>(null)
   const [pts, setPts] = useState(0)
   const [msg, setMsg] = useState('')
+  const [rate, setRate] = useState(0)
   const [savingReward, setSavingReward] = useState(false)
   const [rows, setRows] = useState<ReturnType<typeof parseCsv>>([])
   const [importing, setImporting] = useState(false)
@@ -55,8 +56,8 @@ export default function ClientesPage() {
 
   useEffect(() => {
     if (!storeId) return
-    supabase.from('stores').select('slug, welcome_points, welcome_msg').eq('id', storeId).maybeSingle()
-      .then(({ data }) => { setSlug(data?.slug ?? null); setPts(data?.welcome_points ?? 0); setMsg(data?.welcome_msg ?? '') })
+    supabase.from('stores').select('slug, welcome_points, welcome_msg, points_rate').eq('id', storeId).maybeSingle()
+      .then(({ data }) => { setSlug(data?.slug ?? null); setPts(data?.welcome_points ?? 0); setMsg(data?.welcome_msg ?? ''); setRate(Number(data?.points_rate ?? 0)) })
     loadStats()
     fetch(`${BASE}/list-wa-templates`, {
       method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
@@ -108,7 +109,7 @@ export default function ClientesPage() {
     try {
       await fetch(`${BASE}/manage-store`, {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update', admin_auth_id: real?.auth_user_id, store_id: storeId, welcome_points: pts, welcome_msg: msg }),
+        body: JSON.stringify({ action: 'update', admin_auth_id: real?.auth_user_id, store_id: storeId, welcome_points: pts, welcome_msg: msg, points_rate: rate }),
       })
     } finally { setSavingReward(false) }
   }
@@ -149,6 +150,10 @@ export default function ClientesPage() {
         <label className="text-xs font-bold text-gray-500 mb-1 block">Mensaje (opcional)</label>
         <input value={msg} onChange={e => setMsg(e.target.value)} placeholder="Ej: ¡Gracias por ser cliente! Aquí tienes tus puntos."
           className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-3" />
+        <label className="text-xs font-bold text-gray-500 mb-1 block">Valor del punto para canje (S/ por punto · 0 = desactivado)</label>
+        <input value={rate || ''} onChange={e => setRate(Number(e.target.value.replace(/[^\d.]/g, '')) || 0)} inputMode="decimal" placeholder="Ej: 0.1"
+          className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-1" />
+        {rate > 0 && <p className="text-[10px] text-gray-400 mb-2">Ej: 50 puntos = S/{(50 * rate).toFixed(2)} de descuento en su próxima compra.</p>}
         <button onClick={saveReward} disabled={savingReward}
           className="w-full py-2.5 rounded-2xl font-black text-sm text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
           {savingReward ? 'Guardando…' : 'Guardar recompensa'}
