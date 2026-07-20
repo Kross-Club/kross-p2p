@@ -108,7 +108,8 @@ Deno.serve(async (req) => {
     const total = await countWhere((q: any) => q)
     const imported = await countWhere((q: any) => q.eq('source', 'import'))
     const activated = await countWhere((q: any) => q.not('activated_at', 'is', null))
-    return json({ total, imported, activated })
+    const pending = await countWhere((q: any) => q.is('activated_at', null).is('invited_at', null).not('phone', 'is', null))
+    return json({ total, imported, activated, pending })
   }
 
   // ─── UPDATE BRANDING ─────────────────────────────────────────────────────────

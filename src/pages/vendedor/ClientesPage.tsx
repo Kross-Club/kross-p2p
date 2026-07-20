@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, Upload, Gift, Copy, TrendingUp } from 'lucide-react'
+import { Users, Upload, Gift, Copy, TrendingUp, Send } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 
@@ -7,7 +7,8 @@ const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 const APEX = 'krossclub.app'
 
-interface Stats { total: number; imported: number; activated: number }
+interface Stats { total: number; imported: number; activated: number; pending: number }
+interface WaTemplate { name: string; language: string; params: number }
 
 // Very small CSV parser: detects nombre / teléfono / DNI columns by header, else
 // falls back to positional [nombre, teléfono, dni].
@@ -40,6 +41,9 @@ export default function ClientesPage() {
   const [rows, setRows] = useState<ReturnType<typeof parseCsv>>([])
   const [importing, setImporting] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [templates, setTemplates] = useState<WaTemplate[]>([])
+  const [invTemplate, setInvTemplate] = useState<string>('')
+  const [inviting, setInviting] = useState(false)
 
   const loadStats = () => {
     if (!real) return
@@ -54,8 +58,27 @@ export default function ClientesPage() {
     supabase.from('stores').select('slug, welcome_points, welcome_msg').eq('id', storeId).maybeSingle()
       .then(({ data }) => { setSlug(data?.slug ?? null); setPts(data?.welcome_points ?? 0); setMsg(data?.welcome_msg ?? '') })
     loadStats()
+    fetch(`${BASE}/list-wa-templates`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ store_id: storeId }),
+    }).then(r => r.json()).then(d => { setTemplates(d.templates ?? []); if (d.templates?.[0]) setInvTemplate(d.templates[0].name) }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId, real?.auth_user_id])
+
+  const sendInvites = async () => {
+    if (!invTemplate) { alert('Elige una plantilla de invitación.'); return }
+    const t = templates.find(x => x.name === invTemplate)
+    setInviting(true)
+    try {
+      const res = await fetch(`${BASE}/invite-buyers`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_auth_id: real?.auth_user_id, store_id: storeId, template: invTemplate, language: t?.language, params: t?.params, limit: 80 }),
+      })
+      const r = await res.json().catch(() => ({}))
+      if (res.ok) { alert(`Enviadas: ${r.sent}. Fallidas: ${r.failed}. Quedan por invitar: ${r.remaining}.`); loadStats() }
+      else alert('No se pudo invitar: ' + (r.error || ''))
+    } finally { setInviting(false) }
+  }
 
   if (!isAdmin) return <div className="px-4 py-8 text-center text-sm text-gray-400">Solo el administrador gestiona los clientes.</div>
 
@@ -145,6 +168,30 @@ export default function ClientesPage() {
             className="w-full mt-2 py-2.5 rounded-2xl font-black text-sm text-white disabled:opacity-50" style={{ background: '#863bff' }}>
             {importing ? 'Importando…' : `Importar ${rows.length} clientes`}
           </button>
+        )}
+      </div>
+
+      {/* Mass invite by WhatsApp */}
+      <div className="bg-white border border-gray-100 rounded-2xl p-4 mb-4 shadow-sm">
+        <p className="font-black text-sm text-gray-900 flex items-center gap-2 mb-1"><Send size={16} style={{ color: '#25D366' }} /> Invitar por WhatsApp (masivo)</p>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Envía la invitación a tus clientes importados que aún no activan. Se manda por <b>lotes de 80</b> para cuidar la calidad del número.
+          Pendientes por invitar: <b>{stats?.pending ?? 0}</b>.
+        </p>
+        {templates.length === 0 ? (
+          <p className="text-[11px] text-gray-400">No hay plantillas. Configura el WABA ID y aprueba una plantilla de invitación.</p>
+        ) : (
+          <>
+            <select value={invTemplate} onChange={e => setInvTemplate(e.target.value)}
+              className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-2">
+              {templates.map(t => <option key={t.name + t.language} value={t.name}>{t.name} ({t.params} var{t.params === 1 ? '' : 's'})</option>)}
+            </select>
+            <button onClick={sendInvites} disabled={inviting || (stats?.pending ?? 0) === 0}
+              className="w-full py-2.5 rounded-2xl font-black text-sm text-white disabled:opacity-50" style={{ background: '#25D366' }}>
+              {inviting ? 'Enviando lote…' : `Enviar invitación a ${Math.min(80, stats?.pending ?? 0)} clientes`}
+            </button>
+            <p className="text-[10px] text-gray-400 mt-1.5">Convención de la plantilla: {'{{1}}'} nombre · {'{{2}}'} recompensa · {'{{3}}'} link. Repite el envío para el siguiente lote.</p>
+          </>
         )}
       </div>
 

@@ -72,6 +72,7 @@ ALTER TABLE buyers ADD COLUMN IF NOT EXISTS can_call        boolean DEFAULT fals
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS source          text DEFAULT 'order';   -- 'order' | 'import'
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS welcome_granted boolean DEFAULT false;
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS activated_at    timestamptz;            -- primer login del cliente
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS invited_at      timestamptz;            -- última invitación masiva enviada
 
 -- Acciones de gamificación completadas (para subir el score)
 CREATE TABLE IF NOT EXISTS buyer_actions (
