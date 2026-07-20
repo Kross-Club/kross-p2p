@@ -33,8 +33,10 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update' | 'wa_usage'
+    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats'
     admin_auth_id: string
+    welcome_points?: number
+    welcome_msg?: string
     // update / create branding
     store_id?: string
     nombre?: string
@@ -69,7 +71,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -95,6 +97,20 @@ Deno.serve(async (req) => {
     return json({ usage, since: start })
   }
 
+  // ─── CLIENT STATS (embudo de activación de retención) ────────────────────────
+  if (body.action === 'client_stats') {
+    const target = (isSuper && body.store_id) ? body.store_id : me.store_id
+    if (!target) return json({ error: 'no_store' }, 400)
+    const countWhere = async (build: (q: any) => any) => {
+      const { count } = await build(supabase.from('buyers').select('id', { count: 'exact', head: true }).eq('store_id', target))
+      return count ?? 0
+    }
+    const total = await countWhere((q: any) => q)
+    const imported = await countWhere((q: any) => q.eq('source', 'import'))
+    const activated = await countWhere((q: any) => q.not('activated_at', 'is', null))
+    return json({ total, imported, activated })
+  }
+
   // ─── UPDATE BRANDING ─────────────────────────────────────────────────────────
   // Any admin may update their own store. Super admin may update any store and
   // may change the slug (subdomain). A store admin cannot repoint their subdomain.
@@ -106,6 +122,9 @@ Deno.serve(async (req) => {
     if (typeof body.nombre === 'string' && body.nombre.trim()) patch.nombre = body.nombre.trim()
     if (body.logo_url !== undefined) patch.logo_url = body.logo_url
     if (body.notif_icon_url !== undefined) patch.notif_icon_url = body.notif_icon_url
+    // Welcome reward — a store admin controls their own retention config
+    if (typeof body.welcome_points === 'number') patch.welcome_points = Math.max(0, Math.floor(body.welcome_points))
+    if (typeof body.welcome_msg === 'string') patch.welcome_msg = body.welcome_msg.slice(0, 200)
     if (typeof body.color_primary === 'string') patch.color_primary = body.color_primary
     if (typeof body.color_dark === 'string') patch.color_dark = body.color_dark
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active

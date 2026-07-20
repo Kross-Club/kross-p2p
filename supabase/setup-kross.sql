@@ -32,6 +32,10 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_business_account_id text; -- WABA
 -- el ícono de la tienda. Si falta, cae al logo.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS notif_icon_url     text;
 
+-- Retención: recompensa de bienvenida al reclamar (puntos) + mensaje.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS welcome_points     integer DEFAULT 0;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS welcome_msg        text;
+
 -- Compradores pasan a ser por tienda (un cliente de una marca no es de otra)
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS store_id text;
 -- El mismo DNI puede existir en varias marcas → unicidad POR TIENDA, no global
@@ -64,6 +68,10 @@ ALTER TABLE buyers ADD COLUMN IF NOT EXISTS score           integer DEFAULT 50;
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS puntos          integer DEFAULT 0;
 -- Llamadas salientes del comprador: solo para clientes TOP (se activa a mano)
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS can_call        boolean DEFAULT false;
+-- Retención: de dónde vino el comprador y si ya reclamó su recompensa de bienvenida
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS source          text DEFAULT 'order';   -- 'order' | 'import'
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS welcome_granted boolean DEFAULT false;
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS activated_at    timestamptz;            -- primer login del cliente
 
 -- Acciones de gamificación completadas (para subir el score)
 CREATE TABLE IF NOT EXISTS buyer_actions (

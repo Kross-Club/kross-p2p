@@ -19,6 +19,7 @@ import BotIAPage from './pages/vendedor/BotIAPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
 import LlamadasPage from './pages/vendedor/LlamadasPage'
+import ClientesPage from './pages/vendedor/ClientesPage'
 import EstadisticasPage from './pages/vendedor/EstadisticasPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
@@ -106,6 +107,7 @@ export default function App() {
           <Route path="/vendedor/equipo" element={<EquipoPage />} />
           <Route path="/vendedor/marca" element={<MarcaPage />} />
           <Route path="/vendedor/llamadas" element={<LlamadasPage />} />
+          <Route path="/vendedor/clientes" element={<ClientesPage />} />
           <Route path="/vendedor/estadisticas" element={<EstadisticasPage />} />
         </Route>
       </Routes>

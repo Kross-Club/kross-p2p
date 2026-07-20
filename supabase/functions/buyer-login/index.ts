@@ -115,6 +115,28 @@ Deno.serve(async (req) => {
 
   const sessions = byId ?? []
 
+  // Retención: marcar activación (primer login) y acreditar la recompensa de
+  // bienvenida UNA sola vez (para clientes importados que se registran).
+  let welcome: { points: number; msg: string | null } | null = null
+  const { data: full } = await supabase
+    .from('buyers').select('welcome_granted, activated_at, store_id, puntos').eq('id', buyer.id as string).maybeSingle()
+  const patch: Record<string, unknown> = {}
+  if (full && !full.activated_at) patch.activated_at = new Date().toISOString()
+  if (full && !full.welcome_granted) {
+    const sid = body.store_id || full.store_id
+    const { data: store } = sid
+      ? await supabase.from('stores').select('welcome_points, welcome_msg').eq('id', sid).maybeSingle()
+      : { data: null }
+    const pts = store?.welcome_points ?? 0
+    if (pts > 0) {
+      patch.welcome_granted = true
+      patch.puntos = (full.puntos ?? 0) + pts
+      ;(buyer as Record<string, unknown>).puntos = patch.puntos
+      welcome = { points: pts, msg: store?.welcome_msg ?? null }
+    }
+  }
+  if (Object.keys(patch).length > 0) await supabase.from('buyers').update(patch).eq('id', buyer.id as string)
+
   // Count unread seller messages per order (for the "sin leer" badge)
   if (sessions.length > 0) {
     const ids = sessions.map(s => s.id)
@@ -131,7 +153,7 @@ Deno.serve(async (req) => {
   }
 
   return new Response(
-    JSON.stringify({ buyer, sessions }),
+    JSON.stringify({ buyer, sessions, welcome }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 })

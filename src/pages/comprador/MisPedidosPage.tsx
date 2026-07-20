@@ -57,6 +57,10 @@ export default function MisPedidosPage() {
   const [data, setData] = useState<BuyerSession | null>(null)
 
   const [notifGranted, setNotifGranted] = useState(notifPermission() === 'granted')
+  const [welcome, setWelcome] = useState<{ points: number; msg: string | null } | null>(() => {
+    try { const w = localStorage.getItem('welcome_reward'); if (w) { localStorage.removeItem('welcome_reward'); return JSON.parse(w) } } catch { /* */ }
+    return null
+  })
   const [bumps, setBumps] = useState<Record<string, number>>({})
   const seenRef = useRef<Set<string>>(new Set())
 
@@ -198,6 +202,20 @@ export default function MisPedidosPage() {
           </button>
         </div>
       </div>
+
+      {/* Welcome reward (once, when an imported customer activates) */}
+      {welcome && (
+        <div className="max-w-[430px] mx-auto px-4 pt-4">
+          <div className="rounded-2xl p-4 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #FFF7E6, #FFFDF5)', border: '1.5px solid #FFD400' }}>
+            <span className="text-2xl">🎁</span>
+            <div className="flex-1">
+              <p className="font-black text-sm text-gray-900">¡Bienvenido, {buyer.nombre.split(' ')[0]}!</p>
+              <p className="text-xs text-gray-600">{welcome.msg || `Ganaste ${welcome.points} puntos por ser cliente. ¡Gracias!`}</p>
+            </div>
+            <button onClick={() => setWelcome(null)} className="text-gray-400 text-xs font-bold">✕</button>
+          </div>
+        </div>
+      )}
 
       {/* Orders list */}
       <div className="max-w-[430px] mx-auto px-4 py-5">

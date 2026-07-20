@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { MessageCircle, ShoppingBag, BarChart2, Users, Package, Store, Phone } from 'lucide-react'
+import { MessageCircle, ShoppingBag, BarChart2, Users, Package, Store, Phone, UserPlus } from 'lucide-react'
 import { useSeller } from '../lib/seller-session'
 
 export default function BottomNav() {
@@ -21,8 +21,9 @@ export default function BottomNav() {
   ]
   const adminLinks = [
     { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
-    { to: '/vendedor/productos', icon: Package, label: 'Productos' },
+    { to: '/vendedor/clientes', icon: UserPlus, label: 'Clientes' },
     { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
+    { to: '/vendedor/productos', icon: Package, label: 'Productos' },
     { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
     { to: '/vendedor/llamadas', icon: Phone, label: 'Llamadas' },
     { to: '/vendedor/marca', icon: Store, label: 'Marca' },
@@ -32,13 +33,13 @@ export default function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-gray-100 z-30 safe-area-inset-bottom">
-      <div className="flex items-center justify-around px-2 py-1">
+      <div className={`flex items-center px-2 py-1 ${links.length > 6 ? 'overflow-x-auto gap-1' : 'justify-around'}`}>
         {links.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl transition-colors min-w-0 ${
+              `flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl transition-colors flex-shrink-0 ${
                 isActive ? '' : 'text-gray-400 hover:text-gray-600'
               }`
             }

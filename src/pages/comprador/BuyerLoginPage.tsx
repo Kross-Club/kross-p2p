@@ -36,8 +36,10 @@ export default function BuyerLoginPage() {
       return
     }
 
-    const { buyer, sessions } = await res.json()
+    const { buyer, sessions, welcome } = await res.json()
     localStorage.setItem('buyer_session', JSON.stringify({ buyer, sessions }))
+    // A welcome reward is granted once (imported customers activating their app).
+    if (welcome) { try { localStorage.setItem('welcome_reward', JSON.stringify(welcome)) } catch { /* */ } }
     window.dispatchEvent(new Event('buyer-session-changed'))
     navigate('/mis-pedidos', { replace: true })
   }
