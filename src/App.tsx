@@ -21,6 +21,7 @@ import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
 import LlamadasPage from './pages/vendedor/LlamadasPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
+import RetencionPage from './pages/vendedor/RetencionPage'
 import EstadisticasPage from './pages/vendedor/EstadisticasPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
@@ -110,6 +111,7 @@ export default function App() {
           <Route path="/vendedor/marca" element={<MarcaPage />} />
           <Route path="/vendedor/llamadas" element={<LlamadasPage />} />
           <Route path="/vendedor/clientes" element={<ClientesPage />} />
+          <Route path="/vendedor/retencion" element={<RetencionPage />} />
           <Route path="/vendedor/estadisticas" element={<EstadisticasPage />} />
         </Route>
       </Routes>

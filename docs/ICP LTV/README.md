@@ -31,7 +31,7 @@ clientes actuales de mayor ticket.
 |---|---|---|---|
 | 1 | Activación | Importar la base y activar clientes existentes | ✅ Construida |
 | 2 | Recompra | Loop de recompra: catálogo + reorder + puntos | ✅ Construida |
-| 3 | Campañas + Dashboard | Disparar recompra proactiva y medir retención | 📋 Propuesta |
+| 3 | Campañas + Dashboard | Disparar recompra proactiva y medir retención | ✅ Construida |
 
 ---
 
@@ -110,23 +110,69 @@ supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
 
 ---
 
-## Fase 3 — Campañas + Dashboard (propuesta, no iniciada)
+## Fase 3 — Campañas + Dashboard
 
-El motor que dispara la recompra proactivamente y la mide.
+El motor que **mide** la retención y **dispara** la recompra proactivamente.
 
-- **Campañas / segmentos**: win-back (clientes que no compran hace X), restock (recordatorio
-  de reposición para consumibles — señalado como *killer feature*, post-entrega).
-- **Dashboard de retención**: tasa de recompra, ingresos de clientes existentes, LTV.
-- **Automatizaciones**: recordatorio de restock, win-back automático.
+### Dashboard de retención (`retention-metrics` + `RetencionPage.tsx`, ruta `/vendedor/retencion`)
+Calcula sobre los pedidos entregados (`order_sessions.stage='entregado'`) de la marca:
+- **Tasa de recompra** = clientes con ≥2 entregas / clientes con ≥1.
+- **Ingreso de clientes existentes** = suma del COD entregado.
+- **LTV promedio** = ingreso / clientes con pedido, y pedidos promedio por cliente.
+- **Clientes activos** (activaron su app) sobre el total de la base.
+- Tamaño de los dos segmentos accionables (restock / win-back).
 
-**Mejora futura anotada:** link de invitación tokenizado que identifica al cliente por
-teléfono (sin tipear DNI).
+### Segmentos y campañas (`run-campaign` + `CampaignCard`)
+Dos segmentos, calculados por **días desde la última entrega** de cada cliente:
+- **RESTOCK (reposición)** — última compra hace `[restock_days, winback_days)` días: el
+  consumible se está acabando → mejor momento para que repita. *Killer feature* del ICP de recompra.
+- **WIN-BACK (reactivar)** — sin comprar hace más de `winback_days` días: cliente dormido,
+  un empujón con incentivo antes de perderlo.
+
+Al lanzar, `run-campaign` **recomputa el segmento** y envía la plantilla WhatsApp elegida:
+- Por **lotes de 80** (protege el rating del número).
+- Con **cooldown de 7 días por cliente** (`buyers.last_campaign_at`) para no spamear.
+- Convención de plantilla: `{{1}}` nombre · `{{2}}` link a la tienda (`/tienda`).
+- Registra el lote en `notifications_log` (`kind='campaign_<segmento>'`).
+
+### Ventanas configurables por marca
+`stores.restock_days` (def. 30) y `stores.winback_days` (def. 60), editables desde
+`RetencionPage.tsx` vía `manage-store` (validación: inactivo > reposición). Cada marca las
+calibra según el ciclo de su producto (un consumible de 30 días → reposición ~25–30).
+
+**Diseño (por qué):**
+1. **Medir antes que adivinar** — la tasa de recompra y el LTV le dicen a la marca si la
+   retención funciona; sin eso, las campañas son a ciegas.
+2. **El restock es el momento de oro** — mandar el recordatorio justo cuando el producto se
+   acaba convierte mucho más que un blast genérico. Por eso el segmento se define por el
+   ciclo real del producto, no por una fecha fija.
+3. **Guardrails de canal** — lotes + cooldown + log: la retención agresiva quema el número
+   de WhatsApp; el diseño protege el activo (el canal propio) por encima del envío puntual.
+
+**Deploy Fase 3:**
+```
+supabase functions deploy retention-metrics --project-ref ofdjghntvmrdfjhazfvz
+```
+```
+supabase functions deploy run-campaign --project-ref ofdjghntvmrdfjhazfvz
+```
+```
+supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
+```
+> Correr también `supabase/setup-kross.sql` (agrega `stores.restock_days`, `stores.winback_days`,
+> `buyers.last_campaign_at`). Frontend → Vercel + Ctrl+Shift+R.
+
+### Pendiente / mejoras futuras
+- **Automatización real** (cron): hoy la campaña se dispara manualmente desde el panel. El
+  siguiente paso es un `pg_cron`/scheduled function que corra restock a diario sin intervención.
+- Link de invitación **tokenizado** que identifica al cliente por teléfono (sin tipear DNI).
+- Segmento de **leales/VIP** (≥N compras) para trato preferente.
 
 ## 3. Modelo de datos añadido en LTV
 
 - `stores`: `welcome_points`, `welcome_msg`, `points_rate`, `notif_icon_url`,
-  columnas `wa_*` (config WhatsApp).
-- `buyers`: `source`, `welcome_granted`, `activated_at`, `invited_at`, `puntos`.
+  `restock_days`, `winback_days`, columnas `wa_*` (config WhatsApp).
+- `buyers`: `source`, `welcome_granted`, `activated_at`, `invited_at`, `last_campaign_at`, `puntos`.
 - `sellers`: `is_super_admin`.
 - Store de plataforma sembrada con `id='platform'`.
 

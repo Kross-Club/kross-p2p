@@ -37,6 +37,9 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS welcome_points     integer DEFAULT 0
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS welcome_msg        text;
 -- Canje de puntos: cuánto vale 1 punto en soles (0 = canje desactivado).
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS points_rate        numeric DEFAULT 0;
+-- Retención Fase 3: ventanas de campaña (días desde la última entrega)
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS restock_days       integer DEFAULT 30;  -- reponer consumible
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS winback_days       integer DEFAULT 60;  -- cliente inactivo
 
 -- Compradores pasan a ser por tienda (un cliente de una marca no es de otra)
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS store_id text;
@@ -75,6 +78,7 @@ ALTER TABLE buyers ADD COLUMN IF NOT EXISTS source          text DEFAULT 'order'
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS welcome_granted boolean DEFAULT false;
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS activated_at    timestamptz;            -- primer login del cliente
 ALTER TABLE buyers ADD COLUMN IF NOT EXISTS invited_at      timestamptz;            -- última invitación masiva enviada
+ALTER TABLE buyers ADD COLUMN IF NOT EXISTS last_campaign_at timestamptz;            -- última campaña de retención (cooldown 7d)
 
 -- Acciones de gamificación completadas (para subir el score)
 CREATE TABLE IF NOT EXISTS buyer_actions (
