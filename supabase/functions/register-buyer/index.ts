@@ -32,6 +32,8 @@ Deno.serve(async (req) => {
     address?: string
     seller_ids?: string[]
     redeem_points?: number   // puntos que el cliente quiere canjear por descuento
+    payment_method?: string  // YAPE_PLIN | CONTRAENTREGA | TARJETA (default COD)
+    closed_by?: string       // AI_CLOSER | DIRECT_CHECKOUT (default directo)
   }
 
   // Upsert buyer account — document_number as unique key if provided, fallback to phone
@@ -201,6 +203,9 @@ Deno.serve(async (req) => {
       items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: finalPrice, unit_price: finalPrice, qty: 1, pack_name: body.pack_name ?? null, image: firstImage }],
       status: 'active',
       stage: 'nuevo',
+      // Costuras del estado central — el checkout las deja escritas desde el día 1
+      payment_method: ['YAPE_PLIN', 'CONTRAENTREGA', 'TARJETA'].includes(body.payment_method ?? '') ? body.payment_method : 'CONTRAENTREGA',
+      closed_by: body.closed_by === 'AI_CLOSER' ? 'AI_CLOSER' : 'DIRECT_CHECKOUT',
       assigned_seller_id: assignedSellerId,
       involved_seller_ids: assignedSellerId ? [assignedSellerId] : [],
       writer_seller_ids: assignedSellerId ? [assignedSellerId] : [],

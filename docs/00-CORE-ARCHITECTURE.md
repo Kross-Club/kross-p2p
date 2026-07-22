@@ -67,16 +67,20 @@ type MerchantCustomerSession = {
 }
 ```
 
+Lector único: **`src/lib/session.ts` → `toCustomerSession(order, buyer)`** ensambla este
+objeto desde `order_sessions` + `buyers`. Todos los módulos leen la sesión por ahí.
+
 Mapeo actual → objetivo:
 | Campo | Hoy | Estado |
 |---|---|---|
 | `customer.*` | `buyers.document_number/nombre/phone` | ✅ |
 | `delivery.lat/lng/addressText` | `order_sessions.address_*` / `buyers.address_*` | ✅ |
-| `delivery.reference` | — | 🔮 |
-| `delivery.dispatchType / agencyName` | — (todo es COD Lima implícito) | 🔮 |
-| `sale.paymentMethod` | siempre COD en la práctica | 🟡 |
-| `sale.closedBy` | — | 🔮 |
-| `loyalty.pointsEarned` | `buyers.puntos` | ✅ |
+| `delivery.reference` | `order_sessions.delivery_reference` (columna lista, sin UI aún) | 🟡 |
+| `delivery.dispatchType` | `order_sessions.dispatch_type` (def `MOTORIZADO_LIMA`) | ✅ |
+| `delivery.agencyName` | `order_sessions.agency_name` (columna lista, provincia pendiente) | 🟡 |
+| `sale.paymentMethod` | `order_sessions.payment_method` (def `CONTRAENTREGA`) — escrito por checkout | ✅ |
+| `sale.closedBy` | `order_sessions.closed_by` (def `DIRECT_CHECKOUT`) — escrito por checkout | ✅ |
+| `loyalty.points` | `buyers.puntos` | ✅ |
 | `loyalty.nextReorderDate` | derivado de `restock_days` en campañas | 🟡 |
 
 ## Estándares del módulo

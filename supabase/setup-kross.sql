@@ -257,6 +257,16 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lat      double prec
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lng      double precision;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_verified boolean DEFAULT false;
 
+-- ─── COSTURAS DEL ESTADO CENTRAL (MerchantCustomerSession) ───────────────────
+-- Columnas-costura para conectar los 3 módulos sin refactor. Aditivas y con default
+-- seguro para el MVP (todo es COD / motorizado Lima / cierre directo hasta que exista
+-- el pago integrado, provincia o el AI closer). Ver docs/00-CORE-ARCHITECTURE.md.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_method text DEFAULT 'CONTRAENTREGA'; -- YAPE_PLIN | CONTRAENTREGA | TARJETA
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS dispatch_type  text DEFAULT 'MOTORIZADO_LIMA'; -- MOTORIZADO_LIMA | AGENCIA_PROVINCIA
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS agency_name    text;                          -- SHALOM | OLVA | OTRO (solo provincia)
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS delivery_reference text;                      -- referencia de la puerta
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS closed_by      text DEFAULT 'DIRECT_CHECKOUT'; -- AI_CLOSER | DIRECT_CHECKOUT
+
 
 -- ─── 6. PERMISOS (RLS) sobre sellers ────────────────────────────────────────
 -- Los compradores nunca leen 'sellers' directo (van por Edge Functions con
