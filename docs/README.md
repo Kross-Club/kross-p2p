@@ -15,3 +15,31 @@ vivió una transición de enfoque estratégico manteniendo la misma base de cód
 > como **producto de retención** en lugar de herramienta de adquisición. Todo lo
 > construido antes de ese corte está documentado en `ICP Sales`; todo lo construido
 > después (fases de retención) está en `ICP LTV`.
+
+---
+
+## Dos capas de documentación
+
+La doc está organizada en dos capas complementarias:
+
+- **Capa estratégica (por ICP):** *por qué* y *para quién* — `ICP Sales`, `ICP LTV`.
+- **Capa técnica (por módulo):** *cómo* está construido cada componente del Sistema
+  Operativo de E-commerce, con estado real del código (✅/🟡/🔮).
+
+### Módulos técnicos
+
+| Módulo | Archivo | Cubre |
+|---|---|---|
+| 00 · Core | [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md) | Base de datos, auth, panel admin, estado central `MerchantCustomerSession` |
+| 01 · Sales | [`01-SALES-ENGINE.md`](./01-SALES-ENGINE.md) | IA Closer, DNI (Decolecta), checkout CRO, pagos |
+| 02 · Logistics | [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md) | Geolocalización, motorizados Lima, envíos a provincia |
+| 03 · Loyalty | [`03-LOYALTY-ENGINE.md`](./03-LOYALTY-ENGINE.md) | Recompra, puntos, campañas WhatsApp, LTV |
+
+## Regla de ejecución (para Claude Code / devs)
+
+Al trabajar en una funcionalidad, **consulta primero el `.md` del módulo correspondiente**
+para respetar sus estándares sin afectar los otros módulos. Todo cambio de datos que cruce
+módulos debe reflejarse primero en el contrato `MerchantCustomerSession` de `00-CORE`.
+
+> Los tres módulos comparten el mismo estado del cliente: lo que la IA cierra en Sales le
+> sirve al motorizado en Logistics y al bot de WhatsApp en Loyalty — sin re-preguntar datos.
