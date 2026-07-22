@@ -1,4 +1,4 @@
-# Quiz Funnel — Puesta en marcha desde cero
+# CloseForm — Puesta en marcha desde cero
 
 Este es un **starter limpio** (sin código de Kross) con el mismo stack e integraciones
 que ya usas: **Supabase Edge Functions + LiveKit + WhatsApp (WABA) + Web Push + IA**.
@@ -9,13 +9,9 @@ Sigue estos pasos para tener tu proyecto nuevo corriendo.
 
 ---
 
-## 1. Crear el repo en GitHub
+## 1. Subir el código a tu repo CloseForm
 
-Este starter vive dentro de una carpeta. Para convertirlo en tu repo nuevo:
-
-Crea el repo vacío en GitHub (UI): **New repository → nombre `quiz-funnel` → sin README**.
-
-Luego, desde la carpeta `quiz-funnel/`:
+Copia la carpeta `closeform/` a un lugar aparte (fuera del repo de Kross) y, desde ahí:
 
 ```
 git init
@@ -24,17 +20,19 @@ git init
 git add -A
 ```
 ```
-git commit -m "init quiz funnel starter"
+git commit -m "init closeform starter"
 ```
 ```
 git branch -M main
 ```
 ```
-git remote add origin https://github.com/uxbriel/quiz-funnel.git
+git remote add origin https://github.com/uxbriel/CloseForm.git
 ```
 ```
 git push -u origin main
 ```
+
+> Ajusta la URL del `remote` si tu repo tiene otro nombre exacto.
 
 ---
 
@@ -128,7 +126,7 @@ En **LiveKit Cloud → Settings → Webhooks** apunta la URL:
 
 ## 5. Frontend en Vercel
 
-1. Importa el repo `quiz-funnel` en Vercel.
+1. Importa el repo `CloseForm` en Vercel.
 2. Variables de entorno (Settings → Environment Variables):
 
 ```

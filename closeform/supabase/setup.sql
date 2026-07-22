@@ -1,4 +1,4 @@
--- Quiz Funnel — esquema base. Corre en el SQL Editor de tu proyecto Supabase nuevo.
+-- CloseForm — esquema base. Corre en el SQL Editor de tu proyecto Supabase nuevo.
 -- Idempotente: puedes correrlo varias veces.
 
 -- Leads capturados por el quiz
