@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+:root {
+  --brand: #6d28d9;
+}
+
+html, body, #root { height: 100%; }
+body { margin: 0; -webkit-font-smoothing: antialiased; }
