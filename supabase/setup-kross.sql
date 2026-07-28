@@ -95,6 +95,10 @@ CREATE TABLE IF NOT EXISTS buyer_actions (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_buyers_document_number ON buyers(document_number);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_buyers_phone           ON buyers(phone);
 
+-- Contienen PII (DNI/teléfono): solo las Edge Functions (service role) las tocan.
+ALTER TABLE buyers        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE buyer_actions ENABLE ROW LEVEL SECURITY;
+
 
 -- ─── 2. VENDEDORES (ligados a usuarios de Supabase Auth) ────────────────────
 CREATE TABLE IF NOT EXISTS sellers (
@@ -130,6 +134,7 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_buyer_id ON order_sessions(buyer_i
 -- ─── 4. NOTIFICACIONES push por cuenta de comprador ─────────────────────────
 ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS buyer_id uuid REFERENCES buyers(id);
 CREATE INDEX IF NOT EXISTS idx_push_subs_buyer_id ON push_subscriptions(buyer_id, sub_role);
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY; -- solo service role (Edge Functions)
 
 -- Bitácora de notificaciones: qué se intentó por push y si cayó a WhatsApp.
 -- Sirve para medir cobertura de push vs. costo de WhatsApp por tienda.
@@ -177,9 +182,9 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('avatars', 'avatars', true)
 ON CONFLICT (id) DO NOTHING;
 
+-- Sin SELECT policy: el bucket es público (URL pública funciona igual) pero
+-- nadie puede listar su contenido completo desde el cliente.
 DROP POLICY IF EXISTS "avatars_read"   ON storage.objects;
-CREATE POLICY "avatars_read"   ON storage.objects
-  FOR SELECT TO public        USING       (bucket_id = 'avatars');
 DROP POLICY IF EXISTS "avatars_upload" ON storage.objects;
 CREATE POLICY "avatars_upload" ON storage.objects
   FOR INSERT TO authenticated WITH CHECK  (bucket_id = 'avatars');
@@ -206,8 +211,7 @@ CREATE POLICY products_read ON products FOR SELECT TO public USING (true);
 -- Bucket para las imágenes de producto (lectura pública, sube el vendedor autenticado)
 INSERT INTO storage.buckets (id, name, public) VALUES ('products', 'products', true)
 ON CONFLICT (id) DO NOTHING;
-DROP POLICY IF EXISTS products_img_read   ON storage.objects;
-CREATE POLICY products_img_read   ON storage.objects FOR SELECT TO public        USING (bucket_id = 'products');
+DROP POLICY IF EXISTS products_img_read   ON storage.objects; -- sin listado público del bucket
 DROP POLICY IF EXISTS products_img_upload ON storage.objects;
 CREATE POLICY products_img_upload ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'products');
 DROP POLICY IF EXISTS products_img_update ON storage.objects;
@@ -217,8 +221,7 @@ CREATE POLICY products_img_update ON storage.objects FOR UPDATE TO authenticated
 -- ─── 5c. BRANDING (logos de cada marca — onboarding de tiendas) ─────────────
 INSERT INTO storage.buckets (id, name, public) VALUES ('branding', 'branding', true)
 ON CONFLICT (id) DO NOTHING;
-DROP POLICY IF EXISTS branding_read   ON storage.objects;
-CREATE POLICY branding_read   ON storage.objects FOR SELECT TO public        USING (bucket_id = 'branding');
+DROP POLICY IF EXISTS branding_read   ON storage.objects; -- sin listado público del bucket
 DROP POLICY IF EXISTS branding_upload ON storage.objects;
 CREATE POLICY branding_upload ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'branding');
 DROP POLICY IF EXISTS branding_update ON storage.objects;
