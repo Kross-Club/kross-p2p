@@ -34,6 +34,13 @@ Deno.serve(async (req) => {
     redeem_points?: number   // puntos que el cliente quiere canjear por descuento
     payment_method?: string  // YAPE_PLIN | CONTRAENTREGA | TARJETA (default COD)
     closed_by?: string       // AI_CLOSER | DIRECT_CHECKOUT (default directo)
+    // Costuras de ENTREGA del checkout guiado (Quiz). Ver docs/01-SALES-ENGINE.md.
+    dispatch_type?: string        // MOTORIZADO_LIMA | AGENCIA_PROVINCIA (default Lima)
+    agency_name?: string          // SHALOM | OLVA | OTRO (solo provincia)
+    delivery_reference?: string   // referencia de la dirección / agencia destino
+    address_lat?: number          // pin GPS fijado en el checkout
+    address_lng?: number
+    advance_op_number?: string    // N° de operación del adelanto de flete (provincia)
   }
 
   // Upsert buyer account — document_number as unique key if provided, fallback to phone
@@ -76,6 +83,27 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: buyerErr?.message ?? 'buyer upsert failed' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+  }
+
+  // ─── Costuras de ENTREGA (estado central · delivery) ──────────────────────────
+  // El checkout guiado ya trae el tipo de despacho, la agencia (provincia), una
+  // referencia y —en Lima— el pin GPS. Un pin fresco actualiza la dirección guardada
+  // del buyer para que los próximos pedidos la hereden sin re-preguntar.
+  const dispatchType = body.dispatch_type === 'AGENCIA_PROVINCIA' ? 'AGENCIA_PROVINCIA' : 'MOTORIZADO_LIMA'
+  const agencyName = ['SHALOM', 'OLVA', 'OTRO'].includes(body.agency_name ?? '') ? body.agency_name! : null
+  const deliveryReference = body.delivery_reference?.trim() || null
+  const pinLat = typeof body.address_lat === 'number' ? body.address_lat : null
+  const pinLng = typeof body.address_lng === 'number' ? body.address_lng : null
+
+  if (pinLat != null && pinLng != null) {
+    await supabase.from('buyers')
+      .update({ address_lat: pinLat, address_lng: pinLng, address_verified: true, address: body.address ?? buyer.address ?? null })
+      .eq('id', buyer.id)
+    // Refleja el pin localmente para que el insert del pedido lo herede.
+    buyer.address_lat = pinLat
+    buyer.address_lng = pinLng
+    buyer.address_verified = true
+    if (body.address) buyer.address = body.address
   }
 
   // Round-robin assignment among REAL sellers from the sellers table.
@@ -206,6 +234,9 @@ Deno.serve(async (req) => {
       // Costuras del estado central — el checkout las deja escritas desde el día 1
       payment_method: ['YAPE_PLIN', 'CONTRAENTREGA', 'TARJETA'].includes(body.payment_method ?? '') ? body.payment_method : 'CONTRAENTREGA',
       closed_by: body.closed_by === 'AI_CLOSER' ? 'AI_CLOSER' : 'DIRECT_CHECKOUT',
+      dispatch_type: dispatchType,
+      agency_name: agencyName,
+      delivery_reference: deliveryReference,
       assigned_seller_id: assignedSellerId,
       involved_seller_ids: assignedSellerId ? [assignedSellerId] : [],
       writer_seller_ids: assignedSellerId ? [assignedSellerId] : [],
@@ -219,14 +250,32 @@ Deno.serve(async (req) => {
     })
   }
 
+  const firstName = body.buyer_name ? ' ' + body.buyer_name.split(' ')[0] : ''
+  const priceLine = `S/${finalPrice}${discount > 0 ? ` · usaste puntos: −S/${discount}` : ''}`
+  const welcomeBody = dispatchType === 'AGENCIA_PROVINCIA'
+    ? `¡Hola${firstName}! 🎉 Tu ${body.product_name} (${priceLine}) se enviará por agencia${agencyName ? ' ' + agencyName : ''}. Coordinamos el envío por aquí y el saldo lo pagas al recoger. 😊`
+    : `¡Hola${firstName}! 🎉 Tu ${body.product_name} (${priceLine}) llegará a tu puerta sin adelanto.\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊`
+
   await supabase.from('chat_messages').insert({
     session_id: data.id,
     sender_role: 'seller',
     sender_name: assignedSellerName ?? 'Kross',
     sender_role_label: assignedSellerRole ?? 'Ventas',
     type: 'text',
-    body: `¡Hola${body.buyer_name ? ' ' + body.buyer_name.split(' ')[0] : ''}! 🎉 Tu ${body.product_name} (S/${finalPrice}${discount > 0 ? ` · usaste puntos: −S/${discount}` : ''}) llegará a tu puerta sin adelanto.\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊`,
+    body: welcomeBody,
   })
+
+  // Adelanto de flete reportado en el checkout → deja constancia para que Ventas
+  // verifique el Yape/Plin antes de despachar (verificación formal: pendiente #3).
+  if (body.advance_op_number) {
+    await supabase.from('chat_messages').insert({
+      session_id: data.id,
+      sender_role: 'system',
+      sender_name: 'Kross',
+      type: 'text',
+      body: `📎 Adelanto de flete reportado por el cliente · N° de operación ${body.advance_op_number}. Verifica el Yape/Plin antes de despachar.`,
+    })
+  }
 
   return new Response(
     JSON.stringify({
