@@ -37,8 +37,14 @@ const StoreContext = createContext<{ store: Store; loading: boolean }>({ store: 
 // Main/preview/localhost hosts return null → Kross default branding.
 function resolveSlug(): string | null {
   if (typeof window === 'undefined') return null
+  // allow ?store=slug for local testing — must run before the localhost
+  // short-circuit or it's unreachable on http://localhost:5173
+  const q = new URLSearchParams(window.location.search).get('store')
+  if (q) return q
   const host = window.location.hostname
   if (host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return null
+  // <slug>.localhost → dev con subdominio (Chrome resuelve *.localhost solo)
+  if (host.endsWith('.localhost')) return host.split('.')[0]
   const parts = host.split('.')
   // <slug>.kross.app  → 3 parts, first is the slug (skip www / vercel previews)
   if (parts.length >= 3 && !['www', 'app', 'kross-p2p'].includes(parts[0])) {
@@ -46,9 +52,7 @@ function resolveSlug(): string | null {
     if (host.endsWith('vercel.app')) return null
     return parts[0]
   }
-  // allow ?store=slug for local testing
-  const q = new URLSearchParams(window.location.search).get('store')
-  return q || null
+  return null
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
