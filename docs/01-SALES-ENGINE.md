@@ -71,6 +71,9 @@
 - **Pendiente 🔮:** Fase 3 (pago, comprobante, submit, verificación), Fase 4
   (instrumentación completa y pulido). El paso 3 hoy es un placeholder y la landing
   sigue usando `CheckoutQuiz`: se cambia cuando el flujo pueda cerrar un pedido.
+- ⚠️ `src/lib/checkout-flow.ts` y el cuerpo de `CheckoutQuiz.tsx` quedan **en pie hasta
+  que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
+  `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 3.
 
 #### Ajustes pedidos tras revisar Fase 2 (jul-2026) 🔮
 
@@ -106,9 +109,6 @@ hay que resolver **antes** de construirlo, no después:
   pedido es 7–10 % del margen, en cada pedido donde dispare — incluidos los de quien
   habría comprado igual. Propuesta: una sola vez por comprador, y medirlo contra un grupo
   de control antes de dejarlo permanente. El monto va a `checkout.config.ts`, no al JSX.
-- ⚠️ `src/lib/checkout-flow.ts` y el cuerpo de `CheckoutQuiz.tsx` quedan **en pie hasta
-  que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
-  `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 3.
 
 ### 2. Checkout CRO ultra-rápido ✅
 - **Validación DNI con Decolecta (RENIEC)** → autocompleta el nombre y reduce campos:
