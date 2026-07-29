@@ -9,6 +9,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, X } from 'lucide-react'
 import { useCheckout } from '../../lib/checkout/useCheckout'
+import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN } from '../../lib/checkout/checkout.config'
+import { trackEvent } from '../../lib/checkout/analytics'
 import type { CheckoutState } from '../../lib/checkout/types'
 import Step1Pack from './steps/Step1Pack'
 import type { PackOption } from './steps/Step1Pack'
@@ -34,14 +36,31 @@ export default function CheckoutModal({
   const [confirmingClose, setConfirmingClose] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreFocus = useRef<HTMLElement | null>(null)
+  // Qué mostrar en el diálogo se decide AL ABRIRLO, no en cada render.
+  const [offerDiscount, setOfferDiscount] = useState(false)
 
   const requestClose = useCallback(() => {
     // Con data ingresada se pide confirmación: cerrar por error tras llenar
     // cuatro campos es perder la venta. Nada de confirm() nativo.
-    if (co.isDirty && !confirmingClose) { setConfirmingClose(true); return }
+    //
+    // En móvil no existe `mouseleave`, así que el disparador real del
+    // exit-intent es este: el toque en la X (o Esc en desktop).
+    if (co.isDirty && !confirmingClose) {
+      // El descuento se ofrece una sola vez por checkout: insistir cada vez le
+      // enseña al comprador que salir es la forma de conseguirlo. `exitOfferShown`
+      // vive en el estado, así que la regla sobrevive a una recarga.
+      const firstOffer = state.discountPen === 0 && (!EXIT_DISCOUNT_ONCE || !state.exitOfferShown)
+      setOfferDiscount(firstOffer)
+      setConfirmingClose(true)
+      if (firstOffer) {
+        dispatch({ type: 'EXIT_OFFER_SHOWN' })
+        trackEvent({ name: 'exit_offer_shown', step: state.step })
+      }
+      return
+    }
     co.abandon()
     onClose()
-  }, [co, confirmingClose, onClose])
+  }, [co, confirmingClose, onClose, state.exitOfferShown, state.discountPen, state.step, dispatch])
 
   // El handler vive en un ref para que el efecto de abajo se monte UNA sola vez.
   // Si dependiera de `requestClose` —que cambia de identidad en cada render— su
@@ -123,6 +142,13 @@ export default function CheckoutModal({
           </p>
         </div>
 
+        {state.discountPen > 0 && (
+          <p className="mx-5 mb-2 text-[11px] font-black text-center rounded-xl py-1.5 flex-shrink-0"
+            style={{ background: '#F0FDF4', color: '#15803D' }}>
+            {COPY.exitApplied}
+          </p>
+        )}
+
         {/* ── Contenido del paso ── */}
         <div className="px-5 pb-4 overflow-y-auto flex-1">
           {state.step === 1 && (
@@ -131,6 +157,7 @@ export default function CheckoutModal({
               unitPrice={unitPrice}
               selected={state.selectedPack}
               bestPackId={bestPackId}
+              discountPen={state.discountPen}
               onSelect={packId => dispatch({ type: 'SET_PACK', packId })}
             />
           )}
@@ -153,7 +180,19 @@ export default function CheckoutModal({
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           {confirmingClose ? (
-            <ConfirmClose onCancel={() => setConfirmingClose(false)} onConfirm={() => { co.abandon(); onClose() }} />
+            <ConfirmClose
+              offerDiscount={offerDiscount}
+              onApplyDiscount={() => {
+                dispatch({ type: 'APPLY_EXIT_DISCOUNT' })
+                trackEvent({ name: 'exit_discount_applied', amount: EXIT_DISCOUNT_PEN })
+                setConfirmingClose(false)
+                // Vuelve al paso 1 para que vea los precios nuevos: el descuento
+                // que no se ve no retiene a nadie.
+                co.goTo(1)
+              }}
+              onCancel={() => setConfirmingClose(false)}
+              onConfirm={() => { co.abandon(); onClose() }}
+            />
           ) : (
             <div className="flex items-center gap-2">
               {state.step > 1 && (
@@ -189,7 +228,38 @@ export default function CheckoutModal({
   )
 }
 
-function ConfirmClose({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+function ConfirmClose({ offerDiscount, onApplyDiscount, onCancel, onConfirm }: {
+  offerDiscount: boolean
+  onApplyDiscount: () => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  if (offerDiscount) {
+    return (
+      <div className="pb-1">
+        <p className="text-sm font-black text-gray-900 mb-0.5">{COPY.exitTitle}</p>
+        <p className="text-xs text-gray-500 mb-3">{COPY.exitBody}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={onConfirm}
+            className="px-4 py-3 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xs
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+          >
+            {COPY.exitLeave}
+          </button>
+          <button
+            onClick={onApplyDiscount}
+            autoFocus
+            className="flex-1 py-3 rounded-2xl bg-green-500 text-white font-black text-sm shadow-lg shadow-green-200
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
+          >
+            {COPY.exitApply}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="pb-1">
       <p className="text-sm font-black text-gray-800 mb-0.5">¿Salir sin terminar?</p>

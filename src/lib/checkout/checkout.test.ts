@@ -7,7 +7,8 @@ import { checkoutReducer, initialCheckoutState } from './machine'
 import type { CheckoutAction } from './machine'
 import { canAdvance, canSubmit, validateStep, validateWhatsapp } from './validation'
 import { clearDraft, loadActiveDraft, saveDraft } from './persistence'
-import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M } from './checkout.config'
+import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN } from './checkout.config'
+import { effectivePrice } from './product-packs'
 import { CoverageService, coveredCities } from './services/CoverageService'
 import { AgencyService, suggestFreeText } from './services/AgencyService'
 import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
@@ -402,5 +403,102 @@ describe('DistrictCoverageService · data real del tarifario', () => {
   it('la búsqueda encuentra por distrito, provincia o departamento', async () => {
     expect((await DistrictCoverageService.search('surco')).length).toBeGreaterThan(0)
     expect(await DistrictCoverageService.search('zzz-no-existe')).toHaveLength(0)
+  })
+})
+
+describe('ajustes tras la revisión de Fase 2', () => {
+  const conDatos = (loc: 'LIMA' | 'PROVINCIA') => run(base(),
+    { type: 'SET_WHATSAPP', whatsapp: '987654321' },
+    { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
+    { type: 'SET_LOCATION_TYPE', locationType: loc },
+    { type: 'GOTO', step: 2 },
+  )
+
+  it('Lima NO pide DNI: se avanza sin él', () => {
+    const s = run(conDatos('LIMA'),
+      { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
+      { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
+    )
+    expect(s.customerInfo.dni).toBe('')
+    expect(validateStep(s).dni).toBeUndefined()
+    expect(canAdvance(s)).toBe(true)
+  })
+
+  it('provincia SÍ pide DNI: la agencia lo exige para entregar', () => {
+    const s = run(conDatos('PROVINCIA'),
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'CHOOSE_AGENCY_BRANCH_FLOW' },
+      { type: 'SET_AGENCY', agency: 'SHALOM' },
+      { type: 'SET_AGENCY_BRANCH', branchId: '4' },
+    )
+    expect(validateStep(s).dni).toBeTruthy()
+    expect(canAdvance(s)).toBe(false)
+    const conDni = run(s, { type: 'SET_DNI', dni: '12345678' })
+    expect(canAdvance(conDni)).toBe(true)
+  })
+
+  it('cambiar a Lima deja de exigir el DNI sin borrar lo ya escrito', () => {
+    const s = run(conDatos('PROVINCIA'),
+      { type: 'SET_DNI', dni: '12345678' },
+      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
+      { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
+      { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
+    )
+    expect(s.customerInfo.dni).toBe('12345678') // no se pierde si vuelve a provincia
+    expect(canAdvance(s)).toBe(true)
+  })
+
+  it('el adelanto depende de la agencia: Olva cobra más flete que Shalom', () => {
+    const prov = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' })
+    expect(prov.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN) // a domicilio, sin agencia
+    expect(run(prov, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(10)
+    expect(run(prov, { type: 'SET_AGENCY', agency: 'OLVA' }).advanceAmount).toBe(20)
+  })
+
+  it('cambiar de agencia recalcula el adelanto en ambos sentidos', () => {
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_AGENCY', agency: 'OLVA' },
+    )
+    expect(s.advanceAmount).toBe(20)
+    expect(run(s, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(10)
+  })
+
+  it('Lima nunca cobra adelanto, elija lo que elija', () => {
+    expect(run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' }).advanceAmount).toBe(0)
+  })
+
+  it('el descuento de retención resta S/5 a cada pack', () => {
+    expect(effectivePrice(110, 0)).toBe(110)
+    expect(effectivePrice(110, EXIT_DISCOUNT_PEN)).toBe(105)
+    expect(effectivePrice(189, EXIT_DISCOUNT_PEN)).toBe(184)
+    // Un pack más barato que el descuento no puede quedar en negativo.
+    expect(effectivePrice(3, EXIT_DISCOUNT_PEN)).toBe(0)
+  })
+
+  it('aplicar el descuento dos veces no lo duplica', () => {
+    const una = run(base(), { type: 'APPLY_EXIT_DISCOUNT' })
+    const dos = run(una, { type: 'APPLY_EXIT_DISCOUNT' })
+    expect(una.discountPen).toBe(EXIT_DISCOUNT_PEN)
+    expect(dos.discountPen).toBe(EXIT_DISCOUNT_PEN)
+  })
+
+  it('la oferta se marca como vista para no volver a insistir', () => {
+    expect(base().exitOfferShown).toBe(false)
+    expect(run(base(), { type: 'EXIT_OFFER_SHOWN' }).exitOfferShown).toBe(true)
+    // Aplicarlo también la marca: no tiene sentido reofrecer lo ya dado.
+    expect(run(base(), { type: 'APPLY_EXIT_DISCOUNT' }).exitOfferShown).toBe(true)
+  })
+
+  it('el descuento sobrevive a la recarga', () => {
+    localStorage.clear()
+    const s = run(base(),
+      { type: 'SET_WHATSAPP', whatsapp: '987654321' },
+      { type: 'APPLY_EXIT_DISCOUNT' },
+    )
+    saveDraft(s)
+    const restored = loadActiveDraft()
+    expect(restored?.discountPen).toBe(EXIT_DISCOUNT_PEN)
+    expect(restored?.exitOfferShown).toBe(true)
   })
 })

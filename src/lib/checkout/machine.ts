@@ -6,7 +6,7 @@
 // `courierSurcharge` y `deliveryNote` son DERIVADOS. Ninguna acción los setea
 // directamente — se recalculan en `derive()` después de cada cambio.
 
-import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_PEN } from './checkout.config'
+import { EXIT_DISCOUNT_PEN, advanceFor } from './checkout.config'
 import { methodForCoverage } from './services/DistrictCoverageService'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, DistrictCoverage,
@@ -37,6 +37,8 @@ export function initialCheckoutState(selectedPack: PackId | null = null): Checko
     needsLocationConfirmation: false,
     paymentVoucher: null,
     advanceAmount: 0,
+    discountPen: 0,
+    exitOfferShown: false,
     status: 'DRAFT',
     payment: { verification: 'NOT_REQUIRED', matchedAt: null, reason: null },
     courierSurcharge: null,
@@ -65,6 +67,9 @@ export type CheckoutAction =
   | { type: 'SET_PROVINCIA_ADDRESS'; addressText?: string; reference?: string }
   | { type: 'SET_VOUCHER'; url: string; uploadedAt: string }
   | { type: 'SET_VERIFICATION'; verification: PaymentVerification; reason?: string | null; matchedAt?: string | null }
+  /** El comprador intentó salir: se le ofreció el descuento (una sola vez). */
+  | { type: 'EXIT_OFFER_SHOWN' }
+  | { type: 'APPLY_EXIT_DISCOUNT' }
   | { type: 'GOTO'; step: CheckoutStepId }
   | { type: 'NEXT' }
   | { type: 'BACK' }
@@ -86,7 +91,9 @@ const EMPTY_PROVINCIA: ProvinciaConfig = {
  */
 function derive(s: CheckoutState): CheckoutState {
   const isProvincia = s.locationType === 'PROVINCIA'
-  const advanceAmount = isProvincia ? ADVANCE_PROVINCIA_PEN : ADVANCE_LIMA_PEN
+  // El adelanto sale del destino Y de la agencia: Olva cobra más flete que
+  // Shalom. A domicilio (sin agencia) va el base.
+  const advanceAmount = advanceFor(isProvincia, s.provinciaConfig?.selectedAgency ?? null)
 
   // El pedido se cierra SIN coordenada: la cobertura se decide por distrito. La
   // marca queda para que Logística afine la dirección después (AddressBar en el
@@ -244,6 +251,13 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         reason: action.reason ?? null,
         matchedAt: action.matchedAt ?? state.payment.matchedAt,
       } })
+
+    case 'EXIT_OFFER_SHOWN':
+      return { ...state, exitOfferShown: true }
+
+    case 'APPLY_EXIT_DISCOUNT':
+      // No se acumula: aplicarlo dos veces no duplica el descuento.
+      return derive({ ...state, discountPen: EXIT_DISCOUNT_PEN, exitOfferShown: true })
 
     case 'GOTO':
       return { ...state, step: action.step }

@@ -101,8 +101,12 @@ export interface CheckoutState {
   /** true si falta lat/lng o el resultado de cobertura es BORDERLINE. */
   needsLocationConfirmation: boolean
   paymentVoucher: PaymentVoucher | null
-  /** Derivado del destino. Nunca editable a mano. */
+  /** Derivado del destino Y de la agencia elegida. Nunca editable a mano. */
   advanceAmount: number
+  /** Descuento de retención aplicado, en soles. Se resta de CADA pack. */
+  discountPen: number
+  /** Ya se le ofreció el descuento al intentar salir: no se insiste. */
+  exitOfferShown: boolean
   status: CheckoutStatus
   payment: PaymentState
   /** Costo extra del courier por zona (recargo Aliclic). No lo paga el comprador. */

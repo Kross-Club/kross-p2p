@@ -11,11 +11,14 @@ import { useEffect, useState } from 'react'
 import { ExternalLink, Store, Check } from 'lucide-react'
 import { AgencyService, RECOMMENDED_AGENCY } from '../../../lib/checkout/services/AgencyService'
 import { formatDistance } from '../../../lib/geo/haversine'
-import { COPY } from '../../../lib/checkout/checkout.config'
+import { COPY, advanceFor } from '../../../lib/checkout/checkout.config'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { AgencyName, NearbyBranch } from '../../../lib/checkout/types'
 import Field from '../fields/Field'
 
+// El adelanto se muestra en cada tarjeta ANTES de elegir: Olva cobra más flete
+// que Shalom, y que el monto cambie después de haber elegido se lee como que le
+// subieron el precio a mitad de compra.
 const AGENCIES: { id: AgencyName; label: string }[] = [
   { id: 'SHALOM', label: 'Shalom' },
   { id: 'OLVA', label: 'Olva' },
@@ -63,6 +66,9 @@ export default function AgencyPicker({
               <Store size={18} className={agency === a.id ? 'text-green-600' : 'text-gray-400'} />
               <span className={`text-sm font-black ${agency === a.id ? 'text-green-800' : 'text-gray-700'}`}>
                 {a.label}
+              </span>
+              <span className="text-[10px] text-gray-400">
+                Adelanto S/{advanceFor(true, a.id)}
               </span>
             </button>
           ))}

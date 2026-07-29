@@ -26,6 +26,11 @@ export type CheckoutEvent =
   | { name: 'coverage_zoned_district'; place: string }
   | { name: 'agency_selected'; agency: AgencyName }
   | { name: 'olva_branch_typed'; length: number }
+  /** Intentó salir con datos ingresados y se le ofreció el descuento. */
+  | { name: 'exit_offer_shown'; step: CheckoutStepId }
+  /** Aceptó el descuento y se quedó. Contra `exit_offer_shown` da la tasa de
+   *  rescate; contra `order_submitted` dice si además terminó comprando. */
+  | { name: 'exit_discount_applied'; amount: number }
   | { name: 'voucher_uploaded' }
   | { name: 'payment_verification_result'; result: 'MATCHED' | 'UNMATCHED' | 'TIMEOUT'; seconds: number }
   | { name: 'order_submitted'; orderId: string }

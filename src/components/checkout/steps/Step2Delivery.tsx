@@ -1,9 +1,13 @@
 // ─── PASO 2 · Datos de quien recibe ──────────────────────────────────────────
 // El orden de los campos importa: es orden de compromiso creciente.
-//   1. WhatsApp  → apenas es válido se guarda el lead parcial (recupera abandonos)
-//   2. Nombre    → quién recibe
-//   3. Lima/Provincia → toggle grande, no un <select>
-//   4. DNI       → el campo que más abandono genera, va al final y con el porqué
+//   1. WhatsApp        → apenas es válido se guarda el lead parcial
+//   2. Lima/Provincia  → toggle grande, no un <select>. Va temprano porque
+//                        define qué campos siguen; es un tap, no un compromiso.
+//   3a. LIMA      → solo el nombre. SIN DNI: es contraentrega en la puerta y
+//                   nadie más lo exige. Un campo menos en el mayor volumen.
+//   3b. PROVINCIA → DNI primero y luego el nombre, que Decolecta rellena solo.
+//                   Aquí el DNI no es trámite nuestro: la agencia no entrega el
+//                   paquete sin él. Ver docs/00-CORE-ARCHITECTURE.md.
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -40,7 +44,9 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
   return (
     <>
       <h2 className="text-xl font-black text-gray-900 mb-0.5">{COPY.step2Title}</h2>
-      <p className="text-sm text-gray-500 mb-4">Son 4 datos y listo.</p>
+      <p className="text-sm text-gray-500 mb-4">
+        {locationType === 'PROVINCIA' ? 'Son 4 datos y listo.' : 'Son 3 datos y listo.'}
+      </p>
 
       <div className="space-y-3.5">
         <div ref={phoneRef}>
@@ -52,17 +58,6 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
           />
         </div>
 
-        <Field
-          label="Nombre de quien recibe"
-          required
-          value={customerInfo.receiverName}
-          onChange={e => dispatch({ type: 'SET_RECEIVER_NAME', receiverName: e.target.value })}
-          onBlur={() => touch('receiverName')}
-          placeholder="Nombre y apellido"
-          autoComplete="name"
-          error={errors.receiverName}
-        />
-
         <LocationToggle
           value={locationType}
           error={errors.locationType}
@@ -73,19 +68,35 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
           }}
         />
 
-        {locationType && (
+        {/* Provincia: el DNI va ANTES del nombre para que Decolecta lo rellene
+            y el comprador escriba un campo menos. */}
+        {locationType === 'PROVINCIA' && (
           <DniField
             value={customerInfo.dni}
             error={errors.dni}
             onChange={dni => dispatch({ type: 'SET_DNI', dni })}
             onBlur={() => touch('dni')}
-            // El nombre validado por RENIEC solo rellena si el campo está vacío:
-            // nunca pisa lo que el comprador ya escribió.
+            // El nombre de RENIEC solo rellena si el campo está vacío: nunca
+            // pisa lo que el comprador ya escribió.
             onResolvedName={name => {
               if (!customerInfo.receiverName.trim()) {
                 dispatch({ type: 'SET_RECEIVER_NAME', receiverName: name })
               }
             }}
+          />
+        )}
+
+        {locationType && (
+          <Field
+            label="Nombre de quien recibe"
+            required
+            value={customerInfo.receiverName}
+            onChange={e => dispatch({ type: 'SET_RECEIVER_NAME', receiverName: e.target.value })}
+            onBlur={() => touch('receiverName')}
+            placeholder="Nombre y apellido"
+            autoComplete="name"
+            error={errors.receiverName}
+            hint={locationType === 'PROVINCIA' ? COPY.dniOtherReceiver : undefined}
           />
         )}
 

@@ -4,6 +4,7 @@
 // El CTA nunca está deshabilitado aquí: el pack viene preseleccionado.
 
 import { BEST_PACK_BADGE, SHOW_PACK_SAVINGS } from '../../../lib/checkout/checkout.config'
+import { effectivePrice } from '../../../lib/checkout/product-packs'
 
 export interface PackOption {
   id: string
@@ -23,9 +24,11 @@ interface Step1PackProps {
   onSelect: (packId: string) => void
   /** Pack destacado (el recomendado). */
   bestPackId: string | null
+  /** Descuento de retención ya aceptado. Se resta de cada pack. */
+  discountPen: number
 }
 
-export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPackId }: Step1PackProps) {
+export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPackId, discountPen }: Step1PackProps) {
   return (
     <>
       <h2 className="text-xl font-black text-gray-900 mb-0.5">¡Un paso más! 🎉</h2>
@@ -35,7 +38,13 @@ export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPa
         {packs.map(pack => {
           const active = selected === pack.id
           const isBest = pack.id === bestPackId
-          const perUnit = pack.unidades > 0 ? pack.precio / pack.unidades : pack.precio
+          const precio = effectivePrice(pack.precio, discountPen)
+          const perUnit = pack.unidades > 0 ? precio / pack.unidades : precio
+          // El ahorro mide SOLO el volumen, sobre el precio de lista: si se
+          // midiera contra el precio ya descontado, el pack de 1 unidad —que no
+          // ahorra nada— mostraría el descuento de retención como si fuera
+          // ahorro por llevar más, y diluiría el anclaje hacia el pack de 2.
+          // El descuento se comunica aparte: precio tachado + banner.
           const savings = Math.max(0, unitPrice * pack.unidades - pack.precio)
 
           return (
@@ -83,8 +92,13 @@ export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPa
                 )}
               </span>
 
-              <span className={`text-lg font-black flex-shrink-0 ${active ? 'text-green-600' : 'text-gray-700'}`}>
-                S/{pack.precio}
+              <span className="flex flex-col items-end flex-shrink-0">
+                {discountPen > 0 && (
+                  <span className="text-[10px] text-gray-400 line-through leading-none">S/{pack.precio}</span>
+                )}
+                <span className={`text-lg font-black ${active ? 'text-green-600' : 'text-gray-700'}`}>
+                  S/{precio}
+                </span>
               </span>
             </button>
           )

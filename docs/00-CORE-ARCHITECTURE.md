@@ -32,7 +32,7 @@ y actualizan.
 - **Comprador:** identificado por DNI/teléfono (`buyers`), sin login de contraseña; entra
   por su subdominio (`/acceso`). NO hay login de comprador en el host de plataforma.
 
-### Identidad del comprador: DNI vs. teléfono 🟡 (decisión abierta)
+### Identidad del comprador: DNI vs. teléfono ✅ (implementado)
 
 `buyers` tiene **dos** índices únicos por tienda: `(store_id, document_number)` y
 `(store_id, phone)`. O sea que el teléfono **ya es** una llave de identidad válida, y
@@ -48,10 +48,9 @@ La asimetría es real y no arbitraria:
 | ¿Quién absorbe el no-recibido? | el motorizado, en el momento | la marca, ya pagó el envío |
 | ¿Alguien más exige el DNI? | nadie | **la agencia, para entregar el paquete** |
 
-⚠️ Esa última fila es el argumento fuerte y **hay que confirmarla con operaciones**: si
-Shalom/Olva exigen DNI del destinatario para liberar el paquete, entonces en provincia el
-campo no es burocracia nuestra sino de ellos — y el copy debe decirlo así, porque es un
-motivo que el comprador acepta sin discutir.
+✅ **Confirmado con operaciones:** Shalom y Olva exigen DNI del destinatario para liberar
+el paquete. En provincia el campo no es burocracia nuestra sino de ellos, y el copy lo
+dice así porque es un motivo que el comprador acepta sin discutir.
 
 **Riesgos de identificar solo por teléfono, con los ojos abiertos:**
 - En Perú los números se reciclan: alguien podría heredar el historial y los puntos de otro.

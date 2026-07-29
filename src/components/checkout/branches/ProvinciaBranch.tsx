@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Home, PackageCheck } from 'lucide-react'
-import { ADVANCE_PROVINCIA_PEN, COPY } from '../../../lib/checkout/checkout.config'
+import { COPY } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
@@ -186,7 +186,7 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
           style={{ background: '#FFF7ED', color: '#9A3412' }}>
           <PackageCheck size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#EA580C' }} />
           <span>
-            <strong className="font-black">Adelanto de S/{ADVANCE_PROVINCIA_PEN}.</strong>{' '}
+            <strong className="font-black">Adelanto de S/{state.advanceAmount}.</strong>{' '}
             {COPY.advanceHeadsUpShort}
           </span>
         </p>

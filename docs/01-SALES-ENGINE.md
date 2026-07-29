@@ -75,40 +75,54 @@
   que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
   `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 3.
 
-#### Ajustes pedidos tras revisar Fase 2 (jul-2026) 🔮
+#### Ajustes tras revisar Fase 2 (jul-2026) ✅
 
-**a) El DNI sale de Lima.** Lima cierra con teléfono + nombre y nada más: es el segmento
+Confirmado con operaciones: **Shalom y Olva sí exigen DNI del destinatario** para
+entregar el paquete. Eso valida la asimetría y el copy.
+
+**a) El DNI sale de Lima ✅.** Lima cierra con teléfono + nombre y nada más: es el segmento
 de mayor volumen y el DNI es el campo que más abandono genera. En provincia se queda,
 porque ahí hay dinero adelantado y porque la agencia lo exige para entregar. El contrato
 de identidad y sus riesgos están en
 [00-CORE · Identidad del comprador](./00-CORE-ARCHITECTURE.md).
 
-**b) Nombre y DNI dejan de competir.** Hoy se piden los dos porque el nombre del DNI
+**b) Nombre y DNI dejan de competir ✅.** Se piden los dos porque el nombre del DNI
 (titular, vía Decolecta) y "quién recibe" no son siempre la misma persona — en COD recibe
 la mamá, el vecino, el portero. Pero el orden actual (nombre → DNI) hace que el
-autocompletado casi nunca se aproveche. Al quedar el DNI solo en provincia, ahí conviene
-**invertirlo**: DNI primero → Decolecta rellena el nombre → un enlace pequeño
-*"¿Lo recibe otra persona?"* cubre la minoría. Un campo menos de tipeo en el flujo que ya
-es el más largo.
+autocompletado casi nunca se aprovechara. Al quedar el DNI solo en provincia, ahí se
+**invirtió**: DNI primero → Decolecta rellena el nombre → el microcopy
+*"¿Lo recibe otra persona?"* cubre la minoría. Un campo menos de tipeo en el flujo más
+largo. Orden final: WhatsApp → Lima/Provincia → [DNI si provincia] → nombre → distrito.
 
-**c) Copy del DNI.** El actual —*"Para crear tu cuenta y que puedas seguir tu pedido"*—
-plantea un beneficio nuestro como si fuera suyo. En provincia hay uno mucho más fuerte y
-verificable por el comprador: **la agencia se lo va a pedir para entregarle el paquete**.
-Un hecho de su mundo, no un trámite del nuestro. Confirmar con operaciones antes de
-escribirlo (ver la advertencia en 00-CORE).
+**c) Copy del DNI ✅.** El anterior —*"Para crear tu cuenta y que puedas seguir tu
+pedido"*— planteaba un beneficio nuestro como si fuera suyo. Ahora dice **"La agencia te
+lo pedirá para entregarte el paquete"**: un hecho de su mundo, verificable, no un trámite
+del nuestro.
 
-**d) Descuento de retención al intentar salir 🔮.** Al cerrar el modal con datos
-ingresados, ofrecer S/5 de descuento sobre cada pack antes de dejarlo ir. Dos cosas que
-hay que resolver **antes** de construirlo, no después:
+**e) El adelanto depende de la AGENCIA ✅.** Shalom cobra S/10 y **Olva S/20**, porque su
+flete es más caro. `advanceFor(isProvincia, agency)` en `checkout.config.ts` es la única
+fuente del monto. El adelanto se muestra **en la tarjeta de cada agencia, antes de
+elegir** — que el número suba después de haber elegido se lee como cambio de precio a
+mitad de compra. Efecto secundario deseable: Shalom, que ya era la recomendada por tener
+listado estructurado, además se ve más barata.
 
-- **En móvil no existe `mouseleave`,** que es el disparador clásico de exit-intent. Y el
-  tráfico de anuncios de Meta es casi todo móvil. Si se implementa solo con `mouseleave`,
-  la función no se dispara para la mayoría del tráfico. En móvil el disparador viable es
-  el **botón atrás** (interceptando el historial) o el toque en la X, que ya existe.
-- **Cuesta margen y enseña a abandonar.** S/5 sobre una ganancia típica de S/49–78 por
-  pedido es 7–10 % del margen, en cada pedido donde dispare — incluidos los de quien
-  habría comprado igual. Propuesta: una sola vez por comprador, y medirlo contra un grupo
-  de control antes de dejarlo permanente. El monto va a `checkout.config.ts`, no al JSX.
+**d) Descuento de retención al intentar salir ✅.** Al cerrar el modal con datos
+ingresados se ofrecen **S/5 de descuento sobre cada pack** antes de dejarlo ir.
+
+- **Disparador:** el toque en la X (o Esc en desktop). Se descartó `mouseleave`, el
+  exit-intent clásico: no existe en móvil, y el tráfico de anuncios de Meta es casi todo
+  móvil — habría disparado solo para una minoría.
+- **Una sola vez por checkout.** `exitOfferShown` vive en el estado y se persiste, así que
+  la regla sobrevive a una recarga. Insistir cada vez le enseña al comprador que salir es
+  la forma de conseguir descuento.
+- **El ahorro por volumen se calcula sobre el precio de lista**, no sobre el descontado.
+  Si no, el pack de 1 unidad —que no ahorra nada— mostraría "Ahorras S/5" y diluiría el
+  anclaje hacia el de 2. El descuento se comunica aparte: precio tachado + banner verde.
+- ⚠️ **Cuesta margen y puede enseñar a abandonar.** S/5 sobre una ganancia típica de
+  S/49–78 por pedido es 7–10 %, y se paga también en los pedidos de quien iba a comprar
+  igual. Los eventos `exit_offer_shown` y `exit_discount_applied` están instrumentados:
+  **medirlo contra un grupo de control antes de darlo por bueno.** El monto se cambia en
+  una línea de `checkout.config.ts`.
 
 ### 2. Checkout CRO ultra-rápido ✅
 - **Validación DNI con Decolecta (RENIEC)** → autocompleta el nombre y reduce campos:

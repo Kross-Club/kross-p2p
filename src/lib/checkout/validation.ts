@@ -75,8 +75,14 @@ function validateStep2(s: CheckoutState): FieldErrors {
     return e
   }
 
-  const dni = validateDni(s.customerInfo.dni)
-  if (dni) e.dni = dni
+  // El DNI SOLO se pide en provincia, donde la agencia lo exige para entregar y
+  // donde además hubo dinero adelantado. En Lima es contraentrega en la puerta:
+  // pedirlo ahí es fricción pura en el segmento de mayor volumen.
+  // Ver docs/00-CORE-ARCHITECTURE.md · Identidad del comprador.
+  if (s.locationType === 'PROVINCIA') {
+    const dni = validateDni(s.customerInfo.dni)
+    if (dni) e.dni = dni
+  }
 
   if (s.locationType === 'LIMA') {
     const a = s.limaAddress

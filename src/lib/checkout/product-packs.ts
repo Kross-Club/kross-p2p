@@ -69,3 +69,12 @@ export function buildPackSelection(
   const idx = defaultPackIndex(packs.length)
   return { packs, unitPrice, defaultPackId: packs[idx]?.id ?? null }
 }
+
+/**
+ * Precio del pack con el descuento de retención ya aplicado. Nunca baja de 0.
+ * Es la única forma de calcular el precio mostrado: si algún componente restara
+ * el descuento por su cuenta, el resumen y el paso 1 podrían discrepar.
+ */
+export function effectivePrice(precio: number, discountPen: number): number {
+  return Math.max(0, precio - discountPen)
+}

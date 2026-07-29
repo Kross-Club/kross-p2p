@@ -8,7 +8,7 @@
 // BD. Aquí solo están las REGLAS sobre esos packs (cuál se preselecciona, qué
 // badge lleva, cómo se calcula el ahorro).
 
-import type { CoverageMode } from './types'
+import type { AgencyName, CoverageMode } from './types'
 
 // ─── Adelanto ────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,24 @@ export const ADVANCE_LIMA_PEN = 0
 
 /** Provincia adelanta el flete por Yape; el saldo se paga al recibir/recoger. */
 export const ADVANCE_PROVINCIA_PEN = 10
+
+/**
+ * Adelanto por agencia, cuando difiere del base. Olva cobra más flete, así que
+ * su adelanto es mayor. Se le muestra al comprador **en la tarjeta de cada
+ * agencia**, antes de elegir: que el monto salte después de haber elegido se
+ * lee como cambio de precio a mitad de compra.
+ *
+ * La entrega a domicilio (sin agencia) usa el base.
+ */
+export const ADVANCE_BY_AGENCY: Partial<Record<AgencyName, number>> = {
+  OLVA: 20,
+}
+
+/** Adelanto que le toca a este pedido. Única fuente de verdad del monto. */
+export function advanceFor(isProvincia: boolean, agency: AgencyName | null): number {
+  if (!isProvincia) return ADVANCE_LIMA_PEN
+  return (agency && ADVANCE_BY_AGENCY[agency]) || ADVANCE_PROVINCIA_PEN
+}
 
 // ─── Cobertura ───────────────────────────────────────────────────────────────
 
@@ -82,6 +100,21 @@ export const BEST_PACK_BADGE = '⭐ MÁS ELEGIDO · MEJOR PRECIO'
 /** Muestra el ahorro explícito vs. comprar N unidades sueltas. */
 export const SHOW_PACK_SAVINGS = true
 
+// ─── Descuento de retención ──────────────────────────────────────────────────
+
+/**
+ * Descuento que se ofrece cuando el comprador intenta cerrar el modal con datos
+ * ya ingresados. Se descuenta de CADA pack.
+ *
+ * Ojo con dos cosas al mover este número: se paga también en los pedidos de
+ * quien iba a comprar igual, y sobre un margen típico de S/49–78 por pedido,
+ * S/5 es 7–10 %. Por eso se ofrece UNA sola vez por checkout.
+ */
+export const EXIT_DISCOUNT_PEN = 5
+
+/** Una sola oferta por checkout: si la rechaza, no se le vuelve a insistir. */
+export const EXIT_DISCOUNT_ONCE = true
+
 // ─── Yape ────────────────────────────────────────────────────────────────────
 
 export const YAPE = {
@@ -132,7 +165,11 @@ export const PHONE_COUNTRY_CODE_PE = '51'
 
 export const COPY = {
   step2Title: '¡Genial! ¿Quién recibe el pedido?',
-  dniWhy: 'Para crear tu cuenta y que puedas seguir tu pedido.',
+  // El DNI solo se pide en provincia, y el motivo es de ELLOS, no nuestro: la
+  // agencia no entrega el paquete sin el documento del destinatario. Un hecho
+  // que el comprador puede verificar convierte mejor que "para crear tu cuenta".
+  dniWhy: 'La agencia te lo pedirá para entregarte el paquete.',
+  dniOtherReceiver: '¿Lo recibe otra persona?',
   referencePlaceholder: 'Portón negro, frente a la bodega',
 
   inZone: '¡Sí llegamos a tu puerta!',
@@ -149,6 +186,12 @@ export const COPY = {
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',
   verifyMatched: '¡Pago confirmado! Tu pedido está en camino.',
   verifyUnmatched: 'Recibimos tu comprobante, un asesor lo está validando.',
+
+  exitTitle: '¡Espera! Te dejamos S/5 de descuento',
+  exitBody: 'Aplícalo ahora y se descuenta de cualquier pack que elijas.',
+  exitApply: 'Aplicar mi descuento',
+  exitLeave: 'No, gracias',
+  exitApplied: '🎉 Descuento aplicado a todos los packs',
 
   olvaQuestion: '¿En qué agencia Olva vas a recoger?',
   olvaFinderUrl: 'https://www.olvacourier.com/agencias/',
