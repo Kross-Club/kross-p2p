@@ -3,11 +3,13 @@
 // analítica (ni gtag, ni Pixel, ni PostHog), así que el sink por defecto es la
 // consola y la interfaz queda lista para enchufar la real sin tocar la UI.
 //
-// Los eventos que más pesan en la decisión de producto:
-//   pin_skipped  → el costo de conversión exacto del mapa. Con este número se
-//                  decide si el pin se queda o se va.
-//   coverage_checked → cuánta demanda a domicilio se pierde por ciudad; es el
-//                  insumo para negociar cobertura con el courier.
+// El evento que más pesa en la decisión de producto es `coverage_checked`: dice
+// cuánta demanda a domicilio se pierde por distrito, y es el insumo para
+// negociar cobertura con el courier.
+//
+// Los eventos de GPS y de pin quedaron fuera a propósito: el checkout ya no
+// tiene mapa. La coordenada se captura después de la venta (AddressBar, en el
+// chat del pedido), donde el comprador ya está comprometido.
 
 import type { AgencyName, CheckoutStepId, CoverageResult, LocationType } from './types'
 
@@ -17,12 +19,11 @@ export type CheckoutEvent =
   | { name: 'step_completed'; step: CheckoutStepId; msOnStep: number }
   | { name: 'field_error'; field: string }
   | { name: 'location_selected'; locationType: LocationType }
-  | { name: 'geo_optin_clicked' }
-  | { name: 'geo_permission_result'; result: 'granted' | 'denied' | 'unavailable' }
-  | { name: 'pin_adjusted' }
-  /** Llegó al mapa y siguió sin colocar el pin. */
-  | { name: 'pin_skipped' }
+  /** Veredicto de cobertura del distrito elegido. `place` = "Distrito, Provincia". */
   | { name: 'coverage_checked'; place: string; result: CoverageResult }
+  /** Se le prometió domicilio y el distrito tiene zonas de distinto costo: es
+   *  donde el distrito puede quedarse corto frente al polígono. */
+  | { name: 'coverage_zoned_district'; place: string }
   | { name: 'agency_selected'; agency: AgencyName }
   | { name: 'olva_branch_typed'; length: number }
   | { name: 'voucher_uploaded' }

@@ -8,6 +8,10 @@
 ## Componentes
 
 ### 1. Geolocalización precisa ✅ / 🔮
+
+> El pin **no está en el checkout**: se captura después de cerrar la venta, en el chat del
+> pedido. Ver §4 — la cobertura la decide el distrito, no la coordenada.
+
 - **Hoy ✅:** captura de GPS "mejor fix" en `src/components/AddressBar.tsx` — junta varias
   lecturas por unos segundos y guarda la más precisa (como las apps de taxi), evitando el
   fix grueso del primer intento. Rechaza fixes imprecisos (típico laptop/WiFi). Hace
@@ -37,29 +41,59 @@
 
 ### 4. Cobertura del courier (Aliclic / Alidriver) ✅ data · 🔮 UI
 
-`src/lib/checkout/services/CoverageService.ts` — única puerta de entrada a la cobertura.
+Hay **dos fuentes** de cobertura y cada una tiene un rol distinto. No se mezclan.
+
+#### 4.1 Por DISTRITO — es la que decide la venta ✅
+
+`src/lib/checkout/services/DistrictCoverageService.ts`
+
+- **Fuente:** tarifario oficial del courier (hoja "COBERTURA OFICIAL" de
+  *COBERTURA ALIDRIVER - ALICLIK*) → `scripts/sources/aliclic-cobertura-distritos.csv` →
+  `aliclic-districts.json` + `peru-districts.json` vía `npm run build:data`.
+- **178 distritos con cobertura a domicilio** en 28 ciudades; **483 distritos
+  seleccionables** en total. Solo **9,6 KB gzip** entre ambos, en chunks aparte.
+- El selector muestra **todo el país**, cubierto o no: quien vive donde el motorizado no
+  llega igual compra, por agencia. Nunca hay callejón sin salida.
+- El índice es la **unión** de `peru-geo.ts` y el tarifario: a `peru-geo.ts` le faltaban
+  **53 de los 178** distritos cubiertos, y esos compradores habrían ido a agencia sin
+  necesidad.
+- Veredicto: `IN_ZONE` → domicilio · `BORDERLINE` → agencia (visita semanal, o ciudad en
+  `AGENCY_ONLY_CITIES`) · `OUT_OF_ZONE` → agencia.
+- Distritos homónimos (hay un Miraflores en Lima y otro en Arequipa) se desambiguan por
+  `departamento|provincia|distrito`.
+
+**Por qué distrito y no polígono.** Se comparó el veredicto de ambas fuentes usando las
+487 sedes de Shalom como muestra de dónde hay gente y comercio: **coinciden en el 94,9 %**
+(314/331). Cobrarle un paso de mapa al 100 % de los compradores para ganar precisión en el
+5 % restante cambia conversión por exactitud, y aquí gana la conversión. Las tres ciudades
+donde el distrito se queda corto (Tumbes 60 %, Cusco 67 %, Talara 67 %) las resuelve la
+propia data: Tumbes no figura en el tarifario (queda no cubierto) y los 13 distritos
+semanales de Cusco se degradan solos. Ese proxy es geográfico, no ponderado por demanda
+real; se recalcula cuando haya pedidos con coordenadas.
+
+#### 4.2 Por POLÍGONO — análisis post-venta, no decide la venta ✅
+
+`src/lib/checkout/services/CoverageService.ts`
 
 - **Fuente:** KML oficial del courier (`scripts/sources/aliclic-cobertura.kml`) →
-  `src/data/coverage/aliclic-zones.json` vía `npm run build:data`.
-- **29 ciudades**, 148 anillos (9 de ellos agujeros = zonas excluidas dentro de un área
-  cubierta), 3.682 vértices. ~27 KB gzip, en **chunk aparte** (`import()` dinámico).
+  `aliclic-zones.json`. 29 ciudades, 148 anillos (9 agujeros = zonas excluidas dentro de
+  un área cubierta), 3.682 vértices. ~27 KB gzip, chunk aparte.
+- Se evalúa **cuando ya existe una coordenada**: la dirección guardada del comprador, o el
+  pin que captura `AddressBar` en el chat del pedido después de cerrar la venta.
 - **Los polígonos no son binarios.** Cada zona lleva un **recargo** (`ADICIONAL N` = +S/N
-  sobre la tarifa base). Se cotejó contra el tarifario oficial y calza: Trujillo base
-  S/15.50 y El Porvenir S/15.50–20.50 → delta 5 = capa `TRUJILLO ADICIONAL 5`.
-  Ese recargo es **costo de la marca, no del comprador**: se guarda en el pedido para
-  medir margen por zona, no se le traslada al cliente.
+  sobre la tarifa base). Cotejado contra el tarifario y calza: Trujillo base S/15.50 y El
+  Porvenir S/15.50–20.50 → delta 5 = capa `TRUJILLO ADICIONAL 5`. Ese recargo es **costo
+  de la marca, no del comprador**, y jamás se le traslada.
 - `surcharge: null` = la capa dice "ADICIONAL" sin monto (Cusco, Chiclayo, Lima). Hay
   recargo pero se desconoce cuánto; tratarlo como 0 subestimaría el costo.
-- **Restricciones operativas** que sí afectan la promesa al comprador: 17 zonas de Cusco y
-  7 de Chiclayo son de visita **1 vez por semana** → se degradan a `BORDERLINE` (se ofrece
-  agencia). Sullana no entrega después de las 2 pm; Paita tiene horario por volumen.
 - **Ciudades piloto:** en Ilo, Moquegua, Talara, Puerto Maldonado y Chincha la zona base
   viene rotulada "PRUEBA" en el mapa. **No es basura** — es la única zona base de esas
   ciudades y cae sobre su centro. Filtrarlas dejaba sin cobertura sus centros.
-- **Lima va en modo `DISTRICT`, no `POLYGON`,** aunque el courier tenga polígonos para
-  Lima. Es COD sin adelanto: una zona mal estimada la absorbe la marca y no tumba la
-  venta. Un mapa obligatorio en el segmento de mayor volumen cambia conversión por
-  precisión. El mapa queda disponible pero opcional (`checkout.config.ts → COVERAGE_MODE`).
+
+> **No hay mapa en el checkout.** El pin nunca fue para validar cobertura: según este
+> mismo doc, es para que el motorizado llegue a la puerta correcta. Eso es valor
+> operativo, no un requisito de venta — y se captura después, donde el comprador ya está
+> comprometido. Sin mapa no hace falta Leaflet (~42 KB) ni proveedor de tiles.
 
 ### 5. Listado de agencias ✅ Shalom · 🔮 Olva
 
@@ -89,7 +123,8 @@
 - Coordenadas siempre con precisión validada antes de guardar (ver AddressBar).
 
 ## Pendientes priorizados
-1. 🔮 Pin arrastrable + campo referencia (Fase 2 del refactor de checkout).
+1. 🔮 Pin arrastrable + campo referencia, en el chat del pedido (post-venta), no en el
+   checkout.
 2. 🔮 Route-sheet del motorizado (Lima) con cobranza por parada.
 3. 🔮 Generador de envíos a provincia (Shalom/Olva).
 4. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data

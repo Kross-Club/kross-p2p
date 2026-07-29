@@ -21,27 +21,44 @@ export const ADVANCE_PROVINCIA_PEN = 10
 // ─── Cobertura ───────────────────────────────────────────────────────────────
 
 /**
- * Modo de cobertura por región.
+ * Modo de cobertura por región. Ambas van por DISTRITO, y es una decisión
+ * medida, no una simplificación.
  *
- * Lima va en DISTRICT a propósito, aunque el courier SÍ tenga polígonos para
- * Lima: es COD sin adelanto, así que una zona mal estimada la absorbe la marca y
- * no tumba la venta. Meterle un mapa obligatorio al segmento de mayor volumen
- * cambia conversión por precisión. El mapa sigue disponible, pero opcional.
+ * Se comparó el veredicto por distrito contra los polígonos del courier usando
+ * las 487 sedes de Shalom como muestra de dónde hay gente: **coinciden en el
+ * 94,9 % de los casos**. Cobrarle un paso de mapa al 100 % de los compradores
+ * para ganar precisión en el 5 % restante cambia conversión por exactitud, y
+ * aquí gana la conversión.
+ *
+ * Los polígonos NO se descartan: se evalúan en silencio cuando existe una
+ * coordenada (dirección guardada del comprador, o el pin que captura
+ * `AddressBar` en el chat DESPUÉS de cerrar la venta) y su resultado se guarda
+ * en el pedido. Sirven para enrutar logística y para negociar cobertura, sin
+ * costar un tap.
  */
 export const COVERAGE_MODE: Record<'LIMA' | 'PROVINCIA', CoverageMode> = {
   LIMA: 'DISTRICT',
-  PROVINCIA: 'POLYGON',
+  PROVINCIA: 'DISTRICT',
 }
 
 /**
+ * Ciudades que van SIEMPRE a agencia aunque el courier declare cobertura a
+ * domicilio. Es una palanca operativa: si una ciudad empieza a fallar entregas,
+ * se agrega aquí y deja de prometerse domicilio, sin tocar código.
+ *
+ * Vacío a propósito. La data ya resuelve por sí sola los tres casos que se
+ * habían identificado como riesgosos: Tumbes no figura en el tarifario (queda
+ * como no cubierto), y los 13 distritos de visita semanal de Cusco se degradan
+ * solos por `weekly`. Blacklistear ciudades enteras encima de eso sería
+ * castigar compradores que sí reciben en casa.
+ */
+export const AGENCY_ONLY_CITIES: string[] = []
+
+/**
  * Un punto dentro de zona pero a menos de esta distancia del borde se trata como
- * BORDERLINE → se ofrece agencia. Prometer domicilio y fallar cuesta más caro
- * que ofrecer agencia de más.
+ * BORDERLINE. Solo aplica al análisis por polígono (post-venta), no al checkout.
  */
 export const BORDERLINE_THRESHOLD_M = 500
-
-/** Zoom del mapa: acotado para no disparar descargas de tiles por sesión. */
-export const MAP_ZOOM = { min: 13, max: 17, initial: 15 } as const
 
 // ─── Packs ───────────────────────────────────────────────────────────────────
 
@@ -109,11 +126,6 @@ export const COPY = {
   step2Title: '¡Genial! ¿Quién recibe el pedido?',
   dniWhy: 'Para crear tu cuenta y que puedas seguir tu pedido.',
   referencePlaceholder: 'Portón negro, frente a la bodega',
-
-  mapIntro: 'Ubica tu casa en el mapa para confirmar si nuestro motorizado llega hasta tu puerta.',
-  mapEscape: 'Si no llega a tu zona, te mostramos la agencia más cercana.',
-  mapApprox: 'Ubicación aproximada — muévela hasta tu casa',
-  useMyLocation: '📍 Usar mi ubicación actual',
 
   inZone: '¡Sí llegamos a tu puerta!',
   outOfZone: 'En tu zona la entrega es en agencia.',

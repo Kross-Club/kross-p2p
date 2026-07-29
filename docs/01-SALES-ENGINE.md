@@ -35,18 +35,23 @@
 | `validation.ts` | Schemas por paso, sin dependencias (son 4 campos; una librería no se paga sola) |
 | `persistence.ts` | Borrador en `localStorage` por `orderId`, TTL 24 h. Nunca revienta |
 | `analytics.ts` | `trackEvent()` con interfaz lista para enchufar Pixel/GA4 |
-| `services/` | `CoverageService`, `AgencyService`, `PaymentVerificationService` |
+| `services/` | `DistrictCoverageService` (decide la venta), `CoverageService` (polígonos, post-venta), `AgencyService`, `PaymentVerificationService` |
 
 - **3 pasos:** pack → datos+entrega → resumen+pago. El adelanto de provincia es
   **S/10** (`ADVANCE_PROVINCIA_PEN`); Lima va 100 % contraentrega.
 - **Idempotencia:** cada checkout nace con un `orderId` uuid. `register-buyer` debe
   aceptarlo para que un doble tap no genere dos pedidos (pendiente, Fase 3).
-- **El pin nunca bloquea.** En Lima es opcional por diseño; en provincia, si el comprador
-  lo ignora o el mapa falla, la rama de agencia queda abierta y el pedido se cierra igual.
-- 54 tests contra la data real del courier y de Shalom: `npm test`.
+- **No hay mapa en el checkout.** La cobertura se decide por **distrito** (178 cubiertos,
+  483 seleccionables, 9,6 KB gzip). Coincide con los polígonos en el 94,9 % de los casos,
+  y el mapa costaba un paso a todos para ganar precisión en el 5 %. Ver
+  [`02-LOGISTICS §4`](./02-SMART-LOGISTICS.md). La coordenada se captura después de la
+  venta, en el chat del pedido.
+- **La rama de agencia siempre está abierta**: distrito sin cobertura, zona de visita
+  semanal o simple preferencia del comprador — el pedido se cierra igual.
+- 64 tests contra la data real del courier y de Shalom: `npm test`.
 
-- **Pendiente 🔮:** Fase 2 (UI de pasos 1–2, mapa, ramas de agencia), Fase 3 (pago,
-  comprobante, submit, verificación), Fase 4 (instrumentación y pulido).
+- **Pendiente 🔮:** Fase 2 (UI de pasos 1–2, selector de distrito, ramas de agencia),
+  Fase 3 (pago, comprobante, submit, verificación), Fase 4 (instrumentación y pulido).
 - ⚠️ `src/lib/checkout-flow.ts` y el cuerpo de `CheckoutQuiz.tsx` quedan **en pie hasta
   que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
   `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 2.
@@ -98,9 +103,9 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 
 ## Pendientes priorizados (dónde retomar)
 1. 🔮 **Fase 2 del checkout:** UI de pasos 1–2 sobre `src/lib/checkout/machine.ts`
-   (selector de pack, datos, mapa con pin, ramas Shalom/Olva). El núcleo ya existe.
-   Requiere instalar `leaflet` (~42 KB gzip, con `import()` dinámico) y una key de tiles
-   (`VITE_MAP_TILE_URL`, `VITE_MAP_TILE_KEY`) — OSM público no aguanta tráfico de anuncios.
+   (selector de pack, datos, selector de distrito con búsqueda, ramas Shalom/Olva). El
+   núcleo ya existe. **Sin dependencias nuevas**: no hay mapa, así que no hace falta
+   Leaflet ni proveedor de tiles.
 2. 🔮 **Fase 3:** paso 3, bucket `vouchers`, submit idempotente por `orderId`,
    suscripción al veredicto del adelanto, pantalla de confirmación.
 3. 🔮 **Lead parcial (`DRAFT`)**: Edge Function + tabla `checkout_drafts`. Se guarda apenas

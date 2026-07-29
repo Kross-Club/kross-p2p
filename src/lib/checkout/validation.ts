@@ -88,8 +88,8 @@ function validateStep2(s: CheckoutState): FieldErrors {
   }
 
   const p = s.provinciaConfig
-  if (!p?.city) {
-    e.city = 'Elige tu ciudad'
+  if (!p?.district) {
+    e.district = 'Elige tu distrito'
     return e
   }
 
@@ -99,8 +99,8 @@ function validateStep2(s: CheckoutState): FieldErrors {
     return e
   }
 
-  // Rama agencia. Es la salida que SIEMPRE está abierta: si el comprador ignoró
-  // el mapa, `deliveryMethod` es null y aquí se le pide elegir agencia.
+  // Rama agencia. Es la salida que SIEMPRE está abierta: si el distrito no tiene
+  // cobertura a domicilio, o el comprador la prefiere, aquí elige su sede.
   if (!p.selectedAgency) {
     e.agency = 'Elige tu agencia de recojo'
     return e

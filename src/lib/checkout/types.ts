@@ -52,6 +52,11 @@ export interface LimaAddress {
 }
 
 export interface ProvinciaConfig {
+  /** Distrito elegido: es lo que DECIDE la cobertura. */
+  department: string | null
+  province: string | null
+  district: string | null
+  /** Ciudad/agencia del courier a la que pertenece el distrito (derivado). */
   city: string | null
   lat: number | null
   lng: number | null
@@ -124,6 +129,36 @@ export interface CoverageCheck {
   /** Distancia en metros al borde más cercano. */
   distanceToEdgeM: number | null
   /** Motivo legible del veredicto — se registra, no se muestra al comprador. */
+  reason: string
+}
+
+/** Una opción del selector de distrito: todo el país, con su cobertura resuelta. */
+export interface DistrictOption {
+  department: string
+  province: string
+  district: string
+  covered: boolean
+  city: string | null
+  weekly: boolean
+  eta: string | null
+}
+
+/** Veredicto de cobertura por distrito — el que decide la rama del checkout. */
+export interface DistrictCoverage {
+  result: CoverageResult
+  /** Ciudad/agencia del courier. */
+  city: string | null
+  /** Tiempo de entrega declarado por el courier ("48h"). */
+  eta: string | null
+  /** Tarifa base del courier en soles. Costo de la marca, no del comprador. */
+  tariff: number | null
+  /** El courier solo visita esta zona una vez por semana. */
+  weekly: boolean
+  /** Entrega restringida a días hábiles. */
+  weekdaysOnly: boolean
+  /** El tarifario da un rango: dentro del distrito hay zonas de distinto costo. */
+  zoned: boolean
+  /** Motivo legible del veredicto — se registra, no se le muestra al comprador. */
   reason: string
 }
 

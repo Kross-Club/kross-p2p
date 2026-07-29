@@ -1,15 +1,20 @@
-// ─── SMART LOGISTICS · Servicio de cobertura ─────────────────────────────────
-// Única puerta de entrada a la data de cobertura del courier (Aliclic). La UI
-// habla SOLO con esta interfaz: reemplazar el JSON generado por una API real no
-// debe tocar ni un componente.
+// ─── SMART LOGISTICS · Cobertura por POLÍGONO (análisis, no venta) ───────────
+// Los polígonos del courier NO deciden el checkout — eso lo hace
+// DistrictCoverageService. Este servicio se usa cuando YA existe una coordenada:
+// la dirección guardada del comprador, o el pin que captura AddressBar en el
+// chat del pedido después de cerrar la venta.
+//
+// Para qué sirve entonces: enriquecer el pedido con el veredicto fino
+// (`coverage_result`, `courier_surcharge`) para que Logística enrute bien y para
+// medir venta perdida por zona al negociar con el courier. Todo eso sin costarle
+// un tap al comprador.
 //
 // La data sale de scripts/build-coverage.mjs (KML oficial del courier → JSON).
-// Los polígonos NO son binarios: cada zona lleva un recargo. Ese recargo es
-// costo de la marca, no del comprador — se guarda para medir margen por zona.
+// Cada zona lleva un recargo (`ADICIONAL N`): es costo de la marca, no del
+// comprador, y jamás se le traslada.
 //
-// El JSON pesa ~96 KB y se carga con import() dinámico: NO entra al bundle
-// inicial. Solo se descarga cuando el comprador entra a la rama de provincia,
-// que es la única que lo necesita. Por eso todos los métodos son async.
+// El JSON pesa ~96 KB y se carga con import() dinámico: no entra al bundle
+// inicial. Por eso todos los métodos son async.
 
 import { BORDERLINE_THRESHOLD_M, COVERAGE_MODE } from '../checkout.config'
 import { nearestEdgeM, pointInPolygon } from '../../geo/point-in-polygon'

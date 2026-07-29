@@ -10,6 +10,7 @@ import { clearDraft, loadActiveDraft, saveDraft } from './persistence'
 import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M } from './checkout.config'
 import { CoverageService, coveredCities } from './services/CoverageService'
 import { AgencyService, suggestFreeText } from './services/AgencyService'
+import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
 import type { CheckoutState } from './types'
 
 const run = (state: CheckoutState, ...actions: CheckoutAction[]): CheckoutState =>
@@ -37,24 +38,45 @@ describe('máquina · derivados', () => {
     expect(withPin.needsLocationConfirmation).toBe(false)
   })
 
-  it('un resultado BORDERLINE deja needsLocationConfirmation en true', () => {
+  it('una zona de visita semanal manda a agencia y avisa al comprador', () => {
     const s = run(base(),
       { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_CITY', city: 'TRUJILLO' },
-      { type: 'SET_PROVINCIA_PIN', lat: -8.09, lng: -79.02 },
-      { type: 'SET_COVERAGE', check: { result: 'BORDERLINE', zone: null, distanceToEdgeM: 120, reason: 'test' } },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'Cusco', province: 'Cusco', district: 'Poroy' },
+      { type: 'SET_COVERAGE', check: {
+        result: 'BORDERLINE', city: 'CUSCO', eta: '72h (entrega 1 vez por semana)',
+        tariff: 21.5, weekly: true, weekdaysOnly: false, zoned: false, reason: 'semanal',
+      } },
     )
-    expect(s.needsLocationConfirmation).toBe(true)
     expect(s.provinciaConfig?.deliveryMethod).toBe('AGENCIA')
+    // Recoge en agencia: no hay puerta que ubicar, así que no queda pendiente.
+    expect(s.needsLocationConfirmation).toBe(false)
+    // El aviso SÍ se le muestra: prometer 48h donde el courier pasa una vez por
+    // semana es justo el reclamo que se quiere evitar.
+    expect(s.deliveryNote).toMatch(/una vez por semana/)
+  })
+
+  it('domicilio prometido sin coordenada queda marcado para Logística', () => {
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_COVERAGE', check: {
+        result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 15.5,
+        weekly: false, weekdaysOnly: false, zoned: false, reason: '',
+      } },
+    )
+    expect(s.provinciaConfig?.deliveryMethod).toBe('DOMICILIO')
+    // El pedido se cierra igual; la coordenada se afina después en el chat.
+    expect(s.needsLocationConfirmation).toBe(true)
   })
 
   it('IN_ZONE ofrece domicilio y OUT_OF_ZONE ofrece agencia', () => {
     const withCity = run(base(),
       { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_CITY', city: 'TRUJILLO' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
     )
-    const inZone = run(withCity, { type: 'SET_COVERAGE', check: { result: 'IN_ZONE', zone: null, distanceToEdgeM: 900, reason: '' } })
-    const outZone = run(withCity, { type: 'SET_COVERAGE', check: { result: 'OUT_OF_ZONE', zone: null, distanceToEdgeM: null, reason: '' } })
+    const cov = { city: 'TRUJILLO', eta: '48h', tariff: 15.5, weekly: false, weekdaysOnly: false, zoned: false, reason: '' }
+    const inZone = run(withCity, { type: 'SET_COVERAGE', check: { ...cov, result: 'IN_ZONE' } })
+    const outZone = run(withCity, { type: 'SET_COVERAGE', check: { ...cov, result: 'OUT_OF_ZONE' } })
     expect(inZone.provinciaConfig?.deliveryMethod).toBe('DOMICILIO')
     expect(outZone.provinciaConfig?.deliveryMethod).toBe('AGENCIA')
   })
@@ -62,14 +84,13 @@ describe('máquina · derivados', () => {
   it('guarda el recargo del courier sin tocar el adelanto del comprador', () => {
     const s = run(base(),
       { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_CITY', city: 'TRUJILLO' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'SET_COVERAGE', check: {
-        result: 'IN_ZONE',
-        zone: { label: 'TRUJILLO ADICIONAL 5', surcharge: 5, weekly: false, pilot: false, note: null },
-        distanceToEdgeM: 800, reason: '',
+        result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 15.5,
+        weekly: false, weekdaysOnly: false, zoned: true, reason: '',
       } },
     )
-    expect(s.courierSurcharge).toBe(5)
+    expect(s.courierSurcharge).toBe(15.5)
     expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN) // el recargo NO se le traslada
   })
 
@@ -125,7 +146,7 @@ describe('validación', () => {
       { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
       { type: 'SET_DNI', dni: '12345678' },
       { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_CITY', city: 'TRUJILLO' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'CHOOSE_AGENCY_BRANCH_FLOW' },
       { type: 'SET_AGENCY', agency: 'SHALOM' },
       { type: 'SET_AGENCY_BRANCH', branchId: '4' },
@@ -138,7 +159,7 @@ describe('validación', () => {
   it('Olva acepta texto libre en vez de sede', () => {
     const withOlva = run(base(),
       { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_CITY', city: 'TRUJILLO' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'SET_AGENCY', agency: 'OLVA' },
       { type: 'GOTO', step: 2 },
     )
@@ -320,5 +341,66 @@ describe('AgencyService · data real de Shalom', () => {
   it('sugiere texto ya escrito por otros compradores, sin duplicar', () => {
     const s = suggestFreeText(['Olva Av. España', 'olva av. españa', 'Olva Centro'], 'olva')
     expect(s).toEqual(['Olva Av. España', 'Olva Centro'])
+  })
+})
+
+describe('DistrictCoverageService · data real del tarifario', () => {
+  it('carga los 178 distritos cubiertos y los 483 seleccionables', async () => {
+    const all = await DistrictCoverageService.listDistricts()
+    expect(all.length).toBe(483)
+    expect(all.filter(d => d.covered).length).toBe(178)
+  })
+
+  it('el selector incluye distritos SIN cobertura, para que igual puedan comprar', async () => {
+    const all = await DistrictCoverageService.listDistricts()
+    expect(all.filter(d => !d.covered).length).toBeGreaterThan(200)
+    const mp = all.find(d => d.district === 'Machu Picchu')
+    expect(mp?.covered).toBe(false)
+  })
+
+  it('un distrito cubierto ofrece domicilio', async () => {
+    const c = await DistrictCoverageService.checkDistrict('Lima', 'Lima', 'Miraflores')
+    expect(c.result).toBe('IN_ZONE')
+    expect(c.city).toBe('LIMA')
+    expect(c.eta).toContain('24h')
+  })
+
+  it('un distrito sin cobertura manda a agencia sin bloquear', async () => {
+    const c = await DistrictCoverageService.checkDistrict('Cusco', 'Urubamba', 'Machu Picchu')
+    expect(c.result).toBe('OUT_OF_ZONE')
+    expect(methodForCoverage(c.result)).toBe('AGENCIA')
+  })
+
+  it('un distrito de visita semanal se degrada a BORDERLINE', async () => {
+    const c = await DistrictCoverageService.checkDistrict('Cusco', 'Cusco', 'Poroy')
+    expect(c.result).toBe('BORDERLINE')
+    expect(c.weekly).toBe(true)
+    expect(methodForCoverage(c.result)).toBe('AGENCIA')
+  })
+
+  it('desambigua distritos homónimos por departamento', async () => {
+    // Hay un Miraflores en Lima y otro en Arequipa: no pueden confundirse.
+    const lima = await DistrictCoverageService.checkDistrict('Lima', 'Lima', 'Miraflores')
+    const aqp = await DistrictCoverageService.checkDistrict('Arequipa', 'Arequipa', 'Miraflores')
+    expect(lima.city).toBe('LIMA')
+    expect(aqp.city).toBe('AREQUIPA')
+  })
+
+  it('tolera tildes y mayúsculas en el nombre del distrito', async () => {
+    const a = await DistrictCoverageService.checkDistrict('lima', 'LIMA', 'miraflores')
+    const b = await DistrictCoverageService.checkDistrict('Ayacucho', 'Huamanga', 'Jesús Nazareno')
+    expect(a.result).toBe('IN_ZONE')
+    expect(b.result).toBe('IN_ZONE')
+  })
+
+  it('los 53 distritos que peru-geo.ts no lista siguen siendo seleccionables', async () => {
+    // Si se cayeran, esos compradores irían a agencia sin necesidad.
+    const chupaca = await DistrictCoverageService.search('Chupaca')
+    expect(chupaca.some(d => d.district === 'Chupaca' && d.covered)).toBe(true)
+  })
+
+  it('la búsqueda encuentra por distrito, provincia o departamento', async () => {
+    expect((await DistrictCoverageService.search('surco')).length).toBeGreaterThan(0)
+    expect(await DistrictCoverageService.search('zzz-no-existe')).toHaveLength(0)
   })
 })

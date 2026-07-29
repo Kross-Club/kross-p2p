@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:data": "node scripts/build-coverage.mjs && node scripts/build-agencies.mjs"
+    "build:data": "node scripts/build-coverage.mjs && node scripts/build-districts.mjs && node scripts/build-agencies.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.1",

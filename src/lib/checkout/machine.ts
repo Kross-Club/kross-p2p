@@ -6,11 +6,10 @@
 // `courierSurcharge` y `deliveryNote` son DERIVADOS. Ninguna acción los setea
 // directamente — se recalculan en `derive()` después de cada cambio.
 
-import {
-  ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_PEN, COVERAGE_MODE,
-} from './checkout.config'
+import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_PEN } from './checkout.config'
+import { methodForCoverage } from './services/DistrictCoverageService'
 import type {
-  AgencyName, CheckoutState, CheckoutStepId, CoverageCheck, CoverageResult,
+  AgencyName, CheckoutState, CheckoutStepId, DistrictCoverage,
   LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig,
 } from './types'
 
@@ -54,9 +53,9 @@ export type CheckoutAction =
   | { type: 'SET_LIMA_DISTRICT'; district: string }
   | { type: 'SET_LIMA_ADDRESS'; addressText?: string; reference?: string }
   | { type: 'SET_LIMA_PIN'; lat: number; lng: number; addressText?: string }
-  | { type: 'SET_PROVINCIA_CITY'; city: string }
+  | { type: 'SET_PROVINCIA_DISTRICT'; department: string; province: string; district: string }
   | { type: 'SET_PROVINCIA_PIN'; lat: number; lng: number }
-  | { type: 'SET_COVERAGE'; check: CoverageCheck }
+  | { type: 'SET_COVERAGE'; check: DistrictCoverage }
   /** El comprador ignora el mapa o insiste en domicilio: manda su elección. */
   | { type: 'CHOOSE_AGENCY_BRANCH_FLOW' }
   | { type: 'RETRY_DOMICILIO' }
@@ -76,17 +75,9 @@ export type CheckoutAction =
 
 const EMPTY_LIMA: LimaAddress = { district: null, lat: null, lng: null, addressText: '', reference: '' }
 const EMPTY_PROVINCIA: ProvinciaConfig = {
-  city: null, lat: null, lng: null, coverageResult: null, deliveryMethod: null,
+  department: null, province: null, district: null, city: null,
+  lat: null, lng: null, coverageResult: null, deliveryMethod: null,
   selectedAgency: null, selectedAgencyBranchId: null, olvaBranchText: null,
-}
-
-/** Traduce el veredicto de cobertura al método de entrega que se le ofrece. */
-function methodFor(result: CoverageResult | null): 'DOMICILIO' | 'AGENCIA' | null {
-  if (result === 'IN_ZONE') return 'DOMICILIO'
-  // OUT_OF_ZONE y BORDERLINE van a agencia. BORDERLINE es deliberado: prometer
-  // puerta a puerta al filo del área es el reclamo que queremos evitar.
-  if (result === 'OUT_OF_ZONE' || result === 'BORDERLINE') return 'AGENCIA'
-  return null
 }
 
 /**
@@ -97,17 +88,13 @@ function derive(s: CheckoutState): CheckoutState {
   const isProvincia = s.locationType === 'PROVINCIA'
   const advanceAmount = isProvincia ? ADVANCE_PROVINCIA_PEN : ADVANCE_LIMA_PEN
 
-  // Falta confirmar ubicación si no hay pin donde el modo lo requiere, o si el
-  // punto quedó al filo de la zona.
-  let needsLocationConfirmation = false
-  if (isProvincia && COVERAGE_MODE.PROVINCIA === 'POLYGON') {
-    const p = s.provinciaConfig
-    needsLocationConfirmation = p?.lat == null || p?.coverageResult === 'BORDERLINE'
-  } else if (s.locationType === 'LIMA') {
-    // En modo DISTRICT el pin es opcional: se cierra el pedido igual, pero queda
-    // marcado para que Logística confirme la dirección antes de despachar.
-    needsLocationConfirmation = s.limaAddress?.lat == null
-  }
+  // El pedido se cierra SIN coordenada: la cobertura se decide por distrito. La
+  // marca queda para que Logística afine la dirección después (AddressBar en el
+  // chat del pedido), no para bloquear la venta.
+  const needsLocationConfirmation =
+    isProvincia ? s.provinciaConfig?.deliveryMethod === 'DOMICILIO' && s.provinciaConfig?.lat == null
+      : s.locationType === 'LIMA' ? s.limaAddress?.lat == null
+        : false
 
   // El adelanto solo entra a verificación si realmente hay algo que verificar.
   const verification: PaymentVerification =
@@ -171,12 +158,22 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         addressText: lima().addressText || action.addressText || '',
       } })
 
-    case 'SET_PROVINCIA_CITY': {
-      if (prov().city === action.city) return state
-      // Otra ciudad → el veredicto anterior ya no aplica.
+    case 'SET_PROVINCIA_DISTRICT': {
+      const p = prov()
+      if (p.district === action.district && p.province === action.province && p.department === action.department) return state
+      // Otro distrito → el veredicto anterior ya no aplica.
       return derive({
         ...state,
-        provinciaConfig: { ...prov(), city: action.city, lat: null, lng: null, coverageResult: 'NOT_CHECKED', deliveryMethod: null },
+        provinciaConfig: {
+          ...p,
+          department: action.department,
+          province: action.province,
+          district: action.district,
+          city: null,
+          lat: null, lng: null,
+          coverageResult: 'NOT_CHECKED',
+          deliveryMethod: null,
+        },
         courierSurcharge: null,
         deliveryNote: null,
       })
@@ -187,11 +184,23 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
 
     case 'SET_COVERAGE': {
       const { check } = action
+      // El aviso operativo SÍ se le muestra al comprador: prometer 48h donde el
+      // courier pasa una vez por semana es el reclamo que queremos evitar.
+      const note = check.weekly
+        ? 'En tu zona el courier pasa una vez por semana.'
+        : check.weekdaysOnly ? 'En tu zona se entrega solo de lunes a viernes.' : null
+
       return derive({
         ...state,
-        provinciaConfig: { ...prov(), coverageResult: check.result, deliveryMethod: methodFor(check.result) },
-        courierSurcharge: check.zone?.surcharge ?? null,
-        deliveryNote: check.zone?.weekly ? 'Esta zona recibe visita del courier una vez por semana.' : null,
+        provinciaConfig: {
+          ...prov(),
+          city: check.city,
+          coverageResult: check.result,
+          deliveryMethod: methodForCoverage(check.result),
+        },
+        // Tarifa del courier: costo de la marca, jamás se le traslada al comprador.
+        courierSurcharge: check.tariff,
+        deliveryNote: note,
       })
     }
 
