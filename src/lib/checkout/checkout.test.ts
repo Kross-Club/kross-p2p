@@ -260,6 +260,42 @@ describe('persistencia', () => {
     clearDraft(s.orderId)
     expect(loadActiveDraft()).toBeNull()
   })
+
+  // Regresión: los borradores guardados antes de que existiera `discountPen`
+  // volvían sin ese campo y el paso 1 hacía `precio - undefined` → S/NaN en
+  // TODOS los packs. No se descarta el borrador: se completa con los defaults.
+  it('un borrador de una versión anterior se completa en vez de romper la pantalla', () => {
+    const s = run(base(), { type: 'SET_WHATSAPP', whatsapp: '987654321' })
+    saveDraft(s)
+
+    const key = `kross_checkout:${s.orderId}`
+    const stored = JSON.parse(localStorage.getItem(key)!)
+    // Así se veía el estado antes de la Fase 2.5: sin descuento de retención.
+    delete stored.state.discountPen
+    delete stored.state.exitOfferShown
+    localStorage.setItem(key, JSON.stringify(stored))
+
+    const restored = loadActiveDraft()!
+    expect(restored.customerInfo.whatsapp).toBe('987654321') // no se perdió nada
+    expect(restored.discountPen).toBe(0)
+    expect(restored.exitOfferShown).toBe(false)
+    expect(effectivePrice(129, restored.discountPen)).toBe(129)
+  })
+
+  it('un número corrupto en el borrador no se propaga como NaN', () => {
+    const s = base()
+    saveDraft(s)
+    const key = `kross_checkout:${s.orderId}`
+    const stored = JSON.parse(localStorage.getItem(key)!)
+    stored.state.discountPen = null
+    stored.state.advanceAmount = 'diez'
+    localStorage.setItem(key, JSON.stringify(stored))
+
+    const restored = loadActiveDraft()!
+    expect(restored.discountPen).toBe(0)
+    expect(restored.advanceAmount).toBe(0)
+    expect(Number.isNaN(effectivePrice(129, restored.discountPen))).toBe(false)
+  })
 })
 
 describe('CoverageService · data real del courier', () => {

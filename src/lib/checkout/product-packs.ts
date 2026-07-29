@@ -10,6 +10,13 @@ export interface RawPack {
   nombre: string
   descripcion?: string
   precio: number
+  /**
+   * Imagen propia del pack, si la marca la cargó. Es opcional a propósito: hoy
+   * ninguna la declara y el fallback es la primera imagen de la landing, que es
+   * la MISMA para los tres packs. Una foto repetida no distingue nada — lo que
+   * distingue es la cantidad, y de eso se encarga el badge `×N` del paso 1.
+   */
+  image?: string
 }
 
 export interface PackOption {
@@ -58,7 +65,7 @@ export function buildPackSelection(
     descripcion: p.descripcion,
     precio: p.precio,
     unidades: unitsOf(p.nombre),
-    image: images[0],
+    image: p.image ?? images[0],
   }))
 
   // El precio unitario sale del pack más chico, no del precio del producto: si
@@ -76,5 +83,11 @@ export function buildPackSelection(
  * el descuento por su cuenta, el resumen y el paso 1 podrían discrepar.
  */
 export function effectivePrice(precio: number, discountPen: number): number {
-  return Math.max(0, precio - discountPen)
+  // Cinturón y tirantes: si algo no numérico llega hasta aquí (un borrador viejo,
+  // un pack mal cargado), se ignora en vez de pintar `S/NaN` donde va el precio.
+  // Un precio que no se entiende es una venta perdida; el descuento no aplicado
+  // es, en el peor caso, S/5 menos de descuento.
+  const base = Number.isFinite(precio) ? precio : 0
+  const off = Number.isFinite(discountPen) ? discountPen : 0
+  return Math.max(0, base - off)
 }

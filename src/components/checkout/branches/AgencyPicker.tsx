@@ -1,11 +1,14 @@
 // ─── Rama agencia · Shalom y Olva ────────────────────────────────────────────
-// Las dos agencias NO se comportan igual y por eso no comparten componente:
-//   Shalom → 487 sedes con coordenadas: se muestran las 3 más cercanas con su
-//            distancia real y se preselecciona la primera.
-//   Olva   → sin listado: texto libre, enlace a su buscador, y el pedido queda
-//            marcado para verificación manual de Logística.
-// Shalom va primero y marcada como recomendada: la ruta fácil debe ser también
-// la ruta por defecto.
+// Las dos tienen listado con coordenadas (487 y 424 sedes), así que las resuelve
+// el MISMO componente: se muestran las 3 más cercanas con su distancia real y se
+// preselecciona la primera. Quién tiene listado y quién no lo decide
+// `AgencyService.hasBranchList`, nunca un `if (agency === 'OLVA')` aquí.
+//
+// Las agencias sin listado (hoy solo `OTRO`) caen a texto libre y el pedido
+// queda marcado para verificación manual de Logística.
+//
+// Shalom va primero y marcada como recomendada: su adelanto es la mitad, y la
+// ruta más barata para el comprador debe ser también la ruta por defecto.
 
 import { useEffect, useState } from 'react'
 import { ExternalLink, Store, Check } from 'lucide-react'

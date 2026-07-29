@@ -68,13 +68,24 @@ export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPa
                 </span>
               )}
 
+              {/* La foto es la misma en los tres packs mientras la marca no
+                  cargue una por pack, así que lo que de verdad los distingue es
+                  la cantidad: va encima, como badge. */}
               {pack.image && (
-                <img
-                  src={pack.image}
-                  alt=""
-                  className="w-14 h-14 rounded-xl object-cover flex-shrink-0 bg-gray-100"
-                  loading="lazy"
-                />
+                <span className="relative flex-shrink-0">
+                  <img
+                    src={pack.image}
+                    alt=""
+                    className="w-14 h-14 rounded-xl object-cover bg-gray-100"
+                    loading="lazy"
+                  />
+                  {pack.unidades > 1 && (
+                    <span className="absolute -bottom-1 -right-1 text-[10px] font-black text-white rounded-full px-1.5 py-0.5 shadow"
+                      style={{ background: '#111827' }}>
+                      ×{pack.unidades}
+                    </span>
+                  )}
+                </span>
               )}
 
               <span className="flex-1 min-w-0">

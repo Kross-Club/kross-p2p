@@ -7,6 +7,7 @@
 // el checkout sigue funcionando sin persistencia.
 
 import { DRAFT_STORAGE_PREFIX, DRAFT_TTL_MS } from './checkout.config'
+import { initialCheckoutState } from './machine'
 import type { CheckoutState } from './types'
 
 /** Puntero al borrador activo, para poder recuperarlo sin conocer el orderId. */
@@ -32,6 +33,36 @@ export function saveDraft(state: CheckoutState): void {
   }
 }
 
+const finite = (v: unknown, fallback: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fallback
+
+/**
+ * Completa un borrador guardado por una versión ANTERIOR del checkout con los
+ * valores por defecto de hoy. Rellenar es mejor que descartar: el borrador es el
+ * avance del comprador, y tirarlo por un campo nuevo le cuesta la venta.
+ *
+ * Pasó de verdad: los borradores anteriores a `discountPen` volvían sin ese
+ * campo, y el paso 1 hacía `precio - undefined` → **todos los packs mostraban
+ * `S/NaN`**. Un comprador que ve NaN donde va el precio no compra.
+ */
+function hydrate(saved: CheckoutState): CheckoutState {
+  const base = initialCheckoutState()
+  return {
+    ...base,
+    ...saved,
+    // Los objetos anidados se completan aparte: el spread de arriba los
+    // reemplaza enteros, así que un campo nuevo dentro de ellos se perdería.
+    customerInfo: { ...base.customerInfo, ...saved.customerInfo },
+    payment: { ...base.payment, ...saved.payment },
+    // Los números que entran a aritmética se validan de verdad, no solo por
+    // ausencia: basta un `null` guardado para propagar NaN a toda la pantalla.
+    discountPen: finite(saved.discountPen, base.discountPen),
+    advanceAmount: finite(saved.advanceAmount, base.advanceAmount),
+    // El estado de envío no sobrevive a la recarga: se retoma como borrador.
+    status: 'DRAFT',
+  }
+}
+
 function readDraft(orderId: string): CheckoutState | null {
   try {
     const raw = localStorage.getItem(keyFor(orderId))
@@ -44,12 +75,10 @@ function readDraft(orderId: string): CheckoutState | null {
       clearDraft(orderId)
       return null
     }
-    // Un borrador de una versión anterior del estado podría no tener los campos
-    // que la UI espera; se descarta en vez de arrastrar un estado a medias.
+    // Sin estas dos llaves no hay nada que retomar: eso sí se descarta.
     if (!parsed.state.orderId || typeof parsed.state.step !== 'number') return null
 
-    // El estado de envío no sobrevive a la recarga: se retoma como borrador.
-    return { ...parsed.state, status: 'DRAFT' }
+    return hydrate(parsed.state)
   } catch {
     return null
   }

@@ -187,11 +187,22 @@ export const COPY = {
   verifyMatched: '¡Pago confirmado! Tu pedido está en camino.',
   verifyUnmatched: 'Recibimos tu comprobante, un asesor lo está validando.',
 
-  exitTitle: '¡Espera! Te dejamos S/5 de descuento',
-  exitBody: 'Aplícalo ahora y se descuenta de cualquier pack que elijas.',
+  // El monto NO va escrito en el copy: lo pone el componente desde
+  // EXIT_DISCOUNT_PEN. Así cambiar el descuento es editar un solo número y no
+  // deja textos mintiendo un monto viejo.
+  exitBadge: 'SOLO POR ESTA VEZ',
+  exitTitle: '¡Espera! No te vayas con las manos vacías',
+  exitAmountLabel: 'de descuento en tu pedido',
+  exitBody: 'Se aplica a cualquier pack que elijas. Si sales ahora, lo pierdes.',
   exitApply: 'Aplicar mi descuento',
   exitLeave: 'No, gracias',
   exitApplied: '🎉 Descuento aplicado a todos los packs',
+
+  // Variante sin descuento: cuando ya se le ofreció una vez, o ya lo aceptó.
+  exitConfirmTitle: '¿Salir sin terminar?',
+  exitConfirmBody: 'Guardamos tu avance por 24 horas: puedes volver donde lo dejaste.',
+  exitConfirmStay: 'Seguir comprando',
+  exitConfirmLeave: 'Salir',
 
   olvaQuestion: '¿En qué agencia Olva vas a recoger?',
   olvaFinderUrl: 'https://www.olvacourier.com/agencias/',

@@ -15,6 +15,7 @@ import type { CheckoutState } from '../../lib/checkout/types'
 import Step1Pack from './steps/Step1Pack'
 import type { PackOption } from './steps/Step1Pack'
 import Step2Delivery from './steps/Step2Delivery'
+import ExitOffer from './ExitOffer'
 
 const STEP_LABEL = ['Tu pack', 'Tus datos', 'Confirmar'] as const
 const TOTAL_STEPS = 3
@@ -40,12 +41,17 @@ export default function CheckoutModal({
   const [offerDiscount, setOfferDiscount] = useState(false)
 
   const requestClose = useCallback(() => {
+    // Con el diálogo de salida ya abierto, cualquier nuevo intento de cerrar
+    // (Esc, clic en el fondo) significa "quedarme": nunca se pierde la venta por
+    // una tecla repetida. Salir de verdad es un botón explícito del diálogo.
+    if (confirmingClose) { setConfirmingClose(false); return }
+
     // Con data ingresada se pide confirmación: cerrar por error tras llenar
     // cuatro campos es perder la venta. Nada de confirm() nativo.
     //
     // En móvil no existe `mouseleave`, así que el disparador real del
     // exit-intent es este: el toque en la X (o Esc en desktop).
-    if (co.isDirty && !confirmingClose) {
+    if (co.isDirty) {
       // El descuento se ofrece una sola vez por checkout: insistir cada vez le
       // enseña al comprador que salir es la forma de conseguirlo. `exitOfferShown`
       // vive en el estado, así que la regla sobrevive a una recarga.
@@ -179,108 +185,54 @@ export default function CheckoutModal({
           className="px-5 pt-3 border-t border-gray-100 flex-shrink-0 bg-white sm:rounded-b-3xl"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
-          {confirmingClose ? (
-            <ConfirmClose
-              offerDiscount={offerDiscount}
-              onApplyDiscount={() => {
-                dispatch({ type: 'APPLY_EXIT_DISCOUNT' })
-                trackEvent({ name: 'exit_discount_applied', amount: EXIT_DISCOUNT_PEN })
-                setConfirmingClose(false)
-                // Vuelve al paso 1 para que vea los precios nuevos: el descuento
-                // que no se ve no retiene a nadie.
-                co.goTo(1)
-              }}
-              onCancel={() => setConfirmingClose(false)}
-              onConfirm={() => { co.abandon(); onClose() }}
-            />
-          ) : (
-            <div className="flex items-center gap-2">
-              {state.step > 1 && (
-                <button
-                  onClick={co.back}
-                  className="flex items-center justify-center gap-1 px-4 py-4 rounded-2xl bg-gray-100 text-gray-600 font-black text-sm
-                    focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
-                >
-                  <ArrowLeft size={16} /> Atrás
-                </button>
-              )}
+          <div className="flex items-center gap-2">
+            {state.step > 1 && (
               <button
-                onClick={co.next}
-                aria-disabled={!co.canAdvance}
-                className={`flex-1 font-black py-4 rounded-2xl text-base shadow-lg transition-transform active:scale-95
-                  focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500
-                  ${co.canAdvance ? 'bg-green-500 text-white shadow-green-200' : 'bg-green-300 text-white cursor-not-allowed'}`}
+                onClick={co.back}
+                className="flex items-center justify-center gap-1 px-4 py-4 rounded-2xl bg-gray-100 text-gray-600 font-black text-sm
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
               >
-                Continuar →
+                <ArrowLeft size={16} /> Atrás
               </button>
-            </div>
-          )}
+            )}
+            <button
+              onClick={co.next}
+              aria-disabled={!co.canAdvance}
+              className={`flex-1 font-black py-4 rounded-2xl text-base shadow-lg transition-transform active:scale-95
+                focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500
+                ${co.canAdvance ? 'bg-green-500 text-white shadow-green-200' : 'bg-green-300 text-white cursor-not-allowed'}`}
+            >
+              Continuar →
+            </button>
+          </div>
 
           {/* Un botón gris sin explicación se lee como un error. */}
-          {!confirmingClose && !co.canAdvance && state.step === 2 && (
+          {!co.canAdvance && state.step === 2 && (
             <p className="text-[11px] text-gray-400 text-center mt-2">
               Completa los datos marcados para continuar
             </p>
           )}
         </div>
       </div>
+
+      {/* Va DENTRO del fragmento pero fuera del panel: es un diálogo propio,
+          centrado, por encima del checkout. */}
+      {confirmingClose && (
+        <ExitOffer
+          offerDiscount={offerDiscount}
+          onApplyDiscount={() => {
+            dispatch({ type: 'APPLY_EXIT_DISCOUNT' })
+            trackEvent({ name: 'exit_discount_applied', amount: EXIT_DISCOUNT_PEN })
+            setConfirmingClose(false)
+            // Vuelve al paso 1 para que vea los precios nuevos: el descuento que
+            // no se ve no retiene a nadie.
+            co.goTo(1)
+          }}
+          onCancel={() => setConfirmingClose(false)}
+          onConfirm={() => { co.abandon(); onClose() }}
+        />
+      )}
     </>
   )
 }
 
-function ConfirmClose({ offerDiscount, onApplyDiscount, onCancel, onConfirm }: {
-  offerDiscount: boolean
-  onApplyDiscount: () => void
-  onCancel: () => void
-  onConfirm: () => void
-}) {
-  if (offerDiscount) {
-    return (
-      <div className="pb-1">
-        <p className="text-sm font-black text-gray-900 mb-0.5">{COPY.exitTitle}</p>
-        <p className="text-xs text-gray-500 mb-3">{COPY.exitBody}</p>
-        <div className="flex gap-2">
-          <button
-            onClick={onConfirm}
-            className="px-4 py-3 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xs
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
-          >
-            {COPY.exitLeave}
-          </button>
-          <button
-            onClick={onApplyDiscount}
-            autoFocus
-            className="flex-1 py-3 rounded-2xl bg-green-500 text-white font-black text-sm shadow-lg shadow-green-200
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
-          >
-            {COPY.exitApply}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="pb-1">
-      <p className="text-sm font-black text-gray-800 mb-0.5">¿Salir sin terminar?</p>
-      <p className="text-xs text-gray-500 mb-3">Guardamos tu avance por 24 horas.</p>
-      <div className="flex gap-2">
-        <button
-          onClick={onConfirm}
-          className="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-600 font-black text-sm
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
-        >
-          Salir
-        </button>
-        <button
-          onClick={onCancel}
-          autoFocus
-          className="flex-1 py-3 rounded-2xl bg-green-500 text-white font-black text-sm
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
-        >
-          Seguir comprando
-        </button>
-      </div>
-    </div>
-  )
-}

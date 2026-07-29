@@ -33,7 +33,7 @@
 | `checkout.config.ts` | **TODA** regla de negocio: montos, umbrales, textos, modos |
 | `machine.ts` | Reducer puro. `advanceAmount`, `deliveryMethod`, `needsLocationConfirmation` y `courierSurcharge` son **derivados**, nunca los setea la UI |
 | `validation.ts` | Schemas por paso, sin dependencias (son 4 campos; una librería no se paga sola) |
-| `persistence.ts` | Borrador en `localStorage` por `orderId`, TTL 24 h. Nunca revienta |
+| `persistence.ts` | Borrador en `localStorage` por `orderId`, TTL 24 h. Nunca revienta y **migra los borradores de versiones anteriores** |
 | `analytics.ts` | `trackEvent()` con interfaz lista para enchufar Pixel/GA4 |
 | `services/` | `DistrictCoverageService` (decide la venta), `CoverageService` (polígonos, post-venta), `AgencyService`, `PaymentVerificationService` |
 
@@ -48,14 +48,15 @@
   venta, en el chat del pedido.
 - **La rama de agencia siempre está abierta**: distrito sin cobertura, zona de visita
   semanal o simple preferencia del comprador — el pedido se cierra igual.
-- 81 tests contra la data real del courier y de las dos agencias: `npm test`.
+- 83 tests contra la data real del courier y de las dos agencias: `npm test`.
 
 **UI ✅ construida** (Fase 2) en `src/components/checkout/`:
 
 | Archivo | Rol |
 |---|---|
 | `CheckoutModal.tsx` | Shell: progreso, trap de foco, Esc con confirmación, CTA sticky en el safe area |
-| `steps/Step1Pack.tsx` | Packs con precio por unidad y ahorro explícito |
+| `ExitOffer.tsx` | Diálogo centrado de retención al intentar salir (oferta o confirmación seca) |
+| `steps/Step1Pack.tsx` | Packs con precio por unidad, ahorro explícito y badge `×N` de cantidad |
 | `steps/Step2Delivery.tsx` | WhatsApp → nombre → Lima/Provincia → DNI (orden de compromiso creciente) |
 | `branches/LimaBranch.tsx` | Distrito + dirección + referencia. COD, sin adelanto |
 | `branches/ProvinciaBranch.tsx` | Distrito → veredicto → domicilio o agencia |
@@ -114,7 +115,17 @@ ingresados se ofrecen **S/5 de descuento sobre cada pack** antes de dejarlo ir.
   móvil — habría disparado solo para una minoría.
 - **Una sola vez por checkout.** `exitOfferShown` vive en el estado y se persiste, así que
   la regla sobrevive a una recarga. Insistir cada vez le enseña al comprador que salir es
-  la forma de conseguir descuento.
+  la forma de conseguir descuento. El segundo intento de salida muestra la confirmación
+  seca, sin oferta.
+- **Es un diálogo propio y centrado** (`ExitOffer.tsx`, `role="alertdialog"`), no una nota
+  en el pie del modal. En el pie competía con el CTA y se leía como letra chica; al centro
+  no hay nada más que decidir en ese instante. El monto va como héroe tipográfico y sale
+  de `EXIT_DISCOUNT_PEN` — **el copy no lo escribe**, así que cambiar el descuento no deja
+  textos mintiendo un monto viejo.
+- **Esc y el clic en el fondo significan "quedarme"**, no "salir". Salir es un botón
+  explícito. Perder una venta por una tecla repetida sería el peor intercambio posible.
+  El diálogo trapea su propio Tab: si no, el trap del modal de abajo movía el foco a
+  controles que el comprador no ve.
 - **El ahorro por volumen se calcula sobre el precio de lista**, no sobre el descontado.
   Si no, el pack de 1 unidad —que no ahorra nada— mostraría "Ahorras S/5" y diluiría el
   anclaje hacia el de 2. El descuento se comunica aparte: precio tachado + banner verde.
@@ -123,6 +134,39 @@ ingresados se ofrecen **S/5 de descuento sobre cada pack** antes de dejarlo ir.
   igual. Los eventos `exit_offer_shown` y `exit_discount_applied` están instrumentados:
   **medirlo contra un grupo de control antes de darlo por bueno.** El monto se cambia en
   una línea de `checkout.config.ts`.
+
+**f) Los borradores de versiones anteriores se migran, no se descartan ✅.** Al agregar
+`discountPen` al estado, los borradores ya guardados volvían sin ese campo y el paso 1
+hacía `precio - undefined`: **todos los packs mostraban `S/NaN`**. Un comprador que ve NaN
+donde va el precio no compra, y el bug solo aparecía en quienes ya habían empezado un
+checkout antes — o sea, en los más cerca de convertir.
+
+- `persistence.ts` completa el borrador leído con los defaults de hoy
+  (`initialCheckoutState()`), en vez de tirarlo: el borrador es el avance del comprador.
+  Los objetos anidados (`customerInfo`, `payment`) se completan aparte, porque el spread
+  los reemplaza enteros.
+- Los números que entran a aritmética se validan **por valor, no por ausencia**: basta un
+  `null` guardado para propagar NaN a toda la pantalla.
+- `effectivePrice()` ignora cualquier entrada no finita. Es la única función que calcula
+  el precio mostrado, así que ahí el `S/NaN` queda imposible venga de donde venga. En el
+  peor caso se pierde el descuento —S/5—, nunca el precio.
+- Dos tests de regresión en `checkout.test.ts`.
+
+**g) Los packs siguen en filas horizontales, no en tarjetas verticales.** Se evaluó el
+patrón tipo app de comida rápida (tarjeta vertical con foto grande) y **no aplica aquí**:
+
+- En ese patrón cada ítem es un producto DISTINTO y la foto es lo que lo identifica. Aquí
+  los tres packs son **el mismo producto en distinta cantidad**: la foto sería idéntica en
+  las tres tarjetas, no distingue nada y empuja el precio fuera de la vista.
+- A 360 px, tres tarjetas verticales son ~2 pantallas de scroll. Comparar precio por
+  unidad y ahorro lado a lado —lo que mueve el ticket promedio— deja de ser posible de un
+  vistazo, y el CTA se va abajo del fold. Contra la regla de decisión (gana lo que quita
+  fricción), la fila gana.
+- Lo que sí faltaba era una señal visual de cantidad: la fila ahora lleva un badge **`×N`**
+  sobre la miniatura.
+- `products.packs[].image` quedó soportado (opcional). Mientras la marca no lo cargue, el
+  fallback es la primera imagen de la landing — que es la misma para los tres. **Si se
+  quieren fotos que vendan, hay que cargar una por pack**; el código ya la usa sin cambios.
 
 ### 2. Checkout CRO ultra-rápido ✅
 - **Validación DNI con Decolecta (RENIEC)** → autocompleta el nombre y reduce campos:
