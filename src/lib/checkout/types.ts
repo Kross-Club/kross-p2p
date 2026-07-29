@@ -185,10 +185,17 @@ export interface AgencyBranch {
   province: string
   department: string
   address: string
-  lat: number
-  lng: number
+  /** `null` en las pocas sedes que la fuente publica sin coordenadas. Siguen
+   *  siendo elegibles desde el listado buscable, solo no se ordenan por
+   *  cercanía — descartarlas dejaría a esos distritos sin su agencia. */
+  lat: number | null
+  lng: number | null
 }
 
+/** Sede con distancia calculada. Solo la produce `getNearest`, así que aquí las
+ *  coordenadas sí están garantizadas. */
 export interface NearbyBranch extends AgencyBranch {
+  lat: number
+  lng: number
   distanceKm: number
 }

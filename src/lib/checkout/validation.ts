@@ -7,6 +7,7 @@
 // dígitos" convierte mejor que "Teléfono inválido".
 
 import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE } from './checkout.config'
+import { hasBranchList } from './services/AgencyService'
 import type { CheckoutState, CheckoutStepId } from './types'
 
 export type FieldName =
@@ -111,10 +112,10 @@ function validateStep2(s: CheckoutState): FieldErrors {
     e.agency = 'Elige tu agencia de recojo'
     return e
   }
-  if (p.selectedAgency === 'SHALOM' && !p.selectedAgencyBranchId) {
-    e.agencyBranch = 'Elige la sede donde vas a recoger'
-  }
-  if (p.selectedAgency !== 'SHALOM' && !p.olvaBranchText?.trim()) {
+  // Shalom y Olva tienen listado; las demás caen a texto libre.
+  if (hasBranchList(p.selectedAgency)) {
+    if (!p.selectedAgencyBranchId) e.agencyBranch = 'Elige la sede donde vas a recoger'
+  } else if (!p.olvaBranchText?.trim()) {
     e.agencyBranch = 'Escribe en qué agencia vas a recoger'
   }
   return e

@@ -157,16 +157,30 @@ describe('validación', () => {
     expect(canAdvance(s)).toBe(true)
   })
 
-  it('Olva acepta texto libre en vez de sede', () => {
-    const withOlva = run(base(),
+  it('Olva ya exige elegir sede, igual que Shalom', () => {
+    // Antes caía a texto libre porque no había listado. Desde que se obtuvo su
+    // buscador, las dos agencias se validan igual.
+    const conOlva = run(base(),
       { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
       { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'SET_AGENCY', agency: 'OLVA' },
       { type: 'GOTO', step: 2 },
     )
-    expect(validateStep(withOlva).agencyBranch).toBeTruthy()
-    const typed = run(withOlva, { type: 'SET_OLVA_TEXT', text: 'Olva Av. España' })
-    expect(validateStep(typed).agencyBranch).toBeUndefined()
+    expect(validateStep(conOlva).agencyBranch).toBeTruthy()
+    const conSede = run(conOlva, { type: 'SET_AGENCY_BRANCH', branchId: '579' })
+    expect(validateStep(conSede).agencyBranch).toBeUndefined()
+  })
+
+  it('"OTRO" sigue aceptando texto libre: es la única sin listado', () => {
+    const conOtro = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_AGENCY', agency: 'OTRO' },
+      { type: 'GOTO', step: 2 },
+    )
+    expect(validateStep(conOtro).agencyBranch).toBeTruthy()
+    const escrito = run(conOtro, { type: 'SET_OLVA_TEXT', text: 'Marvisur Av. España' })
+    expect(validateStep(escrito).agencyBranch).toBeUndefined()
   })
 
   it('el paso 3 con adelanto exige voucher pero no espera al veredicto', () => {
@@ -304,7 +318,7 @@ describe('CoverageService · data real del courier', () => {
 
 describe('AgencyService · data real de Shalom', () => {
   it('carga las 487 sedes (488 filas menos el registro de prueba)', async () => {
-    expect(await AgencyService.branchCount()).toBe(487)
+    expect(await AgencyService.branchCount('SHALOM')).toBe(487)
   })
 
   it('devuelve las 3 sedes más cercanas ordenadas por distancia real', async () => {
@@ -316,21 +330,51 @@ describe('AgencyService · data real de Shalom', () => {
     expect(nearest![0].distanceKm).toBeLessThan(15)
   })
 
-  it('Olva devuelve null para que la UI caiga al input manual', async () => {
-    expect(await AgencyService.getNearest('OLVA', { lat: -8.11, lng: -79.03 })).toBeNull()
-    expect(AgencyService.hasBranchList('OLVA')).toBe(false)
+  it('Olva también tiene listado: 424 sedes desde su buscador', async () => {
+    expect(await AgencyService.branchCount('OLVA')).toBe(424)
+    expect(AgencyService.hasBranchList('OLVA')).toBe(true)
+    const cerca = await AgencyService.getNearest('OLVA', { lat: -8.1116, lng: -79.0288 }, 3)
+    expect(cerca).toHaveLength(3)
+    expect(cerca![0].distanceKm).toBeLessThan(15)
+  })
+
+  it('solo "OTRO" cae al input manual', async () => {
+    expect(AgencyService.hasBranchList('OTRO')).toBe(false)
+    expect(await AgencyService.getNearest('OTRO', { lat: -8.11, lng: -79.03 })).toBeNull()
+  })
+
+  it('las sedes de Olva sin coordenadas quedan fuera del ranking pero se pueden buscar', async () => {
+    // Son 9 de 424: descartarlas dejaría a esos distritos sin su agencia.
+    const todas = await AgencyService.search('OLVA', '', 1000)
+    const sinCoords = todas.filter(b => b.lat === null)
+    expect(sinCoords.length).toBe(9)
+    const cerca = await AgencyService.getNearest('OLVA', { lat: -12.05, lng: -77.04 }, 500)
+    expect(cerca!.every(b => b.lat !== null)).toBe(true)
+    // …pero siguen siendo encontrables por texto.
+    expect((await AgencyService.search('OLVA', 'AGENTE COMAS')).length).toBeGreaterThan(0)
+  })
+
+  it('Olva trae coordenadas dentro de Perú, con las invertidas ya corregidas', async () => {
+    const todas = await AgencyService.search('OLVA', '', 1000)
+    for (const b of todas) {
+      if (b.lat === null || b.lng === null) continue
+      expect(b.lat).toBeGreaterThan(-18.6)
+      expect(b.lat).toBeLessThan(-0.02)
+      expect(b.lng).toBeGreaterThan(-81.5)
+      expect(b.lng).toBeLessThan(-68.5)
+    }
   })
 
   it('todas las sedes tienen coordenadas dentro de Perú', async () => {
     // Blinda la reconstrucción de coordenadas del CSV: si el parser se rompe,
     // las distancias salen mal y el comprador recoge en la ciudad equivocada.
-    const all = await AgencyService.search('SHALOM', '', 1000)
+    const all = (await AgencyService.search('SHALOM', '', 1000)).filter(b => b.lat !== null)
     expect(all.length).toBeGreaterThan(400)
     for (const b of all) {
-      expect(b.lat).toBeGreaterThan(-18.6)
-      expect(b.lat).toBeLessThan(-0.02)
-      expect(b.lng).toBeGreaterThan(-81.5)
-      expect(b.lng).toBeLessThan(-68.5)
+      expect(b.lat!).toBeGreaterThan(-18.6)
+      expect(b.lat!).toBeLessThan(-0.02)
+      expect(b.lng!).toBeGreaterThan(-81.5)
+      expect(b.lng!).toBeLessThan(-68.5)
     }
   })
 
@@ -500,5 +544,34 @@ describe('ajustes tras la revisión de Fase 2', () => {
     const restored = loadActiveDraft()
     expect(restored?.discountPen).toBe(EXIT_DISCOUNT_PEN)
     expect(restored?.exitOfferShown).toBe(true)
+  })
+})
+
+describe('centroides con degradación', () => {
+  it('un distrito con sedes usa su propio centroide', async () => {
+    const c = await DistrictCoverageService.getDistrictCenter('Lima', 'Lima', 'Miraflores')
+    expect(c).not.toBeNull()
+    expect(c!.lat).toBeGreaterThan(-12.3)
+    expect(c!.lat).toBeLessThan(-11.9)
+  })
+
+  it('un distrito SIN sedes cae a su provincia, no a la otra punta del país', async () => {
+    // Poroy (Cusco) no tiene agencias. Antes devolvía null y el listado
+    // terminaba ofreciendo sedes de Amazonas.
+    const c = await DistrictCoverageService.getDistrictCenter('Cusco', 'Cusco', 'Poroy')
+    expect(c).not.toBeNull()
+    expect(c!.lat).toBeGreaterThan(-14.5)
+    expect(c!.lat).toBeLessThan(-12.5)
+    expect(c!.lng).toBeGreaterThan(-73)
+    expect(c!.lng).toBeLessThan(-71)
+  })
+
+  it('desde ese centroide, las agencias más cercanas son de Cusco', async () => {
+    const c = await DistrictCoverageService.getDistrictCenter('Cusco', 'Cusco', 'Poroy')
+    for (const agency of ['SHALOM', 'OLVA'] as const) {
+      const cerca = await AgencyService.getNearest(agency, c!, 3)
+      expect(cerca).toHaveLength(3)
+      expect(cerca![0].distanceKm).toBeLessThan(60)
+    }
   })
 })

@@ -1,7 +1,7 @@
-// ─── Generador: CSV de sedes Shalom → JSON de agencias + centroides ──────────
+// ─── Generador: CSV de sedes Shalom → JSON de agencias ───────────────────────
 // Fuente: scripts/sources/shalom-sedes.csv
 // Salida: src/data/agencies/shalom.json
-//         src/data/coverage/district-centroids.json
+//         (los centroides los arma scripts/build-centroids.mjs, que corre después)
 //
 // OJO — el CSV original trae las coordenadas CORRUPTAS: se exportó con locale
 // español y el punto decimal quedó leído como separador de miles, así que
@@ -14,7 +14,6 @@ import { readFileSync, writeFileSync } from 'node:fs'
 
 const SRC = 'scripts/sources/shalom-sedes.csv'
 const OUT_AGENCIES = 'src/data/agencies/shalom.json'
-const OUT_CENTROIDS = 'src/data/coverage/district-centroids.json'
 
 // Centroide aproximado de cada departamento. Se usa SOLO para desambiguar dónde
 // va el punto decimal (ver recover), nunca como coordenada de entrega.
@@ -115,32 +114,6 @@ writeFileSync(OUT_AGENCIES, JSON.stringify({
   branches,
 }))
 
-// Centroide por distrito, promediando las sedes que caen en él. No es el centro
-// geométrico real del distrito, pero ancla el pin mucho mejor que nada y no
-// depende de ninguna fuente externa. Se reemplaza si algún día hay data oficial.
-const byDistrict = new Map()
-for (const b of branches) {
-  if (!b.district) continue
-  const key = `${norm(b.department)}|${norm(b.district)}`
-  if (!byDistrict.has(key)) byDistrict.set(key, [])
-  byDistrict.get(key).push(b)
-}
-const centroids = {}
-for (const [key, list] of byDistrict) {
-  centroids[key] = {
-    lat: Number((list.reduce((s, b) => s + b.lat, 0) / list.length).toFixed(5)),
-    lng: Number((list.reduce((s, b) => s + b.lng, 0) / list.length).toFixed(5)),
-    from: list.length, // nº de sedes promediadas — 1 sede = ancla más floja
-  }
-}
-writeFileSync(OUT_CENTROIDS, JSON.stringify({
-  _generated: 'node scripts/build-agencies.mjs — NO editar a mano',
-  _note: 'Centroide aproximado por distrito, derivado de las sedes Shalom. Solo ancla el mapa.',
-  centroids,
-}))
-
 console.log(`✓ ${OUT_AGENCIES}`)
 console.log(`  ${branches.length} sedes de ${rows.length} filas · ${rejected.length} descartadas`)
 for (const [id, why] of rejected) console.log(`    - ter_id=${id}: ${why}`)
-console.log(`✓ ${OUT_CENTROIDS}`)
-console.log(`  ${Object.keys(centroids).length} distritos con centroide`)

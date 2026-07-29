@@ -69,7 +69,7 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
       dispatch({ type: 'SET_COVERAGE', check })
       trackEvent({ name: 'coverage_checked', place: `${district}, ${province}`, result: check.result })
       if (check.zoned) trackEvent({ name: 'coverage_zoned_district', place: `${district}, ${province}` })
-      setCenter(await DistrictCoverageService.getDistrictCenter(department, district))
+      setCenter(await DistrictCoverageService.getDistrictCenter(department, province, district))
     } catch {
       // Si la cobertura falla NO se bloquea: se cae a agencia, que siempre entrega.
       dispatch({ type: 'CHOOSE_AGENCY_BRANCH_FLOW' })

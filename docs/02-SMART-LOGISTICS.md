@@ -95,36 +95,48 @@ real; se recalcula cuando haya pedidos con coordenadas.
 > operativo, no un requisito de venta — y se captura después, donde el comprador ya está
 > comprometido. Sin mapa no hace falta Leaflet (~42 KB) ni proveedor de tiles.
 
-### 5. Listado de agencias ✅ Shalom · 🔮 Olva
+### 5. Listado de agencias ✅ Shalom · ✅ Olva
 
-`src/lib/checkout/services/AgencyService.ts` — misma interfaz para ambas agencias.
+`src/lib/checkout/services/AgencyService.ts` — **las dos agencias se resuelven con el
+mismo código**. `OTRO` es la única sin listado: para esa la UI cae a texto libre y el
+pedido queda marcado para verificación manual.
 
-- **Shalom:** 487 sedes con `lat`/`lng`, distrito, provincia y dirección
-  (`src/data/agencies/shalom.json`, ~35 KB gzip en chunk aparte). `getNearest()` ordena
-  por haversine. Es la agencia **recomendada por defecto**: menos fricción y menos error
-  de datos.
-- **Olva:** sin listado. `getNearest()` devuelve `null` — señal explícita de que la UI
-  cae a texto libre y marca el pedido para verificación manual. Cuando llegue el listado,
-  el cambio es de datos, no de código.
+| | Sedes | Fuente | Adelanto |
+|---|---|---|---|
+| **Shalom** | 487 | CSV oficial → `scripts/build-agencies.mjs` | S/10 |
+| **Olva** | 424 | su propio buscador → `scripts/build-olva.mjs` | S/20 |
 
-  **Cómo conseguirlo 🔮.** Olva no publica un CSV, pero su buscador
-  (`olvacourier.com/ubicanos/`) tiene que sacar las sedes de algún lado. El orden a probar,
-  de menos a más trabajo:
-  1. **Endpoint interno.** Abrir la página con DevTools → pestaña *Network* → filtro *Fetch/XHR*
-     y ver qué pide al cargar o al elegir un departamento. Si hay un JSON, esa URL es la
-     fuente y `build-agencies.mjs` la consume igual que el CSV de Shalom.
-  2. **Datos incrustados en el HTML.** Si no hay XHR, el listado viene en el propio HTML o en
-     un `<script>` con el arreglo de sedes. Se extrae con un generador, como se hizo con el KML.
-  3. **Pedirlo a Olva.** Es lo más confiable y lo que ya se hizo con Shalom. Un listado
-     oficial no se desactualiza solo.
-  ⚠️ Antes de raspar, revisar los términos de uso del sitio. Y ojo: un scraper se rompe
-  callado cuando ellos rediseñan — por eso 3 le gana a 1 y 2 a mediano plazo.
-- ⚠️ El CSV original traía las **coordenadas corruptas** (locale español: el punto decimal
-  leído como separador de miles, 487 de 488 filas). `scripts/build-agencies.mjs` las
-  reconstruye y desambigua con el centroide del departamento. **No editar el JSON a mano:**
-  regenerar con `npm run build:data`.
-- El teléfono del CSV es el call center (7 valores para 488 sedes), no el de cada sede:
-  se omite a propósito.
+- Shalom sigue siendo la **recomendada**: no por tener mejor data —ya empatan— sino
+  porque su adelanto es la mitad. La ruta más barata para el comprador es la que se
+  muestra primero.
+- ⚠️ **El CSV de Shalom traía las coordenadas corruptas** (locale español: el punto
+  decimal leído como separador de miles, 487 de 488 filas). El generador las reconstruye
+  y desambigua con el centroide del departamento.
+- ⚠️ **En Olva, 5 sedes traen lat y lng intercambiadas** (Ayacucho, San Sebastián,
+  Pangoa…). Se detectan y corrigen solas: los rangos de latitud y longitud de Perú no se
+  solapan, así que el intercambio es inequívoco.
+- **9 sedes de Olva no traen coordenadas.** No se descartan: siguen apareciendo en el
+  listado buscable para que alguien de ese distrito pueda elegirlas. Lo único que no
+  pueden es ordenarse por cercanía.
+- El teléfono del CSV de Shalom es el call center (7 valores para 488 sedes), no el de
+  cada sede: se omite a propósito. Olva sí trae **horarios por día**, todavía sin usar.
+- ⚠️ **La data de Olva no viene de un acuerdo con ellos**, sino de su buscador público.
+  Puede cambiar de forma sin aviso y el generador se rompería. Lo sólido a mediano plazo
+  es pedirles el listado oficial, como se hizo con Shalom.
+
+### 6. Centroides para ordenar agencias ✅
+
+`scripts/build-centroids.mjs` → `src/data/coverage/district-centroids.json`
+
+Promedia las **911 sedes de ambas agencias** para obtener un punto por distrito (378),
+provincia (165) y departamento (25). Sirve para ordenar las agencias por cercanía **sin
+pedirle al comprador su ubicación**.
+
+`getDistrictCenter` **degrada distrito → provincia → departamento**. Sin eso, alguien en
+un distrito sin sedes se quedaba sin punto de referencia: se detectó en Poroy (Cusco), a
+quien el checkout le ofrecía sedes de **Amazonas**. Corregido y con test.
+
+Corre **después** de los generadores de agencias, porque lee sus JSON ya construidos.
 
 ## Datos que consume/produce (estado central)
 - Lee: `customer.phone`, `delivery.lat/lng/addressText`.
@@ -146,7 +158,7 @@ real; se recalcula cuando haya pedidos con coordenadas.
 ## Regenerar la data
 
 ```
-npm run build:data     # KML + CSV de scripts/sources → JSON en src/data/
+npm run build:data     # KML + CSV + JSON de scripts/sources → src/data/
 npm test               # valida geo, cobertura y agencias contra la data real
 ```
 

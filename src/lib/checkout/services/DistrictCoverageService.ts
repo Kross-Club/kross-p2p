@@ -29,7 +29,12 @@ interface RawDistrict {
 
 let coverageCache: Promise<Record<string, RawDistrict>> | null = null
 let indexCache: Promise<DistrictOption[]> | null = null
-let centroidsCache: Promise<Record<string, LatLng>> | null = null
+interface Centroids {
+  districts: Record<string, LatLng>
+  provinces: Record<string, LatLng>
+  departments: Record<string, LatLng>
+}
+let centroidsCache: Promise<Centroids> | null = null
 
 function loadCoverage(): Promise<Record<string, RawDistrict>> {
   coverageCache ??= import('../../../data/coverage/aliclic-districts.json')
@@ -118,16 +123,23 @@ export const DistrictCoverageService = {
   },
 
   /**
-   * Punto aproximado del distrito, para ordenar las sedes de agencia por
-   * cercanía. Sale del promedio de las sedes Shalom que caen en él: no es el
-   * centro geométrico real, pero ubica mucho mejor que nada y no depende de
-   * ninguna fuente externa. `null` si el distrito no tiene ninguna sede — ahí la
-   * UI cae al listado buscable.
+   * Punto aproximado del lugar elegido, para ordenar las agencias por cercanía
+   * sin pedirle al comprador su ubicación. Sale del promedio de las sedes de
+   * Shalom y Olva que caen ahí.
+   *
+   * **Degrada distrito → provincia → departamento.** Si solo mirara el distrito,
+   * alguien en un distrito sin sedes (Poroy, en Cusco) se quedaba sin punto de
+   * referencia y el listado le ofrecía sedes de Amazonas. La provincia siempre
+   * da algo razonablemente cerca.
    */
-  async getDistrictCenter(department: string, district: string): Promise<LatLng | null> {
+  async getDistrictCenter(department: string, province: string, district: string): Promise<LatLng | null> {
     centroidsCache ??= import('../../../data/coverage/district-centroids.json')
-      .then(m => (m.default as { centroids: Record<string, LatLng> }).centroids)
-    const found = (await centroidsCache)[`${norm(department)}|${norm(district)}`]
+      .then(m => m.default as unknown as Centroids)
+    const c = await centroidsCache
+    const found =
+      c.districts[`${norm(department)}|${norm(district)}`] ??
+      c.provinces[`${norm(department)}|${norm(province)}`] ??
+      c.departments[norm(department)]
     return found ? { lat: found.lat, lng: found.lng } : null
   },
 }

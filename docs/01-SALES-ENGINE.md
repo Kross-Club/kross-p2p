@@ -48,7 +48,7 @@
   venta, en el chat del pedido.
 - **La rama de agencia siempre está abierta**: distrito sin cobertura, zona de visita
   semanal o simple preferencia del comprador — el pedido se cierra igual.
-- 64 tests contra la data real del courier y de Shalom: `npm test`.
+- 81 tests contra la data real del courier y de las dos agencias: `npm test`.
 
 **UI ✅ construida** (Fase 2) en `src/components/checkout/`:
 
@@ -59,7 +59,7 @@
 | `steps/Step2Delivery.tsx` | WhatsApp → nombre → Lima/Provincia → DNI (orden de compromiso creciente) |
 | `branches/LimaBranch.tsx` | Distrito + dirección + referencia. COD, sin adelanto |
 | `branches/ProvinciaBranch.tsx` | Distrito → veredicto → domicilio o agencia |
-| `branches/AgencyPicker.tsx` | Shalom (3 sedes más cercanas) · Olva (texto libre) |
+| `branches/AgencyPicker.tsx` | Shalom y Olva: 3 sedes más cercanas con distancia real |
 | `fields/` | `Field`, `PhoneField`, `SearchSelect` (483 distritos, navegable con teclado) |
 | `useCheckout.ts` | Cose reducer + persistencia + validación al blur + instrumentación |
 

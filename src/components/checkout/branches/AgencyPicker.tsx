@@ -13,7 +13,7 @@ import { AgencyService, RECOMMENDED_AGENCY } from '../../../lib/checkout/service
 import { formatDistance } from '../../../lib/geo/haversine'
 import { COPY, advanceFor } from '../../../lib/checkout/checkout.config'
 import { trackEvent } from '../../../lib/checkout/analytics'
-import type { AgencyName, NearbyBranch } from '../../../lib/checkout/types'
+import type { AgencyBranch, AgencyName, NearbyBranch } from '../../../lib/checkout/types'
 import Field from '../fields/Field'
 
 // El adelanto se muestra en cada tarjeta ANTES de elegir: Olva cobra más flete
@@ -76,11 +76,11 @@ export default function AgencyPicker({
         {errorAgency && <p role="alert" className="text-[11px] font-semibold mt-1.5 text-red-600">{errorAgency}</p>}
       </div>
 
-      {agency === 'SHALOM' && (
-        <ShalomBranches near={near} selected={branchId} onSelect={onSelectBranch} error={errorBranch} />
+      {agency && AgencyService.hasBranchList(agency) && (
+        <BranchPicker agency={agency} near={near} selected={branchId} onSelect={onSelectBranch} error={errorBranch} />
       )}
 
-      {agency === 'OLVA' && (
+      {agency && !AgencyService.hasBranchList(agency) && (
         <div>
           <Field
             label={COPY.olvaQuestion}
@@ -108,9 +108,10 @@ export default function AgencyPicker({
   )
 }
 
-// ─── Sedes Shalom más cercanas ───────────────────────────────────────────────
+// ─── Sedes más cercanas (sirve para cualquier agencia con listado) ───────────
 
-function ShalomBranches({ near, selected, onSelect, error }: {
+function BranchPicker({ agency, near, selected, onSelect, error }: {
+  agency: AgencyName
   near: { lat: number; lng: number } | null
   selected: string | null
   onSelect: (id: string) => void
@@ -122,17 +123,17 @@ function ShalomBranches({ near, selected, onSelect, error }: {
   const [data, setData] = useState<{ key: string; list: NearbyBranch[] } | null>(null)
   const [showAllRequested, setShowAllRequested] = useState(false)
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<NearbyBranch[] | null>(null)
+  const [results, setResults] = useState<AgencyBranch[] | null>(null)
 
   useEffect(() => {
     if (!nearKey || !near) return
     let alive = true
-    AgencyService.getNearest('SHALOM', near, 3)
+    AgencyService.getNearest(agency, near, 3)
       .then(list => { if (alive) setData({ key: nearKey, list: list ?? [] }) })
       // Si falla, se cae al listado buscable: nunca se deja al comprador sin salida.
       .catch(() => { if (alive) setData({ key: nearKey, list: [] }) })
     return () => { alive = false }
-  }, [nearKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [agency, nearKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fresh = data?.key === nearKey ? data.list : null
   const loading = Boolean(nearKey) && fresh === null
@@ -148,11 +149,11 @@ function ShalomBranches({ near, selected, onSelect, error }: {
   useEffect(() => {
     if (!showAll) return
     let alive = true
-    AgencyService.search('SHALOM', query, 30)
-      .then(list => { if (alive) setResults(list.map(b => ({ ...b, distanceKm: 0 }))) })
+    AgencyService.search(agency, query, 30)
+      .then(list => { if (alive) setResults(list) })
       .catch(() => { if (alive) setResults([]) })
     return () => { alive = false }
-  }, [showAll, query])
+  }, [agency, showAll, query])
 
   if (loading) {
     return <p className="text-[11px] text-gray-400 py-2">Buscando las sedes más cercanas…</p>
@@ -161,7 +162,7 @@ function ShalomBranches({ near, selected, onSelect, error }: {
   return (
     <div>
       <span className="text-xs font-bold text-gray-600 mb-1.5 block">
-        {showAll ? 'Busca tu sede Shalom *' : 'Sedes más cercanas a ti *'}
+        {showAll ? 'Busca tu sede *' : 'Sedes más cercanas a ti *'}
       </span>
 
       {!showAll && fresh && (
@@ -169,7 +170,7 @@ function ShalomBranches({ near, selected, onSelect, error }: {
           <ul className="space-y-2">
             {fresh.map(b => (
               <li key={b.id}>
-                <BranchCard branch={b} selected={selected === b.id} onSelect={onSelect} showDistance />
+                <BranchCard branch={b} selected={selected === b.id} onSelect={onSelect} distanceKm={b.distanceKm} />
               </li>
             ))}
           </ul>
@@ -190,7 +191,7 @@ function ShalomBranches({ near, selected, onSelect, error }: {
             onChange={e => setQuery(e.target.value)}
             placeholder="Escribe tu distrito o dirección"
             autoComplete="off"
-            aria-label="Buscar sede Shalom"
+            aria-label="Buscar sede"
             className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-2 focus:ring-2 focus:ring-green-500 focus:bg-white"
           />
           {results === null
@@ -214,11 +215,12 @@ function ShalomBranches({ near, selected, onSelect, error }: {
   )
 }
 
-function BranchCard({ branch, selected, onSelect, showDistance }: {
-  branch: NearbyBranch
+function BranchCard({ branch, selected, onSelect, distanceKm }: {
+  branch: AgencyBranch
   selected: boolean
   onSelect: (id: string) => void
-  showDistance?: boolean
+  /** Solo lo traen las sedes del ranking de cercanía. */
+  distanceKm?: number
 }) {
   return (
     <button
@@ -236,8 +238,8 @@ function BranchCard({ branch, selected, onSelect, showDistance }: {
         <span className="block text-[11px] text-gray-500 line-clamp-2">{branch.address}</span>
       </span>
       <span className="flex flex-col items-end gap-1 flex-shrink-0">
-        {showDistance && (
-          <span className="text-[10px] font-black text-gray-400">{formatDistance(branch.distanceKm)}</span>
+        {distanceKm !== undefined && (
+          <span className="text-[10px] font-black text-gray-400">{formatDistance(distanceKm)}</span>
         )}
         {selected && <Check size={14} className="text-green-600" />}
       </span>
