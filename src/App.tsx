@@ -9,6 +9,7 @@ import ScorePage from './pages/comprador/ScorePage'
 import TiendaPage from './pages/comprador/TiendaPage'
 import LandingProductoPage from './pages/LandingProductoPage'
 import PrivacidadPage from './pages/PrivacidadPage'
+import CheckoutDemoPage from './pages/CheckoutDemoPage'
 import ChatsPage from './pages/comprador/ChatsPage'
 import ChatDetalleComprador from './pages/comprador/ChatDetalleComprador'
 import PerfilPage from './pages/comprador/PerfilPage'
@@ -96,6 +97,9 @@ export default function App() {
         <Route path="/vendedor/pedido/:token" element={<VendedorPedidoPage />} />
         <Route path="/landing/:landingId" element={<LandingProductoPage />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
+        {/* Revisión del checkout con packs de ejemplo. Solo en desarrollo:
+            no se registra en el bundle de producción. */}
+        {import.meta.env.DEV && <Route path="/checkout-demo" element={<CheckoutDemoPage />} />}
 
         {/* Protected seller routes */}
         <Route element={<RequireSellerAuth><Layout /></RequireSellerAuth>}>

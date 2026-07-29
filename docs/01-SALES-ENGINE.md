@@ -50,8 +50,27 @@
   semanal o simple preferencia del comprador — el pedido se cierra igual.
 - 64 tests contra la data real del courier y de Shalom: `npm test`.
 
-- **Pendiente 🔮:** Fase 2 (UI de pasos 1–2, selector de distrito, ramas de agencia),
-  Fase 3 (pago, comprobante, submit, verificación), Fase 4 (instrumentación y pulido).
+**UI ✅ construida** (Fase 2) en `src/components/checkout/`:
+
+| Archivo | Rol |
+|---|---|
+| `CheckoutModal.tsx` | Shell: progreso, trap de foco, Esc con confirmación, CTA sticky en el safe area |
+| `steps/Step1Pack.tsx` | Packs con precio por unidad y ahorro explícito |
+| `steps/Step2Delivery.tsx` | WhatsApp → nombre → Lima/Provincia → DNI (orden de compromiso creciente) |
+| `branches/LimaBranch.tsx` | Distrito + dirección + referencia. COD, sin adelanto |
+| `branches/ProvinciaBranch.tsx` | Distrito → veredicto → domicilio o agencia |
+| `branches/AgencyPicker.tsx` | Shalom (3 sedes más cercanas) · Olva (texto libre) |
+| `fields/` | `Field`, `PhoneField`, `SearchSelect` (483 distritos, navegable con teclado) |
+| `useCheckout.ts` | Cose reducer + persistencia + validación al blur + instrumentación |
+
+- **Revisión sin Supabase:** `/checkout-demo` monta el modal con packs de ejemplo y data
+  real de cobertura. Solo se registra en desarrollo (ver `App.tsx`).
+- Verificado en navegador real a **360 px y 1440 px**: sin scroll horizontal, Lima cierra
+  en ~2 s, el borrador sobrevive a la recarga y Esc con data pide confirmación.
+
+- **Pendiente 🔮:** Fase 3 (pago, comprobante, submit, verificación), Fase 4
+  (instrumentación completa y pulido). El paso 3 hoy es un placeholder y la landing
+  sigue usando `CheckoutQuiz`: se cambia cuando el flujo pueda cerrar un pedido.
 - ⚠️ `src/lib/checkout-flow.ts` y el cuerpo de `CheckoutQuiz.tsx` quedan **en pie hasta
   que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
   `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 2.

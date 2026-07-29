@@ -58,6 +58,8 @@ export interface ProvinciaConfig {
   district: string | null
   /** Ciudad/agencia del courier a la que pertenece el distrito (derivado). */
   city: string | null
+  /** Tiempo de entrega declarado por el courier ("48h"). Derivado. */
+  eta: string | null
   lat: number | null
   lng: number | null
   coverageResult: CoverageResult | null

@@ -134,6 +134,7 @@ export const COPY = {
   retryDomicilio: 'Prefiero intentar entrega a domicilio',
 
   advanceHeadsUp: `Para envíos a provincia se paga un adelanto de S/${ADVANCE_PROVINCIA_PEN} y el resto al recibir.`,
+  advanceHeadsUpShort: 'El resto lo pagas al recibir tu pedido.',
   voucherRequired: 'Sube tu comprobante para terminar',
 
   verifying: 'Estamos verificando tu pago…',

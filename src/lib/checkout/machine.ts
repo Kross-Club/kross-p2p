@@ -75,7 +75,7 @@ export type CheckoutAction =
 
 const EMPTY_LIMA: LimaAddress = { district: null, lat: null, lng: null, addressText: '', reference: '' }
 const EMPTY_PROVINCIA: ProvinciaConfig = {
-  department: null, province: null, district: null, city: null,
+  department: null, province: null, district: null, city: null, eta: null,
   lat: null, lng: null, coverageResult: null, deliveryMethod: null,
   selectedAgency: null, selectedAgencyBranchId: null, olvaBranchText: null,
 }
@@ -170,6 +170,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           province: action.province,
           district: action.district,
           city: null,
+          eta: null,
           lat: null, lng: null,
           coverageResult: 'NOT_CHECKED',
           deliveryMethod: null,
@@ -195,6 +196,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         provinciaConfig: {
           ...prov(),
           city: check.city,
+          eta: check.eta,
           coverageResult: check.result,
           deliveryMethod: methodForCoverage(check.result),
         },

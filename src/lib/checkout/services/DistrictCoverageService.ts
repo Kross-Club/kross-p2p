@@ -12,6 +12,7 @@
 // ~36 KB + ~40 KB de índice, con import() dinámico: no entran al bundle inicial.
 
 import { AGENCY_ONLY_CITIES } from '../checkout.config'
+import type { LatLng } from '../../geo/haversine'
 import type { CoverageResult, DistrictCoverage, DistrictOption } from '../types'
 
 interface RawDistrict {
@@ -28,6 +29,7 @@ interface RawDistrict {
 
 let coverageCache: Promise<Record<string, RawDistrict>> | null = null
 let indexCache: Promise<DistrictOption[]> | null = null
+let centroidsCache: Promise<Record<string, LatLng>> | null = null
 
 function loadCoverage(): Promise<Record<string, RawDistrict>> {
   coverageCache ??= import('../../../data/coverage/aliclic-districts.json')
@@ -113,6 +115,20 @@ export const DistrictCoverageService = {
   async offersHomeDelivery(department: string, province: string, district: string): Promise<boolean> {
     const c = await this.checkDistrict(department, province, district)
     return c.result === 'IN_ZONE'
+  },
+
+  /**
+   * Punto aproximado del distrito, para ordenar las sedes de agencia por
+   * cercanía. Sale del promedio de las sedes Shalom que caen en él: no es el
+   * centro geométrico real, pero ubica mucho mejor que nada y no depende de
+   * ninguna fuente externa. `null` si el distrito no tiene ninguna sede — ahí la
+   * UI cae al listado buscable.
+   */
+  async getDistrictCenter(department: string, district: string): Promise<LatLng | null> {
+    centroidsCache ??= import('../../../data/coverage/district-centroids.json')
+      .then(m => (m.default as { centroids: Record<string, LatLng> }).centroids)
+    const found = (await centroidsCache)[`${norm(department)}|${norm(district)}`]
+    return found ? { lat: found.lat, lng: found.lng } : null
   },
 }
 

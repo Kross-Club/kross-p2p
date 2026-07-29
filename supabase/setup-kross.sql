@@ -326,3 +326,34 @@ WHERE (phone = '925951393' OR phone = '51925951393')
 
 -- (Opcional) Ver tus vendedores y su store_id (debe existir al menos uno activo):
 -- SELECT nombre, role_label, store_id, auth_user_id, active FROM sellers;
+
+
+-- ─── 12. LEADS PARCIALES DEL CHECKOUT ───────────────────────────────────────
+-- Pedido a medio llenar, guardado apenas el WhatsApp es válido. Es lo que
+-- permite recuperar abandonos. NO va en order_sessions a propósito: ahí
+-- contaminaría el CRM y el round-robin le asignaría un vendedor a cada lead que
+-- nunca compró. Ver docs/01-SALES-ENGINE.md.
+CREATE TABLE IF NOT EXISTS checkout_drafts (
+  order_id        uuid        PRIMARY KEY,   -- mismo uuid que usará el pedido
+  store_id        text        NOT NULL,
+  phone           text        NOT NULL,      -- con prefijo país (51XXXXXXXXX)
+  buyer_name      text,
+  document_number text,
+  product_id      text,
+  pack_name       text,
+  location_type   text,                      -- LIMA | PROVINCIA
+  district        text,
+  last_step       integer     DEFAULT 1,     -- hasta dónde llegó
+  -- Se marca cuando el lead termina convirtiendo, para no perseguir a quien ya compró.
+  converted_at    timestamptz,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+
+-- Contiene PII (teléfono/DNI): solo las Edge Functions con service role la tocan.
+ALTER TABLE checkout_drafts ENABLE ROW LEVEL SECURITY;
+
+-- Recuperación de abandonos: los más recientes de la tienda que aún no compraron.
+CREATE INDEX IF NOT EXISTS idx_checkout_drafts_recovery
+  ON checkout_drafts(store_id, updated_at DESC)
+  WHERE converted_at IS NULL;
