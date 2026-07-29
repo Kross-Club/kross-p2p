@@ -25,7 +25,7 @@
 
 ### 1.b Checkout multi-paso (refactor en curso) 🟡
 
-**Núcleo ✅ construido** en `src/lib/checkout/` — sin UI todavía:
+**Núcleo ✅ construido** en `src/lib/checkout/`:
 
 | Archivo | Rol |
 |---|---|
@@ -73,7 +73,7 @@
   sigue usando `CheckoutQuiz`: se cambia cuando el flujo pueda cerrar un pedido.
 - ⚠️ `src/lib/checkout-flow.ts` y el cuerpo de `CheckoutQuiz.tsx` quedan **en pie hasta
   que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
-  `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 2.
+  `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 3.
 
 ### 2. Checkout CRO ultra-rápido ✅
 - **Validación DNI con Decolecta (RENIEC)** → autocompleta el nombre y reduce campos:
@@ -121,19 +121,15 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 (sin esto el Voice Closer queda dormido, que es el estado esperado hasta crear el agente).
 
 ## Pendientes priorizados (dónde retomar)
-1. 🔮 **Fase 2 del checkout:** UI de pasos 1–2 sobre `src/lib/checkout/machine.ts`
-   (selector de pack, datos, selector de distrito con búsqueda, ramas Shalom/Olva). El
-   núcleo ya existe. **Sin dependencias nuevas**: no hay mapa, así que no hace falta
-   Leaflet ni proveedor de tiles.
-2. 🔮 **Fase 3:** paso 3, bucket `vouchers`, submit idempotente por `orderId`,
+1. 🔮 **Fase 3 del checkout:** paso 3, bucket `vouchers`, submit idempotente por `orderId`,
    suscripción al veredicto del adelanto, pantalla de confirmación.
-3. 🔮 **Lead parcial (`DRAFT`)**: Edge Function + tabla `checkout_drafts`. Se guarda apenas
-   el WhatsApp es válido; es lo que permite recuperar abandonos. No debe ir a
-   `order_sessions` (contamina el CRM y el round-robin asignaría un vendedor a un no-cliente).
-4. 🔮 **Verificación del yape**: servicio externo ya contratado, integración pendiente.
+2. 🟡 **Lead parcial (`DRAFT`)**: `save-checkout-draft` + tabla `checkout_drafts` ya
+   existen y el checkout los llama. Falta **desplegar la función** y correr el SQL, y
+   construir la vista de recuperación de abandonos para Ventas.
+3. 🔮 **Verificación del yape**: servicio externo ya contratado, integración pendiente.
    La costura está en `services/PaymentVerificationService.ts` — el mock deja todo en
    `PENDING` a propósito: hasta que exista el real, todo adelanto va a revisión humana,
    que es lo que pasa hoy en producción.
-5. 🔮 `createElevenLabsTransport()` (implementar `VoiceTransport` con `@elevenlabs/react`)
+4. 🔮 `createElevenLabsTransport()` (implementar `VoiceTransport` con `@elevenlabs/react`)
    + crear el agente en ElevenLabs → activar la voz.
-6. 🔮 Cobro Yape/Plin integrado (QR dinámico / confirmación de operación).
+5. 🔮 Cobro Yape/Plin integrado (QR dinámico / confirmación de operación).
