@@ -63,10 +63,18 @@ export const BORDERLINE_THRESHOLD_M = 500
 // ─── Packs ───────────────────────────────────────────────────────────────────
 
 /**
- * Índice del pack preseleccionado al abrir, contando desde el más caro (0 = el
- * más caro). El anclaje en el pack de 2 unidades es lo que mueve el ticket.
+ * Índice del pack preseleccionado y destacado, sobre la lista ordenada de menor
+ * a mayor precio. `1` = el segundo más barato, que en un catálogo típico es el
+ * pack de 2 unidades: es el anclaje que mueve el ticket promedio sin asustar.
+ * Si la marca tiene menos packs, se recorta al último disponible.
  */
-export const DEFAULT_PACK_FROM_TOP = 0
+export const DEFAULT_PACK_INDEX = 1
+
+/** Aplica DEFAULT_PACK_INDEX a una lista real de packs, sin salirse del rango. */
+export function defaultPackIndex(packCount: number): number {
+  if (packCount <= 0) return 0
+  return Math.min(DEFAULT_PACK_INDEX, packCount - 1)
+}
 
 /** Badge del pack recomendado. Configurable por marca más adelante. */
 export const BEST_PACK_BADGE = '⭐ MÁS ELEGIDO · MEJOR PRECIO'

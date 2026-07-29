@@ -118,7 +118,24 @@ export default function App() {
           <Route path="/vendedor/retencion" element={<RetencionPage />} />
           <Route path="/vendedor/estadisticas" element={<EstadisticasPage />} />
         </Route>
+
+        {/* Sin esto, cualquier URL que no exista renderizaba una página en
+            blanco, indistinguible de un error de la app. */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
+  )
+}
+
+function NotFound() {
+  return (
+    <div className="min-h-dvh flex flex-col items-center justify-center gap-3 px-6 text-center">
+      <p className="text-4xl">🧭</p>
+      <p className="font-black text-gray-800">Esta página no existe</p>
+      <p className="text-sm text-gray-500">Revisa el enlace o vuelve al inicio.</p>
+      <a href="/" className="mt-2 font-black text-sm px-5 py-2.5 rounded-2xl bg-gray-100 text-gray-700">
+        Ir al inicio
+      </a>
+    </div>
   )
 }
