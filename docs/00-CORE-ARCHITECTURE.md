@@ -32,6 +32,40 @@ y actualizan.
 - **Comprador:** identificado por DNI/teléfono (`buyers`), sin login de contraseña; entra
   por su subdominio (`/acceso`). NO hay login de comprador en el host de plataforma.
 
+### Identidad del comprador: DNI vs. teléfono 🟡 (decisión abierta)
+
+`buyers` tiene **dos** índices únicos por tienda: `(store_id, document_number)` y
+`(store_id, phone)`. O sea que el teléfono **ya es** una llave de identidad válida, y
+`register-buyer` ya trae la rama que crea la cuenta solo con teléfono. No hace falta
+tocar el esquema para dejar de pedir DNI.
+
+**Decisión de producto (jul-2026):** el DNI se pide **solo en provincia**, no en Lima.
+La asimetría es real y no arbitraria:
+
+| | Lima | Provincia |
+|---|---|---|
+| Dinero por adelantado | no (COD puro) | sí (adelanto de flete) |
+| ¿Quién absorbe el no-recibido? | el motorizado, en el momento | la marca, ya pagó el envío |
+| ¿Alguien más exige el DNI? | nadie | **la agencia, para entregar el paquete** |
+
+⚠️ Esa última fila es el argumento fuerte y **hay que confirmarla con operaciones**: si
+Shalom/Olva exigen DNI del destinatario para liberar el paquete, entonces en provincia el
+campo no es burocracia nuestra sino de ellos — y el copy debe decirlo así, porque es un
+motivo que el comprador acepta sin discutir.
+
+**Riesgos de identificar solo por teléfono, con los ojos abiertos:**
+- En Perú los números se reciclan: alguien podría heredar el historial y los puntos de otro.
+- Una familia comparte un número → historiales que se mezclan.
+- El `score` del comprador pierde filo: quien no recibe pedidos cambia de número y vuelve.
+
+**Mitigación propuesta 🔮 — captura diferida del DNI.** Lima cierra la venta solo con
+teléfono, y el DNI se pide **después**, en el chat del pedido, cuando le sirve al comprador:
+para ver "Mis pedidos", acumular puntos o reclamar la recompensa de bienvenida. Deja de ser
+un peaje antes de comprar y pasa a ser lo que desbloquea un beneficio. Es el mismo patrón
+que ya se aplicó al pin de ubicación (ver [02-LOGISTICS §4](./02-SMART-LOGISTICS.md)).
+La infraestructura ya existe: `buyer-login` resuelve por `document_number`, y `ScorePage`
+y `MisPedidosPage` son justamente las pantallas que lo justifican.
+
 ## Modelo de datos (núcleo) ✅
 
 - `stores` — una marca por fila: branding, slug, `active`, config WhatsApp (`wa_*`),

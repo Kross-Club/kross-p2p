@@ -71,6 +71,41 @@
 - **Pendiente 🔮:** Fase 3 (pago, comprobante, submit, verificación), Fase 4
   (instrumentación completa y pulido). El paso 3 hoy es un placeholder y la landing
   sigue usando `CheckoutQuiz`: se cambia cuando el flujo pueda cerrar un pedido.
+
+#### Ajustes pedidos tras revisar Fase 2 (jul-2026) 🔮
+
+**a) El DNI sale de Lima.** Lima cierra con teléfono + nombre y nada más: es el segmento
+de mayor volumen y el DNI es el campo que más abandono genera. En provincia se queda,
+porque ahí hay dinero adelantado y porque la agencia lo exige para entregar. El contrato
+de identidad y sus riesgos están en
+[00-CORE · Identidad del comprador](./00-CORE-ARCHITECTURE.md).
+
+**b) Nombre y DNI dejan de competir.** Hoy se piden los dos porque el nombre del DNI
+(titular, vía Decolecta) y "quién recibe" no son siempre la misma persona — en COD recibe
+la mamá, el vecino, el portero. Pero el orden actual (nombre → DNI) hace que el
+autocompletado casi nunca se aproveche. Al quedar el DNI solo en provincia, ahí conviene
+**invertirlo**: DNI primero → Decolecta rellena el nombre → un enlace pequeño
+*"¿Lo recibe otra persona?"* cubre la minoría. Un campo menos de tipeo en el flujo que ya
+es el más largo.
+
+**c) Copy del DNI.** El actual —*"Para crear tu cuenta y que puedas seguir tu pedido"*—
+plantea un beneficio nuestro como si fuera suyo. En provincia hay uno mucho más fuerte y
+verificable por el comprador: **la agencia se lo va a pedir para entregarle el paquete**.
+Un hecho de su mundo, no un trámite del nuestro. Confirmar con operaciones antes de
+escribirlo (ver la advertencia en 00-CORE).
+
+**d) Descuento de retención al intentar salir 🔮.** Al cerrar el modal con datos
+ingresados, ofrecer S/5 de descuento sobre cada pack antes de dejarlo ir. Dos cosas que
+hay que resolver **antes** de construirlo, no después:
+
+- **En móvil no existe `mouseleave`,** que es el disparador clásico de exit-intent. Y el
+  tráfico de anuncios de Meta es casi todo móvil. Si se implementa solo con `mouseleave`,
+  la función no se dispara para la mayoría del tráfico. En móvil el disparador viable es
+  el **botón atrás** (interceptando el historial) o el toque en la X, que ya existe.
+- **Cuesta margen y enseña a abandonar.** S/5 sobre una ganancia típica de S/49–78 por
+  pedido es 7–10 % del margen, en cada pedido donde dispare — incluidos los de quien
+  habría comprado igual. Propuesta: una sola vez por comprador, y medirlo contra un grupo
+  de control antes de dejarlo permanente. El monto va a `checkout.config.ts`, no al JSX.
 - ⚠️ `src/lib/checkout-flow.ts` y el cuerpo de `CheckoutQuiz.tsx` quedan **en pie hasta
   que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
   `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 3.
@@ -121,6 +156,9 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 (sin esto el Voice Closer queda dormido, que es el estado esperado hasta crear el agente).
 
 ## Pendientes priorizados (dónde retomar)
+0. 🔮 **Ajustes de Fase 2** (ver §1.b): sacar el DNI de Lima, invertir DNI↔nombre en
+   provincia, copy del DNI y descuento de retención al salir. Antes de construir el
+   descuento hay que decidir su disparador en móvil y su tope.
 1. 🔮 **Fase 3 del checkout:** paso 3, bucket `vouchers`, submit idempotente por `orderId`,
    suscripción al veredicto del adelanto, pantalla de confirmación.
 2. 🟡 **Lead parcial (`DRAFT`)**: `save-checkout-draft` + tabla `checkout_drafts` ya

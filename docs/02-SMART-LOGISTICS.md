@@ -106,6 +106,19 @@ real; se recalcula cuando haya pedidos con coordenadas.
 - **Olva:** sin listado. `getNearest()` devuelve `null` — señal explícita de que la UI
   cae a texto libre y marca el pedido para verificación manual. Cuando llegue el listado,
   el cambio es de datos, no de código.
+
+  **Cómo conseguirlo 🔮.** Olva no publica un CSV, pero su buscador
+  (`olvacourier.com/ubicanos/`) tiene que sacar las sedes de algún lado. El orden a probar,
+  de menos a más trabajo:
+  1. **Endpoint interno.** Abrir la página con DevTools → pestaña *Network* → filtro *Fetch/XHR*
+     y ver qué pide al cargar o al elegir un departamento. Si hay un JSON, esa URL es la
+     fuente y `build-agencies.mjs` la consume igual que el CSV de Shalom.
+  2. **Datos incrustados en el HTML.** Si no hay XHR, el listado viene en el propio HTML o en
+     un `<script>` con el arreglo de sedes. Se extrae con un generador, como se hizo con el KML.
+  3. **Pedirlo a Olva.** Es lo más confiable y lo que ya se hizo con Shalom. Un listado
+     oficial no se desactualiza solo.
+  ⚠️ Antes de raspar, revisar los términos de uso del sitio. Y ojo: un scraper se rompe
+  callado cuando ellos rediseñan — por eso 3 le gana a 1 y 2 a mediano plazo.
 - ⚠️ El CSV original traía las **coordenadas corruptas** (locale español: el punto decimal
   leído como separador de miles, 487 de 488 filas). `scripts/build-agencies.mjs` las
   reconstruye y desambigua con el centroide del departamento. **No editar el JSON a mano:**
