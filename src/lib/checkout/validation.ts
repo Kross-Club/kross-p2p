@@ -1,0 +1,149 @@
+// ─── SALES ENGINE · Validación por paso ──────────────────────────────────────
+// Schemas puros, sin dependencias externas. Son 4 campos: una librería de
+// validación (~13 KB gzip) no se paga sola cuando el bundle del checkout es
+// dinero. Se usan igual en el cliente (inline al blur) y antes del insert.
+//
+// Los mensajes de error dicen CÓMO arreglarlo, no qué está mal: "Deben ser 9
+// dígitos" convierte mejor que "Teléfono inválido".
+
+import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE } from './checkout.config'
+import type { CheckoutState, CheckoutStepId } from './types'
+
+export type FieldName =
+  | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName' | 'locationType'
+  | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch' | 'voucher'
+
+export type FieldErrors = Partial<Record<FieldName, string>>
+
+const digits = (s: string): string => s.replace(/\D/g, '')
+
+// ─── Validadores de campo ────────────────────────────────────────────────────
+
+export function validateDni(dni: string): string | null {
+  const d = digits(dni)
+  if (!d) return 'Ingresa tu DNI'
+  if (d.length !== DNI_LENGTH) return `Deben ser ${DNI_LENGTH} dígitos`
+  return null
+}
+
+export function validateWhatsapp(phone: string): string | null {
+  const d = digits(phone)
+  if (!d) return 'Ingresa tu WhatsApp'
+  if (d.length !== PHONE_LENGTH_PE) return `Deben ser ${PHONE_LENGTH_PE} dígitos`
+  // Todo celular peruano empieza en 9. Atajarlo aquí evita un pedido que nadie
+  // puede contactar, que es peor que un campo rechazado.
+  if (!d.startsWith('9')) return 'Un celular peruano empieza con 9'
+  return null
+}
+
+export function validateReceiverName(name: string): string | null {
+  const n = name.trim()
+  if (!n) return 'Ingresa el nombre de quien recibe'
+  if (n.length < 3) return 'Escribe el nombre completo'
+  return null
+}
+
+export function validateAddressText(text: string): string | null {
+  const t = text.trim()
+  if (!t) return 'Ingresa tu dirección'
+  if (t.length < 6) return 'Falta la calle y el número'
+  return null
+}
+
+/** ¿El WhatsApp ya sirve para guardar el lead parcial? */
+export const isWhatsappComplete = (phone: string): boolean => validateWhatsapp(phone) === null
+
+// ─── Validación por paso ─────────────────────────────────────────────────────
+
+function validateStep1(s: CheckoutState): FieldErrors {
+  // El pack viene preseleccionado, así que este error no debería verse nunca —
+  // existe para que el CTA no pueda enviar un estado imposible.
+  return s.selectedPack ? {} : { selectedPack: 'Elige tu pack' }
+}
+
+function validateStep2(s: CheckoutState): FieldErrors {
+  const e: FieldErrors = {}
+
+  const phone = validateWhatsapp(s.customerInfo.whatsapp)
+  if (phone) e.whatsapp = phone
+
+  const name = validateReceiverName(s.customerInfo.receiverName)
+  if (name) e.receiverName = name
+
+  if (!s.locationType) {
+    e.locationType = 'Elige dónde recibes tu pedido'
+    return e
+  }
+
+  const dni = validateDni(s.customerInfo.dni)
+  if (dni) e.dni = dni
+
+  if (s.locationType === 'LIMA') {
+    const a = s.limaAddress
+    if (!a?.district) e.district = 'Elige tu distrito'
+    const addr = validateAddressText(a?.addressText ?? '')
+    if (addr) e.addressText = addr
+    // El pin NO se valida: en modo DISTRICT el pedido se cierra sin él.
+    return e
+  }
+
+  const p = s.provinciaConfig
+  if (!p?.city) {
+    e.city = 'Elige tu ciudad'
+    return e
+  }
+
+  if (p.deliveryMethod === 'DOMICILIO') {
+    const addr = validateAddressText(p.address?.addressText ?? '')
+    if (addr) e.addressText = addr
+    return e
+  }
+
+  // Rama agencia. Es la salida que SIEMPRE está abierta: si el comprador ignoró
+  // el mapa, `deliveryMethod` es null y aquí se le pide elegir agencia.
+  if (!p.selectedAgency) {
+    e.agency = 'Elige tu agencia de recojo'
+    return e
+  }
+  if (p.selectedAgency === 'SHALOM' && !p.selectedAgencyBranchId) {
+    e.agencyBranch = 'Elige la sede donde vas a recoger'
+  }
+  if (p.selectedAgency !== 'SHALOM' && !p.olvaBranchText?.trim()) {
+    e.agencyBranch = 'Escribe en qué agencia vas a recoger'
+  }
+  return e
+}
+
+function validateStep3(s: CheckoutState): FieldErrors {
+  // Sin adelanto no hay nada que subir: el CTA queda habilitado de una.
+  if (s.advanceAmount <= 0) return {}
+  // El CTA espera al ARCHIVO, no al resultado de la verificación — esa corre en
+  // background y el comprador no debe quedarse mirando un spinner.
+  return s.paymentVoucher ? {} : { voucher: 'Sube tu comprobante para terminar' }
+}
+
+const VALIDATORS: Record<CheckoutStepId, (s: CheckoutState) => FieldErrors> = {
+  1: validateStep1,
+  2: validateStep2,
+  3: validateStep3,
+}
+
+export function validateStep(s: CheckoutState, step: CheckoutStepId = s.step): FieldErrors {
+  return VALIDATORS[step](s)
+}
+
+/** ¿Se puede avanzar del paso actual? */
+export function canAdvance(s: CheckoutState): boolean {
+  return Object.keys(validateStep(s)).length === 0
+}
+
+/** ¿Está el pedido completo y listo para el insert? Valida los 3 pasos. */
+export function canSubmit(s: CheckoutState): boolean {
+  if (s.status === 'SUBMITTING' || s.status === 'SUBMITTED') return false
+  return ([1, 2, 3] as CheckoutStepId[]).every(step => Object.keys(validateStep(s, step)).length === 0)
+}
+
+/** Modo de cobertura vigente para la región elegida. */
+export function coverageModeFor(s: CheckoutState) {
+  return s.locationType ? COVERAGE_MODE[s.locationType] : null
+}

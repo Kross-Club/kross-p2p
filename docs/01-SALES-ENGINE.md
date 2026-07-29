@@ -23,18 +23,33 @@
 - Al cerrar por voz, marcar `sale.closedBy = 'AI_CLOSER'` (columna lista; `register-buyer`
   ya acepta `closed_by`).
 
-### 1.b Checkout Guiado tipo Quiz (state machine) ✅
-- `src/lib/checkout-flow.ts`: máquina de estados pura del popup paso-a-paso.
-  - Pasos: `contacto → entrega → [pago_adelanto] → confirmado`.
-  - **Bifurcación Lima/Provincia:** `DeliveryType = MOTORIZADO_LIMA | AGENCIA_PROVINCIA`.
-    Provincia (o `YAPE_PLIN`) inserta el paso `pago_adelanto` (adelanto de flete,
-    `DEFAULT_ADVANCE_PEN = S/20`).
-  - Estado de pago: `PaymentStatus` (`NO_REQUERIDO | PENDIENTE |
-    AWAITING_ADVANCE_VERIFICATION | VERIFICADO`).
-  - `checkoutReducer`, `canAdvance`, `stepsFor`, `requiresAdvance`, `QuizAnswers`.
-- **Pendiente 🔮:** UI del popup que consuma este reducer (hoy el checkout vive en
-  `LandingProductoPage.tsx` como modal de una sola pantalla), + subida de comprobante a
-  Storage y verificación del adelanto.
+### 1.b Checkout multi-paso (refactor en curso) 🟡
+
+**Núcleo ✅ construido** en `src/lib/checkout/` — sin UI todavía:
+
+| Archivo | Rol |
+|---|---|
+| `types.ts` | Contrato de `CheckoutState`. Tipado estricto, sin `any` |
+| `checkout.config.ts` | **TODA** regla de negocio: montos, umbrales, textos, modos |
+| `machine.ts` | Reducer puro. `advanceAmount`, `deliveryMethod`, `needsLocationConfirmation` y `courierSurcharge` son **derivados**, nunca los setea la UI |
+| `validation.ts` | Schemas por paso, sin dependencias (son 4 campos; una librería no se paga sola) |
+| `persistence.ts` | Borrador en `localStorage` por `orderId`, TTL 24 h. Nunca revienta |
+| `analytics.ts` | `trackEvent()` con interfaz lista para enchufar Pixel/GA4 |
+| `services/` | `CoverageService`, `AgencyService`, `PaymentVerificationService` |
+
+- **3 pasos:** pack → datos+entrega → resumen+pago. El adelanto de provincia es
+  **S/10** (`ADVANCE_PROVINCIA_PEN`); Lima va 100 % contraentrega.
+- **Idempotencia:** cada checkout nace con un `orderId` uuid. `register-buyer` debe
+  aceptarlo para que un doble tap no genere dos pedidos (pendiente, Fase 3).
+- **El pin nunca bloquea.** En Lima es opcional por diseño; en provincia, si el comprador
+  lo ignora o el mapa falla, la rama de agencia queda abierta y el pedido se cierra igual.
+- 54 tests contra la data real del courier y de Shalom: `npm test`.
+
+- **Pendiente 🔮:** Fase 2 (UI de pasos 1–2, mapa, ramas de agencia), Fase 3 (pago,
+  comprobante, submit, verificación), Fase 4 (instrumentación y pulido).
+- ⚠️ `src/lib/checkout-flow.ts` y el cuerpo de `CheckoutQuiz.tsx` quedan **en pie hasta
+  que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
+  `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 2.
 
 ### 2. Checkout CRO ultra-rápido ✅
 - **Validación DNI con Decolecta (RENIEC)** → autocompleta el nombre y reduce campos:
@@ -82,9 +97,19 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 (sin esto el Voice Closer queda dormido, que es el estado esperado hasta crear el agente).
 
 ## Pendientes priorizados (dónde retomar)
-1. 🔮 UI del **popup guiado** que consuma `checkoutReducer` (pasos + pin arrastrable +
-   pantalla de adelanto con QR/comprobante). Hoy el reducer existe, la UI no.
-2. 🔮 `createElevenLabsTransport()` (implementar `VoiceTransport` con `@elevenlabs/react`)
+1. 🔮 **Fase 2 del checkout:** UI de pasos 1–2 sobre `src/lib/checkout/machine.ts`
+   (selector de pack, datos, mapa con pin, ramas Shalom/Olva). El núcleo ya existe.
+   Requiere instalar `leaflet` (~42 KB gzip, con `import()` dinámico) y una key de tiles
+   (`VITE_MAP_TILE_URL`, `VITE_MAP_TILE_KEY`) — OSM público no aguanta tráfico de anuncios.
+2. 🔮 **Fase 3:** paso 3, bucket `vouchers`, submit idempotente por `orderId`,
+   suscripción al veredicto del adelanto, pantalla de confirmación.
+3. 🔮 **Lead parcial (`DRAFT`)**: Edge Function + tabla `checkout_drafts`. Se guarda apenas
+   el WhatsApp es válido; es lo que permite recuperar abandonos. No debe ir a
+   `order_sessions` (contamina el CRM y el round-robin asignaría un vendedor a un no-cliente).
+4. 🔮 **Verificación del yape**: servicio externo ya contratado, integración pendiente.
+   La costura está en `services/PaymentVerificationService.ts` — el mock deja todo en
+   `PENDING` a propósito: hasta que exista el real, todo adelanto va a revisión humana,
+   que es lo que pasa hoy en producción.
+5. 🔮 `createElevenLabsTransport()` (implementar `VoiceTransport` con `@elevenlabs/react`)
    + crear el agente en ElevenLabs → activar la voz.
-3. 🔮 Subida de comprobante de adelanto a Storage + verificación (`AWAITING_ADVANCE_VERIFICATION`).
-4. 🔮 Cobro Yape/Plin integrado (QR dinámico / confirmación de operación).
+6. 🔮 Cobro Yape/Plin integrado (QR dinámico / confirmación de operación).
