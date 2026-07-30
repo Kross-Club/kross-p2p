@@ -468,3 +468,20 @@ Yape, encontrar la galería y volver. Además **no hace falta para cobrar** — 
 cruce funciona solo con el código. La captura sirve cuando el cruce falla, y ahí
 el problema suele ser nuestro (el lector caído), no del comprador: cobrarle a él
 con fricción el seguro de nuestra falla está al revés.
+
+## El checkout multi-paso es el default
+
+Desde este cambio, la landing abre el checkout de 3 pasos. El viejo (`CheckoutQuiz`)
+queda detrás de `?checkout=v1` **solo como escotilla**: si algo sale mal en
+producción se vuelve al anterior cambiando la URL, sin esperar un deploy. No es un
+experimento, es el botón de emergencia.
+
+El motivo del cambio no es que el nuevo sea más bonito: el viejo **solo pedía
+datos**. No tenía forma de llevar al comprador al chat del pedido, y de ahí sale la
+tasa de entrega — el número que decide si un COD gana o pierde plata. Un checkout
+que cierra la venta pero deja al cliente sin saber por dónde le van a escribir
+optimiza la mitad del problema.
+
+**Queda pendiente medirlo.** El cambio se hizo por criterio de producto, no con
+datos comparados: si a las semanas la conversión cae, la escotilla está ahí. Borrar
+`CheckoutQuiz` recién tiene sentido cuando haya números que respalden el cambio.
