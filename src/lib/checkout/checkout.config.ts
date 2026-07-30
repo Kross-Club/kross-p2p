@@ -228,8 +228,12 @@ export const COPY = {
 
   // Confirmación
   doneTitle: '¡Pedido confirmado! 🎉',
-  doneCod: 'Pagas al recibir. Te escribimos por WhatsApp para coordinar.',
-  doneAdvance: 'Ya registramos tu adelanto. Te escribimos por WhatsApp para coordinar el envío.',
+  // El canal es el CHAT del pedido, no WhatsApp. WhatsApp es solo el fallback
+  // cuando el comprador no entra al chat, así que prometerlo aquí manda a
+  // esperar por donde no vamos a escribir primero — y deja el chat, que es lo
+  // que sostiene la tasa de entrega, sonando a algo secundario.
+  doneCod: 'Pagas al recibir. Coordinamos la entrega por el chat de tu pedido.',
+  doneAdvance: 'Ya registramos tu adelanto. Coordinamos el envío por el chat de tu pedido.',
   doneClose: 'Listo',
   // Nombra el BENEFICIO, no la mecánica: "abrir el chat" describe un botón,
   // "coordinar la entrega" describe lo que el comprador gana entrando.

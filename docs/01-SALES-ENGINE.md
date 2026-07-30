@@ -514,3 +514,22 @@ S/10, donde los céntimos son el discriminador. Elimina el campo y el concepto �
 el comprador solo copia un monto, que ya tiene que escribir de todas formas.
 Riesgo: que redondee a S/10 por costumbre, lo que degrada a revisión humana. Es
 un cambio de instrucción de cobro, así que es decisión de negocio.
+
+## El canal es el chat, no WhatsApp
+
+La pantalla final prometía "Te escribimos por WhatsApp". **No es así**: WhatsApp
+es el *fallback* para cuando el comprador no entra al chat del pedido.
+Prometerlo mandaba a esperar por donde no escribimos primero, y de paso dejaba
+el chat —que es lo que sostiene la tasa de entrega— sonando a algo secundario.
+
+## "Ver mi pedido" en la landing
+
+Al tocar "Listo" y cerrarse la ventana de confirmación, el comprador se quedaba
+en la landing **sin ninguna vía de volver a su pedido**: el token vivía solo en
+memoria del modal. Feedback de compradores reales.
+
+Ahora el token se guarda en `localStorage` (`saveLastOrder`) y la barra inferior
+ofrece **"Ver mi pedido"** junto a "¡Lo quiero!", en estilo secundario: la
+landing sigue siendo para vender, no para dar seguimiento. Caduca a los 3 días
+—después la entrega ya ocurrió y un botón viejo solo confunde— y un storage
+corrupto o el modo incógnito no rompen nada.
