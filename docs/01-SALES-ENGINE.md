@@ -355,7 +355,15 @@ ingestor va aparte, en la tabla `store_secrets`, sin políticas.
 - `supabase/functions/register-buyer` — crea el pedido (idempotente por `checkout_id`);
   acepta `payment_method`, `closed_by` y el adelanto; cruza pagos ya recibidos.
 - `supabase/functions/yape-ingest` — ingesta de pagos Yape. Auth por
-  `stores.payment_ingest_token` (cabecera `x-ingest-token`), **no** por anon key.
+  `store_secrets.payment_ingest_token` (cabecera `x-ingest-token`), **no** por anon key.
+  Se despliega con **`--no-verify-jwt`**: quien llama es un automatizador en un celular,
+  no un navegador con sesión, y su credencial es el token de tienda. Sin ese flag Supabase
+  exige un JWT y la macro recibe 401 sin explicación.
+  Acepta el cuerpo como **texto plano** (el cuerpo ES la notificación, `store_id` por query
+  o cabecera) o como JSON. El texto plano es el recomendado para MacroDroid/Tasker:
+  interpolar la notificación dentro de un JSON se rompe con una comilla o un salto de
+  línea, y un 400 ahí significa **perder el pago en silencio** porque el automatizador no
+  reintenta. Por eso un JSON malformado tampoco se rechaza: degrada a texto plano.
 - `supabase/functions/_shared/yape.ts` — parser de la notificación (con tests).
 - `supabase/functions/_shared/yape-match.ts` — regla de cruce pago ↔ pedido (con tests).
 - `supabase/functions/elevenlabs-signed-url` — signed URL del agente. Secrets

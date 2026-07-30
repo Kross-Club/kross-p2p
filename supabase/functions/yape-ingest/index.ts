@@ -25,7 +25,7 @@ const supabase = createClient(
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, x-ingest-token',
+  'Access-Control-Allow-Headers': 'authorization, content-type, x-ingest-token, x-store-id',
 }
 
 const json = (body: unknown, status = 200) =>
@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  let body: {
+  interface IngestBody {
     store_id?: string
     /** Texto crudo de la notificación. Es la entrada preferida. */
     raw?: string
@@ -55,13 +55,38 @@ Deno.serve(async (req) => {
     /** ISO. Si la fuente encoló offline, manda cuándo llegó de verdad. */
     received_at?: string
   }
-  try {
-    body = await req.json()
-  } catch {
-    return json({ error: 'Invalid JSON' }, 400)
+
+  // ─── Dos formas de mandar el pago ──────────────────────────────────────────
+  //
+  //   texto plano  ← RECOMENDADA para automatizadores (MacroDroid, Tasker)
+  //     El cuerpo ES la notificación, tal cual. `store_id` va por query o header.
+  //
+  //   JSON         ← para fuentes que ya parsean (app nativa, integración propia)
+  //
+  // El texto plano existe porque interpolar la notificación dentro de un JSON es
+  // frágil: basta una comilla o un salto de línea en el texto de Yape para que el
+  // JSON quede inválido. Con `return 400` eso significaba **perder el pago en
+  // silencio** —el automatizador no reintenta— que es justo lo que este servicio
+  // no puede permitirse. Por eso un JSON roto TAMPOCO se rechaza: se degrada a
+  // texto plano y el parser hace lo suyo.
+  const url = new URL(req.url)
+  const rawBody = await req.text()
+  const looksJson = rawBody.trimStart().startsWith('{')
+
+  let body: IngestBody = {}
+  if (looksJson) {
+    try {
+      body = JSON.parse(rawBody) as IngestBody
+    } catch {
+      body = { raw: rawBody } // JSON malformado: se trata como texto, no se pierde
+    }
+  } else {
+    body = { raw: rawBody }
   }
 
-  const storeId = String(body.store_id ?? '').trim()
+  const storeId = String(
+    body.store_id ?? url.searchParams.get('store_id') ?? req.headers.get('x-store-id') ?? '',
+  ).trim()
   const raw = String(body.raw ?? '').trim()
   if (!storeId) return json({ error: 'Missing store_id' }, 400)
   if (!raw && typeof body.amount_pen !== 'number') return json({ error: 'Missing raw or amount_pen' }, 400)
