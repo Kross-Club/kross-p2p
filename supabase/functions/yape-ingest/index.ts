@@ -224,18 +224,38 @@ Deno.serve(async (req) => {
     .update({ matched_order_id: chosen.id, matched_at: matchedAt })
     .eq('id', event.id)
 
-  // Rastro en el chat del pedido: es donde Ventas mira, y deja constancia de
-  // que el veredicto fue automático y de por qué.
+  // Dos mensajes, no uno. El de abajo iba sin `visibility` —o sea, visible para
+  // TODOS— y le mostraba al comprador el veredicto interno: el ⚠️ de que su
+  // nombre no coincide, el nombre de quien pagó (que puede ser un tercero) y una
+  // instrucción dirigida a Ventas. Justo lo contrario de la regla del módulo:
+  // al comprador no se le traslada nunca nuestra duda operativa.
+
+  // Para Ventas: el veredicto completo, con el motivo y qué hacer.
   await supabase.from('chat_messages').insert({
     session_id: chosen.id,
     sender_role: 'system',
     sender_name: 'Kross',
     type: 'text',
+    visibility: 'sellers',
     body: `✅ Adelanto de S/${amountPen} verificado automáticamente`
       + (senderName ? ` · pagó ${senderName}` : '')
       + (securityCode ? ` · código ${securityCode}` : '')
       + (reason ? `\n⚠️ ${reason}` : '')
       + (autoconfirm ? '' : '\nConfirma el pedido cuando lo revises.'),
+  })
+
+  // Para el comprador: el acuse que estaba esperando, sin una sola palabra de
+  // nuestra cocina. Es además el PRIMER mensaje que recibe de la marca, así que
+  // hace doble trabajo: confirma su plata y le enseña que este chat es el canal
+  // por donde va a saber de su pedido.
+  await supabase.from('chat_messages').insert({
+    session_id: chosen.id,
+    sender_role: 'system',
+    sender_name: 'Kross',
+    type: 'status_update',
+    visibility: 'all',
+    body: `✅ ¡Recibimos tu adelanto de S/${amountPen}! Ya estamos preparando tu pedido.`
+      + ' Por aquí te avisamos cuando salga.',
   })
 
   return json({

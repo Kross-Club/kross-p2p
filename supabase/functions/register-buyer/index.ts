@@ -350,17 +350,29 @@ Deno.serve(async (req) => {
       await supabase.from('payment_events')
         .update({ matched_order_id: data.id, matched_at: matchedAt })
         .eq('id', chosen.id)
+      // El veredicto interno es SOLO para Ventas: lleva el nombre de quien pagó
+      // (que puede ser un tercero) y nuestras dudas operativas.
       await supabase.from('chat_messages').insert({
         session_id: data.id, sender_role: 'system', sender_name: 'Kross', type: 'text',
+        visibility: 'sellers',
         body: `✅ Adelanto de S/${advanceAmount} verificado automáticamente`
           + (chosen.sender_name ? ` · pagó ${chosen.sender_name}` : '')
           + (reason ? `\n⚠️ ${reason}` : ''),
       })
+      // Y el acuse para el comprador: su plata llegó y este es el canal.
+      await supabase.from('chat_messages').insert({
+        session_id: data.id, sender_role: 'system', sender_name: 'Kross',
+        type: 'status_update', visibility: 'all',
+        body: `✅ ¡Recibimos tu adelanto de S/${advanceAmount}! Ya estamos preparando tu pedido.`
+          + ' Por aquí te avisamos cuando salga.',
+      })
     } else if (advanceVoucherUrl) {
       // El comprobante está subido pero el pago aún no aparece. Se avisa para
-      // que Ventas lo mire; NUNCA se le dice al comprador que su pago no existe.
+      // que Ventas lo mire; NUNCA se le dice al comprador que su pago no existe
+      // —de ahí que este mensaje sea `sellers` y no lleve respuesta al chat.
       await supabase.from('chat_messages').insert({
         session_id: data.id, sender_role: 'system', sender_name: 'Kross', type: 'text',
+        visibility: 'sellers',
         body: `📎 Comprobante de adelanto (S/${advanceAmount}) subido por el cliente. Aún sin cruce automático${reason ? ` · ${reason}` : ''}. Revísalo antes de despachar.`,
       })
     }
