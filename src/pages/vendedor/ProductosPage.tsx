@@ -107,13 +107,24 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
   const [packUploading, setPackUploading] = useState<number | null>(null)
   const packFileRef = useRef<HTMLInputElement>(null)
 
-  // Devolvía `null` en silencio si Storage fallaba: la foto simplemente no
-  // aparecía y no había forma de saber por qué —pasó con las fotos de pack, que
-  // se veían "subidas" y nunca llegaban a la BD—. Ahora el error se muestra.
+  // Devolvía `null` en silencio si Storage fallaba: la foto no aparecía y no
+  // había forma de saber por qué. Ahora el error se muestra, y antes se descarta
+  // la causa más común —la sesión vencida—, que la política del bucket reporta
+  // como "row-level security policy" y no le dice nada útil a nadie.
   const uploadOne = async (f: File): Promise<string | null> => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      alert('Tu sesión venció. Vuelve a entrar y reintenta: la foto no se subió.')
+      return null
+    }
+
     const ext = f.name.split('.').pop() || 'jpg'
     const path = `${adminId}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`
-    const { error } = await supabase.storage.from('products').upload(path, f, { contentType: f.type, upsert: true })
+    // Sin `upsert`: la ruta ya es única (timestamp + aleatorio), así que nunca
+    // hay nada que reemplazar. Pedirlo obliga a Storage a resolver además el
+    // camino de UPDATE, con los permisos extra que eso arrastra.
+    const { error } = await supabase.storage
+      .from('products').upload(path, f, { contentType: f.type })
     if (error) { alert(`No se pudo subir la imagen: ${error.message}`); return null }
     return supabase.storage.from('products').getPublicUrl(path).data.publicUrl
   }
