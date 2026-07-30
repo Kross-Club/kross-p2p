@@ -162,6 +162,17 @@ Deno.serve(async (req) => {
     // 23505 = choque con el índice único: la notificación ya había entrado.
     // Es el caso NORMAL cuando el automatizador reintenta, no un error.
     if (insertErr.code === '23505') return json({ ok: true, duplicate: true })
+
+    // Cualquier otro fallo de BD (esquema desfasado, caída) deja el pago sin
+    // guardar, y el automatizador NO reintenta: sería plata perdida sin rastro.
+    // Volcarlo al log lo hace recuperable a mano — es la última red, y ya se
+    // usó: la función se desplegó antes de correr el ALTER TABLE y respondía
+    // 500 sin dejar ni una pista de qué pago se había caído.
+    console.error('[yape-ingest] NO SE PUDO GUARDAR EL PAGO', JSON.stringify({
+      store_id: storeId, error: insertErr.message, raw,
+      amount_pen: amountPen, sender_name: senderName, security_code: securityCode,
+      received_at: receivedAt,
+    }))
     return json({ error: insertErr.message }, 500)
   }
 

@@ -51,6 +51,24 @@ describe('notificación REAL de Yape', () => {
   })
 })
 
+// ─── Segundo pago Yape→Yape real (30-jul-2026) ──────────────────────────────
+// Confirma dos cosas que faltaba comprobar: el patrón aguanta montos con
+// decimales ("S/ 0.1") y **el código de seguridad SÍ llega** en este equipo —
+// la censura de OTP que advierte Android 15 no lo está bloqueando.
+const REAL_BODY_2 = 'Confirmación de Pago Paolo Car* te envió un pago por S/ 0.1. El cód. de seguridad es: 956'
+
+describe('segundo pago real Yape→Yape', () => {
+  it('lee nombre, monto decimal y código', () => {
+    const p = parseYapeNotification(REAL_BODY_2)
+    expect(p.looksLikeYape).toBe(true)
+    expect(p.senderName).toBe('Paolo Car*')
+    expect(p.amountPen).toBe(0.1)
+    // El comprobante del pagador mostraba este mismo 956: es la llave que teclea
+    // en el paso 3 y la que cierra el cruce sin ambigüedad.
+    expect(p.securityCode).toBe('956')
+  })
+})
+
 // ─── Pago hecho desde PLIN a un número Yape (real, 30-jul-2026) ──────────────
 // Yape igual notifica, pero con otro cuerpo: lleva "Yape!" delante del nombre y
 // —esto es lo importante— **no trae código de seguridad**. No es un fallo: es un
@@ -94,6 +112,13 @@ describe('parser de Yape · monto', () => {
     expect(parseYapeNotification('Juan P. te envió un pago por S/ 20').amountPen).toBe(20)
     expect(parseYapeNotification('Juan P. te yapeó S/20.00').amountPen).toBe(20)
     expect(parseYapeNotification('Ana M. te envió S/ 1,250.50').amountPen).toBe(1250.5)
+  })
+
+  // Regresión: el punto que cierra la oración se colaba en el número y
+  // `Number("0.1.")` daba NaN → el pago se descartaba por "sin monto legible".
+  it('no se traga el punto final de la oración', () => {
+    expect(parseYapeNotification('Juan P. te envió un pago por S/ 0.1. El cód. de seguridad es: 956').amountPen).toBe(0.1)
+    expect(parseYapeNotification('Juan P. te envió un pago por S/ 15. Gracias').amountPen).toBe(15)
   })
 
   it('sin monto legible devuelve null, no un 0 que cuadraría con cualquier cosa', () => {

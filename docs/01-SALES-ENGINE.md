@@ -304,10 +304,22 @@ No es un fallo: el código lo genera Yape para sus propios pagos, así que con P
 a venir. Ahí el cruce cae al modo débil (monto con candidato único), y **por eso el paso 3
 le pide el código al comprador**: cuando la notificación no lo trae, lo pone él.
 
+**El monto no puede tragarse el punto de la oración.** *"…por S/ 0.1. El cód…"* devolvía
+`"0.1."` y `Number()` daba `NaN`: el pago se descartaba por "sin monto legible". Con
+`S/ 1.` no se notaba porque JS sí parsea `"1."`. Los decimales ahora se exigen después del
+punto. Lo encontró un pago real de S/0.10, no una prueba inventada.
+
 **⚠️ Android 15 puede censurar el código.** MacroDroid avisa que a partir de Android 15 los
 contenidos tipo OTP se bloquean para los lectores de notificaciones. El código de seguridad
-es exactamente ese patrón. Si el `raw` llega sin código en pagos Yape→Yape, hay que apagar
-**"Notificaciones mejoradas"** en los ajustes de notificaciones del equipo.
+es exactamente ese patrón. En el equipo probado **sí llega** (se verificó con un pago real:
+notificación `956` = comprobante `956`), pero si algún día el `raw` empieza a llegar sin
+código en pagos Yape→Yape, hay que apagar **"Notificaciones mejoradas"** en los ajustes de
+notificaciones del equipo.
+
+**Orden de despliegue: primero el SQL, después la función.** Al revés, la función escribe
+columnas que la base no tiene y responde 500 — y como el automatizador no reintenta, ese
+pago se pierde. Por eso un fallo de inserción ahora vuelca el pago completo al log de la
+función: es la última red para recuperarlo a mano.
 
 **Nada se descarta en silencio ✅.** Un texto ilegible, un pago saliente o una variable del
 automatizador sin expandir se guardan igual en `payment_events` con `ignored_reason`. Antes

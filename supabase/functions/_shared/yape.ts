@@ -39,11 +39,13 @@ const squash = (s: string): string => s.replace(/\s+/g, ' ').trim()
  * separador de miles y el punto como decimal, que es como se escribe en Perú.
  */
 function readAmount(text: string): number | null {
-  const m = text.match(/S\/\s*([\d.,]+)/i)
+  // Los decimales se exigen DESPUÉS del punto a propósito. Tragar cualquier
+  // punto se comía el que cierra la oración —"…por S/ 0.1. El cód…" daba
+  // "0.1." y `Number()` devolvía NaN— y el pago se descartaba por "sin monto
+  // legible". Con "S/ 1." no se notaba porque JS sí parsea "1.".
+  const m = text.match(/S\/\s*(\d[\d,]*(?:\.\d{1,2})?)/i)
   if (!m) return null
-  // Quita separadores de miles y deja un solo punto decimal.
-  const cleaned = m[1].replace(/,/g, '')
-  const value = Number(cleaned)
+  const value = Number(m[1].replace(/,/g, '')) // fuera los separadores de miles
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
