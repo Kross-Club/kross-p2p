@@ -192,12 +192,88 @@ desde **Productos → editar → "+ Foto del pack"** (`ProductosPage.tsx`, bucke
   `OrderChatPage.tsx` (Realtime).
 - Escribe `customer.*` y `sale.productId` del estado central. ✅
 
-### 3. Pagos locales sin fricción 🟡 / 🔮
-- **Hoy ✅:** **Contraentrega (COD)** es el flujo real de cobro.
-- **Hoy 🟡:** Yape/Plin aparecen como **etiquetas** en catálogos/seed (`src/data/seed.ts`),
-  no como cobro integrado.
-- **Falta 🔮:** integración transaccional de **Yape/Plin** (link/QR, confirmación de pago)
-  y tarjeta. Al integrarse, setear `sale.paymentMethod` correctamente.
+### 3. Pagos locales sin fricción 🟡
+
+- **Hoy ✅:** **Contraentrega (COD)** es el flujo real de cobro en Lima.
+- **Hoy ✅ (backend, Fase 3):** verificación del **adelanto por Yape** en provincia —
+  ingesta, cruce y estado del pedido. Ver §3.1.
+- **Falta 🔮:** UI del paso 3 (caja Yape, subida del comprobante, pantalla de confirmación)
+  y tarjeta.
+
+#### 3.1 Verificación del adelanto por Yape ✅ backend · 🔮 UI
+
+**⚠️ Restricción técnica que define todo el diseño: una PWA NO puede leer las
+notificaciones de otras apps.** No existe Web API para eso, ni en Android ni en iOS. Lo
+que sí existe es `NotificationListenerService`, una API **nativa de Android** que exige un
+APK instalado y un permiso que se concede en una pantalla del sistema. Una PWA, aunque
+esté "instalada", corre en el sandbox del navegador y no la ve. (`save-push-subscription`
+va en la dirección contraria: sirve para *enviarle* notificaciones al equipo.)
+
+Por eso el sistema **no depende de quién lee la notificación**. La lectura es una fuente
+enchufable; todo lo demás es nuestro y no cambia si la fuente cambia.
+
+```
+  [ celular del dueño ]  ──POST──▶  yape-ingest  ──▶  payment_events
+   lee la notificación                   │
+   (fuente enchufable)                   ├──▶ cruza con order_sessions PENDING
+                                         └──▶ chat del pedido + estado
+```
+
+| Fuente (`source`) | Qué es | Cuándo |
+|---|---|---|
+| `AUTOMATION` | MacroDroid / Tasker / Automate en el Android del dueño: una regla "notificación de Yape → HTTP POST" | **Se puede usar hoy**, sin publicar nada |
+| `ANDROID_LISTENER` | APK propio con `NotificationListenerService` | Cuando valga la pena mantener una app nativa |
+| `MANUAL` | alguien del equipo lo escribe | Siempre disponible como respaldo |
+
+- **iOS no puede hacer esto de ninguna forma.** Si el dueño usa iPhone, el lector tiene
+  que vivir en un Android (puede ser un equipo viejo dedicado) o el cruce es manual.
+
+**Cómo cuadra un pago con un pedido** — `supabase/functions/_shared/yape-match.ts`, puro y
+con tests. La regla vive en UN solo lugar porque el cruce ocurre en los **dos sentidos**:
+el comprador suele yapear *antes* de terminar el pedido, así que `register-buyer` también
+busca pagos ya guardados al crear el pedido. Sin esa segunda pasada, todo pedido de
+provincia quedaría esperando un pago que ya había llegado.
+
+1. **Código de seguridad** que teclea el comprador. Es lo único que no se puede adivinar
+   mirando el monto: si calza, cuadra.
+2. **Monto, y solo si hay un único candidato.** Con dos pedidos esperando S/10, elegir "el
+   más antiguo" acierta la mitad de las veces — y la otra mitad le da por pagado el pedido
+   a quien no pagó. Eso va a revisión humana.
+3. **El nombre NUNCA decide.** En COD paga la mamá, el vecino o el esposo. Se compara
+   tolerando el apellido abreviado de Yape ("JUAN C. P."), y si difiere se anota el aviso
+   pero **el match se mantiene**.
+
+**Decisiones de seguridad del dinero:**
+
+- Un pago **saliente** ("¡Yapeaste S/20 a…!") se descarta explícitamente. Si entrara,
+  nuestro propio gasto podría cuadrar un adelanto y darlo por pagado.
+- **Deduplicación obligatoria** (índice único `store_id + dedupe_key`): la misma
+  notificación llega dos veces con frecuencia (el automatizador reintenta, el celular la
+  re-emite al desbloquear). Sin esto un pago cuadraría dos pedidos.
+- **Todo pago se guarda, cuadre o no**, con su `raw`. Un pago sin pedido ahora puede ser
+  el de un pedido que entra en 30 segundos, y el texto crudo permite reprocesar si el
+  parser resultó corto. Nunca se pierde plata por un fallo de parseo.
+- **`yape_autoconfirm` arranca en `false`** (columna por tienda). Un match marca el pedido
+  como `MATCHED` y lo escribe en el chat, pero la persona sigue confirmando. Primero se
+  mide cuánto acierta el cruce; después se le da el gatillo, sin deploy.
+- **Al comprador jamás se le dice que su pago no existe.** `payment_reason` es para quien
+  revisa. Un `UNMATCHED` es un fallo nuestro hasta que se demuestre lo contrario.
+- El token de ingesta es **por tienda** (`stores.payment_ingest_token`), no la anon key.
+  Si se filtra, se rota en una fila. Sin token configurado la tienda no ingesta nada.
+
+**⚠️ El texto exacto de la notificación de Yape no está confirmado contra un equipo real.**
+El parser (`_shared/yape.ts`) es tolerante a propósito y prueba varios patrones, y los
+tests usan textos **reconstruidos**. En cuanto haya una notificación real hay que agregarla
+como caso de test: es la única forma de saber que el patrón calza. El `raw` guardado
+permite reprocesar lo que no calzó.
+
+**Idempotencia ✅.** `order_sessions.checkout_id` (único) es el uuid que nace al abrir el
+modal. Un doble tap en "Terminar pedido" con 4G lenta devuelve el pedido ya creado en vez
+de crear otro con otro vendedor asignado y otro mensaje de bienvenida.
+
+**Datos de cobro por tienda ✅.** `stores.yape_number`, `yape_holder`, `yape_qr_url`. Kross
+es multi-tenant: cada marca cobra a su propio Yape, así que **nunca** van en código ni en
+`checkout.config.ts`.
 
 ## Métricas del módulo
 - Tiempo landing→pedido, % de campos autocompletados por DNI, tasa de cierre por canal
@@ -214,9 +290,20 @@ desde **Productos → editar → "+ Foto del pack"** (`ProductosPage.tsx`, bucke
 `agency_name` · `delivery_reference` · `closed_by` (def `DIRECT_CHECKOUT`). Todas
 aditivas/nullable. `register-buyer` ya persiste `payment_method` + `closed_by`.
 
+Fase 3 (bloque 13 de `setup-kross.sql`, todo aditivo): `checkout_id` (único, idempotencia) ·
+`advance_amount` · `advance_voucher_url` · `advance_yape_code` · `payment_verification` ·
+`payment_matched_at` · `payment_reason` · `payment_event_id`. Tabla nueva `payment_events`
+y bucket privado `vouchers`. En `stores`: `yape_number`, `yape_holder`, `yape_qr_url`,
+`payment_ingest_token`, `yape_autoconfirm`.
+
 ## Endpoints / archivos de este módulo
 - `supabase/functions/dni-lookup` — DNI → nombre (Decolecta/RENIEC). Secret `DECOLECTA_TOKEN`.
-- `supabase/functions/register-buyer` — crea el pedido; acepta `payment_method`, `closed_by`.
+- `supabase/functions/register-buyer` — crea el pedido (idempotente por `checkout_id`);
+  acepta `payment_method`, `closed_by` y el adelanto; cruza pagos ya recibidos.
+- `supabase/functions/yape-ingest` — ingesta de pagos Yape. Auth por
+  `stores.payment_ingest_token` (cabecera `x-ingest-token`), **no** por anon key.
+- `supabase/functions/_shared/yape.ts` — parser de la notificación (con tests).
+- `supabase/functions/_shared/yape-match.ts` — regla de cruce pago ↔ pedido (con tests).
 - `supabase/functions/elevenlabs-signed-url` — signed URL del agente. Secrets
   `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`.
 - `src/lib/checkout-flow.ts` — state machine del quiz de checkout.
@@ -231,12 +318,17 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 0. 🔮 **Ajustes de Fase 2** (ver §1.b): sacar el DNI de Lima, invertir DNI↔nombre en
    provincia, copy del DNI y descuento de retención al salir. Antes de construir el
    descuento hay que decidir su disparador en móvil y su tope.
-1. 🔮 **Fase 3 del checkout:** paso 3, bucket `vouchers`, submit idempotente por `orderId`,
-   suscripción al veredicto del adelanto, pantalla de confirmación.
+1. 🟡 **Fase 3 del checkout:** backend ✅ (esquema, `yape-ingest`, cruce en los dos
+   sentidos, idempotencia). Falta la **UI del paso 3**: caja Yape con número/QR de la
+   tienda, subida del comprobante con compresión, campo del código de seguridad,
+   suscripción Realtime al veredicto y pantalla de confirmación.
 2. 🟡 **Lead parcial (`DRAFT`)**: `save-checkout-draft` + tabla `checkout_drafts` ya
    existen y el checkout los llama. Falta **desplegar la función** y correr el SQL, y
    construir la vista de recuperación de abandonos para Ventas.
-3. 🔮 **Verificación del yape**: servicio externo ya contratado, integración pendiente.
+3. 🟡 **Verificación del yape**: el cruce ya está construido (§3.1). Falta **elegir y
+   montar la fuente que lee la notificación** (MacroDroid hoy / APK propio después) y
+   **confirmar el texto real** de la notificación de Yape contra un equipo, para fijar el
+   patrón del parser con un test de verdad.
    La costura está en `services/PaymentVerificationService.ts` — el mock deja todo en
    `PENDING` a propósito: hasta que exista el real, todo adelanto va a revisión humana,
    que es lo que pasa hoy en producción.

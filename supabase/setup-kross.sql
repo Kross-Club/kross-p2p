@@ -357,3 +357,79 @@ ALTER TABLE checkout_drafts ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_checkout_drafts_recovery
   ON checkout_drafts(store_id, updated_at DESC)
   WHERE converted_at IS NULL;
+
+
+-- ─── 13. ADELANTO POR YAPE (Fase 3 del checkout) ────────────────────────────
+-- Provincia adelanta el flete por Yape. El comprador sube su comprobante; en
+-- paralelo entra el pago real por `yape-ingest` y el backend los cruza.
+-- Ver docs/01-SALES-ENGINE.md §3.
+
+-- 13.a Datos de cobro POR TIENDA. Kross es multi-tenant: cada marca cobra a su
+-- propio Yape. Nunca en código ni en config del front.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_number  text;   -- 9 dígitos
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_holder  text;   -- titular, tal como lo muestra Yape
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_qr_url  text;   -- QR en bucket público (desktop)
+-- Token del ingestor de pagos. Lo lleva el celular que lee las notificaciones.
+-- Es un secreto por tienda: si se filtra, se rota aquí y listo.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS payment_ingest_token text;
+-- ¿Un match automático pasa el pedido a confirmado, o siempre lo confirma una
+-- persona? Arranca en false a propósito: primero se mide cuánto acierta.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_autoconfirm boolean DEFAULT false;
+
+-- 13.b Columnas de pago del pedido.
+-- `checkout_id` es el uuid que nace al abrir el modal: hace el alta IDEMPOTENTE.
+-- Sin esto, un doble tap en "Terminar pedido" con 4G lenta crea dos pedidos.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS checkout_id          uuid;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_amount       numeric DEFAULT 0;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_voucher_url  text;
+-- Código de seguridad que TECLEA el comprador. Es la llave fuerte del cruce.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_yape_code    text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_verification text DEFAULT 'NOT_REQUIRED'; -- NOT_REQUIRED | PENDING | MATCHED | UNMATCHED
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_matched_at   timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_reason       text;  -- por qué NO cuadró; para quien revisa, jamás para el comprador
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_event_id     uuid;  -- el pago que lo cuadró
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_order_sessions_checkout_id
+  ON order_sessions(checkout_id) WHERE checkout_id IS NOT NULL;
+-- Cola de revisión: los adelantos que esperan veredicto, primero los más viejos.
+CREATE INDEX IF NOT EXISTS idx_order_sessions_payment_pending
+  ON order_sessions(store_id, created_at)
+  WHERE payment_verification = 'PENDING';
+
+-- 13.c Pagos leídos del celular del dueño. Se guardan TODOS, cuadren o no:
+-- un pago sin pedido hoy puede ser el de un pedido que entra en 30 segundos, y
+-- `raw` permite reprocesar si el parser resultó corto.
+CREATE TABLE IF NOT EXISTS payment_events (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id      text        NOT NULL,
+  source        text        NOT NULL,          -- ANDROID_LISTENER | AUTOMATION | MANUAL
+  raw           text        NOT NULL,          -- texto crudo de la notificación
+  amount_pen    numeric,
+  sender_name   text,
+  security_code text,
+  operation_number text,
+  -- Llave anti-duplicado: la misma notificación llega dos veces con frecuencia.
+  dedupe_key    text        NOT NULL,
+  -- Pedido que consumió este pago. NULL = todavía no cuadró con ninguno.
+  matched_order_id uuid,
+  matched_at    timestamptz,
+  received_at   timestamptz DEFAULT now(),
+  created_at    timestamptz DEFAULT now()
+);
+
+-- Un pago entra UNA vez por tienda, y cuadra UN solo pedido.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_events_dedupe
+  ON payment_events(store_id, dedupe_key);
+-- Búsqueda del cruce: pagos de la tienda aún sin consumir, por monto.
+CREATE INDEX IF NOT EXISTS idx_payment_events_unmatched
+  ON payment_events(store_id, amount_pen, received_at DESC)
+  WHERE matched_order_id IS NULL;
+
+-- Contiene el nombre de quien paga (PII) y el token de cobro: solo service role.
+ALTER TABLE payment_events ENABLE ROW LEVEL SECURITY;
+
+-- 13.d Bucket de comprobantes. PRIVADO: una captura de Yape lleva nombre y
+-- teléfono. El equipo la ve por URL firmada desde la Edge Function.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('vouchers', 'vouchers', false)
+ON CONFLICT (id) DO NOTHING;
