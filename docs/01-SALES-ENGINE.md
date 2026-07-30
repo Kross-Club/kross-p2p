@@ -432,3 +432,39 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 4. 🔮 `createElevenLabsTransport()` (implementar `VoiceTransport` con `@elevenlabs/react`)
    + crear el agente en ElevenLabs → activar la voz.
 5. 🔮 Cobro Yape/Plin integrado (QR dinámico / confirmación de operación).
+
+### Pantalla final: por qué el chat va ahí
+
+En esa pantalla la venta YA está cerrada, así que lo que se optimiza no es
+conversión sino **tasa de entrega** — que en COD es donde se gana o se pierde
+plata de verdad. Un pedido que no se recoge cuesta flete de ida, de vuelta y
+producto inmovilizado, y la causa número uno es que **el cliente no reconoce
+quién le escribe** cuando llega el mensaje de coordinación.
+
+De ahí las tres decisiones:
+
+1. El botón nombra el beneficio ("coordinar la entrega"), no la mecánica.
+2. Debajo va el aviso de que por ahí le escribiremos: es la vacuna contra el
+   "¿quién eres?" del día de la entrega.
+3. Se ofrece, no se empuja. Nada de redirección automática —después de que
+   entregó su plata se siente a arrebato— y "Listo" se queda para quien quiera
+   cerrar.
+
+El chat tiene que tener algo cuando llegue: el acuse `visibility: 'all'` del
+cruce es el primer mensaje de la marca. Un chat vacío desperdicia el viaje y
+enseña a no volver.
+
+**No se premia entrar al chat.** Un descuento por abrirlo enseña que ahí se
+regatea, y llena el canal de gente pidiendo rebaja en vez de coordinando.
+
+**El KPI es % de pedidos entregados al primer intento**, no clics al chat. El
+clic es un proxy: si sube el clic y no sube la entrega, el cambio no sirvió.
+
+### El comprobante se queda opcional
+
+Obligatorio ya está el código. Cada campo obligatorio en el último paso es una
+puerta donde alguien se cae, y la captura es la más frágil: depende de salir de
+Yape, encontrar la galería y volver. Además **no hace falta para cobrar** — el
+cruce funciona solo con el código. La captura sirve cuando el cruce falla, y ahí
+el problema suele ser nuestro (el lector caído), no del comprador: cobrarle a él
+con fricción el seguro de nuestra falla está al revés.

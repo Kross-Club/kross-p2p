@@ -227,7 +227,15 @@ export const COPY = {
   doneCod: 'Pagas al recibir. Te escribimos por WhatsApp para coordinar.',
   doneAdvance: 'Ya registramos tu adelanto. Te escribimos por WhatsApp para coordinar el envío.',
   doneClose: 'Listo',
-  doneOpenChat: 'Abrir el chat de mi pedido',
+  // Nombra el BENEFICIO, no la mecánica: "abrir el chat" describe un botón,
+  // "coordinar la entrega" describe lo que el comprador gana entrando.
+  doneOpenChat: 'Ver mi pedido y coordinar la entrega',
+  // La frase que hace el trabajo de verdad. Lo que se juega en esta pantalla no
+  // es conversión —la venta ya está cerrada— sino la TASA DE ENTREGA: en COD el
+  // motivo número uno de que un pedido no se recoja es que el cliente no
+  // reconoce quién le escribe. Avisarle aquí de dónde vendrá el mensaje es la
+  // vacuna, y este es el único momento de atención garantizada que queda.
+  doneChatHint: 'Por aquí te escribiremos para coordinar tu entrega.',
 
   verifying: 'Estamos verificando tu pago…',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',

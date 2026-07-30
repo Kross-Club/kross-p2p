@@ -86,20 +86,24 @@ export default function OrderDone({ orderCode, advance, verification, token, onC
         </div>
       )}
 
-      {/* El chat es lo que convierte "ya compré" en "puedo preguntar cuándo
-          llega". Va ANTES del botón de cerrar y con más peso visual que un
-          enlace suelto: es la única vía de seguimiento que le queda al
-          comprador cuando cierre esta ventana. */}
+      {/* El chat es lo que convierte "ya compré" en "sé por dónde me van a
+          escribir". Va ANTES del botón de cerrar y con peso visual propio, pero
+          se OFRECE, no se empuja: sacarlo de aquí automáticamente, justo después
+          de que entregó su plata, se siente a arrebato. Por eso "Listo" se
+          queda — el que quiere cerrar tiene que poder cerrar. */}
       {token && (
-        <a
-          href={`/p/${token}`}
-          className="flex items-center justify-center gap-2 w-full py-4 mb-2 rounded-2xl font-black text-base
-            border-2 border-green-500 text-green-700 bg-white
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
-        >
-          <MessageCircle size={18} strokeWidth={2.5} />
-          {COPY.doneOpenChat}
-        </a>
+        <>
+          <a
+            href={`/p/${token}`}
+            className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-black text-base
+              border-2 border-green-500 text-green-700 bg-white
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
+          >
+            <MessageCircle size={18} strokeWidth={2.5} />
+            {COPY.doneOpenChat}
+          </a>
+          <p className="text-[11px] text-gray-400 mt-2 mb-3 px-4">{COPY.doneChatHint}</p>
+        </>
       )}
 
       <button
