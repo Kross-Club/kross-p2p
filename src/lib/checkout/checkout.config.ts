@@ -210,10 +210,14 @@ export const COPY = {
   yapeCopy: 'Copiar número',
   yapeCopied: '¡Copiado!',
   yapeOpen: 'Abrir Yape',
-  yapeCodeLabel: 'Código de seguridad de tu Yape',
+  // Se nombra por lo que el comprador VE, no por el término técnico. El
+  // rótulo de Yape va entre comillas para que lo reconozca sin traducir nada.
+  yapeCodeLabel: 'Los 3 números que te dio Yape',
   // El "dónde" es lo que evita el abandono: sin esto el comprador no sabe que
   // el número está en su propia pantalla de confirmación.
-  yapeCodeHint: 'Son los 3 dígitos que te muestra Yape al terminar el pago.',
+  // La explicación larga ahora la hace el dibujo (YapeCodeHint). Este texto
+  // solo dice DÓNDE mirar, sin repetir lo que ya se ve.
+  yapeCodeHint: 'Aparecen en tu pantalla de Yape como “Código de seguridad”.',
   yapeCodePlaceholder: '000',
   voucherOptional: 'Adjuntar captura (opcional)',
   voucherAttached: 'Captura adjunta',
