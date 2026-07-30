@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { checkoutReducer, initialCheckoutState } from './machine'
 import type { CheckoutAction } from './machine'
 import { canAdvance, canSubmit, validateStep, validateWhatsapp } from './validation'
-import { clearDraft, loadActiveDraft, saveDraft } from './persistence'
+import { clearDraft, loadActiveDraft, loadLastOrder, saveDraft, saveLastOrder } from './persistence'
 import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN } from './checkout.config'
 import { effectivePrice } from './product-packs'
 import { CoverageService, coveredCities } from './services/CoverageService'
@@ -622,5 +622,35 @@ describe('centroides con degradación', () => {
       expect(cerca).toHaveLength(3)
       expect(cerca![0].distanceKm).toBeLessThan(60)
     }
+  })
+})
+
+// ─── Último pedido cerrado ───────────────────────────────────────────────────
+// Al cerrar la ventana de confirmación el comprador se quedaba sin vía de vuelta
+// a su pedido. Feedback real: ahora la landing puede ofrecer "Ver mi pedido".
+describe('último pedido', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('guarda y devuelve el token para volver al chat', () => {
+    saveLastOrder('tok-123', 'ORD-1', 'prod-1')
+    expect(loadLastOrder()?.token).toBe('tok-123')
+    expect(loadLastOrder()?.orderCode).toBe('ORD-1')
+  })
+
+  it('sin pedido previo no ofrece nada', () => {
+    expect(loadLastOrder()).toBeNull()
+  })
+
+  it('caduca a los 3 días: un botón viejo en la landing solo confunde', () => {
+    saveLastOrder('tok-viejo', 'ORD-0', null)
+    const raw = JSON.parse(localStorage.getItem('kross_last_order')!)
+    raw.savedAt = Date.now() - 4 * 24 * 60 * 60 * 1000
+    localStorage.setItem('kross_last_order', JSON.stringify(raw))
+    expect(loadLastOrder()).toBeNull()
+  })
+
+  it('un storage corrupto no rompe la landing', () => {
+    localStorage.setItem('kross_last_order', '{no es json')
+    expect(loadLastOrder()).toBeNull()
   })
 })

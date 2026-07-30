@@ -485,3 +485,51 @@ optimiza la mitad del problema.
 **Queda pendiente medirlo.** El cambio se hizo por criterio de producto, no con
 datos comparados: si a las semanas la conversión cae, la escotilla está ahí. Borrar
 `CheckoutQuiz` recién tiene sentido cuando haya números que respalden el cambio.
+
+## La fricción del código de seguridad
+
+En la primera venta real a un tercero hubo que **explicarle por chat qué es el
+código de seguridad de Yape**. Una explicación que hay que dar por chat no
+escala: el próximo comprador no tiene a quién preguntarle.
+
+Era el único punto del checkout donde el comprador tenía que aprender algo
+nuevo. La respuesta no fue más texto —ya había un hint y no alcanzó— sino
+**reconocimiento**: una miniatura de la pantalla de "¡Yapeaste!" con los 3
+dígitos resaltados. Casi todo peruano ya vio esa pantalla; no hay nada que leer,
+se compara y listo. El rótulo del campo también dejó de usar el término técnico
+("Código de seguridad de tu Yape" → "Los 3 números que te dio Yape").
+
+### Por qué el código NO puede volverse opcional
+
+`ADVANCE_PROVINCIA_PEN = 10` y Olva `= 20`: **todos** los pedidos de Shalom
+piden exactamente S/10 y todos los de Olva S/20. El monto no distingue nada en
+cuanto hay más de un pedido esperando — el código es lo único que decide. Hoy
+funciona sin él por volumen bajo, no por diseño; a volumen, sin código todo
+caería a revisión humana.
+
+### La alternativa de fondo (sin implementar)
+
+Reemplazar el código por **céntimos únicos por pedido**: pedir S/10.07 en vez de
+S/10, donde los céntimos son el discriminador. Elimina el campo y el concepto —
+el comprador solo copia un monto, que ya tiene que escribir de todas formas.
+Riesgo: que redondee a S/10 por costumbre, lo que degrada a revisión humana. Es
+un cambio de instrucción de cobro, así que es decisión de negocio.
+
+## El canal es el chat, no WhatsApp
+
+La pantalla final prometía "Te escribimos por WhatsApp". **No es así**: WhatsApp
+es el *fallback* para cuando el comprador no entra al chat del pedido.
+Prometerlo mandaba a esperar por donde no escribimos primero, y de paso dejaba
+el chat —que es lo que sostiene la tasa de entrega— sonando a algo secundario.
+
+## "Ver mi pedido" en la landing
+
+Al tocar "Listo" y cerrarse la ventana de confirmación, el comprador se quedaba
+en la landing **sin ninguna vía de volver a su pedido**: el token vivía solo en
+memoria del modal. Feedback de compradores reales.
+
+Ahora el token se guarda en `localStorage` (`saveLastOrder`) y la barra inferior
+ofrece **"Ver mi pedido"** junto a "¡Lo quiero!", en estilo secundario: la
+landing sigue siendo para vender, no para dar seguimiento. Caduca a los 3 días
+—después la entrega ya ocurrió y un botón viejo solo confunde— y un storage
+corrupto o el modo incógnito no rompen nada.

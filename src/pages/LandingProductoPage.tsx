@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import CheckoutQuiz, { type Product, type BuyerAccount } from '../components/checkout/CheckoutQuiz'
 import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
 import { buildPackSelection } from '../lib/checkout/product-packs'
+import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
 import type { CheckoutState } from '../lib/checkout/types'
 
 // Landing de producto (Sales Engine). La imagen vende; el CTA abre el checkout.
@@ -28,6 +29,8 @@ export default function LandingProductoPage() {
   /** La consulta falló (red caída). Distinto de "no existe": uno se reintenta. */
   const [failed, setFailed] = useState(false)
   const [showQuiz, setShowQuiz] = useState(false)
+  // Pedido reciente de este navegador, si lo hay. Ver `saveLastOrder`.
+  const [lastOrder, setLastOrder] = useState<LastOrder | null>(null)
   const [buyerAccount, setBuyerAccount] = useState<BuyerAccount | null>(null)
   const [packIdx, setPackIdx] = useState(0)
   // Datos de cobro de la MARCA. Cada tienda yapea a su propio número, así que
@@ -74,6 +77,8 @@ export default function LandingProductoPage() {
         setYape({ number: data.yape_number, holder: data.yape_holder, qrUrl: data.yape_qr_url })
       })
   }, [product?.store_id])
+
+  useEffect(() => { setLastOrder(loadLastOrder()) }, [])
 
   useEffect(() => {
     try {
@@ -122,6 +127,18 @@ export default function LandingProductoPage() {
           <p className="font-bold text-gray-900 text-xs truncate">{product.nombre}</p>
           <p className="text-green-600 font-black text-lg leading-none">S/{precio}</p>
         </div>
+        {/* Con un pedido reciente, la barra ofrece las DOS cosas: comprar otra vez
+            y volver al pedido que ya hizo. Al cerrar la ventana de confirmación
+            el comprador se quedaba sin ninguna vía de vuelta al chat —feedback
+            real— y el chat es lo que sostiene la tasa de entrega.
+            "Ver mi pedido" va en secundario: la landing sigue siendo para
+            vender, no para dar seguimiento. */}
+        {lastOrder && (
+          <a href={`/p/${lastOrder.token}`}
+            className="font-black px-4 py-3.5 rounded-2xl text-sm flex-shrink-0 border-2 border-green-500 text-green-700 bg-white active:scale-95 transition-transform">
+            Ver mi pedido
+          </a>
+        )}
         <button onClick={() => setShowQuiz(true)}
           className="bg-green-500 text-white font-black px-6 py-3.5 rounded-2xl text-sm shadow-lg shadow-green-200 active:scale-95 transition-transform flex-shrink-0">
           ¡Lo quiero!
@@ -134,7 +151,7 @@ export default function LandingProductoPage() {
           unitPrice={packSelection.unitPrice}
           bestPackId={packSelection.defaultPackId}
           initialPack={packSelection.defaultPackId}
-          onClose={() => setShowQuiz(false)}
+          onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
           onPartialLead={state => saveCheckoutDraft(state, product)}
           yape={yape}
           submitContext={{
@@ -149,7 +166,7 @@ export default function LandingProductoPage() {
           packs={packs}
           initialPackIdx={packIdx}
           buyerAccount={buyerAccount}
-          onClose={() => setShowQuiz(false)}
+          onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
         />
       ))}
     </div>
