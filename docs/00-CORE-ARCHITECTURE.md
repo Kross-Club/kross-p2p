@@ -16,7 +16,9 @@ y actualizan.
 
 - **Frontend:** React 19 + Vite + TypeScript + Tailwind CSS 4. Deploy en Vercel.
 - **Backend:** Supabase — Postgres + RLS, Edge Functions (Deno), Storage (buckets
-  público `branding` y privado `call-recordings`), Realtime (broadcast).
+  públicos `branding` y `products`, privado `call-recordings`), Realtime (broadcast).
+  Las imágenes que sube el panel se reducen en el navegador antes de subirlas
+  (`src/lib/images/downscale.ts`): el comprador las descarga en 4G.
 - **Multi-tenant:** subdominio → tienda vía `src/lib/store-context.tsx`
   (`marca.krossclub.app`). `isPlatformHost()` separa la plataforma de una marca.
   Branding por marca con variable CSS `--brand`.

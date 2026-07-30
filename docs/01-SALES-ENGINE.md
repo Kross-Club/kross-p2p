@@ -163,10 +163,24 @@ patrón tipo app de comida rápida (tarjeta vertical con foto grande) y **no apl
   vistazo, y el CTA se va abajo del fold. Contra la regla de decisión (gana lo que quita
   fricción), la fila gana.
 - Lo que sí faltaba era una señal visual de cantidad: la fila ahora lleva un badge **`×N`**
-  sobre la miniatura.
-- `products.packs[].image` quedó soportado (opcional). Mientras la marca no lo cargue, el
-  fallback es la primera imagen de la landing — que es la misma para los tres. **Si se
-  quieren fotos que vendan, hay que cargar una por pack**; el código ya la usa sin cambios.
+  sobre la miniatura, venga o no venga foto.
+
+**h) Foto por pack ✅ (opcional, la carga la marca).** `products.packs[].image` se sube
+desde **Productos → editar → "+ Foto del pack"** (`ProductosPage.tsx`, bucket `products`).
+`packs` es `jsonb`: no hubo migración.
+
+- **La foto vende solo si muestra la CANTIDAD** — 1 frasco, 2 frascos, 3 frascos, mismo
+  fondo. Convierte "llevas más" en algo que se ve antes de leer el precio. Si se sube la
+  misma foto en los tres packs, es peor que no subir ninguna: no distingue nada y pesa en
+  4G. El aviso está escrito en el propio editor, donde se toma la decisión.
+- Sin foto propia, el fallback sigue siendo `images[0]` (la primera imagen de la landing).
+- **Se reduce en el navegador antes de subirla** (`src/lib/images/downscale.ts`, preset
+  `packThumb`: 400 px, calidad 0,82). Se muestra a 56 px y el comprador la carga en 4G;
+  subir 4 MB para eso son segundos de espera en el paso donde se decide la venta. Si el
+  navegador no puede procesarla, se sube tal cual: perder compresión es barato, perder la
+  subida no. El mismo helper sirve para el comprobante de Yape en Fase 3.
+- `/checkout-demo` trae tres SVG inline de 1, 2 y 3 frascos para poder revisar el patrón
+  sin cargar nada.
 
 ### 2. Checkout CRO ultra-rápido ✅
 - **Validación DNI con Decolecta (RENIEC)** → autocompleta el nombre y reduce campos:

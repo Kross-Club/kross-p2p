@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS products (
   nombre     text        NOT NULL,
   precio     numeric     DEFAULT 0,
   images     text[]      DEFAULT '{}',   -- imágenes de la landing (full-bleed, en orden)
-  packs      jsonb       DEFAULT '[]',   -- [{ nombre, descripcion, precio }]
+  packs      jsonb       DEFAULT '[]',   -- [{ nombre, descripcion, precio, image? }]
   active     boolean     DEFAULT true,
   created_at timestamptz DEFAULT now()
 );

@@ -9,10 +9,26 @@ import type { PackOption } from '../components/checkout/steps/Step1Pack'
 
 const UNIT_PRICE = 110
 
+/** Marcador de posición: N frascos dibujados, uno por unidad. Está en SVG inline
+ *  para que la demo no dependa de red. Ilustra la regla real: la foto del pack
+ *  solo aporta si MUESTRA la cantidad — si fuera la misma en los tres, sobraría. */
+const bottles = (n: number): string => {
+  const w = 22, gap = 4, total = n * w + (n - 1) * gap
+  const items = Array.from({ length: n }, (_, i) => {
+    const x = (100 - total) / 2 + i * (w + gap)
+    return `<rect x="${x + 7}" y="22" width="8" height="8" rx="2" fill="#0F766E"/>` +
+      `<rect x="${x}" y="30" width="${w}" height="48" rx="6" fill="#14B8A6"/>` +
+      `<rect x="${x + 4}" y="44" width="${w - 8}" height="18" rx="3" fill="#ECFDF5"/>`
+  }).join('')
+  return `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#F0FDFA"/>${items}</svg>`,
+  )}`
+}
+
 const PACKS: PackOption[] = [
-  { id: 'pack-1', nombre: '1 unidad', descripcion: 'Para probar', precio: 110, unidades: 1 },
-  { id: 'pack-2', nombre: '2 unidades', descripcion: 'Pack completo', precio: 189, unidades: 2 },
-  { id: 'pack-3', nombre: '3 unidades', descripcion: 'Para compartir', precio: 259, unidades: 3 },
+  { id: 'pack-1', nombre: '1 unidad', descripcion: 'Para probar', precio: 110, unidades: 1, image: bottles(1) },
+  { id: 'pack-2', nombre: '2 unidades', descripcion: 'Pack completo', precio: 189, unidades: 2, image: bottles(2) },
+  { id: 'pack-3', nombre: '3 unidades', descripcion: 'Para compartir', precio: 259, unidades: 3, image: bottles(3) },
 ]
 
 export default function CheckoutDemoPage() {
