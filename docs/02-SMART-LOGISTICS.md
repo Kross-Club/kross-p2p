@@ -164,3 +164,26 @@ npm test               # valida geo, cobertura y agencias contra la data real
 
 Las fuentes crudas viven versionadas en `scripts/sources/` para que los generadores sean
 reproducibles y auditables. Los JSON de `src/data/` son **generados**: no se editan a mano.
+
+## En agencia no se pide GPS
+
+El chat mostraba "DIRECCIÓN DE ENTREGA · SIN VERIFICAR" con botón **Verificar
+GPS** en TODOS los pedidos, también en los de recojo en agencia. Ahí el paquete
+va a un mostrador, no a una puerta: pedir GPS no solo no aporta, sino que le
+estampa al pedido **la coordenada de la casa del comprador**, y Logística
+termina viendo un domicilio con botones de Maps y Waze para una entrega que es
+de counter. Pasó de verdad — un pedido a Shalom en La Peca quedó con
+`address_verified = true` y un pin de vivienda.
+
+La máquina del checkout ya decidía bien (`needsLocationConfirmation` es false en
+agencia, ver `01-SALES-ENGINE.md`); lo que faltaba era que el chat se enterara.
+Ahora `get-session` devuelve `dispatch_type` / `agency_name` y `AddressBar`:
+
+- rotula **"Recojo en agencia · SHALOM"** en vez de "Dirección de entrega";
+- no muestra el botón de GPS ni el "sin verificar" naranja —el pedido está
+  completo, no hay nada pendiente que reclamarle a nadie;
+- no ofrece Maps/Waze sobre una coordenada que no corresponde al destino.
+
+**Regla general:** todo lo que el checkout decide sobre la entrega tiene que
+viajar al chat. Si el chat no conoce `dispatch_type`, vuelve a inventar
+pendientes que el checkout ya había resuelto.

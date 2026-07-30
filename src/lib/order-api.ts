@@ -22,6 +22,14 @@ export interface OrderSession {
   address_lat?: number | null
   address_lng?: number | null
   nota?: string | null
+  /** Cómo se entrega: `MOTORIZADO_LIMA` (a la puerta) o `AGENCIA_PROVINCIA`
+   *  (mostrador). Decide si tiene sentido pedir GPS — en agencia no lo tiene. */
+  dispatch_type?: string | null
+  agency_name?: string | null
+  delivery_reference?: string | null
+  /** Estado del cruce del adelanto por Yape. */
+  payment_verification?: string | null
+  advance_amount?: number | string | null
   items?: OrderItem[] | null
   buyer_can_call?: boolean
   assigned_seller_id?: string | null

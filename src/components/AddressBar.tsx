@@ -8,13 +8,17 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 //  · Buyer: the ONLY one who sets/changes it — one tap captures GPS, reverse-
 //    geocodes and saves. When verified, "Verificar GPS" becomes "Cambiar".
 //  · Seller: read-only. Can open Google Maps / Waze and copy the coordinates.
-export default function AddressBar({ sessionId, address, verified, lat, lng, role, onUpdated }: {
+export default function AddressBar({ sessionId, address, verified, lat, lng, role, dispatchType, agencyName, onUpdated }: {
   sessionId: string
   address: string | null
   verified: boolean
   lat?: number | null
   lng?: number | null
   role: 'buyer' | 'seller'
+  /** Cómo se entrega. Sin esto el componente pedía GPS también en los recojos
+   *  en agencia — ver el comentario de `isPickup`. */
+  dispatchType?: string | null
+  agencyName?: string | null
   onUpdated: (address: string, verified: boolean, lat: number | null, lng: number | null) => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -72,7 +76,16 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
     }
   }
 
-  const hasCoords = typeof lat === 'number' && typeof lng === 'number'
+  // Recojo en agencia: el paquete va a un mostrador, no a una puerta. Pedirle
+  // GPS al comprador aquí no solo no sirve —le estampa la coordenada de SU CASA
+  // a un pedido que nunca va a ir ahí, y Logística termina viendo un domicilio
+  // con botones de Maps y Waze para una entrega que es de counter. Ya pasó: un
+  // pedido a Shalom quedó con `address_verified` y un pin de vivienda.
+  //
+  // La máquina del checkout ya decide esto mismo (`needsLocationConfirmation`
+  // es false en agencia); lo que faltaba era que el chat se enterara.
+  const isPickup = dispatchType === 'AGENCIA_PROVINCIA'
+  const hasCoords = !isPickup && typeof lat === 'number' && typeof lng === 'number'
 
   return (
     <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid #F0F0F0' }}>
@@ -80,12 +93,14 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
       <div className="flex items-center gap-2">
         <MapPin size={15} style={{ color: '#EF4444' }} className="flex-shrink-0" />
         <p className="flex-1 min-w-0 text-[9px] font-black uppercase tracking-wide text-gray-400 leading-tight">
-          Dirección de entrega
-          {verified
+          {isPickup ? `Recojo en agencia${agencyName ? ` · ${agencyName}` : ''}` : 'Dirección de entrega'}
+          {/* En agencia no hay nada que verificar, así que tampoco hay por qué
+              alarmar con un "sin verificar" naranja: el pedido está completo. */}
+          {isPickup ? null : verified
             ? <span className="ml-1 whitespace-nowrap" style={{ color: '#16A34A' }}>✓ Verificada</span>
             : <span className="ml-1 whitespace-nowrap" style={{ color: '#F59E0B' }}>· Sin verificar</span>}
         </p>
-        {role === 'buyer' && (
+        {role === 'buyer' && !isPickup && (
           <button onClick={verifyGps} disabled={busy}
             className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0 disabled:opacity-50"
             style={verified ? { background: '#EEF9FF', color: 'var(--brand)' } : { background: '#FFF7ED', color: '#EA580C' }}>
@@ -101,7 +116,9 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
         </p>
       ) : (
         <p className="text-xs font-semibold text-gray-700 mt-1.5 break-words">
-          {address || (role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')}
+          {address || (isPickup
+            ? 'Agencia por confirmar'
+            : role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')}
         </p>
       )}
 

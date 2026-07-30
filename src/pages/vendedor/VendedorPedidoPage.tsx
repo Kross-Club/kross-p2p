@@ -676,6 +676,8 @@ export default function VendedorPedidoPage() {
         lat={session.address_lat}
         lng={session.address_lng}
         role="seller"
+        dispatchType={session.dispatch_type}
+        agencyName={session.agency_name}
         onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
       />
 
