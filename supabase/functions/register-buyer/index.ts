@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { matchOrderToPayments } from '../_shared/yape-match.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -41,6 +42,27 @@ Deno.serve(async (req) => {
     address_lat?: number          // pin GPS fijado en el checkout
     address_lng?: number
     advance_op_number?: string    // N° de operación del adelanto de flete (provincia)
+    // ─── Fase 3 · adelanto por Yape ─────────────────────────────────────────
+    checkout_id?: string          // uuid del modal: hace el alta IDEMPOTENTE
+    advance_amount?: number       // S/0 en Lima, S/10 Shalom, S/20 Olva
+    advance_voucher_url?: string  // ruta en el bucket privado `vouchers`
+    advance_yape_code?: string    // código de seguridad tecleado por el comprador
+  }
+
+  // ─── Idempotencia ──────────────────────────────────────────────────────────
+  // Un doble tap en "Terminar pedido" con 4G lenta manda dos veces. Sin esto se
+  // crean dos pedidos, se le asignan dos vendedores y el comprador recibe dos
+  // mensajes de bienvenida. El uuid nace al abrir el modal, así que los dos
+  // envíos traen el MISMO y el segundo devuelve el pedido ya creado.
+  const checkoutId = typeof body.checkout_id === 'string' && body.checkout_id.trim() ? body.checkout_id.trim() : null
+  if (checkoutId) {
+    const { data: existing } = await supabase
+      .from('order_sessions').select('id, order_id, token').eq('checkout_id', checkoutId).maybeSingle()
+    if (existing) {
+      return new Response(JSON.stringify({ ...existing, idempotent: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
   }
 
   // Upsert buyer account — document_number as unique key if provided, fallback to phone
@@ -206,6 +228,15 @@ Deno.serve(async (req) => {
   const token = randomToken()
   const orderId = `ORD-${Date.now()}`
 
+  // ─── Adelanto por Yape ─────────────────────────────────────────────────────
+  // El adelanto lo DERIVA el checkout del destino y de la agencia; aquí solo se
+  // registra. `PENDING` significa "hay dinero que verificar", y es lo que hace
+  // que el pedido aparezca en la cola de cruce de `yape-ingest`.
+  const advanceAmount = typeof body.advance_amount === 'number' && body.advance_amount > 0 ? body.advance_amount : 0
+  const advanceVoucherUrl = body.advance_voucher_url?.trim() || null
+  const advanceYapeCode = body.advance_yape_code?.replace(/\D/g, '').slice(0, 6) || null
+  const paymentVerification = advanceAmount > 0 ? 'PENDING' : 'NOT_REQUIRED'
+
   const { data, error } = await supabase
     .from('order_sessions')
     .insert({
@@ -240,6 +271,11 @@ Deno.serve(async (req) => {
       assigned_seller_id: assignedSellerId,
       involved_seller_ids: assignedSellerId ? [assignedSellerId] : [],
       writer_seller_ids: assignedSellerId ? [assignedSellerId] : [],
+      checkout_id: checkoutId,
+      advance_amount: advanceAmount,
+      advance_voucher_url: advanceVoucherUrl,
+      advance_yape_code: advanceYapeCode,
+      payment_verification: paymentVerification,
     })
     .select('id, token')
     .single()
@@ -275,6 +311,77 @@ Deno.serve(async (req) => {
       type: 'text',
       body: `📎 Adelanto de flete reportado por el cliente · N° de operación ${body.advance_op_number}. Verifica el Yape/Plin antes de despachar.`,
     })
+  }
+
+  // ─── Cruce inverso: el pago pudo llegar ANTES que el pedido ────────────────
+  // Es el caso normal, no el raro: el comprador yapea, mira su captura, la sube
+  // y recién ahí toca "Terminar pedido". Para cuando el pedido existe, su pago
+  // ya está guardado y sin consumir. Sin esta pasada, todo pedido de provincia
+  // quedaría PENDING esperando un pago que nunca va a volver a llegar.
+  if (advanceAmount > 0) {
+    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+    const { data: pending } = await supabase
+      .from('payment_events')
+      .select('id, amount_pen, sender_name, security_code')
+      .eq('store_id', body.store_id)
+      .is('matched_order_id', null)
+      .gte('received_at', since)
+      .order('received_at', { ascending: false })
+
+    const { chosen, reason } = matchOrderToPayments(
+      {
+        id: data.id, order_id: orderId, buyer_name: body.buyer_name,
+        advance_amount: advanceAmount, advance_yape_code: advanceYapeCode,
+      },
+      pending ?? [],
+    )
+
+    if (chosen) {
+      const matchedAt = new Date().toISOString()
+      const { data: st } = await supabase
+        .from('stores').select('yape_autoconfirm').eq('id', body.store_id).maybeSingle()
+      const patch: Record<string, unknown> = {
+        payment_verification: 'MATCHED', payment_matched_at: matchedAt,
+        payment_reason: reason, payment_event_id: chosen.id,
+      }
+      if (st?.yape_autoconfirm === true) patch.stage = 'confirmado'
+
+      await supabase.from('order_sessions').update(patch).eq('id', data.id)
+      await supabase.from('payment_events')
+        .update({ matched_order_id: data.id, matched_at: matchedAt })
+        .eq('id', chosen.id)
+      // El veredicto interno es SOLO para Ventas: lleva el nombre de quien pagó
+      // (que puede ser un tercero) y nuestras dudas operativas.
+      await supabase.from('chat_messages').insert({
+        session_id: data.id, sender_role: 'system', sender_name: 'Kross', type: 'text',
+        visibility: 'sellers',
+        body: `✅ Adelanto de S/${advanceAmount} verificado automáticamente`
+          + (chosen.sender_name ? ` · pagó ${chosen.sender_name}` : '')
+          + (reason ? `\n⚠️ ${reason}` : ''),
+      })
+      // Y el acuse para el comprador: su plata llegó y este es el canal.
+      await supabase.from('chat_messages').insert({
+        session_id: data.id, sender_role: 'system', sender_name: 'Kross',
+        type: 'status_update', visibility: 'all',
+        body: `✅ ¡Recibimos tu adelanto de S/${advanceAmount}! Ya estamos preparando tu pedido.`
+          + ' Por aquí te avisamos cuando salga.',
+      })
+    } else if (advanceVoucherUrl) {
+      // El comprobante está subido pero el pago aún no aparece. Se avisa para
+      // que Ventas lo mire; NUNCA se le dice al comprador que su pago no existe
+      // —de ahí que este mensaje sea `sellers` y no lleve respuesta al chat.
+      await supabase.from('chat_messages').insert({
+        session_id: data.id, sender_role: 'system', sender_name: 'Kross', type: 'text',
+        visibility: 'sellers',
+        body: `📎 Comprobante de adelanto (S/${advanceAmount}) subido por el cliente. Aún sin cruce automático${reason ? ` · ${reason}` : ''}. Revísalo antes de despachar.`,
+      })
+    }
+  }
+
+  // El lead deja de ser lead: no se persigue a quien ya compró.
+  if (checkoutId) {
+    await supabase.from('checkout_drafts')
+      .update({ converted_at: new Date().toISOString() }).eq('order_id', checkoutId)
   }
 
   return new Response(

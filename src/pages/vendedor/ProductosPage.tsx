@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { Plus, X, Trash2, Copy, Image as ImageIcon, ExternalLink, GripVertical } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
+import { IMAGE_PRESETS, downscaleImage } from '../../lib/images/downscale'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-interface Pack { nombre: string; descripcion?: string; precio: number }
+/** `image` es la foto propia del pack. Opcional: sin ella el checkout cae a la
+ *  primera imagen de la landing. Ver el aviso del editor sobre cuándo sirve. */
+interface Pack { nombre: string; descripcion?: string; precio: number; image?: string }
 interface Product {
   id: string
   store_id: string | null
@@ -99,6 +102,32 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  /** Índice del pack al que le toca la foto que se está eligiendo/subiendo. */
+  const [packTarget, setPackTarget] = useState<number | null>(null)
+  const [packUploading, setPackUploading] = useState<number | null>(null)
+  const packFileRef = useRef<HTMLInputElement>(null)
+
+  // Devolvía `null` en silencio si Storage fallaba: la foto no aparecía y no
+  // había forma de saber por qué. Ahora el error se muestra, y antes se descarta
+  // la causa más común —la sesión vencida—, que la política del bucket reporta
+  // como "row-level security policy" y no le dice nada útil a nadie.
+  const uploadOne = async (f: File): Promise<string | null> => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      alert('Tu sesión venció. Vuelve a entrar y reintenta: la foto no se subió.')
+      return null
+    }
+
+    const ext = f.name.split('.').pop() || 'jpg'
+    const path = `${adminId}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`
+    // Sin `upsert`: la ruta ya es única (timestamp + aleatorio), así que nunca
+    // hay nada que reemplazar. Pedirlo obliga a Storage a resolver además el
+    // camino de UPDATE, con los permisos extra que eso arrastra.
+    const { error } = await supabase.storage
+      .from('products').upload(path, f, { contentType: f.type })
+    if (error) { alert(`No se pudo subir la imagen: ${error.message}`); return null }
+    return supabase.storage.from('products').getPublicUrl(path).data.publicUrl
+  }
 
   const upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -107,18 +136,32 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
     try {
       const urls: string[] = []
       for (const f of files) {
-        const ext = f.name.split('.').pop() || 'jpg'
-        const path = `${adminId}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`
-        const { error } = await supabase.storage.from('products').upload(path, f, { contentType: f.type, upsert: true })
-        if (!error) {
-          const { data } = supabase.storage.from('products').getPublicUrl(path)
-          urls.push(data.publicUrl)
-        }
+        const url = await uploadOne(f)
+        if (url) urls.push(url)
       }
       setImages(prev => [...prev, ...urls])
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  // ─── Foto del pack ─────────────────────────────────────────────────────────
+  // Se reduce antes de subirla: se muestra a 56 px en el checkout y el comprador
+  // la carga en 4G. Un solo input oculto para todos los packs; `packTarget` dice
+  // a cuál le toca.
+  const uploadPackImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    const i = packTarget
+    if (!f || i === null) return
+    setPackUploading(i)
+    try {
+      const url = await uploadOne(await downscaleImage(f, IMAGE_PRESETS.packThumb))
+      if (url) setPack(i, { image: url })
+    } finally {
+      setPackUploading(null)
+      setPackTarget(null)
+      if (packFileRef.current) packFileRef.current.value = ''
     }
   }
 
@@ -218,8 +261,38 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
                 <button onClick={() => removePack(i)} className="p-2 rounded-lg bg-white border"><Trash2 size={13} className="text-red-500" /></button>
               </div>
               <input value={p.descripcion ?? ''} onChange={e => setPack(i, { descripcion: e.target.value })} placeholder="Descripción corta" className="w-full bg-white rounded-lg px-3 py-2 text-xs outline-none border" />
+
+              {/* Foto del pack: la que se ve en el paso 1 del checkout. */}
+              <div className="flex items-center gap-2">
+                {p.image
+                  ? <img src={p.image} alt="" className="w-10 h-10 rounded-lg object-cover border bg-white flex-shrink-0" />
+                  : <div className="w-10 h-10 rounded-lg border border-dashed flex items-center justify-center flex-shrink-0"><ImageIcon size={14} className="text-gray-300" /></div>}
+                <button
+                  onClick={() => { setPackTarget(i); packFileRef.current?.click() }}
+                  disabled={packUploading !== null}
+                  className="text-[11px] font-black px-2.5 py-1.5 rounded-lg bg-white border disabled:opacity-50"
+                >
+                  {packUploading === i ? 'Subiendo…' : p.image ? 'Cambiar foto' : '+ Foto del pack'}
+                </button>
+                {p.image && (
+                  <button onClick={() => setPack(i, { image: undefined })} className="text-[11px] font-bold text-gray-400 underline">
+                    Quitar
+                  </button>
+                )}
+              </div>
             </div>
           ))}
+          <input ref={packFileRef} type="file" accept="image/*" className="hidden" onChange={uploadPackImage} />
+
+          {/* La regla que decide si la foto vende o solo pesa. */}
+          {packs.length > 0 && (
+            <p className="text-[11px] text-gray-400 leading-snug">
+              La foto sale en el paso 1 del checkout. Sirve <b>solo si cada pack muestra su
+              cantidad real</b> (1 frasco, 2 frascos, 3 frascos). Si subes la misma foto en
+              todos, mejor no subas ninguna: no distingue nada y pesa en 4G. Sin foto propia
+              se usa la primera imagen de la landing.
+            </p>
+          )}
         </div>
 
         <div className="flex gap-2">

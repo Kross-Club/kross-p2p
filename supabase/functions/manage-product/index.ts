@@ -20,7 +20,9 @@ Deno.serve(async (req) => {
     nombre?: string
     precio?: number
     images?: string[]
-    packs?: { nombre: string; descripcion?: string; precio: number }[]
+    // `image` es la foto propia del pack (opcional). El checkout cae a
+    // `images[0]` cuando no está. `packs` es jsonb: no hace falta migración.
+    packs?: { nombre: string; descripcion?: string; precio: number; image?: string }[]
     active?: boolean
     store_id?: string   // super admin: target store when managing a brand they entered
   }

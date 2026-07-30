@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS products (
   nombre     text        NOT NULL,
   precio     numeric     DEFAULT 0,
   images     text[]      DEFAULT '{}',   -- imágenes de la landing (full-bleed, en orden)
-  packs      jsonb       DEFAULT '[]',   -- [{ nombre, descripcion, precio }]
+  packs      jsonb       DEFAULT '[]',   -- [{ nombre, descripcion, precio, image? }]
   active     boolean     DEFAULT true,
   created_at timestamptz DEFAULT now()
 );
@@ -326,3 +326,144 @@ WHERE (phone = '925951393' OR phone = '51925951393')
 
 -- (Opcional) Ver tus vendedores y su store_id (debe existir al menos uno activo):
 -- SELECT nombre, role_label, store_id, auth_user_id, active FROM sellers;
+
+
+-- ─── 12. LEADS PARCIALES DEL CHECKOUT ───────────────────────────────────────
+-- Pedido a medio llenar, guardado apenas el WhatsApp es válido. Es lo que
+-- permite recuperar abandonos. NO va en order_sessions a propósito: ahí
+-- contaminaría el CRM y el round-robin le asignaría un vendedor a cada lead que
+-- nunca compró. Ver docs/01-SALES-ENGINE.md.
+CREATE TABLE IF NOT EXISTS checkout_drafts (
+  order_id        uuid        PRIMARY KEY,   -- mismo uuid que usará el pedido
+  store_id        text        NOT NULL,
+  phone           text        NOT NULL,      -- con prefijo país (51XXXXXXXXX)
+  buyer_name      text,
+  document_number text,
+  product_id      text,
+  pack_name       text,
+  location_type   text,                      -- LIMA | PROVINCIA
+  district        text,
+  last_step       integer     DEFAULT 1,     -- hasta dónde llegó
+  -- Se marca cuando el lead termina convirtiendo, para no perseguir a quien ya compró.
+  converted_at    timestamptz,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+
+-- Contiene PII (teléfono/DNI): solo las Edge Functions con service role la tocan.
+ALTER TABLE checkout_drafts ENABLE ROW LEVEL SECURITY;
+
+-- Recuperación de abandonos: los más recientes de la tienda que aún no compraron.
+CREATE INDEX IF NOT EXISTS idx_checkout_drafts_recovery
+  ON checkout_drafts(store_id, updated_at DESC)
+  WHERE converted_at IS NULL;
+
+
+-- ─── 13. ADELANTO POR YAPE (Fase 3 del checkout) ────────────────────────────
+-- Provincia adelanta el flete por Yape. El comprador sube su comprobante; en
+-- paralelo entra el pago real por `yape-ingest` y el backend los cruza.
+-- Ver docs/01-SALES-ENGINE.md §3.
+
+-- 13.a Datos de cobro POR TIENDA. Kross es multi-tenant: cada marca cobra a su
+-- propio Yape. Nunca en código ni en config del front.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_number  text;   -- 9 dígitos
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_holder  text;   -- titular, tal como lo muestra Yape
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_qr_url  text;   -- QR en bucket público (desktop)
+-- ¿Un match automático pasa el pedido a confirmado, o siempre lo confirma una
+-- persona? Arranca en false a propósito: primero se mide cuánto acierta.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_autoconfirm boolean DEFAULT false;
+
+-- ⚠️ Estas tres columnas son PÚBLICAS a propósito: el checkout se las muestra al
+-- comprador para que yapee. `stores` tiene SELECT público (política
+-- `stores_read`), y RLS es por FILA, no por columna: cualquier cosa que se
+-- agregue a esta tabla queda legible con la anon key. Por eso el token del
+-- ingestor NO vive aquí sino en `store_secrets` (13.a-bis).
+
+-- 13.a-bis Secretos por tienda. Tabla aparte justamente porque `stores` se lee
+-- en público. Sin políticas: solo el service role de las Edge Functions entra.
+CREATE TABLE IF NOT EXISTS store_secrets (
+  store_id             text PRIMARY KEY REFERENCES stores(id) ON DELETE CASCADE,
+  -- Lo lleva el celular que lee las notificaciones de Yape. Si se filtra, se
+  -- rota esta fila y el lector vuelve a configurarse; nada más cambia.
+  payment_ingest_token text NOT NULL,
+  created_at           timestamptz DEFAULT now()
+);
+ALTER TABLE store_secrets ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON store_secrets FROM anon, authenticated;
+
+-- 13.b Columnas de pago del pedido.
+-- `checkout_id` es el uuid que nace al abrir el modal: hace el alta IDEMPOTENTE.
+-- Sin esto, un doble tap en "Terminar pedido" con 4G lenta crea dos pedidos.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS checkout_id          uuid;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_amount       numeric DEFAULT 0;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_voucher_url  text;
+-- Código de seguridad que TECLEA el comprador. Es la llave fuerte del cruce.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_yape_code    text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_verification text DEFAULT 'NOT_REQUIRED'; -- NOT_REQUIRED | PENDING | MATCHED | UNMATCHED
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_matched_at   timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_reason       text;  -- por qué NO cuadró; para quien revisa, jamás para el comprador
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_event_id     uuid;  -- el pago que lo cuadró
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_order_sessions_checkout_id
+  ON order_sessions(checkout_id) WHERE checkout_id IS NOT NULL;
+-- Cola de revisión: los adelantos que esperan veredicto, primero los más viejos.
+CREATE INDEX IF NOT EXISTS idx_order_sessions_payment_pending
+  ON order_sessions(store_id, created_at)
+  WHERE payment_verification = 'PENDING';
+
+-- 13.c Pagos leídos del celular del dueño. Se guardan TODOS, cuadren o no:
+-- un pago sin pedido hoy puede ser el de un pedido que entra en 30 segundos, y
+-- `raw` permite reprocesar si el parser resultó corto.
+CREATE TABLE IF NOT EXISTS payment_events (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id      text        NOT NULL,
+  source        text        NOT NULL,          -- ANDROID_LISTENER | AUTOMATION | MANUAL
+  raw           text        NOT NULL,          -- texto crudo de la notificación
+  amount_pen    numeric,
+  sender_name   text,
+  security_code text,
+  operation_number text,
+  -- Llave anti-duplicado: la misma notificación llega dos veces con frecuencia.
+  dedupe_key    text        NOT NULL,
+  -- Pedido que consumió este pago. NULL = todavía no cuadró con ninguno.
+  matched_order_id uuid,
+  matched_at    timestamptz,
+  received_at   timestamptz DEFAULT now(),
+  created_at    timestamptz DEFAULT now()
+);
+
+-- Un pago entra UNA vez por tienda, y cuadra UN solo pedido.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_events_dedupe
+  ON payment_events(store_id, dedupe_key);
+-- Búsqueda del cruce: pagos de la tienda aún sin consumir, por monto.
+CREATE INDEX IF NOT EXISTS idx_payment_events_unmatched
+  ON payment_events(store_id, amount_pen, received_at DESC)
+  WHERE matched_order_id IS NULL;
+
+-- Contiene el nombre de quien paga (PII) y el token de cobro: solo service role.
+ALTER TABLE payment_events ENABLE ROW LEVEL SECURITY;
+
+-- 13.d Bucket de comprobantes. PRIVADO: una captura de Yape lleva nombre y
+-- teléfono. El equipo la ve por URL firmada desde la Edge Function.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('vouchers', 'vouchers', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- 13.e El comprador sube su comprobante con la anon key (no tiene sesión). Se
+-- le permite ESCRIBIR en el bucket, nunca leer: el bucket es privado y el
+-- equipo abre las capturas con URL firmada desde una Edge Function.
+DROP POLICY IF EXISTS vouchers_public_insert ON storage.objects;
+CREATE POLICY vouchers_public_insert ON storage.objects
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (bucket_id = 'vouchers');
+
+-- 13.f Motivo por el que un pago entrante NO se procesó (texto ilegible, pago
+-- saliente, variable del automatizador sin expandir…). Antes esos casos
+-- respondían 200 y no dejaban rastro: la fila no existía y no había forma de
+-- saber por qué. Un pago que no se ve es un pago perdido.
+ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS ignored_reason text;
+-- El índice de cruce solo debe mirar pagos utilizables.
+DROP INDEX IF EXISTS idx_payment_events_unmatched;
+CREATE INDEX IF NOT EXISTS idx_payment_events_unmatched
+  ON payment_events(store_id, amount_pen, received_at DESC)
+  WHERE matched_order_id IS NULL AND ignored_reason IS NULL;

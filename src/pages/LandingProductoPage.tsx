@@ -1,18 +1,32 @@
-import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import CheckoutQuiz, { type Product, type BuyerAccount } from '../components/checkout/CheckoutQuiz'
+import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
+import { buildPackSelection } from '../lib/checkout/product-packs'
+import type { CheckoutState } from '../lib/checkout/types'
 
-// Landing de producto (Sales Engine). La imagen vende; el CTA abre el CheckoutQuiz
-// guiado (popup paso-a-paso que consume checkoutReducer). Ver docs/01-SALES-ENGINE.md.
+// Landing de producto (Sales Engine). La imagen vende; el CTA abre el checkout.
+//
+// Hay DOS checkouts conviviendo a propósito:
+//   · por defecto → CheckoutQuiz, el actual, que sí cierra pedidos.
+//   · ?checkout=v2 → el refactor multi-paso (Fase 3). Ya cierra pedidos, pero
+//     sigue detrás de una bandera hasta medirlo contra el actual: cambiar el
+//     checkout que hoy vende sin datos sería apostar, no decidir.
+// El viejo se borra cuando el nuevo cierre pedidos. Ver docs/01-SALES-ENGINE.md.
 export default function LandingProductoPage() {
   const { landingId } = useParams<{ landingId: string }>()
+  const [searchParams] = useSearchParams()
+  const useNewCheckout = searchParams.get('checkout') === 'v2'
 
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
   const [showQuiz, setShowQuiz] = useState(false)
   const [buyerAccount, setBuyerAccount] = useState<BuyerAccount | null>(null)
   const [packIdx, setPackIdx] = useState(0)
+  // Datos de cobro de la MARCA. Cada tienda yapea a su propio número, así que
+  // salen de `stores`, nunca de config.
+  const [yape, setYape] = useState<StoreYape | null>(null)
 
   useEffect(() => {
     if (!landingId) return
@@ -27,6 +41,16 @@ export default function LandingProductoPage() {
   }, [landingId])
 
   useEffect(() => {
+    const storeId = product?.store_id
+    if (!storeId) return
+    supabase.from('stores').select('yape_number, yape_holder, yape_qr_url').eq('id', storeId).maybeSingle()
+      .then(({ data }) => {
+        if (!data) return
+        setYape({ number: data.yape_number, holder: data.yape_holder, qrUrl: data.yape_qr_url })
+      })
+  }, [product?.store_id])
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem('buyer_session')
       if (!raw) return
@@ -34,6 +58,11 @@ export default function LandingProductoPage() {
       if (buyer) setBuyerAccount(buyer)
     } catch { /* ignore */ }
   }, [])
+
+  const packSelection = useMemo(
+    () => buildPackSelection(product?.packs, product?.precio ?? 0, product?.images ?? []),
+    [product],
+  )
 
   if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ background: '#FFFDF5' }}><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
   if (!product) return <div className="min-h-screen flex items-center justify-center text-gray-400">Producto no encontrado</div>
@@ -63,7 +92,22 @@ export default function LandingProductoPage() {
         </button>
       </div>
 
-      {showQuiz && (
+      {showQuiz && (useNewCheckout ? (
+        <CheckoutModal
+          packs={packSelection.packs}
+          unitPrice={packSelection.unitPrice}
+          bestPackId={packSelection.defaultPackId}
+          initialPack={packSelection.defaultPackId}
+          onClose={() => setShowQuiz(false)}
+          onPartialLead={state => saveCheckoutDraft(state, product)}
+          yape={yape}
+          submitContext={{
+            storeId: product.store_id ?? '',
+            productId: product.id,
+            productName: product.nombre,
+          }}
+        />
+      ) : (
         <CheckoutQuiz
           product={product}
           packs={packs}
@@ -71,7 +115,35 @@ export default function LandingProductoPage() {
           buyerAccount={buyerAccount}
           onClose={() => setShowQuiz(false)}
         />
-      )}
+      ))}
     </div>
   )
+}
+
+// ─── Lead parcial ────────────────────────────────────────────────────────────
+// Se dispara apenas el WhatsApp es válido, aunque el comprador abandone después.
+// No bloquea nada: si falla, el checkout sigue igual.
+async function saveCheckoutDraft(state: CheckoutState, product: Product) {
+  try {
+    await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-checkout-draft`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        order_id: state.orderId,
+        store_id: product.store_id,
+        whatsapp: state.customerInfo.whatsapp,
+        receiver_name: state.customerInfo.receiverName,
+        dni: state.customerInfo.dni,
+        product_id: product.id,
+        location_type: state.locationType,
+        district: state.limaAddress?.district ?? state.provinciaConfig?.district ?? null,
+        step: state.step,
+      }),
+    })
+  } catch {
+    // Recuperar abandonos es un extra: nunca puede costar el pedido en curso.
+  }
 }
