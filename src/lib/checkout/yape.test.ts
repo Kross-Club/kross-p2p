@@ -51,6 +51,44 @@ describe('notificación REAL de Yape', () => {
   })
 })
 
+// ─── Pago hecho desde PLIN a un número Yape (real, 30-jul-2026) ──────────────
+// Yape igual notifica, pero con otro cuerpo: lleva "Yape!" delante del nombre y
+// —esto es lo importante— **no trae código de seguridad**. No es un fallo: es un
+// caso permanente, porque el código lo genera Yape para sus propios pagos.
+const PLIN_BODY = 'Yape! JHOANN PACAHUALA te envió un pago por S/ 1.5'
+
+describe('pago recibido desde Plin', () => {
+  it('lee nombre y monto pese al prefijo "Yape!"', () => {
+    const p = parseYapeNotification(`Confirmación de Pago ${PLIN_BODY}`)
+    expect(p.looksLikeYape).toBe(true)
+    expect(p.senderName).toBe('JHOANN PACAHUALA')
+    expect(p.amountPen).toBe(1.5)
+  })
+
+  // Sin código el cruce sigue siendo posible, pero solo por monto y con un
+  // único candidato. Es la razón por la que el paso 3 pide el código al
+  // comprador: cuando Yape no lo da, lo da él.
+  it('sin código de seguridad no inventa uno', () => {
+    expect(parseYapeNotification(PLIN_BODY).securityCode).toBeNull()
+  })
+
+  it('el nombre completo de Plin calza con el del pedido', () => {
+    expect(nameMatches('JHOANN PACAHUALA', 'Jhoann Pacahuala')).toBe(true)
+  })
+})
+
+// ─── Diagnóstico: variable del automatizador sin expandir ────────────────────
+// Pasó de verdad y costó una tarde: MacroDroid mandaba el marcador literal, la
+// función respondía 200 y no quedaba rastro. El parser debe reconocerlo como
+// "esto no es un pago" para que se guarde con motivo y sea visible.
+describe('texto que NO es una notificación', () => {
+  it('un marcador sin expandir no se toma por un pago', () => {
+    const p = parseYapeNotification('[not_title] [not_text]')
+    expect(p.looksLikeYape).toBe(false)
+    expect(p.amountPen).toBeNull()
+  })
+})
+
 describe('parser de Yape · monto', () => {
   it('lee las formas de escribir el monto', () => {
     expect(parseYapeNotification('Juan P. te envió un pago por S/ 20').amountPen).toBe(20)

@@ -292,6 +292,29 @@ llave fuerte, y el comprador la copia de su propio comprobante. El **n° de oper
 viaja** en la notificación (solo está en el comprobante del pagador), así que la
 deduplicación se apoya en monto + nombre + código por día.
 
+**Un pago hecho desde PLIN a un número Yape ✅ (real, 30-jul-2026):**
+
+```
+Confirmación de Pago
+Yape! JHOANN PACAHUALA te envió un pago por S/ 1.5
+```
+
+Otro cuerpo, con `Yape!` delante del nombre y —lo importante— **sin código de seguridad**.
+No es un fallo: el código lo genera Yape para sus propios pagos, así que con Plin nunca va
+a venir. Ahí el cruce cae al modo débil (monto con candidato único), y **por eso el paso 3
+le pide el código al comprador**: cuando la notificación no lo trae, lo pone él.
+
+**⚠️ Android 15 puede censurar el código.** MacroDroid avisa que a partir de Android 15 los
+contenidos tipo OTP se bloquean para los lectores de notificaciones. El código de seguridad
+es exactamente ese patrón. Si el `raw` llega sin código en pagos Yape→Yape, hay que apagar
+**"Notificaciones mejoradas"** en los ajustes de notificaciones del equipo.
+
+**Nada se descarta en silencio ✅.** Un texto ilegible, un pago saliente o una variable del
+automatizador sin expandir se guardan igual en `payment_events` con `ignored_reason`. Antes
+respondían 200 sin dejar fila: costó una tarde de depuración a ciegas descubrir que
+MacroDroid mandaba el marcador literal. Ahora "por qué no entró este pago" se responde con
+una consulta.
+
 El parser sigue siendo tolerante a propósito y el `raw` se guarda siempre: si Yape cambia
 la redacción, se reprocesa sin haber perdido ningún pago. **Toda notificación nueva que se
 vea en producción se agrega como caso de test** en `src/lib/checkout/yape.test.ts`.

@@ -121,14 +121,20 @@ Deno.serve(async (req) => {
     ? new Date(body.received_at).toISOString()
     : new Date().toISOString()
 
-  // Un pago SALIENTE nunca debe entrar: nuestro propio gasto cuadraría el
-  // adelanto de un pedido y lo daría por pagado sin que nadie pagara.
-  if (raw && !parsed.looksLikeYape) {
-    return json({ ok: true, ignored: 'no parece un pago Yape recibido' })
-  }
-  if (amountPen === null) {
-    return json({ ok: true, ignored: 'sin monto legible' })
-  }
+  // ─── ¿Es utilizable? ───────────────────────────────────────────────────────
+  // Un pago SALIENTE nunca debe cruzarse: nuestro propio gasto cuadraría el
+  // adelanto de un pedido y lo daría por pagado sin que nadie pagara. Tampoco
+  // sirve un texto sin monto.
+  //
+  // Pero descartar NO es responder 200 y desaparecer. Eso ya costó una tarde de
+  // depuración a ciegas: la variable del automatizador llegaba sin expandir, la
+  // función respondía 200, no se creaba fila y no había NADA que mirar. Ahora el
+  // evento se guarda igual con `ignored_reason`, así que "por qué no entró este
+  // pago" siempre se responde con una consulta.
+  const ignoredReason =
+    raw && !parsed.looksLikeYape ? 'No parece un pago Yape recibido (¿saliente, o texto sin expandir?)'
+      : amountPen === null ? 'Sin monto legible en el texto'
+        : null
 
   const source = ['ANDROID_LISTENER', 'AUTOMATION', 'MANUAL'].includes(body.source ?? '')
     ? body.source! : 'AUTOMATION'
@@ -147,6 +153,7 @@ Deno.serve(async (req) => {
       amount_pen: amountPen, sender_name: senderName,
       security_code: securityCode, operation_number: operationNumber,
       dedupe_key: dedupeKey, received_at: receivedAt,
+      ignored_reason: ignoredReason,
     })
     .select('id')
     .single()
@@ -157,6 +164,10 @@ Deno.serve(async (req) => {
     if (insertErr.code === '23505') return json({ ok: true, duplicate: true })
     return json({ error: insertErr.message }, 500)
   }
+
+  // Guardado pero inutilizable: queda visible en la tabla para diagnóstico y no
+  // se intenta cruzar con nada.
+  if (ignoredReason) return json({ ok: true, event_id: event.id, ignored: ignoredReason })
 
   // ─── Cuadrar con un pedido ─────────────────────────────────────────────────
   const since = new Date(Date.parse(receivedAt) - MATCH_WINDOW_MS).toISOString()

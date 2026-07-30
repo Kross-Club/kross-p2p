@@ -60,10 +60,13 @@ function readAmount(text: string): number | null {
 function stripTitle(text: string): string {
   const without = squash(text
     .replace(/confirmaci[oó]n\s+de\s+pago/gi, ' ')
-    .replace(/^\s*yape\s*[:•\-–|]?\s*/i, ' '))
+    // "Yape!" puede aparecer al inicio del CUERPO, no solo como título: es la
+    // forma que toma un pago hecho desde Plin a un número Yape. El "!" no es
+    // opcional decorativo — sin incluirlo el nombre salía "! JHOANN PACAHUALA".
+    .replace(/^\s*[¡!]*\s*yape\s*[!:•\-–|]*\s*/i, ' '))
   // El separador que unía título y cuerpo queda huérfano ("Confirmación de
   // Pago: Juan P." → ": Juan P.") y se colaría dentro del nombre.
-  return without.replace(/^[\s:•\-–|,.]+/, '')
+  return without.replace(/^[\s:•\-–|,.!¡]+/, '')
 }
 
 function readSenderName(text: string): string | null {

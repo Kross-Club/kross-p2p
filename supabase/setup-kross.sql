@@ -456,3 +456,14 @@ DROP POLICY IF EXISTS vouchers_public_insert ON storage.objects;
 CREATE POLICY vouchers_public_insert ON storage.objects
   FOR INSERT TO anon, authenticated
   WITH CHECK (bucket_id = 'vouchers');
+
+-- 13.f Motivo por el que un pago entrante NO se procesó (texto ilegible, pago
+-- saliente, variable del automatizador sin expandir…). Antes esos casos
+-- respondían 200 y no dejaban rastro: la fila no existía y no había forma de
+-- saber por qué. Un pago que no se ve es un pago perdido.
+ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS ignored_reason text;
+-- El índice de cruce solo debe mirar pagos utilizables.
+DROP INDEX IF EXISTS idx_payment_events_unmatched;
+CREATE INDEX IF NOT EXISTS idx_payment_events_unmatched
+  ON payment_events(store_id, amount_pen, received_at DESC)
+  WHERE matched_order_id IS NULL AND ignored_reason IS NULL;
