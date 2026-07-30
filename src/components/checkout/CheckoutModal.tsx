@@ -12,10 +12,22 @@ import { useCheckout } from '../../lib/checkout/useCheckout'
 import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN } from '../../lib/checkout/checkout.config'
 import { trackEvent } from '../../lib/checkout/analytics'
 import type { CheckoutState } from '../../lib/checkout/types'
+import { effectivePrice } from '../../lib/checkout/product-packs'
+import { submitOrder, uploadVoucher } from '../../lib/checkout/services/OrderService'
+import type { SubmitContext } from '../../lib/checkout/services/OrderService'
 import Step1Pack from './steps/Step1Pack'
 import type { PackOption } from './steps/Step1Pack'
 import Step2Delivery from './steps/Step2Delivery'
+import Step3Confirm from './steps/Step3Confirm'
+import OrderDone from './steps/OrderDone'
 import ExitOffer from './ExitOffer'
+
+/** Datos de cobro de la tienda. Vienen de `stores.yape_*`, nunca de config. */
+export interface StoreYape {
+  number: string | null
+  holder: string | null
+  qrUrl: string | null
+}
 
 const STEP_LABEL = ['Tu pack', 'Tus datos', 'Confirmar'] as const
 const TOTAL_STEPS = 3
@@ -27,14 +39,20 @@ interface CheckoutModalProps {
   initialPack: string | null
   onClose: () => void
   onPartialLead?: (state: CheckoutState) => void
+  /** Contexto del pedido. Sin él el checkout es solo demo y no puede cerrar. */
+  submitContext?: Omit<SubmitContext, 'price' | 'packName'>
+  yape?: StoreYape | null
 }
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
+  submitContext, yape = null,
 }: CheckoutModalProps) {
   const co = useCheckout({ initialPack, onPartialLead })
   const { state, dispatch, errors, touch } = co
   const [confirmingClose, setConfirmingClose] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [orderCode, setOrderCode] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreFocus = useRef<HTMLElement | null>(null)
   // Qué mostrar en el diálogo se decide AL ABRIRLO, no en cada render.
@@ -106,6 +124,46 @@ export default function CheckoutModal({
 
   const stepIdx = state.step - 1
 
+  // El pack elegido y su precio ya descontado. Es la única fuente del monto que
+  // se le muestra Y del que se manda al backend: si se calcularan aparte podrían
+  // discrepar, y cobrarle distinto a lo que vio es el peor error posible.
+  const pack = packs.find(p => p.id === state.selectedPack) ?? null
+  const price = pack ? effectivePrice(pack.precio, state.discountPen) : 0
+
+  const submit = useCallback(async () => {
+    if (!submitContext) {
+      setSubmitError('Falta la configuración de la tienda (modo demo).')
+      return
+    }
+    setSubmitError(null)
+    dispatch({ type: 'SUBMITTING' })
+    try {
+      const res = await submitOrder(state, {
+        ...submitContext, price, packName: pack?.nombre ?? null,
+      })
+      setOrderCode(res.order_id)
+      dispatch({ type: 'SUBMITTED' })
+      trackEvent({ name: 'order_submitted', orderId: state.orderId })
+      // El borrador deja de existir: un pedido enviado no se reabre.
+      co.clear()
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'error desconocido'
+      dispatch({ type: 'ERROR' })
+      // El estado NO se borra: el comprador reintenta sin volver a llenar nada.
+      setSubmitError(COPY.submitError)
+      trackEvent({ name: 'order_failed', orderId: state.orderId, reason })
+    }
+  }, [state, submitContext, price, pack, dispatch, co])
+
+  const onVoucher = useCallback(async (file: File) => {
+    const path = await uploadVoucher(file, state.orderId)
+    dispatch({ type: 'SET_VOUCHER', url: path, uploadedAt: new Date().toISOString() })
+    trackEvent({ name: 'voucher_uploaded' })
+  }, [state.orderId, dispatch])
+
+  const submitting = state.status === 'SUBMITTING'
+  const done = state.status === 'SUBMITTED' && orderCode !== null
+
   return (
     <>
       <div className="fixed inset-0 bg-black/50 z-40" onClick={requestClose} aria-hidden="true" />
@@ -172,47 +230,70 @@ export default function CheckoutModal({
             <Step2Delivery state={state} dispatch={dispatch} errors={errors} touch={touch} />
           )}
 
-          {state.step === 3 && (
-            <div className="py-8 text-center">
-              <p className="text-sm font-black text-gray-800">Resumen y pago</p>
-              <p className="text-xs text-gray-400 mt-1">En construcción (Fase 3).</p>
-            </div>
+          {state.step === 3 && !done && (
+            <Step3Confirm
+              state={state}
+              packName={pack?.nombre ?? null}
+              price={price}
+              yape={yape}
+              errors={errors}
+              touch={touch}
+              onYapeCode={code => dispatch({ type: 'SET_YAPE_CODE', code })}
+              onVoucher={onVoucher}
+              submitError={submitError}
+            />
+          )}
+
+          {done && (
+            <OrderDone
+              orderCode={orderCode}
+              advance={state.advanceAmount}
+              verification={state.payment.verification}
+              onClose={onClose}
+            />
           )}
         </div>
 
         {/* ── CTA sticky, dentro del safe area de iOS ── */}
-        <div
-          className="px-5 pt-3 border-t border-gray-100 flex-shrink-0 bg-white sm:rounded-b-3xl"
-          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
-        >
-          <div className="flex items-center gap-2">
-            {state.step > 1 && (
+        {/* En la pantalla de confirmación el pie desaparece: su único botón ya
+            está dentro, y dejar un "Continuar" ahí invitaría a comprar dos veces. */}
+        {!done && (
+          <div
+            className="px-5 pt-3 border-t border-gray-100 flex-shrink-0 bg-white sm:rounded-b-3xl"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+          >
+            <div className="flex items-center gap-2">
+              {state.step > 1 && !submitting && (
+                <button
+                  onClick={co.back}
+                  className="flex items-center justify-center gap-1 px-4 py-4 rounded-2xl bg-gray-100 text-gray-600 font-black text-sm
+                    focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+                >
+                  <ArrowLeft size={16} /> Atrás
+                </button>
+              )}
               <button
-                onClick={co.back}
-                className="flex items-center justify-center gap-1 px-4 py-4 rounded-2xl bg-gray-100 text-gray-600 font-black text-sm
-                  focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+                onClick={state.step === 3 ? submit : co.next}
+                // `disabled` de verdad mientras se envía: es la última barrera
+                // contra el doble tap. La otra es `checkout_id` en el backend.
+                disabled={submitting}
+                aria-disabled={!co.canAdvance || submitting}
+                className={`flex-1 font-black py-4 rounded-2xl text-base shadow-lg transition-transform active:scale-95
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500
+                  ${co.canAdvance && !submitting ? 'bg-green-500 text-white shadow-green-200' : 'bg-green-300 text-white cursor-not-allowed'}`}
               >
-                <ArrowLeft size={16} /> Atrás
+                {submitting ? COPY.submitting : state.step === 3 ? COPY.submit : 'Continuar →'}
               </button>
-            )}
-            <button
-              onClick={co.next}
-              aria-disabled={!co.canAdvance}
-              className={`flex-1 font-black py-4 rounded-2xl text-base shadow-lg transition-transform active:scale-95
-                focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500
-                ${co.canAdvance ? 'bg-green-500 text-white shadow-green-200' : 'bg-green-300 text-white cursor-not-allowed'}`}
-            >
-              Continuar →
-            </button>
-          </div>
+            </div>
 
-          {/* Un botón gris sin explicación se lee como un error. */}
-          {!co.canAdvance && state.step === 2 && (
-            <p className="text-[11px] text-gray-400 text-center mt-2">
-              Completa los datos marcados para continuar
-            </p>
-          )}
-        </div>
+            {/* Un botón gris sin explicación se lee como un error. */}
+            {!co.canAdvance && !submitting && state.step >= 2 && (
+              <p className="text-[11px] text-gray-400 text-center mt-2">
+                Completa los datos marcados para continuar
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Va DENTRO del fragmento pero fuera del panel: es un diálogo propio,

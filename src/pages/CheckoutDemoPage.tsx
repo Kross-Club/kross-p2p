@@ -61,6 +61,10 @@ export default function CheckoutDemoPage() {
           initialPack="pack-2"
           onClose={() => setOpen(false)}
           onPartialLead={state => console.info('[demo] lead parcial', state.customerInfo.whatsapp)}
+          // Datos de cobro de mentira: la demo enseña la caja de Yape sin tocar
+          // Supabase. Sin `submitContext` el paso 3 no registra nada — a
+          // propósito: la demo se usa para grabar tutoriales, no para vender.
+          yape={{ number: '999 888 777', holder: 'Marca de ejemplo', qrUrl: null }}
         />
       )}
     </div>

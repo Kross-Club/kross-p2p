@@ -448,3 +448,11 @@ ALTER TABLE payment_events ENABLE ROW LEVEL SECURITY;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('vouchers', 'vouchers', false)
 ON CONFLICT (id) DO NOTHING;
+
+-- 13.e El comprador sube su comprobante con la anon key (no tiene sesión). Se
+-- le permite ESCRIBIR en el bucket, nunca leer: el bucket es privado y el
+-- equipo abre las capturas con URL firmada desde una Edge Function.
+DROP POLICY IF EXISTS vouchers_public_insert ON storage.objects;
+CREATE POLICY vouchers_public_insert ON storage.objects
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (bucket_id = 'vouchers');

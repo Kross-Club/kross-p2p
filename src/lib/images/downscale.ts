@@ -18,8 +18,12 @@ export interface DownscaleOptions {
  * 400 px cubre pantallas @3x y permite reutilizar la misma foto más grande
  * después sin volver a pedírsela a la marca.
  */
-export const IMAGE_PRESETS: Record<'packThumb', DownscaleOptions> = {
+export const IMAGE_PRESETS: Record<'packThumb' | 'voucher', DownscaleOptions> = {
   packThumb: { maxPx: 400, quality: 0.82 },
+  // El comprobante lo lee una PERSONA para verificar monto y código, así que
+  // necesita más resolución que una miniatura — pero no los 4 MB del original,
+  // que en 4G son segundos de espera justo antes de cerrar la venta.
+  voucher: { maxPx: 1600, quality: 0.8 },
 }
 
 /** Reduce la imagen manteniendo proporción. Devuelve el original si no puede. */

@@ -123,6 +123,27 @@ export const YAPE = {
   copiedFeedbackMs: 1500,
 } as const
 
+/** Dígitos del código de seguridad de Yape. Confirmado contra la app real. */
+export const YAPE_CODE_LENGTH = 3
+
+/**
+ * ¿La captura del comprobante es obligatoria para terminar el pedido?
+ *
+ * **No, y es deliberado.** La imagen HOY no la lee ninguna máquina: no hay OCR
+ * en el sistema. Lo que cuadra el pago es el **código de seguridad**, que viaja
+ * en la notificación que le llega a la marca y que el comprador copia de su
+ * propio comprobante. Exigir una foto de 4 MB en 4G cuesta conversión real y no
+ * compra nada automático — solo evidencia para un humano, que el `payment_event`
+ * ya provee mejor.
+ *
+ * Es un caso donde la regla de decisión (gana la conversión) y la calidad del
+ * dato apuntan al mismo lado: el código es MEJOR dato que la imagen. La captura
+ * se ofrece como acción secundaria y se sube si el comprador quiere.
+ *
+ * Ponerlo en `true` la vuelve obligatoria sin tocar componentes.
+ */
+export const VOUCHER_REQUIRED = false
+
 // ─── Verificación del adelanto ───────────────────────────────────────────────
 
 /**
@@ -181,6 +202,31 @@ export const COPY = {
   advanceHeadsUp: `Para envíos a provincia se paga un adelanto de S/${ADVANCE_PROVINCIA_PEN} y el resto al recibir.`,
   advanceHeadsUpShort: 'El resto lo pagas al recibir tu pedido.',
   voucherRequired: 'Sube tu comprobante para terminar',
+
+  // ─── Paso 3 ────────────────────────────────────────────────────────────────
+  step3Title: 'Último paso: confirma tu pedido',
+  step3TitleAdvance: 'Último paso: adelanta tu envío',
+  yapeIntro: 'Yapea el adelanto a este número y copia tu código de seguridad.',
+  yapeCopy: 'Copiar número',
+  yapeCopied: '¡Copiado!',
+  yapeOpen: 'Abrir Yape',
+  yapeCodeLabel: 'Código de seguridad de tu Yape',
+  // El "dónde" es lo que evita el abandono: sin esto el comprador no sabe que
+  // el número está en su propia pantalla de confirmación.
+  yapeCodeHint: 'Son los 3 dígitos que te muestra Yape al terminar el pago.',
+  yapeCodePlaceholder: '000',
+  voucherOptional: 'Adjuntar captura (opcional)',
+  voucherAttached: 'Captura adjunta',
+  voucherReplace: 'Cambiar',
+  submit: 'Terminar mi pedido',
+  submitting: 'Registrando tu pedido…',
+  submitError: 'No pudimos registrar tu pedido. Toca para reintentar.',
+
+  // Confirmación
+  doneTitle: '¡Pedido confirmado! 🎉',
+  doneCod: 'Pagas al recibir. Te escribimos por WhatsApp para coordinar.',
+  doneAdvance: 'Ya registramos tu adelanto. Te escribimos por WhatsApp para coordinar el envío.',
+  doneClose: 'Listo',
 
   verifying: 'Estamos verificando tu pago…',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',

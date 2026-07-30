@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import CheckoutQuiz, { type Product, type BuyerAccount } from '../components/checkout/CheckoutQuiz'
-import CheckoutModal from '../components/checkout/CheckoutModal'
+import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import type { CheckoutState } from '../lib/checkout/types'
 
@@ -10,9 +10,9 @@ import type { CheckoutState } from '../lib/checkout/types'
 //
 // Hay DOS checkouts conviviendo a propósito:
 //   · por defecto → CheckoutQuiz, el actual, que sí cierra pedidos.
-//   · ?checkout=v2 → el refactor multi-paso (Fase 2). Su paso 3 todavía no
-//     registra el pedido, así que va detrás de una bandera para poder revisarlo
-//     con producto y tienda reales sin tocar el flujo que hoy vende.
+//   · ?checkout=v2 → el refactor multi-paso (Fase 3). Ya cierra pedidos, pero
+//     sigue detrás de una bandera hasta medirlo contra el actual: cambiar el
+//     checkout que hoy vende sin datos sería apostar, no decidir.
 // El viejo se borra cuando el nuevo cierre pedidos. Ver docs/01-SALES-ENGINE.md.
 export default function LandingProductoPage() {
   const { landingId } = useParams<{ landingId: string }>()
@@ -24,6 +24,9 @@ export default function LandingProductoPage() {
   const [showQuiz, setShowQuiz] = useState(false)
   const [buyerAccount, setBuyerAccount] = useState<BuyerAccount | null>(null)
   const [packIdx, setPackIdx] = useState(0)
+  // Datos de cobro de la MARCA. Cada tienda yapea a su propio número, así que
+  // salen de `stores`, nunca de config.
+  const [yape, setYape] = useState<StoreYape | null>(null)
 
   useEffect(() => {
     if (!landingId) return
@@ -36,6 +39,16 @@ export default function LandingProductoPage() {
         setLoading(false)
       })
   }, [landingId])
+
+  useEffect(() => {
+    const storeId = product?.store_id
+    if (!storeId) return
+    supabase.from('stores').select('yape_number, yape_holder, yape_qr_url').eq('id', storeId).maybeSingle()
+      .then(({ data }) => {
+        if (!data) return
+        setYape({ number: data.yape_number, holder: data.yape_holder, qrUrl: data.yape_qr_url })
+      })
+  }, [product?.store_id])
 
   useEffect(() => {
     try {
@@ -87,6 +100,12 @@ export default function LandingProductoPage() {
           initialPack={packSelection.defaultPackId}
           onClose={() => setShowQuiz(false)}
           onPartialLead={state => saveCheckoutDraft(state, product)}
+          yape={yape}
+          submitContext={{
+            storeId: product.store_id ?? '',
+            productId: product.id,
+            productName: product.nombre,
+          }}
         />
       ) : (
         <CheckoutQuiz

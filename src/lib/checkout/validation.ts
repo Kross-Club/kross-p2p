@@ -6,13 +6,13 @@
 // Los mensajes de error dicen CÓMO arreglarlo, no qué está mal: "Deben ser 9
 // dígitos" convierte mejor que "Teléfono inválido".
 
-import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE } from './checkout.config'
+import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_REQUIRED, YAPE_CODE_LENGTH } from './checkout.config'
 import { hasBranchList } from './services/AgencyService'
 import type { CheckoutState, CheckoutStepId } from './types'
 
 export type FieldName =
   | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName' | 'locationType'
-  | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch' | 'voucher'
+  | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch' | 'voucher' | 'yapeCode'
 
 export type FieldErrors = Partial<Record<FieldName, string>>
 
@@ -121,12 +121,32 @@ function validateStep2(s: CheckoutState): FieldErrors {
   return e
 }
 
+export function validateYapeCode(code: string): string | null {
+  const d = digits(code)
+  if (!d) return 'Copia el código que te dio Yape'
+  if (d.length !== YAPE_CODE_LENGTH) return `Son ${YAPE_CODE_LENGTH} dígitos`
+  return null
+}
+
 function validateStep3(s: CheckoutState): FieldErrors {
-  // Sin adelanto no hay nada que subir: el CTA queda habilitado de una.
+  // Lima paga 100 % contraentrega: no hay nada que verificar y el CTA queda
+  // habilitado de una. Es el segmento de mayor volumen y el flujo más corto.
   if (s.advanceAmount <= 0) return {}
-  // El CTA espera al ARCHIVO, no al resultado de la verificación — esa corre en
-  // background y el comprador no debe quedarse mirando un spinner.
-  return s.paymentVoucher ? {} : { voucher: 'Sube tu comprobante para terminar' }
+
+  const e: FieldErrors = {}
+
+  // El CÓDIGO es lo obligatorio, no la imagen. Es la llave que cuadra el pago
+  // con la notificación que le llega a la marca; son 3 dígitos que el comprador
+  // tiene en pantalla. Ver VOUCHER_REQUIRED en checkout.config.ts.
+  const code = validateYapeCode(s.advanceYapeCode)
+  if (code) e.yapeCode = code
+
+  // La captura solo bloquea si la marca lo pide explícitamente. Nunca se espera
+  // al RESULTADO de la verificación: esa corre en background y el comprador no
+  // debe quedarse mirando un spinner.
+  if (VOUCHER_REQUIRED && !s.paymentVoucher) e.voucher = 'Sube tu comprobante para terminar'
+
+  return e
 }
 
 const VALIDATORS: Record<CheckoutStepId, (s: CheckoutState) => FieldErrors> = {

@@ -183,13 +183,26 @@ describe('validación', () => {
     expect(validateStep(escrito).agencyBranch).toBeUndefined()
   })
 
-  it('el paso 3 con adelanto exige voucher pero no espera al veredicto', () => {
+  // Lo obligatorio con adelanto es el CÓDIGO, no la captura: el código es lo que
+  // cuadra el pago con la notificación que le llega a la marca, y la imagen no la
+  // lee ninguna máquina. Ver VOUCHER_REQUIRED en checkout.config.ts.
+  it('el paso 3 con adelanto exige el código de Yape, no la captura', () => {
     const s = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' }, { type: 'GOTO', step: 3 })
-    expect(validateStep(s).voucher).toBeTruthy()
-    const withVoucher = run(s, { type: 'SET_VOUCHER', url: 'https://x/y.jpg', uploadedAt: '2026-07-29T00:00:00Z' })
-    // Sigue PENDING y aun así el paso valida: el CTA no espera la verificación.
-    expect(withVoucher.payment.verification).toBe('PENDING')
-    expect(validateStep(withVoucher).voucher).toBeUndefined()
+    expect(validateStep(s).yapeCode).toBeTruthy()
+    expect(validateStep(s).voucher).toBeUndefined()
+
+    expect(validateStep(run(s, { type: 'SET_YAPE_CODE', code: '96' })).yapeCode).toBeTruthy()
+
+    const conCodigo = run(s, { type: 'SET_YAPE_CODE', code: '965' })
+    // Sigue PENDING y aun así el paso valida: el CTA no espera la verificación,
+    // que corre en background mientras el comprador ya cerró su pedido.
+    expect(conCodigo.payment.verification).toBe('PENDING')
+    expect(validateStep(conCodigo)).toEqual({})
+  })
+
+  it('el código de Yape se queda en dígitos y no pasa de 3', () => {
+    const s = run(base(), { type: 'SET_YAPE_CODE', code: '9a6-5 4' })
+    expect(s.advanceYapeCode).toBe('965')
   })
 
   it('sin adelanto (Lima) el paso 3 no pide comprobante', () => {

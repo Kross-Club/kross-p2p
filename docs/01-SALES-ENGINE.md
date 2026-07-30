@@ -58,6 +58,11 @@
 | `ExitOffer.tsx` | Diálogo centrado de retención al intentar salir (oferta o confirmación seca) |
 | `steps/Step1Pack.tsx` | Packs con precio por unidad, ahorro explícito y badge `×N` de cantidad |
 | `steps/Step2Delivery.tsx` | WhatsApp → nombre → Lima/Provincia → DNI (orden de compromiso creciente) |
+| `steps/Step3Confirm.tsx` | Resumen + caja Yape + código de seguridad + captura opcional |
+| `steps/OrderDone.tsx` | Pedido confirmado. Llegar aquí ES el KPI del refactor |
+| `payment/YapeBox.tsx` | Número/titular de la tienda, copiar, deep link (móvil) y QR (desktop) |
+| `payment/VoucherField.tsx` | Captura opcional, comprimida antes de subir |
+| `services/OrderService.ts` | `submitOrder` (idempotente) + `uploadVoucher` al bucket privado |
 | `branches/LimaBranch.tsx` | Distrito + dirección + referencia. COD, sin adelanto |
 | `branches/ProvinciaBranch.tsx` | Distrito → veredicto → domicilio o agencia |
 | `branches/AgencyPicker.tsx` | Shalom y Olva: 3 sedes más cercanas con distancia real |
@@ -69,9 +74,10 @@
 - Verificado en navegador real a **360 px y 1440 px**: sin scroll horizontal, Lima cierra
   en ~2 s, el borrador sobrevive a la recarga y Esc con data pide confirmación.
 
-- **Pendiente 🔮:** Fase 3 (pago, comprobante, submit, verificación), Fase 4
-  (instrumentación completa y pulido). El paso 3 hoy es un placeholder y la landing
-  sigue usando `CheckoutQuiz`: se cambia cuando el flujo pueda cerrar un pedido.
+- **Fase 3 ✅:** el paso 3 cierra pedidos de verdad (resumen, adelanto por Yape, submit
+  idempotente, pantalla de confirmación). La landing lo sirve tras `?checkout=v2`.
+- **Pendiente 🔮:** Fase 4 (instrumentación completa y pulido) y **medir v2 contra el
+  checkout actual** antes de cambiar el que hoy vende — cambiarlo sin datos sería apostar.
 - ⚠️ `src/lib/checkout-flow.ts` y el cuerpo de `CheckoutQuiz.tsx` quedan **en pie hasta
   que Fase 3 esté verde**, para no romper la landing. Se borran al cerrar el refactor.
   `useVoiceCloser.ts` todavía lee el estado viejo: se adapta al cerrar Fase 3.
@@ -296,7 +302,31 @@ de crear otro con otro vendedor asignado y otro mensaje de bienvenida.
 
 **Datos de cobro por tienda ✅.** `stores.yape_number`, `yape_holder`, `yape_qr_url`. Kross
 es multi-tenant: cada marca cobra a su propio Yape, así que **nunca** van en código ni en
-`checkout.config.ts`.
+`checkout.config.ts`. Si la marca no los configuró, el paso 3 **no inventa un número**: le
+dice al comprador que un asesor coordina, y el pedido se cierra igual.
+
+#### 3.2 Qué se le exige al comprador en el paso 3 — y qué no
+
+**Obligatorio: el código de seguridad. Opcional: la captura.** (`VOUCHER_REQUIRED = false`).
+
+Es la decisión de fricción más importante de la fase, y por una vez la conversión y la
+calidad del dato apuntan al mismo lado:
+
+- **La imagen no la lee ninguna máquina.** No hay OCR en el sistema. Exigir una foto de
+  4 MB en 4G, justo antes del botón de cerrar, cuesta conversión real y no compra nada
+  automático — solo evidencia para un humano.
+- **El código sí es dato de máquina.** Viaja en la notificación que le llega a la marca y
+  es la llave que desambigua dos pedidos del mismo monto. Son 3 dígitos que el comprador
+  tiene en pantalla.
+- La captura queda como acción secundaria, se sube comprimida (`downscale`, preset
+  `voucher`) al bucket **privado** `vouchers`, y **si la subida falla no bloquea el
+  pedido**: el código ya identifica el pago.
+- El bucket permite `INSERT` a `anon` (el comprador no tiene sesión) y **ningún `SELECT`**:
+  las capturas llevan nombre y teléfono, y el equipo las abre con URL firmada.
+
+**Paridad desktop ✅.** En móvil hay deep link `yape://`; en desktop no resuelve, así que
+ese botón se oculta y manda el QR + el número copiable. Ninguna pantalla dice "ábrelo en
+tu celular": el flujo entero se puede grabar desde una laptop.
 
 ## Métricas del módulo
 - Tiempo landing→pedido, % de campos autocompletados por DNI, tasa de cierre por canal

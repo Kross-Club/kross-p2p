@@ -6,7 +6,7 @@
 // `courierSurcharge` y `deliveryNote` son DERIVADOS. Ninguna acción los setea
 // directamente — se recalculan en `derive()` después de cada cambio.
 
-import { EXIT_DISCOUNT_PEN, advanceFor } from './checkout.config'
+import { EXIT_DISCOUNT_PEN, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
 import { methodForCoverage } from './services/DistrictCoverageService'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, DistrictCoverage,
@@ -36,6 +36,7 @@ export function initialCheckoutState(selectedPack: PackId | null = null): Checko
     provinciaConfig: null,
     needsLocationConfirmation: false,
     paymentVoucher: null,
+    advanceYapeCode: '',
     advanceAmount: 0,
     discountPen: 0,
     exitOfferShown: false,
@@ -66,6 +67,7 @@ export type CheckoutAction =
   | { type: 'SET_OLVA_TEXT'; text: string }
   | { type: 'SET_PROVINCIA_ADDRESS'; addressText?: string; reference?: string }
   | { type: 'SET_VOUCHER'; url: string; uploadedAt: string }
+  | { type: 'SET_YAPE_CODE'; code: string }
   | { type: 'SET_VERIFICATION'; verification: PaymentVerification; reason?: string | null; matchedAt?: string | null }
   /** El comprador intentó salir: se le ofreció el descuento (una sola vez). */
   | { type: 'EXIT_OFFER_SHOWN' }
@@ -244,6 +246,9 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
 
     case 'SET_VOUCHER':
       return derive({ ...state, paymentVoucher: { url: action.url, uploadedAt: action.uploadedAt } })
+
+    case 'SET_YAPE_CODE':
+      return derive({ ...state, advanceYapeCode: action.code.replace(/\D/g, '').slice(0, YAPE_CODE_LENGTH) })
 
     case 'SET_VERIFICATION':
       return derive({ ...state, payment: {

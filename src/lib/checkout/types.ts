@@ -101,6 +101,13 @@ export interface CheckoutState {
   /** true si falta lat/lng o el resultado de cobertura es BORDERLINE. */
   needsLocationConfirmation: boolean
   paymentVoucher: PaymentVoucher | null
+  /**
+   * Código de seguridad de 3 dígitos que el comprador copia de su propio
+   * comprobante de Yape. Es la **llave fuerte** del cruce automático: viaja
+   * también en la notificación que le llega a la marca, así que es lo único que
+   * permite decidir sin ambigüedad entre dos pedidos del mismo monto.
+   */
+  advanceYapeCode: string
   /** Derivado del destino Y de la agencia elegida. Nunca editable a mano. */
   advanceAmount: number
   /** Descuento de retención aplicado, en soles. Se resta de CADA pack. */

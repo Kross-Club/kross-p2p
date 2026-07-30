@@ -34,6 +34,8 @@ export interface UseCheckout {
   /** ¿Hay data ingresada? Decide si cerrar pide confirmación. */
   isDirty: boolean
   abandon: () => void
+  /** Borra el borrador. Se llama al cerrar el pedido: uno enviado no se reabre. */
+  clear: () => void
 }
 
 /** ¿El comprador avanzó algo? Decide si vale la pena guardar el borrador y si
@@ -134,11 +136,13 @@ export function useCheckout({ initialPack, onPartialLead }: UseCheckoutOptions):
     trackEvent({ name: 'checkout_abandoned', lastStep: state.step })
   }, [state.step])
 
+  const clear = useCallback(() => clearDraft(state.orderId), [state.orderId])
+
   // Objeto memoizado: si cambiara de identidad en cada render, cualquier efecto
   // que dependa de él se re-ejecutaría sin motivo aguas abajo.
   return useMemo(
-    () => ({ state, dispatch, errors, allErrors, touch, canAdvance: ready, next, back, goTo, isDirty, abandon }),
-    [state, errors, allErrors, touch, ready, next, back, goTo, isDirty, abandon],
+    () => ({ state, dispatch, errors, allErrors, touch, canAdvance: ready, next, back, goTo, isDirty, abandon, clear }),
+    [state, errors, allErrors, touch, ready, next, back, goTo, isDirty, abandon, clear],
   )
 }
 
