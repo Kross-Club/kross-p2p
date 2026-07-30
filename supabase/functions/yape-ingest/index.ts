@@ -11,8 +11,8 @@
 //   source=ANDROID_LISTENER app nativa propia con NotificationListenerService
 //   source=MANUAL          alguien del equipo lo escribe a mano
 //
-// Autenticación: `payment_ingest_token` de la tienda (no la anon key). Es un
-// secreto por tienda; si se filtra, se rota en `stores` y listo.
+// Autenticación: `store_secrets.payment_ingest_token` (no la anon key). Es un
+// secreto por tienda; si se filtra, se rota esa fila y listo.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { parseYapeNotification, yapeDedupeKey } from '../_shared/yape.ts'
@@ -67,15 +67,21 @@ Deno.serve(async (req) => {
   if (!raw && typeof body.amount_pen !== 'number') return json({ error: 'Missing raw or amount_pen' }, 400)
 
   // ─── Auth por token de tienda ──────────────────────────────────────────────
+  // El token vive en `store_secrets`, NO en `stores`: esa tabla tiene SELECT
+  // público (política `stores_read`) y RLS es por fila, no por columna — puesto
+  // ahí, cualquiera con la anon key podría leerlo y ensuciar la caja.
   const token = req.headers.get('x-ingest-token') ?? ''
-  const { data: store } = await supabase
-    .from('stores').select('payment_ingest_token, yape_autoconfirm').eq('id', storeId).maybeSingle()
+  const { data: secret } = await supabase
+    .from('store_secrets').select('payment_ingest_token').eq('store_id', storeId).maybeSingle()
 
   // Sin token configurado la tienda NO ingesta: es más seguro que aceptar todo
   // mientras alguien "todavía no lo configura".
-  if (!store?.payment_ingest_token || token !== store.payment_ingest_token) {
+  if (!secret?.payment_ingest_token || token !== secret.payment_ingest_token) {
     return json({ error: 'Unauthorized' }, 401)
   }
+
+  const { data: store } = await supabase
+    .from('stores').select('yape_autoconfirm').eq('id', storeId).maybeSingle()
 
   // ─── Parseo ────────────────────────────────────────────────────────────────
   const parsed = parseYapeNotification(raw)
@@ -151,7 +157,7 @@ Deno.serve(async (req) => {
   }
 
   const matchedAt = new Date().toISOString()
-  const autoconfirm = store.yape_autoconfirm === true
+  const autoconfirm = store?.yape_autoconfirm === true
 
   // El pedido lo mueve el BACKEND, nunca el front. Se marca MATCHED aunque
   // `reason` traiga una advertencia: el adelanto cuadró, el aviso es contexto

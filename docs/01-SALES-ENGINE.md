@@ -258,8 +258,11 @@ provincia quedaría esperando un pago que ya había llegado.
   mide cuánto acierta el cruce; después se le da el gatillo, sin deploy.
 - **Al comprador jamás se le dice que su pago no existe.** `payment_reason` es para quien
   revisa. Un `UNMATCHED` es un fallo nuestro hasta que se demuestre lo contrario.
-- El token de ingesta es **por tienda** (`stores.payment_ingest_token`), no la anon key.
-  Si se filtra, se rota en una fila. Sin token configurado la tienda no ingesta nada.
+- El token de ingesta es **por tienda** y no la anon key. Vive en **`store_secrets`**, no
+  en `stores`: esa tabla tiene `SELECT` público (política `stores_read`) y **RLS es por
+  fila, no por columna** — puesto ahí, cualquiera con la anon key podría leerlo y ensuciar
+  la caja. `store_secrets` no tiene políticas: solo entra el service role. Si el token se
+  filtra se rota esa fila. Sin token configurado la tienda no ingesta nada.
 
 **El texto real de la notificación ✅ (capturado 29-jul-2026, Android):**
 
@@ -314,7 +317,8 @@ Fase 3 (bloque 13 de `setup-kross.sql`, todo aditivo): `checkout_id` (único, id
 `advance_amount` · `advance_voucher_url` · `advance_yape_code` · `payment_verification` ·
 `payment_matched_at` · `payment_reason` · `payment_event_id`. Tabla nueva `payment_events`
 y bucket privado `vouchers`. En `stores`: `yape_number`, `yape_holder`, `yape_qr_url`,
-`payment_ingest_token`, `yape_autoconfirm`.
+`yape_autoconfirm` (públicas: el checkout se las muestra al comprador). El token del
+ingestor va aparte, en la tabla `store_secrets`, sin políticas.
 
 ## Endpoints / archivos de este módulo
 - `supabase/functions/dni-lookup` — DNI → nombre (Decolecta/RENIEC). Secret `DECOLECTA_TOKEN`.

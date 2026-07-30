@@ -369,12 +369,27 @@ CREATE INDEX IF NOT EXISTS idx_checkout_drafts_recovery
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_number  text;   -- 9 dígitos
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_holder  text;   -- titular, tal como lo muestra Yape
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_qr_url  text;   -- QR en bucket público (desktop)
--- Token del ingestor de pagos. Lo lleva el celular que lee las notificaciones.
--- Es un secreto por tienda: si se filtra, se rota aquí y listo.
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS payment_ingest_token text;
 -- ¿Un match automático pasa el pedido a confirmado, o siempre lo confirma una
 -- persona? Arranca en false a propósito: primero se mide cuánto acierta.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_autoconfirm boolean DEFAULT false;
+
+-- ⚠️ Estas tres columnas son PÚBLICAS a propósito: el checkout se las muestra al
+-- comprador para que yapee. `stores` tiene SELECT público (política
+-- `stores_read`), y RLS es por FILA, no por columna: cualquier cosa que se
+-- agregue a esta tabla queda legible con la anon key. Por eso el token del
+-- ingestor NO vive aquí sino en `store_secrets` (13.a-bis).
+
+-- 13.a-bis Secretos por tienda. Tabla aparte justamente porque `stores` se lee
+-- en público. Sin políticas: solo el service role de las Edge Functions entra.
+CREATE TABLE IF NOT EXISTS store_secrets (
+  store_id             text PRIMARY KEY REFERENCES stores(id) ON DELETE CASCADE,
+  -- Lo lleva el celular que lee las notificaciones de Yape. Si se filtra, se
+  -- rota esta fila y el lector vuelve a configurarse; nada más cambia.
+  payment_ingest_token text NOT NULL,
+  created_at           timestamptz DEFAULT now()
+);
+ALTER TABLE store_secrets ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON store_secrets FROM anon, authenticated;
 
 -- 13.b Columnas de pago del pedido.
 -- `checkout_id` es el uuid que nace al abrir el modal: hace el alta IDEMPOTENTE.
