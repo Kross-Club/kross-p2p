@@ -8,19 +8,25 @@ import type { CheckoutState } from '../lib/checkout/types'
 
 // Landing de producto (Sales Engine). La imagen vende; el CTA abre el checkout.
 //
-// Hay DOS checkouts conviviendo a propósito:
-//   · por defecto → CheckoutQuiz, el actual, que sí cierra pedidos.
-//   · ?checkout=v2 → el refactor multi-paso (Fase 3). Ya cierra pedidos, pero
-//     sigue detrás de una bandera hasta medirlo contra el actual: cambiar el
-//     checkout que hoy vende sin datos sería apostar, no decidir.
-// El viejo se borra cuando el nuevo cierre pedidos. Ver docs/01-SALES-ENGINE.md.
+// El checkout multi-paso es el que vende:
+//   · por defecto → CheckoutModal (3 pasos, adelanto por Yape verificado solo y
+//     salida al chat del pedido).
+//   · ?checkout=v1 → CheckoutQuiz, el viejo. Se deja SOLO como escotilla: si algo
+//     sale mal en producción se vuelve al anterior cambiando la URL, sin esperar
+//     un deploy. No es un experimento, es el botón de emergencia.
+//
+// El viejo solo pedía datos; no tenía forma de llevar al comprador al chat, que
+// es de donde sale la tasa de entrega —el número que decide si un COD gana o
+// pierde plata—. Por eso el cambio de default. Ver docs/01-SALES-ENGINE.md.
 export default function LandingProductoPage() {
   const { landingId } = useParams<{ landingId: string }>()
   const [searchParams] = useSearchParams()
-  const useNewCheckout = searchParams.get('checkout') === 'v2'
+  const useNewCheckout = searchParams.get('checkout') !== 'v1'
 
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
+  /** La consulta falló (red caída). Distinto de "no existe": uno se reintenta. */
+  const [failed, setFailed] = useState(false)
   const [showQuiz, setShowQuiz] = useState(false)
   const [buyerAccount, setBuyerAccount] = useState<BuyerAccount | null>(null)
   const [packIdx, setPackIdx] = useState(0)
@@ -28,16 +34,35 @@ export default function LandingProductoPage() {
   // salen de `stores`, nunca de config.
   const [yape, setYape] = useState<StoreYape | null>(null)
 
+  // El `setLoading(false)` vivía DENTRO del `.then`, sin `catch`: una caída de
+  // red —el escenario normal del comprador en 4G— dejaba la landing girando
+  // para siempre, sin mensaje ni forma de reintentar. Un spinner eterno en la
+  // página que vende es una venta perdida sin rastro. Ahora el apagado del
+  // spinner es incondicional y el fallo tiene su propia pantalla.
   useEffect(() => {
-    if (!landingId) return
-    supabase.from('products').select('id, store_id, nombre, precio, images, packs').eq('id', landingId).maybeSingle()
-      .then(({ data }) => {
+    if (!landingId) { setLoading(false); return }
+    let alive = true
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('products').select('id, store_id, nombre, precio, images, packs')
+          .eq('id', landingId).maybeSingle()
+        if (!alive) return
+        // Un `error` del servidor (p. ej. un id mal escrito en el link) NO es
+        // una caída de red: la petición llegó y respondió. Cae en "no
+        // encontrado", que es la verdad, y no en "revisa tu conexión".
+        if (error) { setProduct(null); return }
         const p = data as Product | null
         setProduct(p)
         // Pre-selecciona el pack de mayor valor (suele ser más unidades / mejor precio).
         if (p?.packs?.length) setPackIdx(p.packs.length - 1)
-        setLoading(false)
-      })
+      } catch {
+        if (alive) setFailed(true)
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
   }, [landingId])
 
   useEffect(() => {
@@ -65,6 +90,17 @@ export default function LandingProductoPage() {
   )
 
   if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ background: '#FFFDF5' }}><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
+  // Un fallo de red NO se disfraza de "no existe": al comprador que sí tiene el
+  // link correcto hay que darle un botón, no un callejón sin salida.
+  if (failed) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-8 text-center" style={{ background: '#FFFDF5' }}>
+      <p className="text-sm text-gray-500">No pudimos cargar el producto. Revisa tu conexión.</p>
+      <button onClick={() => window.location.reload()}
+        className="px-5 py-3 rounded-2xl font-black text-sm text-white" style={{ background: 'var(--brand)' }}>
+        Reintentar
+      </button>
+    </div>
+  )
   if (!product) return <div className="min-h-screen flex items-center justify-center text-gray-400">Producto no encontrado</div>
 
   // Packs ordenados por precio (menor → mayor) para incentivar llevar más.
