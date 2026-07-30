@@ -261,11 +261,31 @@ provincia quedaría esperando un pago que ya había llegado.
 - El token de ingesta es **por tienda** (`stores.payment_ingest_token`), no la anon key.
   Si se filtra, se rota en una fila. Sin token configurado la tienda no ingesta nada.
 
-**⚠️ El texto exacto de la notificación de Yape no está confirmado contra un equipo real.**
-El parser (`_shared/yape.ts`) es tolerante a propósito y prueba varios patrones, y los
-tests usan textos **reconstruidos**. En cuanto haya una notificación real hay que agregarla
-como caso de test: es la única forma de saber que el patrón calza. El `raw` guardado
-permite reprocesar lo que no calzó.
+**El texto real de la notificación ✅ (capturado 29-jul-2026, Android):**
+
+```
+título: Confirmación de Pago
+cuerpo: Leonardo Pac* te envió un pago por S/ 1. El cód. de seguridad es: 965
+```
+
+Tres cosas que solo se supieron al verlo, y que el parser reconstruido erraba:
+
+1. **Yape corta el apellido con un asterisco**, no con un punto ("Leonardo Pac*"). Sin
+   normalizarlo, `PAC*` nunca calzaba con `PACAHUALA` y **todo** pago quedaba marcado como
+   "nombre no coincide".
+2. **El código sí viaja en la notificación**, pero abreviado y con preposición: *"El cód.
+   de seguridad es: 965"*. La etiqueta que se esperaba (`código de seguridad`) no calzaba.
+3. **El título se cuela** si el automatizador manda título + cuerpo juntos: el nombre salía
+   "Confirmación de Pago Leonardo Pac*". Se quita antes de leer el nombre.
+
+Que el código venga en la notificación es lo que hace viable el cruce automático: es la
+llave fuerte, y el comprador la copia de su propio comprobante. El **n° de operación NO
+viaja** en la notificación (solo está en el comprobante del pagador), así que la
+deduplicación se apoya en monto + nombre + código por día.
+
+El parser sigue siendo tolerante a propósito y el `raw` se guarda siempre: si Yape cambia
+la redacción, se reprocesa sin haber perdido ningún pago. **Toda notificación nueva que se
+vea en producción se agrega como caso de test** en `src/lib/checkout/yape.test.ts`.
 
 **Idempotencia ✅.** `order_sessions.checkout_id` (único) es el uuid que nace al abrir el
 modal. Un doble tap en "Terminar pedido" con 4G lenta devuelve el pedido ya creado en vez
@@ -325,10 +345,10 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 2. 🟡 **Lead parcial (`DRAFT`)**: `save-checkout-draft` + tabla `checkout_drafts` ya
    existen y el checkout los llama. Falta **desplegar la función** y correr el SQL, y
    construir la vista de recuperación de abandonos para Ventas.
-3. 🟡 **Verificación del yape**: el cruce ya está construido (§3.1). Falta **elegir y
-   montar la fuente que lee la notificación** (MacroDroid hoy / APK propio después) y
-   **confirmar el texto real** de la notificación de Yape contra un equipo, para fijar el
-   patrón del parser con un test de verdad.
+3. 🟡 **Verificación del yape**: el cruce está construido y el parser fijado contra el
+   texto REAL de la notificación (§3.1). Falta **montar la fuente que lee la
+   notificación** en el Android del dueño (MacroDroid hoy / APK propio después) y
+   configurar `payment_ingest_token` de la tienda.
    La costura está en `services/PaymentVerificationService.ts` — el mock deja todo en
    `PENDING` a propósito: hasta que exista el real, todo adelanto va a revisión humana,
    que es lo que pasa hoy en producción.

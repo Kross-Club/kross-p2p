@@ -4,10 +4,19 @@
 // Function `yape-ingest` (Deno) y los tests del repo (Vitest): una sola fuente
 // de verdad, y el parser se prueba sin desplegar nada.
 //
-// ⚠️ El texto exacto de la notificación NO está confirmado contra un equipo
-// real. El parser es deliberadamente tolerante —prueba varios patrones y no
-// asume orden— y `raw` se guarda SIEMPRE, así que un texto que no calce se
-// puede reprocesar después sin haber perdido el pago. Ver `docs/01-SALES-ENGINE.md`.
+// Texto REAL capturado de un equipo Android (jul-2026):
+//
+//   título: Confirmación de Pago
+//   cuerpo: Leonardo Pac* te envió un pago por S/ 1. El cód. de seguridad es: 965
+//
+// Tres cosas que solo se supieron al verlo: Yape corta el apellido con un
+// **asterisco** (no un punto), el código se anuncia como "cód. de seguridad", y
+// el **título se cuela** en el texto si el automatizador manda título+cuerpo
+// juntos — sin quitarlo, el nombre salía "Confirmación de Pago Leonardo Pac*".
+//
+// Sigue siendo tolerante a propósito (prueba varios patrones, no asume orden) y
+// `raw` se guarda SIEMPRE, así que un texto que no calce se puede reprocesar sin
+// haber perdido el pago. Ver `docs/01-SALES-ENGINE.md`.
 
 export interface ParsedYape {
   /** Monto en soles. `null` si no se pudo leer — sin monto no hay match posible. */
@@ -43,6 +52,20 @@ function readAmount(text: string): number | null {
  * ninguna calza, se devuelve null en vez de adivinar — un nombre inventado haría
  * que un match manual se vea como automático.
  */
+/**
+ * Quita el título de la notificación y el nombre de la app. Los automatizadores
+ * suelen mandar título + cuerpo en un solo campo, y sin esto el nombre del
+ * pagador salía "Confirmación de Pago Leonardo Pac*".
+ */
+function stripTitle(text: string): string {
+  const without = squash(text
+    .replace(/confirmaci[oó]n\s+de\s+pago/gi, ' ')
+    .replace(/^\s*yape\s*[:•\-–|]?\s*/i, ' '))
+  // El separador que unía título y cuerpo queda huérfano ("Confirmación de
+  // Pago: Juan P." → ": Juan P.") y se colaría dentro del nombre.
+  return without.replace(/^[\s:•\-–|,.]+/, '')
+}
+
 function readSenderName(text: string): string | null {
   // El fin del nombre es una coma, un "!" o un punto SEGUIDO DE ESPACIO. Un punto
   // final pegado al fin del texto se deja dentro: casi siempre cierra la inicial
@@ -57,8 +80,9 @@ function readSenderName(text: string): string | null {
     new RegExp(`(?:pago|yapeo)\\s+recibido\\s+de\\s+(.+?)${END}`, 'i'),
     new RegExp(`\\bde:\\s*(.+?)${END}`, 'i'),
   ]
+  const clean = stripTitle(text)
   for (const re of patterns) {
-    const m = squash(text).match(re)
+    const m = clean.match(re)
     const name = m?.[1] && tidyName(m[1])
     // Un "nombre" de una letra o que sea puro número es ruido del parseo.
     if (name && name.length >= 2 && !/^\d+$/.test(name)) return name
@@ -74,9 +98,13 @@ function tidyName(raw: string): string {
   return lastToken.length === 1 ? name : name.slice(0, -1)
 }
 
-/** Código de seguridad: 3 dígitos, siempre anunciados por su etiqueta. */
+/**
+ * Código de seguridad: 3 dígitos anunciados por su etiqueta. Yape lo escribe
+ * abreviado y con la preposición en medio — "El cód. de seguridad es: 965" —,
+ * así que la etiqueta se acepta entera o abreviada, con o sin el "de".
+ */
 function readSecurityCode(text: string): string | null {
-  const m = deaccent(text).match(/(?:codigo(?:\s+de)?\s+seguridad|cod\.?\s*seg\.?)\D{0,10}(\d{3})\b/i)
+  const m = deaccent(text).match(/c[oó]d(?:igo)?\.?\s*(?:de\s+)?seg(?:uridad)?\D{0,10}(\d{3})\b/i)
   return m?.[1] ?? null
 }
 
@@ -106,22 +134,46 @@ export function parseYapeNotification(raw: string): ParsedYape {
 }
 
 /**
- * Llave de deduplicación. La misma notificación puede llegar dos veces (el
- * automatizador reintenta, el celular la re-emite al desbloquear). Sin esto, un
- * pago se contaría dos veces y podría cuadrar dos pedidos distintos.
+ * Llave de deduplicación. La misma notificación llega dos veces con frecuencia
+ * (el automatizador reintenta, el celular la re-emite al desbloquear). Sin esto
+ * un pago se contaría dos veces y podría cuadrar DOS pedidos distintos: se
+ * despacharía un paquete que nadie pagó.
  *
- * Se prefiere el n° de operación —único de verdad— y se cae a monto+nombre+minuto,
- * que es lo bastante estrecho para no colisionar entre pagos reales distintos.
+ * Tres niveles, de más a menos identificador:
+ *
+ *   1. **N° de operación.** Único de verdad. Solo aparece en el comprobante del
+ *      pagador, no en la notificación, pero si la fuente lo trae, manda.
+ *   2. **Monto + nombre + código, por día.** La notificación real sí trae el
+ *      código de seguridad, y monto+nombre+código identifica la transacción sin
+ *      depender del reloj: así una re-emisión 3 minutos después NO entra dos
+ *      veces. Se acota al día para que un cliente que vuelve a comprar el mes
+ *      siguiente no choque con su propio pago viejo.
+ *   3. **Monto + nombre + minuto.** Sin código no queda de dónde agarrarse.
+ *
+ * El intercambio del nivel 2 es deliberado: si dos pagos distintos coincidieran
+ * en monto, nombre y código el mismo día (~1/1000 en un cliente que paga dos
+ * veces), el segundo se descarta y su pedido queda esperando revisión humana.
+ * Se prefiere eso a contar un pago de más, que sí regala mercadería.
  */
 export function yapeDedupeKey(p: ParsedYape, receivedAtIso: string): string {
   if (p.operationNumber) return `op:${p.operationNumber}`
+  const who = deaccent(p.senderName ?? '?').toUpperCase()
+  if (p.securityCode) {
+    const day = receivedAtIso.slice(0, 10) // YYYY-MM-DD
+    return `cod:${p.amountPen ?? '?'}|${who}|${p.securityCode}|${day}`
+  }
   const minute = receivedAtIso.slice(0, 16) // YYYY-MM-DDTHH:mm
-  return `sig:${p.amountPen ?? '?'}|${deaccent(p.senderName ?? '?').toUpperCase()}|${minute}`
+  return `sig:${p.amountPen ?? '?'}|${who}|${minute}`
 }
 
-/** Normaliza un nombre para comparar: sin tildes, sin puntos, mayúsculas. */
+/**
+ * Normaliza un nombre para comparar: sin tildes, sin puntos ni asteriscos,
+ * mayúsculas. **Yape corta el apellido con un asterisco** ("Leonardo Pac*"), no
+ * con un punto: sin quitarlo, "PAC*" nunca calzaba con "PACAHUALA" y todo pago
+ * quedaba marcado como nombre distinto.
+ */
 export function normalizeName(s: string | null | undefined): string {
-  return squash(deaccent(s ?? '').replace(/[.]/g, ' ')).toUpperCase()
+  return squash(deaccent(s ?? '').replace(/[.*]/g, ' ')).toUpperCase()
 }
 
 /**

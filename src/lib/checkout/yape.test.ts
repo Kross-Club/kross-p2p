@@ -2,14 +2,54 @@
 // usa la Edge Function `yape-ingest`, así que lo que pasa aquí es exactamente lo
 // que corre en producción — no una copia.
 //
-// ⚠️ Los textos de ejemplo son RECONSTRUIDOS, no capturados de un equipo real.
-// Cuando llegue una notificación real hay que agregarla aquí como caso: es la
-// única forma de saber que el patrón calza de verdad.
+// El primer bloque usa el texto REAL capturado de un equipo Android; los demás
+// son variantes reconstruidas, por si Yape cambia la redacción. Cualquier
+// notificación nueva que se vea en producción se agrega aquí como caso.
 
 import { describe, expect, it } from 'vitest'
 import {
   nameMatches, normalizeName, parseYapeNotification, yapeDedupeKey,
 } from '../../../supabase/functions/_shared/yape'
+
+// ─── Texto real, capturado el 29-jul-2026 ───────────────────────────────────
+const REAL_TITLE = 'Confirmación de Pago'
+const REAL_BODY = 'Leonardo Pac* te envió un pago por S/ 1. El cód. de seguridad es: 965'
+
+describe('notificación REAL de Yape', () => {
+  it('lee todo del cuerpo tal cual llega', () => {
+    const p = parseYapeNotification(REAL_BODY)
+    expect(p.looksLikeYape).toBe(true)
+    expect(p.amountPen).toBe(1)
+    expect(p.senderName).toBe('Leonardo Pac*')
+    expect(p.securityCode).toBe('965')
+  })
+
+  // Los automatizadores suelen mandar título + cuerpo en un solo campo. Sin
+  // quitar el título, el nombre salía "Confirmación de Pago Leonardo Pac*".
+  it('lo lee igual si viene con el título pegado', () => {
+    for (const raw of [`${REAL_TITLE}\n${REAL_BODY}`, `${REAL_TITLE}: ${REAL_BODY}`, `Yape: ${REAL_TITLE} ${REAL_BODY}`]) {
+      const p = parseYapeNotification(raw)
+      expect(p.senderName).toBe('Leonardo Pac*')
+      expect(p.amountPen).toBe(1)
+      expect(p.securityCode).toBe('965')
+    }
+  })
+
+  // Yape corta el apellido con ASTERISCO. Sin normalizarlo, "PAC*" nunca calza
+  // con "PACAHUALA" y TODO pago quedaba marcado como nombre distinto.
+  it('el apellido cortado con asterisco calza con el nombre completo', () => {
+    expect(nameMatches('Leonardo Pac*', 'Leonardo Pacahuala Silva')).toBe(true)
+    expect(nameMatches('Victor Cop*', 'Victor Copacondori')).toBe(true)
+    expect(nameMatches('Leonardo Pac*', 'Rosa Quispe')).toBe(false)
+  })
+
+  // La misma notificación se re-emite al desbloquear el celular. Si entrara dos
+  // veces podría cuadrar DOS pedidos y saldría un paquete que nadie pagó.
+  it('una re-emisión minutos después no entra dos veces', () => {
+    const p = parseYapeNotification(REAL_BODY)
+    expect(yapeDedupeKey(p, '2026-07-29T21:06:00Z')).toBe(yapeDedupeKey(p, '2026-07-29T21:09:30Z'))
+  })
+})
 
 describe('parser de Yape · monto', () => {
   it('lee las formas de escribir el monto', () => {
