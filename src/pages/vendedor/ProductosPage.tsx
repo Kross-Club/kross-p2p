@@ -107,11 +107,14 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
   const [packUploading, setPackUploading] = useState<number | null>(null)
   const packFileRef = useRef<HTMLInputElement>(null)
 
+  // Devolvía `null` en silencio si Storage fallaba: la foto simplemente no
+  // aparecía y no había forma de saber por qué —pasó con las fotos de pack, que
+  // se veían "subidas" y nunca llegaban a la BD—. Ahora el error se muestra.
   const uploadOne = async (f: File): Promise<string | null> => {
     const ext = f.name.split('.').pop() || 'jpg'
     const path = `${adminId}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`
     const { error } = await supabase.storage.from('products').upload(path, f, { contentType: f.type, upsert: true })
-    if (error) return null
+    if (error) { alert(`No se pudo subir la imagen: ${error.message}`); return null }
     return supabase.storage.from('products').getPublicUrl(path).data.publicUrl
   }
 

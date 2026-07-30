@@ -227,6 +227,7 @@ export const COPY = {
   doneCod: 'Pagas al recibir. Te escribimos por WhatsApp para coordinar.',
   doneAdvance: 'Ya registramos tu adelanto. Te escribimos por WhatsApp para coordinar el envío.',
   doneClose: 'Listo',
+  doneOpenChat: 'Abrir el chat de mi pedido',
 
   verifying: 'Estamos verificando tu pago…',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',

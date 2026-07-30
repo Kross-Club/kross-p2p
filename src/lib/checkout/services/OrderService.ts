@@ -112,3 +112,22 @@ export async function uploadVoucher(file: File, orderId: string): Promise<string
   if (error) throw new Error(error.message)
   return path
 }
+
+/**
+ * Estado del cruce del adelanto, para que la pantalla final deje de decir
+ * "estamos verificando" cuando el yape ya cuadró.
+ *
+ * Nunca lanza: esto es un adorno sobre un pedido que YA está registrado, así
+ * que un error de red se traga en silencio. Alarmar al comprador por una
+ * consulta fallida sería peor que no mostrar nada.
+ */
+export async function fetchPaymentVerification(token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/get-session`, { headers: { 'x-kross-token': token } })
+    if (!res.ok) return null
+    const body = await res.json() as { session?: { payment_verification?: string | null } }
+    return body.session?.payment_verification ?? null
+  } catch {
+    return null
+  }
+}

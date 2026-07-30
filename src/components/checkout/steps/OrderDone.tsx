@@ -7,18 +7,52 @@
 // casos el fallo es nuestro (la notificación no llegó, el lector estaba caído),
 // no suyo.
 
-import { Check } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, MessageCircle } from 'lucide-react'
 import { COPY } from '../../../lib/checkout/checkout.config'
+import { fetchPaymentVerification } from '../../../lib/checkout/services/OrderService'
 import type { PaymentVerification } from '../../../lib/checkout/types'
 
 interface OrderDoneProps {
   orderCode: string
   advance: number
   verification: PaymentVerification
+  /** Token del pedido: abre su chat en `/p/:token`. */
+  token?: string | null
   onClose: () => void
 }
 
-export default function OrderDone({ orderCode, advance, verification, onClose }: OrderDoneProps) {
+/** Cada cuánto se vuelve a preguntar y por cuánto tiempo. El yape cruza en
+ *  segundos cuando el lector está sano; pasado el minuto y medio el comprador
+ *  ya cerró o se fue al chat, y seguir preguntando solo gasta su batería. */
+const POLL_MS = 4000
+const POLL_LIMIT = 22
+
+export default function OrderDone({ orderCode, advance, verification, token, onClose }: OrderDoneProps) {
+  // El estado del cruce llega DESPUÉS de esta pantalla: el comprador termina el
+  // pedido y su yape puede entrar segundos más tarde. Sin esto la caja se queda
+  // en "Estamos verificando" para siempre aunque el pago ya haya cuadrado, y el
+  // comprador se va con la duda —que es exactamente el mensaje de WhatsApp que
+  // este checkout existe para evitar.
+  const [live, setLive] = useState<PaymentVerification>(verification)
+
+  useEffect(() => {
+    // Ya cuadró, no hay adelanto que esperar, o no hay token con qué preguntar.
+    if (!token || advance <= 0 || live === 'MATCHED') return
+    let tries = 0
+    let cancelled = false
+
+    const id = setInterval(async () => {
+      if (cancelled || ++tries > POLL_LIMIT) { clearInterval(id); return }
+      // Si la consulta falla se ignora en silencio: el pedido YA está registrado
+      // y esto es solo un adorno. Un error de red no puede alarmar al comprador.
+      const v = await fetchPaymentVerification(token)
+      if (!cancelled && v === 'MATCHED') { setLive(v); clearInterval(id) }
+    }, POLL_MS)
+
+    return () => { cancelled = true; clearInterval(id) }
+  }, [token, advance, live])
+
   return (
     <div className="py-6 text-center">
       <div
@@ -38,10 +72,10 @@ export default function OrderDone({ orderCode, advance, verification, onClose }:
 
       {advance > 0 && (
         <div className="mx-auto max-w-[300px] rounded-2xl px-4 py-3 text-xs mb-5"
-          style={verification === 'MATCHED'
+          style={live === 'MATCHED'
             ? { background: '#F0FDF4', color: '#15803D' }
             : { background: '#F3F4F6', color: '#4B5563' }}>
-          {verification === 'MATCHED'
+          {live === 'MATCHED'
             ? <>✅ {COPY.verifyMatched}</>
             : <>
                 {COPY.verifying}
@@ -50,6 +84,22 @@ export default function OrderDone({ orderCode, advance, verification, onClose }:
                 <span className="block mt-1 text-[11px] opacity-80">{COPY.verifyingCanClose}</span>
               </>}
         </div>
+      )}
+
+      {/* El chat es lo que convierte "ya compré" en "puedo preguntar cuándo
+          llega". Va ANTES del botón de cerrar y con más peso visual que un
+          enlace suelto: es la única vía de seguimiento que le queda al
+          comprador cuando cierre esta ventana. */}
+      {token && (
+        <a
+          href={`/p/${token}`}
+          className="flex items-center justify-center gap-2 w-full py-4 mb-2 rounded-2xl font-black text-base
+            border-2 border-green-500 text-green-700 bg-white
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
+        >
+          <MessageCircle size={18} strokeWidth={2.5} />
+          {COPY.doneOpenChat}
+        </a>
       )}
 
       <button

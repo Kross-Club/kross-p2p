@@ -94,3 +94,41 @@ describe('pedido → pago (el pago llegó primero)', () => {
     expect(matchOrderToPayments(order({ advance_amount: 0 }), [payment()]).chosen).toBeNull()
   })
 })
+
+// ─── El comprador tecleó un código que no era ────────────────────────────────
+// Tipear mal 3 dígitos es lo más común del mundo, así que el monto sigue
+// mandando y el pedido cuadra. Pero es TAMBIÉN el síntoma de alguien copiando
+// el código de un comprobante ajeno: se acepta y se deja anotado para revisión.
+describe('código tecleado que no coincide', () => {
+  it('cuadra igual por monto, pero deja la advertencia', () => {
+    const d = matchPaymentToOrders(
+      payment({ security_code: '746' }),
+      [order({ advance_yape_code: '123' })],
+    )
+    expect(d.chosen?.id).toBe('o1')
+    expect(d.reason).toMatch(/código no coincide.*123.*746/)
+  })
+
+  it('avisa igual en el sentido inverso (el pedido llega después del pago)', () => {
+    const d = matchOrderToPayments(
+      order({ advance_yape_code: '123' }),
+      [payment({ security_code: '746' })],
+    )
+    expect(d.chosen?.id).toBe('p1')
+    expect(d.reason).toMatch(/código no coincide/)
+  })
+
+  it('sin código tecleado no inventa advertencia: no todos suben comprobante', () => {
+    const d = matchPaymentToOrders(payment({ security_code: '746' }), [order()])
+    expect(d.chosen?.id).toBe('o1')
+    expect(d.reason).toBeNull()
+  })
+
+  it('cuando el código SÍ calza, no hay nada que advertir', () => {
+    const d = matchPaymentToOrders(
+      payment({ security_code: '746' }),
+      [order({ advance_yape_code: '746' })],
+    )
+    expect(d.reason).toBeNull()
+  })
+})

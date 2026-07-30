@@ -53,6 +53,8 @@ export default function CheckoutModal({
   const [confirmingClose, setConfirmingClose] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [orderCode, setOrderCode] = useState<string | null>(null)
+  // Token del pedido: con él la pantalla final abre el chat y consulta el cruce.
+  const [orderToken, setOrderToken] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreFocus = useRef<HTMLElement | null>(null)
   // Qué mostrar en el diálogo se decide AL ABRIRLO, no en cada render.
@@ -142,6 +144,7 @@ export default function CheckoutModal({
         ...submitContext, price, packName: pack?.nombre ?? null,
       })
       setOrderCode(res.order_id)
+      setOrderToken(res.token)
       dispatch({ type: 'SUBMITTED' })
       trackEvent({ name: 'order_submitted', orderId: state.orderId })
       // El borrador deja de existir: un pedido enviado no se reabre.
@@ -249,6 +252,7 @@ export default function CheckoutModal({
               orderCode={orderCode}
               advance={state.advanceAmount}
               verification={state.payment.verification}
+              token={orderToken}
               onClose={onClose}
             />
           )}

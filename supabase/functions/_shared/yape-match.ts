@@ -63,7 +63,12 @@ export function matchPaymentToOrders(
   if (byCode) return { chosen: byCode, reason: nameWarning(payment.sender_name, byCode.buyer_name) }
 
   if (sameAmount.length === 1) {
-    return { chosen: sameAmount[0], reason: nameWarning(payment.sender_name, sameAmount[0].buyer_name) }
+    const only = sameAmount[0]
+    return {
+      chosen: only,
+      reason: codeWarning(code(only.advance_yape_code), code(payment.security_code))
+        ?? nameWarning(payment.sender_name, only.buyer_name),
+    }
   }
   if (sameAmount.length > 1) {
     return { chosen: null, reason: `${sameAmount.length} pedidos esperan S/${money(payment.amount_pen)}: sin código no se puede decidir` }
@@ -85,12 +90,28 @@ export function matchOrderToPayments(
   if (byCode) return { chosen: byCode, reason: nameWarning(byCode.sender_name, order.buyer_name) }
 
   if (sameAmount.length === 1) {
-    return { chosen: sameAmount[0], reason: nameWarning(sameAmount[0].sender_name, order.buyer_name) }
+    const only = sameAmount[0]
+    return {
+      chosen: only,
+      reason: codeWarning(code(order.advance_yape_code), code(only.security_code))
+        ?? nameWarning(only.sender_name, order.buyer_name),
+    }
   }
   if (sameAmount.length > 1) {
     return { chosen: null, reason: `${sameAmount.length} pagos de S/${money(order.advance_amount)} sin asignar: los revisa una persona` }
   }
   return { chosen: null, reason: null } // lo normal: el pago todavía no llega
+}
+
+/**
+ * El comprador tecleó un código y el pago traía OTRO, pero el monto calzaba y
+ * era el único candidato. Se acepta —tipear mal 3 dígitos es de lo más común y
+ * el monto ya es evidencia fuerte— pero queda anotado: es el mismo síntoma de
+ * alguien copiando el código de un comprobante ajeno, y eso lo mira una persona.
+ */
+function codeWarning(typed: string, fromYape: string): string | null {
+  if (!typed || !fromYape || typed === fromYape) return null
+  return `Cuadró por monto, pero el código no coincide (tecleado: ${typed} · Yape: ${fromYape})`
 }
 
 function nameWarning(fromYape: string | null, fromBuyer: string | null): string | null {

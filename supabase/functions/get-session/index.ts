@@ -29,6 +29,7 @@ Deno.serve(async (req) => {
       seller_name, seller_role, seller_avatar,
       involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,
       address, address_verified, address_lat, address_lng, nota,
+      payment_verification, advance_amount,
       expires_at, created_at
     `)
     .eq('token', token)
