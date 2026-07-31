@@ -334,7 +334,7 @@ Deno.serve(async (req) => {
       .gte('received_at', since)
       .order('received_at', { ascending: false })
 
-    const { chosen, reason } = matchOrderToPayments(
+    const { chosen, reason, shortPaid } = matchOrderToPayments(
       {
         id: data.id, order_id: orderId, buyer_name: body.buyer_name,
         advance_amount: advanceAmount, advance_yape_code: advanceYapeCode,
@@ -345,7 +345,9 @@ Deno.serve(async (req) => {
     if (chosen) {
       const matchedAt = new Date().toISOString()
       const patch: Record<string, unknown> = {
-        payment_verification: 'MATCHED', payment_matched_at: matchedAt,
+        // Monto incompleto: se enlaza para que Ventas lo vea, pero no se da
+        // por verificado — falta plata.
+        payment_verification: shortPaid ? 'PENDING' : 'MATCHED', payment_matched_at: matchedAt,
         payment_reason: reason, payment_event_id: chosen.id,
       }
       // Un cruce confirmado mueve el pedido, sin flag de por medio: para el
@@ -354,7 +356,7 @@ Deno.serve(async (req) => {
       // Las advertencias (nombre distinto, código que no calza) NO frenan esto
       // — quedan en `payment_reason` y en el mensaje interno para que Ventas las
       // revise antes de despachar, que es el momento donde importan.
-      patch.stage = 'confirmado'
+      if (!shortPaid) patch.stage = 'confirmado'
 
       await supabase.from('order_sessions').update(patch).eq('id', data.id)
       await supabase.from('payment_events')
@@ -365,12 +367,15 @@ Deno.serve(async (req) => {
       await supabase.from('chat_messages').insert({
         session_id: data.id, sender_role: 'system', sender_name: 'Kross', type: 'text',
         visibility: 'sellers',
-        body: `✅ Adelanto de S/${advanceAmount} verificado automáticamente`
+        body: (shortPaid
+          ? `⚠️ Pago identificado pero INCOMPLETO — S/${advanceAmount} esperados`
+          : `✅ Adelanto de S/${advanceAmount} verificado automáticamente`)
           + (chosen.sender_name ? ` · pagó ${chosen.sender_name}` : '')
           + (reason ? `\n⚠️ ${reason}` : ''),
       })
-      // Y el acuse para el comprador: su plata llegó y este es el canal.
-      await supabase.from('chat_messages').insert({
+      // El acuse al comprador SOLO si entró completo: decirle "recibimos tu
+      // adelanto" cuando pagó de menos lo deja creyendo que ya está.
+      if (!shortPaid) await supabase.from('chat_messages').insert({
         session_id: data.id, sender_role: 'system', sender_name: 'Kross',
         type: 'status_update', visibility: 'all',
         body: `✅ ¡Recibimos tu adelanto de S/${advanceAmount}! Ya estamos preparando tu pedido.`

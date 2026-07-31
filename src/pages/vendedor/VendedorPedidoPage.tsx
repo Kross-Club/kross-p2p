@@ -680,6 +680,7 @@ export default function VendedorPedidoPage() {
         advanceAmount={Number(session.advance_amount ?? 0)}
         verification={session.payment_verification ?? null}
         reason={session.payment_reason ?? null}
+        yapeCode={session.advance_yape_code ?? null}
         hasVoucher={!!session.advance_voucher_url}
       />
 
