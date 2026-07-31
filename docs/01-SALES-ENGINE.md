@@ -556,3 +556,30 @@ todo el ancho — una acción confiable vale más que dos donde una falla.
 Si algún día Kross accede al deep link de pago oficial, ahí sí vale la pena: ese
 sí llega con monto y destinatario puestos, que es el único caso donde el botón
 justifica su riesgo.
+## Visor de comprobantes
+
+El bucket `vouchers` es privado y sin política de lectura, a propósito: una
+captura de Yape lleva nombre, teléfono parcial y número de operación. Pero eso
+dejaba al equipo **viendo la advertencia del cruce sin poder resolverla** — "el
+nombre no coincide" no sirve de nada si no puedes abrir la captura.
+
+La función `voucher-url` es la única puerta:
+
+- comprueba que quien pide sea vendedor **de la tienda dueña del pedido** (sin
+  ese cruce, cualquier vendedor de cualquier marca leería los comprobantes de
+  las demás con solo tener el id de un pedido);
+- devuelve una URL firmada de **5 minutos**, que no se guarda ni se precarga —
+  se pide solo cuando alguien decide mirarla;
+- si no hay comprobante responde `200` con `url: null`, no un error: la mayoría
+  de pedidos cuadra por código y nunca sube captura.
+
+`AdvancePanel` lo muestra en el chat del vendedor, arriba de la dirección
+—porque si el adelanto no cuadró, eso decide si se despacha— junto al estado del
+cruce y su motivo literal.
+
+**`get-session` filtra por rol.** `payment_reason` (el veredicto interno) y
+`advance_voucher_url` (la ruta privada) se eliminan de la respuesta cuando el
+que mira es el comprador. Da igual que la UI no los pinte: viajan en la
+respuesta y quedan a la vista de cualquiera que abra la pestaña de red. Es la
+misma fuga que ya se corrigió en los mensajes del chat, y por eso el filtro vive
+en el backend y no en el componente.

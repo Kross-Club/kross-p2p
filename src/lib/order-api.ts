@@ -29,6 +29,11 @@ export interface OrderSession {
   delivery_reference?: string | null
   /** Estado del cruce del adelanto por Yape. */
   payment_verification?: string | null
+  /** Motivo escrito por el cruce: nombre distinto, código que no calza, etc. */
+  payment_reason?: string | null
+  /** Ruta en el bucket privado `vouchers`. NUNCA es una URL abrible: se pide
+   *  firmada a la función `voucher-url` en el momento de mirarla. */
+  advance_voucher_url?: string | null
   advance_amount?: number | string | null
   items?: OrderItem[] | null
   buyer_can_call?: boolean
