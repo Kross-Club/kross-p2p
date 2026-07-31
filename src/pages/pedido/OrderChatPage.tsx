@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { stagesFor, stageIndex } from '../../lib/order-stages'
+import QuickReplies from '../../components/chat/QuickReplies'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
@@ -627,10 +628,14 @@ export default function OrderChatPage() {
     sendTypingTimerRef.current = setTimeout(() => { sendTypingTimerRef.current = null }, 2000)
   }, [session])
 
-  const handleSend = useCallback(async () => {
-    if (!input.trim() || !token || sending) return
-    const body = input.trim()
-    setInput('')
+  // Acepta un texto para que las fichas de respuesta rápida envíen directo, sin
+  // pasar por el input: obligar a "rellenar y luego enviar" pierde justo la
+  // ventaja de la ficha, que es un solo toque.
+  const handleSend = useCallback(async (preset?: string) => {
+    const raw = preset ?? input
+    if (!raw.trim() || !token || sending) return
+    const body = raw.trim()
+    if (!preset) setInput('')
     setSending(true)
     const optimisticId = `opt-${Date.now()}`
     const optimistic: OrderMessage = {
@@ -842,17 +847,25 @@ export default function OrderChatPage() {
 
       {/* ── Input ── */}
       <div className="flex-shrink-0 border-t border-gray-100 px-3 py-3 bg-white">
+        {/* Fichas de respuesta rápida: bajan el costo de la primera interacción
+            y le enseñan que este chat es donde se resuelve su pedido. Se van en
+            cuanto escribe algo — ya cumplieron. */}
+        <QuickReplies
+          stage={session.stage}
+          buyerHasWritten={messages.some(m => m.sender_role === 'buyer')}
+          onPick={text => handleSend(text)}
+        />
         <div className="flex items-center gap-2">
           <input
             value={input}
             onChange={e => { setInput(e.target.value); broadcastTyping() }}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            onKeyDown={e => { if (e.key === 'Enter') handleSend() }}
             placeholder="Escribe tu mensaje…"
             className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
             style={{ background: '#F0F0F0' }}
           />
           <button
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={!input.trim() || sending}
             className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40"
             style={{ background: 'var(--brand)' }}>

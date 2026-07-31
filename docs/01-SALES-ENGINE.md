@@ -606,3 +606,23 @@ una advertencia le traslada al comprador una duda que es nuestra.
 **El stepper se arma según el pedido** (`lib/order-stages.ts`, única definición
 del orden: estaba copiado en seis archivos). Ventas sí ve `validando` siempre,
 porque necesita distinguir un pedido que espera cruce de uno recién creado.
+
+## Respuestas rápidas en el chat
+
+Fichas tocables encima del campo de texto, al estilo de las plantillas de
+WhatsApp. Hacen dos cosas a la vez: **bajan el costo de la primera
+interacción** —escribirle de cero a un desconocido cuesta más que tocar un
+botón— y **le enseñan que este chat es donde se resuelve su pedido**, que es lo
+que sostiene la tasa de entrega.
+
+**Se derivan del estado, no se guardan en la base.** Guardadas por mensaje
+quedarían obsoletas: "¿Ya llegó mi pago?" seguiría ofreciéndose una semana
+después de que el pago cuadró. Así la ficha siempre corresponde a lo que le pasa
+al pedido ahora.
+
+**Desaparecen en cuanto el comprador escribe.** Ya cumplieron su trabajo, y
+dejarlas para siempre convierte la ayuda en estorbo sobre el teclado.
+
+En `validando` la segunda ficha es **"Te envío mi comprobante"**: así la captura
+se pide **solo a quien puede hacer falta**, en el momento en que importa, en vez
+de pedírsela a todos por si acaso en el checkout.

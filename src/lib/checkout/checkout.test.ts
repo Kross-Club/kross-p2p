@@ -14,6 +14,7 @@ import { AgencyService, suggestFreeText } from './services/AgencyService'
 import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
 import type { CheckoutState } from './types'
 import { stagesFor, stageIndex, toStage } from '../order-stages'
+import { repliesFor } from '../../components/chat/QuickReplies'
 
 const run = (state: CheckoutState, ...actions: CheckoutAction[]): CheckoutState =>
   actions.reduce(checkoutReducer, state)
@@ -685,5 +686,29 @@ describe('etapas del pedido', () => {
     expect(toStage('inventada')).toBe('nuevo')
     expect(toStage(null)).toBe('nuevo')
     expect(toStage('validando')).toBe('validando')
+  })
+})
+
+// ─── Respuestas rápidas ──────────────────────────────────────────────────────
+// Se derivan del estado y no se guardan: guardadas por mensaje quedarían
+// obsoletas —"¿Ya llegó mi pago?" una semana después de que el pago cuadró—.
+describe('respuestas rápidas del chat', () => {
+  it('mientras se valida el pago ofrece las dos dudas de ese momento', () => {
+    expect(repliesFor('validando')).toEqual(['¿Ya llegó mi pago?', 'Te envío mi comprobante'])
+  })
+
+  it('ya confirmado deja de preguntar por el pago', () => {
+    expect(repliesFor('confirmado').join(' ')).not.toMatch(/pago|comprobante/i)
+  })
+
+  it('cada etapa ofrece algo: nunca una barra vacía', () => {
+    for (const st of ['nuevo', 'validando', 'confirmado', 'preparando', 'en_camino', 'entregado']) {
+      expect(repliesFor(st).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('una etapa desconocida no rompe: cae al par genérico', () => {
+    expect(repliesFor(null).length).toBe(2)
+    expect(repliesFor('inventada').length).toBe(2)
   })
 })
