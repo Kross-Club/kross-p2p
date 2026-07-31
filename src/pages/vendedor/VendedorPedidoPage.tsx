@@ -4,6 +4,7 @@ import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, B
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
+import AdvancePanel from '../../components/checkout/payment/AdvancePanel'
 import OrderDetailModal from '../../components/OrderDetailModal'
 import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
@@ -669,6 +670,17 @@ export default function VendedorPedidoPage() {
       )}
 
       {/* Dirección de entrega */}
+      {/* Antes que la dirección: si el adelanto no cuadró, eso decide si se
+          despacha o no — la dirección recién importa después. */}
+      <AdvancePanel
+        sessionId={session.id}
+        sellerAuthId={effective?.auth_user_id ?? null}
+        advanceAmount={Number(session.advance_amount ?? 0)}
+        verification={session.payment_verification ?? null}
+        reason={session.payment_reason ?? null}
+        hasVoucher={!!session.advance_voucher_url}
+      />
+
       <AddressBar
         sessionId={session.id}
         address={session.address ?? null}
