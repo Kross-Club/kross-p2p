@@ -30,7 +30,8 @@ Deno.serve(async (req) => {
       involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,
       address, address_verified, address_lat, address_lng, nota,
       dispatch_type, agency_name, delivery_reference,
-      payment_verification, payment_reason, advance_voucher_url, advance_amount,
+      payment_verification, payment_reason, advance_voucher_url,
+      advance_yape_code, advance_amount,
       expires_at, created_at
     `)
     .eq('token', token)

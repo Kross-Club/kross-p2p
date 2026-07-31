@@ -23,11 +23,14 @@ interface AdvancePanelProps {
   verification: string | null
   /** Motivo escrito por el cruce automático. Puede venir aun habiendo cuadrado. */
   reason: string | null
+  /** Los 3 dígitos que TECLEÓ el comprador. Es la llave con la que Ventas
+   *  verifica a mano en la app de Yape cuando el cruce automático no llega. */
+  yapeCode: string | null
   hasVoucher: boolean
 }
 
 export default function AdvancePanel({
-  sessionId, sellerAuthId, advanceAmount, verification, reason, hasVoucher,
+  sessionId, sellerAuthId, advanceAmount, verification, reason, yapeCode, hasVoucher,
 }: AdvancePanelProps) {
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -89,6 +92,17 @@ export default function AdvancePanel({
         <p className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">
           <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
           <span>{reason}</span>
+        </p>
+      )}
+
+      {/* El código tecleado es lo ÚNICO accionable cuando el cruce no llega:
+          con él se busca el pago en la app de Yape sin depender de nadie. Antes
+          el panel decía "sin comprobante" y ahí se acababa la ayuda. */}
+      {!matched && yapeCode && (
+        <p className="text-[11px] text-gray-500 mt-1.5">
+          El cliente dice haber yapeado con el código{' '}
+          <strong className="font-black tracking-widest text-gray-800">{yapeCode}</strong>
+          {' '}· búscalo en tu Yape si no cruza solo.
         </p>
       )}
 

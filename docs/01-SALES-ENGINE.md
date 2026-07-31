@@ -626,3 +626,35 @@ dejarlas para siempre convierte la ayuda en estorbo sobre el teclado.
 En `validando` la segunda ficha es **"Te envío mi comprobante"**: así la captura
 se pide **solo a quien puede hacer falta**, en el momento en que importa, en vez
 de pedírsela a todos por si acaso en el checkout.
+
+## El código manda sobre el monto
+
+Caso real (31-jul-2026): un comprador tecleó **195**, su pedido esperaba **S/10**, y
+yapeó **S/0.50** con ese mismo código. El algoritmo filtraba por monto **antes** de mirar
+el código, así que pago y pedido quedaron **huérfanos** — nadie podía saber que iban
+juntos, ni siquiera mirándolos uno al lado del otro.
+
+El código de seguridad es la evidencia más fuerte que existe: **el comprador lo teclea
+ANTES de pagar**, así que no puede fabricarse a posteriori. Filtrar por monto primero la
+desperdiciaba. Ahora el código se busca en **todos** los pedidos pendientes.
+
+**Identificar no es cobrar.** Cuando el código calza pero el monto no:
+
+- el pago **se enlaza** al pedido, para que Ventas los vea juntos en vez de tener dos
+  huérfanos;
+- `payment_verification` queda en **`PENDING`** y el pedido **no** pasa a `confirmado`:
+  falta plata, y despachar sin cobrarla es regalar mercadería;
+- el mensaje interno dice *"Pagó S/0.50 de los S/10 esperados. Falta cobrar la
+  diferencia"*;
+- **al comprador NO se le manda el acuse.** Decirle "recibimos tu adelanto" cuando pagó
+  de menos lo deja creyendo que ya está, y el problema aparece recién en la puerta.
+
+**Sin código no se cruzan montos distintos.** Ahí no hay evidencia de que vayan juntos:
+un monto distinto es simplemente otro pago, y enlazarlos sería adivinar.
+
+### Y el código se le muestra a Ventas
+
+El panel del adelanto decía "sin comprobante adjunto" y ahí se acababa la ayuda. Ahora
+muestra **los 3 dígitos que tecleó el comprador**: es lo único accionable cuando el cruce
+automático no llega, porque con eso se busca el pago en la app de Yape sin depender de
+nadie.

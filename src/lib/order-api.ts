@@ -35,6 +35,7 @@ export interface OrderSession {
   /** Ruta en el bucket privado `vouchers`. NUNCA es una URL abrible: se pide
    *  firmada a la función `voucher-url` en el momento de mirarla. */
   advance_voucher_url?: string | null
+  advance_yape_code?: string | null
   advance_amount?: number | string | null
   items?: OrderItem[] | null
   buyer_can_call?: boolean
