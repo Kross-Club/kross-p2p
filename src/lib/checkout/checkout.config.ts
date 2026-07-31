@@ -118,8 +118,10 @@ export const EXIT_DISCOUNT_ONCE = true
 // ─── Yape ────────────────────────────────────────────────────────────────────
 
 export const YAPE = {
-  /** Deep link móvil. En desktop no existe → se cae a número + copiar + QR. */
-  deepLink: 'yape://',
+  // Aquí vivía `deepLink: 'yape://'`, un esquema SUPUESTO que nunca se verificó
+  // contra la app y que en producción no abría nada. Se eliminó junto con su
+  // botón: ver el encabezado de YapeBox.tsx para las tres razones por las que
+  // tampoco vale la pena reintentarlo con `intent://`.
   copiedFeedbackMs: 1500,
 } as const
 
@@ -209,7 +211,6 @@ export const COPY = {
   yapeIntro: 'Yapea el adelanto a este número y copia tu código de seguridad.',
   yapeCopy: 'Copiar número',
   yapeCopied: '¡Copiado!',
-  yapeOpen: 'Abrir Yape',
   // Se nombra por lo que el comprador VE, no por el término técnico. El
   // rótulo de Yape va entre comillas para que lo reconozca sin traducir nada.
   yapeCodeLabel: 'Los 3 números que te dio Yape',

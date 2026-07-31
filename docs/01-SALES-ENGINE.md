@@ -533,3 +533,26 @@ ofrece **"Ver mi pedido"** junto a "¡Lo quiero!", en estilo secundario: la
 landing sigue siendo para vender, no para dar seguimiento. Caduca a los 3 días
 —después la entrega ya ocurrió y un botón viejo solo confunde— y un storage
 corrupto o el modo incógnito no rompen nada.
+
+## No hay botón de "Abrir Yape"
+
+Hubo uno, con `yape://`, y estaba **muerto en producción**: era un esquema
+supuesto que nunca se verificó contra la app real. No se reintenta con
+`intent://` por tres razones:
+
+1. **Chrome Android** no abre esquemas custom desde un `<a href>` normal; exige
+   `intent://` con nombre de paquete, que habría que confirmar en un equipo.
+2. **iOS**: si la app no declaró el esquema, Safari muestra su pantalla de error
+   — un callejón sin salida *justo en el paso del cobro*, y no hay forma
+   confiable de detectar el fallo antes de intentarlo.
+3. **Aunque abriera**, cae en la pantalla de inicio de Yape: **no puede
+   pre-llenar número ni monto**, porque eso requiere el deep link de pago
+   comercial (Yape Empresas), no un esquema público.
+
+O sea: ahorraba un cambio de app a cambio de arriesgar la venta. **Copiar el
+número funciona siempre, en los dos sistemas**, y ahora es la acción única y a
+todo el ancho — una acción confiable vale más que dos donde una falla.
+
+Si algún día Kross accede al deep link de pago oficial, ahí sí vale la pena: ese
+sí llega con monto y destinatario puestos, que es el único caso donde el botón
+justifica su riesgo.
