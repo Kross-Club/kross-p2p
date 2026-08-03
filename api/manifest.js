@@ -50,6 +50,10 @@ export default async function handler(req, res) {
       ]
 
   const manifest = {
+    // `id` fija la identidad de la app entre versiones. Sin él, tocar
+    // `start_url` hace que Android/Chrome la traten como una app NUEVA: el
+    // usuario termina con dos íconos y la instalada deja de recibir push.
+    id: '/',
     name: store.nombre,
     short_name: store.nombre,
     description: 'Sigue tu pedido y chatea con tu asesor',

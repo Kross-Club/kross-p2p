@@ -30,6 +30,7 @@ Cloud API · Web Push (VAPID) · IA (Decolecta DNI, ElevenLabs closer 🔮).
 | `docs/01-SALES-ENGINE.md` | IA Closer, DNI, checkout guiado (state machine), adelanto Yape verificado solo |
 | `docs/02-SMART-LOGISTICS.md` | Geolocalización, motorizados, envíos a provincia |
 | `docs/03-LOYALTY-ENGINE.md` | Recompra, puntos, campañas WhatsApp, LTV |
+| `docs/04-APK-ANDROID.md` | APK Android (TWA), Digital Asset Links, una app por marca |
 | `docs/GIT-FLOW.md` | Nomenclatura de ramas/commits y flujo de PR |
 | `docs/ICP Sales/` · `docs/ICP LTV/` | Capa estratégica (por qué / para quién) |
 
