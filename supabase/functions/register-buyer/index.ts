@@ -35,6 +35,7 @@ Deno.serve(async (req) => {
     redeem_points?: number   // puntos que el cliente quiere canjear por descuento
     payment_method?: string  // YAPE_PLIN | CONTRAENTREGA | TARJETA (default COD)
     closed_by?: string       // AI_CLOSER | DIRECT_CHECKOUT (default directo)
+    checkout_variant?: string // A | B — qué versión del checkout cerró el pedido
     // Costuras de ENTREGA del checkout guiado (Quiz). Ver docs/01-SALES-ENGINE.md.
     dispatch_type?: string        // MOTORIZADO_LIMA | AGENCIA_PROVINCIA (default Lima)
     agency_name?: string          // SHALOM | OLVA | OTRO (solo provincia)
@@ -278,6 +279,7 @@ Deno.serve(async (req) => {
       involved_seller_ids: assignedSellerId ? [assignedSellerId] : [],
       writer_seller_ids: assignedSellerId ? [assignedSellerId] : [],
       checkout_id: checkoutId,
+      checkout_variant: ['A', 'B'].includes(body.checkout_variant ?? '') ? body.checkout_variant : null,
       advance_amount: advanceAmount,
       advance_voucher_url: advanceVoucherUrl,
       advance_yape_code: advanceYapeCode,

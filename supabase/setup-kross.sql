@@ -482,3 +482,14 @@ ALTER TABLE order_sessions ADD CONSTRAINT order_sessions_stage_check
     'nuevo'::text, 'validando'::text, 'confirmado'::text,
     'preparando'::text, 'en_camino'::text, 'entregado'::text
   ]));
+
+-- ─── Variante del checkout (experimento A/B) ─────────────────────────────────
+-- Con cuál de las dos versiones se cerró el pedido. Sin esta columna el
+-- experimento no se puede leer: se sabe cuánta gente vio cada una (analítica de
+-- front) pero no cuál terminó vendiendo, que es la única pregunta que importa.
+alter table public.order_sessions
+  add column if not exists checkout_variant text
+  check (checkout_variant is null or checkout_variant in ('A', 'B'));
+
+create index if not exists order_sessions_checkout_variant_idx
+  on public.order_sessions (checkout_variant) where checkout_variant is not null;

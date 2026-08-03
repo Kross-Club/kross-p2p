@@ -12,27 +12,49 @@ import type { AgencyName, CoverageMode } from './types'
 
 // ─── Adelanto ────────────────────────────────────────────────────────────────
 
-/** Lima paga 100 % contraentrega: sin adelanto, el flujo más corto. */
-export const ADVANCE_LIMA_PEN = 0
+/**
+ * Lima también adelanta. Antes era 0 —100 % contraentrega— y el rebote lo
+ * pagaba la marca entera: el pedido falso no cuesta nada de hacer y sí cuesta
+ * el viaje del motorizado. S/5 no espanta a quien va a comprar y sí a quien
+ * estaba jugando.
+ */
+export const ADVANCE_LIMA_PEN = 5
 
-/** Provincia adelanta el flete por Yape; el saldo se paga al recibir/recoger. */
-export const ADVANCE_PROVINCIA_PEN = 10
+/** Base de provincia por agencia (Shalom). El saldo se paga al recoger. */
+export const ADVANCE_PROVINCIA_PEN = 20
 
 /**
- * Adelanto por agencia, cuando difiere del base. Olva cobra más flete, así que
- * su adelanto es mayor. Se le muestra al comprador **en la tarjeta de cada
- * agencia**, antes de elegir: que el monto salte después de haber elegido se
- * lee como cambio de precio a mitad de compra.
- *
- * La entrega a domicilio (sin agencia) usa el base.
+ * Entrega EN CASA a provincia: el courier cobra bastante más que dejar el
+ * paquete en el mostrador de la agencia, y ese diferencial no lo puede comer
+ * la marca en cada pedido.
+ */
+export const ADVANCE_PROVINCIA_DOMICILIO_PEN = 30
+
+/**
+ * Adelanto por agencia. Olva cobra más flete, así que su adelanto es mayor. Se
+ * le muestra al comprador **en la tarjeta de cada agencia**, antes de elegir:
+ * que el monto salte después de haber elegido se lee como cambio de precio a
+ * mitad de compra.
  */
 export const ADVANCE_BY_AGENCY: Partial<Record<AgencyName, number>> = {
-  OLVA: 20,
+  SHALOM: 20,
+  OLVA: 25,
 }
 
-/** Adelanto que le toca a este pedido. Única fuente de verdad del monto. */
-export function advanceFor(isProvincia: boolean, agency: AgencyName | null): number {
+/**
+ * Adelanto que le toca a este pedido. Única fuente de verdad del monto.
+ *
+ * `method` importa: a domicilio en provincia no hay agencia que consultar, y
+ * sin él caería al base de mostrador —20 en vez de 30— regalando el
+ * diferencial del courier en cada pedido.
+ */
+export function advanceFor(
+  isProvincia: boolean,
+  agency: AgencyName | null,
+  method?: 'DOMICILIO' | 'AGENCIA' | null,
+): number {
   if (!isProvincia) return ADVANCE_LIMA_PEN
+  if (method === 'DOMICILIO') return ADVANCE_PROVINCIA_DOMICILIO_PEN
   return (agency && ADVANCE_BY_AGENCY[agency]) || ADVANCE_PROVINCIA_PEN
 }
 
@@ -201,7 +223,7 @@ export const COPY = {
   agencyNeutral: 'Elige tu agencia de recojo',
   retryDomicilio: 'Prefiero intentar entrega a domicilio',
 
-  advanceHeadsUp: `Para envíos a provincia se paga un adelanto de S/${ADVANCE_PROVINCIA_PEN} y el resto al recibir.`,
+  advanceHeadsUp: `Se paga un adelanto del envío por Yape y el resto al recibir.`,
   advanceHeadsUpShort: 'El resto lo pagas al recibir tu pedido.',
   voucherRequired: 'Sube tu comprobante para terminar',
 

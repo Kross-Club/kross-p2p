@@ -7,8 +7,8 @@
 // callejón sin salida.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Home, PackageCheck } from 'lucide-react'
-import { COPY } from '../../../lib/checkout/checkout.config'
+import { Home, PackageCheck, Store } from 'lucide-react'
+import { ADVANCE_BY_AGENCY, ADVANCE_PROVINCIA_DOMICILIO_PEN, COPY } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
@@ -104,6 +104,21 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
 
       {checking && <p className="text-[11px] text-gray-400">Viendo si llegamos a tu zona…</p>}
 
+      {/* Variante B: el método lo elige el comprador, y aparece SOLO después de
+          poner su distrito — antes no se sabe si el courier llega ni cuánto
+          cuesta, así que ofrecerlo sería preguntar a ciegas. Con los dos
+          precios al lado, "recojo yo y ahorro S/10" es una decisión que puede
+          tomar; en la variante A nunca se entera de que existía. */}
+      {!checking && state.variant === 'B' && p?.coverageResult && !method && (
+        <MethodPicker
+          canDeliverHome={p.coverageResult === 'IN_ZONE'}
+          onPick={m => {
+            dispatch({ type: 'SET_DELIVERY_METHOD', method: m })
+            trackEvent({ name: 'delivery_method_selected', method: m })
+          }}
+        />
+      )}
+
       {!checking && method === 'DOMICILIO' && (
         <>
           <div className="rounded-2xl px-4 py-3" style={{ background: '#F0FDF4', border: '1px solid #86EFAC' }}>
@@ -191,6 +206,51 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
           </span>
         </p>
       )}
+    </div>
+  )
+}
+
+// ─── Casa o agencia (variante B) ─────────────────────────────────────────────
+// Dos tarjetas con el precio DENTRO. El adelanto es la única diferencia real
+// entre las dos opciones, así que esconderlo hasta el paso del pago convertiría
+// la elección en una sorpresa: el comprador elige "en casa" pensando que es
+// gratis y descubre S/30 dos pantallas después.
+function MethodPicker({
+  canDeliverHome, onPick,
+}: { canDeliverHome: boolean; onPick: (m: 'DOMICILIO' | 'AGENCIA') => void }) {
+  return (
+    <div>
+      <p className="text-xs font-black text-gray-700 mb-2">¿Cómo prefieres recibirlo?</p>
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Cómo prefieres recibirlo">
+        {/* Fuera de cobertura no se ofrece domicilio: prometerlo y no cumplirlo
+            es el reclamo que el checkout entero existe para evitar. */}
+        {canDeliverHome && (
+          <button
+            type="button"
+            onClick={() => onPick('DOMICILIO')}
+            className="rounded-2xl px-3 py-3 text-left border border-gray-200 bg-white active:scale-[0.98] transition"
+          >
+            <Home size={18} style={{ color: 'var(--brand)' }} />
+            <p className="text-sm font-black text-gray-900 mt-1.5">En mi casa</p>
+            <p className="text-[11px] text-gray-500">Te lo llevan a la puerta</p>
+            <p className="text-[11px] font-black mt-1" style={{ color: 'var(--brand)' }}>
+              Adelanto S/{ADVANCE_PROVINCIA_DOMICILIO_PEN}
+            </p>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onPick('AGENCIA')}
+          className="rounded-2xl px-3 py-3 text-left border border-gray-200 bg-white active:scale-[0.98] transition"
+        >
+          <Store size={18} style={{ color: 'var(--brand)' }} />
+          <p className="text-sm font-black text-gray-900 mt-1.5">Recojo en agencia</p>
+          <p className="text-[11px] text-gray-500">Shalom u Olva</p>
+          <p className="text-[11px] font-black mt-1" style={{ color: 'var(--brand)' }}>
+            Desde S/{ADVANCE_BY_AGENCY.SHALOM}
+          </p>
+        </button>
+      </div>
     </div>
   )
 }

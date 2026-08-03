@@ -9,7 +9,7 @@
 import { EXIT_DISCOUNT_PEN, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
 import { methodForCoverage } from './services/DistrictCoverageService'
 import type {
-  AgencyName, CheckoutState, CheckoutStepId, DistrictCoverage,
+  AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
   LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig,
 } from './types'
 
@@ -25,11 +25,15 @@ function newOrderId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-export function initialCheckoutState(selectedPack: PackId | null = null): CheckoutState {
+export function initialCheckoutState(
+  selectedPack: PackId | null = null,
+  variant: CheckoutVariant = 'A',
+): CheckoutState {
   return {
     orderId: newOrderId(),
     step: 1,
     selectedPack,
+    variant,
     customerInfo: { dni: '', whatsapp: '', receiverName: '' },
     locationType: null,
     limaAddress: null,
@@ -66,6 +70,7 @@ export type CheckoutAction =
   | { type: 'SET_AGENCY_BRANCH'; branchId: string }
   | { type: 'SET_OLVA_TEXT'; text: string }
   | { type: 'SET_PROVINCIA_ADDRESS'; addressText?: string; reference?: string }
+  | { type: 'SET_DELIVERY_METHOD'; method: 'DOMICILIO' | 'AGENCIA' }
   | { type: 'SET_VOUCHER'; url: string; uploadedAt: string }
   | { type: 'SET_YAPE_CODE'; code: string }
   | { type: 'SET_VERIFICATION'; verification: PaymentVerification; reason?: string | null; matchedAt?: string | null }
@@ -95,7 +100,11 @@ function derive(s: CheckoutState): CheckoutState {
   const isProvincia = s.locationType === 'PROVINCIA'
   // El adelanto sale del destino Y de la agencia: Olva cobra más flete que
   // Shalom. A domicilio (sin agencia) va el base.
-  const advanceAmount = advanceFor(isProvincia, s.provinciaConfig?.selectedAgency ?? null)
+  const advanceAmount = advanceFor(
+    isProvincia,
+    s.provinciaConfig?.selectedAgency ?? null,
+    s.provinciaConfig?.deliveryMethod ?? null,
+  )
 
   // El pedido se cierra SIN coordenada: la cobertura se decide por distrito. La
   // marca queda para que Logística afine la dirección después (AddressBar en el
@@ -207,7 +216,10 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           city: check.city,
           eta: check.eta,
           coverageResult: check.result,
-          deliveryMethod: methodForCoverage(check.result),
+          // En B el método lo elige el comprador: se deja en null a propósito
+          // para que la UI muestre las dos tarjetas con su precio. Autodecidir
+          // aquí sería exactamente lo que la variante existe para no hacer.
+          deliveryMethod: state.variant === 'B' ? null : methodForCoverage(check.result),
         },
         // Tarifa del courier: costo de la marca, jamás se le traslada al comprador.
         courierSurcharge: check.tariff,
@@ -237,6 +249,19 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
 
     case 'SET_OLVA_TEXT':
       return derive({ ...state, provinciaConfig: { ...prov(), olvaBranchText: action.text } })
+
+    case 'SET_DELIVERY_METHOD':
+      // Cambiar de método invalida la agencia ya elegida: si vuelve a "en casa"
+      // después de haber marcado Shalom, el pedido saldría con agencia Y
+      // domicilio, y el adelanto cobrado no calzaría con ninguno de los dos.
+      return derive({
+        ...state,
+        provinciaConfig: {
+          ...prov(),
+          deliveryMethod: action.method,
+          selectedAgency: action.method === 'DOMICILIO' ? null : prov().selectedAgency,
+        },
+      })
 
     case 'SET_PROVINCIA_ADDRESS':
       return derive({ ...state, provinciaConfig: { ...prov(), address: {

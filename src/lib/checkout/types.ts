@@ -14,6 +14,18 @@ export type CheckoutStepId = 1 | 2 | 3
 
 export type LocationType = 'LIMA' | 'PROVINCIA'
 
+/**
+ * Las dos versiones del checkout que se están midiendo.
+ *
+ * · `A` — la cobertura decide sola si el pedido va a domicilio o a agencia.
+ * · `B` — en provincia lo elige el COMPRADOR, después de poner su distrito.
+ *
+ * La diferencia no es cosmética: en B el comprador ve que entregar en casa
+ * cuesta S/30 y recoger en Shalom S/20, y decide con el precio delante. En A
+ * nunca se entera de que había otra opción.
+ */
+export type CheckoutVariant = 'A' | 'B'
+
 export type DeliveryMethod = 'DOMICILIO' | 'AGENCIA'
 
 /**
@@ -96,6 +108,10 @@ export interface CheckoutState {
   selectedPack: PackId | null
   customerInfo: CustomerInfo
   locationType: LocationType | null
+  /** Qué versión del checkout le tocó a este comprador. Viaja en el estado
+   *  para que el pedido guarde con cuál se cerró y las métricas se puedan
+   *  partir después. */
+  variant: CheckoutVariant
   limaAddress: LimaAddress | null
   provinciaConfig: ProvinciaConfig | null
   /** true si falta lat/lng o el resultado de cobertura es BORDERLINE. */

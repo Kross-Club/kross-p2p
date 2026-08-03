@@ -25,6 +25,10 @@ export type CheckoutEvent =
    *  donde el distrito puede quedarse corto frente al polígono. */
   | { name: 'coverage_zoned_district'; place: string }
   | { name: 'agency_selected'; agency: AgencyName }
+  // Variante B: qué eligió el comprador cuando SE LE PREGUNTÓ. Es la única
+  // métrica que dice si valía la pena preguntarle — si casi todos eligen lo
+  // mismo que la cobertura habría decidido sola, la variante no aporta.
+  | { name: 'delivery_method_selected'; method: 'DOMICILIO' | 'AGENCIA' }
   | { name: 'olva_branch_typed'; length: number }
   /** Intentó salir con datos ingresados y se le ofreció el descuento. */
   | { name: 'exit_offer_shown'; step: CheckoutStepId }

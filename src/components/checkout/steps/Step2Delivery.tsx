@@ -70,7 +70,7 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
 
         {/* Provincia: el DNI va ANTES del nombre para que Decolecta lo rellene
             y el comprador escriba un campo menos. */}
-        {locationType === 'PROVINCIA' && (
+        {locationType && (
           <DniField
             value={customerInfo.dni}
             error={errors.dni}
@@ -119,7 +119,7 @@ function LocationToggle({ value, error, onChange }: {
   onChange: (type: LocationType) => void
 }) {
   const options: { id: LocationType; icon: typeof Truck; title: string; sub: string }[] = [
-    { id: 'LIMA', icon: Truck, title: 'Lima', sub: 'Pagas al recibir' },
+    { id: 'LIMA', icon: Truck, title: 'Lima metropolitana', sub: 'Llega a tu puerta' },
     { id: 'PROVINCIA', icon: Store, title: 'Provincia', sub: 'Envío a todo el Perú' },
   ]
 
