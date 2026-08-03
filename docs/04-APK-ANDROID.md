@@ -58,10 +58,20 @@ abre **con barra de navegador encima** y parece una web disfrazada.
 
 Necesitas **JDK 17+** y Node. Bubblewrap baja el SDK de Android solo.
 
-```bash
+> **Fuera del repo, a propósito.** Bubblewrap genera un proyecto Android entero
+> (Gradle, `.keystore`, carpetas de build). Nada de eso va en `kross-p2p`: ensucia
+> el árbol y arriesga commitear la firma. La rama solo sirve para pegar la huella
+> **después**.
+
+El equipo trabaja en **Windows/PowerShell**, así que van así — `mkdir -p`, `&&` y
+`grep` no existen ahí:
+
+```powershell
 npm install -g @bubblewrap/cli
 
-mkdir -p ~/kross-apk/gadicaf && cd ~/kross-apk/gadicaf
+mkdir $HOME\kross-apk\gadicaf -Force
+cd $HOME\kross-apk\gadicaf
+
 bubblewrap init --manifest https://gadicaf.krossclub.app/api/manifest
 ```
 
@@ -75,14 +85,14 @@ Responde:
 
 Luego:
 
-```bash
+```powershell
 bubblewrap build          # deja app-release-signed.apk
 ```
 
 ### Registrar la huella
 
-```bash
-keytool -list -v -keystore android.keystore -alias android | grep SHA256
+```powershell
+keytool -list -v -keystore android.keystore -alias android | Select-String SHA256
 ```
 
 Pega el resultado en `api/_android-apps.js`, deploy, y **recién ahí** instala el
