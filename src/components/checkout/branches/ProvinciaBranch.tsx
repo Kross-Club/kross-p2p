@@ -51,8 +51,14 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
     value: optionKey(d),
     label: d.district,
     detail: `${d.province}, ${d.department}`,
-    badge: d.covered && !d.weekly ? 'A tu puerta' : undefined,
-  })), [all])
+    // En B el domicilio es una OPCIÓN que el comprador todavía va a elegir, así
+    // que el badge promete de menos a propósito: "a tu puerta" se lee como que
+    // ya está decidido, y quien pensaba recoger en agencia siente que le
+    // cambiaron el trato dos pantallas después. En A sí está decidido.
+    badge: d.covered && !d.weekly
+      ? (state.variant === 'B' ? 'Podemos ir a tu casa' : 'Entregamos a tu casa')
+      : undefined,
+  })), [all, state.variant])
 
   const selectedKey = p?.district && p.province && p.department
     ? optionKey({ department: p.department, province: p.province, district: p.district })
@@ -111,7 +117,13 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
           tomar; en la variante A nunca se entera de que existía. */}
       {/* Solo donde HAY cobertura: sin courier la máquina ya mandó el pedido
           directo a agencia y no queda nada que preguntar. */}
-      {!checking && state.variant === 'B' && !method && (
+      {/* `IN_ZONE` es la llave: antes de elegir distrito no hay veredicto de
+          cobertura, así que sin esto el selector salía ya montado al abrir el
+          paso — preguntándole cómo quiere recibir algo que todavía no sabe si
+          le llega. Y solo con cobertura hay dos opciones reales: sin courier la
+          máquina ya mandó el pedido a agencia y no queda nada que preguntar. */}
+      {!checking && state.variant === 'B'
+        && p?.coverageResult === 'IN_ZONE' && !method && (
         <MethodPicker
           onPick={m => {
             dispatch({ type: 'SET_DELIVERY_METHOD', method: m })

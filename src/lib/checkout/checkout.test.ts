@@ -595,6 +595,15 @@ describe('ajustes tras la revisión de Fase 2', () => {
     expect(s.advanceAmount).toBe(30)
   })
 
+  it('el borrador no congela la variante: la URL sigue mandando', () => {
+    // Un borrador guardado no traía `variant` y ganaba el default 'A', así que
+    // un ?checkout=B se ignoraba en silencio en cuanto existía uno — que es casi
+    // siempre, porque se guarda apenas el comprador tipea su WhatsApp.
+    localStorage.setItem('kross.checkout.variant', 'B')
+    saveDraft({ ...initialCheckoutState('pack-2', 'A'), step: 2 })
+    expect(loadActiveDraft()?.variant).toBe('B')
+  })
+
   it('sin cobertura la B NO pregunta: va directo a agencia', () => {
     // Preguntarle con una sola opción real es cobrarle un clic para llegar al
     // mismo sitio. BORDERLINE cuenta como sin cobertura: el courier no la
