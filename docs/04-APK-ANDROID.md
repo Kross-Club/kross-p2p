@@ -113,6 +113,23 @@ aplicación* deja el ícono en la pantalla de inicio y corre igual de bien. El A
 suma cuando quieres Play Store, o cuando el dueño de tienda necesita ver algo que
 se sienta app antes de confiar.
 
+## El ícono va por `/api/icon` ✅
+
+`bubblewrap init` moría con **`Cookie has domain set to a public suffix`**.
+
+No es culpa del logo. El manifest apuntaba directo a Supabase Storage, y
+`supabase.co` está en la **Public Suffix List** (Supabase la registró para aislar
+subdominios). Cloudflare responde ahí con una cookie `__cf_bm` sobre ese dominio,
+la librería de cookies de bubblewrap la rechaza por reglamento, y aborta el build
+entero a mitad de "Generating Android Project".
+
+La raíz era tener el ícono **en otro origen**. Ahora `api/icon.js` lo sirve desde
+el dominio de la marca, así que además se cachea con el resto del sitio y el
+manifest deja de depender de dónde guardamos el branding.
+
+> Si Storage falla o la marca no tiene logo, redirige a `/icon-512.png` en vez de
+> dar 404: un manifest con ícono roto no instala.
+
 ## Pendiente 🔮
 
 - [ ] Registrar la huella de Gadicaf en `api/_android-apps.js`.
@@ -120,8 +137,7 @@ se sienta app antes de confiar.
       comprador). Para un dueño de tienda probablemente deba abrir el panel de
       Ventas — pero eso cambia el manifest **también para el comprador**, así
       que quizá necesite su propio APK.
-- [ ] Ícono: Bubblewrap descarga el del manifest, que sale de `stores.logo_url`.
-      Tiene que ser **PNG cuadrado de 512×512**; si no, el build falla.
+- [ ] Ícono: tiene que ser **PNG cuadrado de 512×512**; si no, el build falla.
 - [ ] Play Store: ficha, capturas y política de privacidad.
 - [ ] iOS no tiene equivalente — ahí la PWA se instala desde Safari y ya.
 
