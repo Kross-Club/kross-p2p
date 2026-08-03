@@ -213,7 +213,9 @@ export const COPY = {
   // El DNI solo se pide en provincia, y el motivo es de ELLOS, no nuestro: la
   // agencia no entrega el paquete sin el documento del destinatario. Un hecho
   // que el comprador puede verificar convierte mejor que "para crear tu cuenta".
-  dniWhy: 'La agencia te lo pedirá para entregarte el paquete.',
+  // Se muestra también en Lima, donde no hay agencia. La razón honesta y común
+  // a los dos casos es que el adelanto tiene que quedar a nombre de alguien.
+  dniWhy: 'Con esto confirmamos tu pedido y tu adelanto a tu nombre.',
   dniOtherReceiver: '¿Lo recibe otra persona?',
   referencePlaceholder: 'Portón negro, frente a la bodega',
 

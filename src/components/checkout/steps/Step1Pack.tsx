@@ -124,7 +124,7 @@ export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPa
           mitad; el texto se encoge en pantallas angostas antes que romperse. */}
       <ul className="mt-4 flex items-center justify-between gap-2
         text-[10px] min-[380px]:text-[11px] text-gray-500">
-        <li className="whitespace-nowrap">✅ Pagas al recibir</li>
+        <li className="whitespace-nowrap">✅ Pagas el resto al recibir</li>
         <li className="whitespace-nowrap">🚚 Todo el Perú</li>
         <li className="whitespace-nowrap">🔒 Datos seguros</li>
       </ul>
