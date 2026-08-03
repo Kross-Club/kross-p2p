@@ -219,7 +219,14 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           // En B el método lo elige el comprador: se deja en null a propósito
           // para que la UI muestre las dos tarjetas con su precio. Autodecidir
           // aquí sería exactamente lo que la variante existe para no hacer.
-          deliveryMethod: state.variant === 'B' ? null : methodForCoverage(check.result),
+          // ...pero SOLO donde de verdad hay dos opciones. Sin cobertura del
+          // courier no hay "a mi casa" que ofrecer, así que preguntarle sería
+          // enseñarle una sola tarjeta y cobrarle un clic para llegar al mismo
+          // sitio: las agencias. BORDERLINE también va directo — el courier no
+          // garantiza esa zona y ofrecer domicilio ahí es prometer de más.
+          deliveryMethod: state.variant === 'B' && check.result === 'IN_ZONE'
+            ? null
+            : methodForCoverage(check.result),
         },
         // Tarifa del courier: costo de la marca, jamás se le traslada al comprador.
         courierSurcharge: check.tariff,

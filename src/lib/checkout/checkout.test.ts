@@ -595,6 +595,22 @@ describe('ajustes tras la revisión de Fase 2', () => {
     expect(s.advanceAmount).toBe(30)
   })
 
+  it('sin cobertura la B NO pregunta: va directo a agencia', () => {
+    // Preguntarle con una sola opción real es cobrarle un clic para llegar al
+    // mismo sitio. BORDERLINE cuenta como sin cobertura: el courier no la
+    // garantiza y ofrecer domicilio ahí es prometer de más.
+    for (const result of ['OUT_OF_ZONE', 'BORDERLINE'] as const) {
+      const s = run(initialCheckoutState('pack-2', 'B'),
+        { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+        { type: 'SET_COVERAGE', check: {
+          result, city: 'PIURA', eta: '5 días', tariff: 0,
+          weekly: false, weekdaysOnly: false, zoned: true, reason: '',
+        } },
+      )
+      expect(s.provinciaConfig?.deliveryMethod).toBe('AGENCIA')
+    }
+  })
+
   it('la variante B no autodecide el método: lo elige el comprador', () => {
     const b = run(initialCheckoutState('pack-2', 'B'),
       { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
