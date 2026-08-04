@@ -7,7 +7,16 @@ import type { OrderStage } from './order-stages'
 // (que era el modelo mock de seed.ts) para todo lo que toque datos reales.
 
 export type PaymentMethod = 'YAPE_PLIN' | 'CONTRAENTREGA' | 'TARJETA'
-export type DispatchType = 'MOTORIZADO_LIMA' | 'AGENCIA_PROVINCIA'
+/**
+ * Cómo llega el pedido. Son TRES casos, no dos: el reparto a domicilio en
+ * provincia no es ni un motorizado de Lima ni un recojo en mostrador.
+ *
+ * Existía solo como "no es agencia → Lima" y se colaba como pedido limeño: otro
+ * courier, otros tiempos y otro costo, en el tablero equivocado. Antes casi no
+ * pasaba porque la cobertura rara vez elegía domicilio fuera de Lima; con el
+ * checkout B es una opción que el comprador marca a propósito.
+ */
+export type DispatchType = 'MOTORIZADO_LIMA' | 'MOTORIZADO_PROVINCIA' | 'AGENCIA_PROVINCIA'
 export type AgencyName = 'SHALOM' | 'OLVA' | 'OTRO'
 export type ClosedBy = 'AI_CLOSER' | 'DIRECT_CHECKOUT'
 

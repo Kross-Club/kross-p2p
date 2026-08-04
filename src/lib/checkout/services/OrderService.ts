@@ -79,7 +79,12 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       document_number: s.customerInfo.dni || undefined,
       address: addressOf(s) ?? undefined,
       delivery_reference: referenceOf(s) ?? undefined,
-      dispatch_type: usesAgency ? 'AGENCIA_PROVINCIA' : 'MOTORIZADO_LIMA',
+      // Tres casos, no dos. "No es agencia" NO significa Lima: un domicilio en
+      // provincia lo reparte otro courier, en otros plazos y a otro costo, y
+      // marcarlo como limeño lo mandaba al tablero equivocado.
+      dispatch_type: usesAgency
+        ? 'AGENCIA_PROVINCIA'
+        : s.locationType === 'PROVINCIA' ? 'MOTORIZADO_PROVINCIA' : 'MOTORIZADO_LIMA',
       agency_name: usesAgency ? (s.provinciaConfig?.selectedAgency ?? undefined) : undefined,
       payment_method: s.advanceAmount > 0 ? 'YAPE_PLIN' : 'CONTRAENTREGA',
       closed_by: 'DIRECT_CHECKOUT',

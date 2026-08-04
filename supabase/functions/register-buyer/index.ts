@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     closed_by?: string       // AI_CLOSER | DIRECT_CHECKOUT (default directo)
     checkout_variant?: string // A | B — qué versión del checkout cerró el pedido
     // Costuras de ENTREGA del checkout guiado (Quiz). Ver docs/01-SALES-ENGINE.md.
-    dispatch_type?: string        // MOTORIZADO_LIMA | AGENCIA_PROVINCIA (default Lima)
+    dispatch_type?: string        // MOTORIZADO_LIMA | MOTORIZADO_PROVINCIA | AGENCIA_PROVINCIA
     agency_name?: string          // SHALOM | OLVA | OTRO (solo provincia)
     delivery_reference?: string   // referencia de la dirección / agencia destino
     address_lat?: number          // pin GPS fijado en el checkout
@@ -112,7 +112,13 @@ Deno.serve(async (req) => {
   // El checkout guiado ya trae el tipo de despacho, la agencia (provincia), una
   // referencia y —en Lima— el pin GPS. Un pin fresco actualiza la dirección guardada
   // del buyer para que los próximos pedidos la hereden sin re-preguntar.
-  const dispatchType = body.dispatch_type === 'AGENCIA_PROVINCIA' ? 'AGENCIA_PROVINCIA' : 'MOTORIZADO_LIMA'
+  // Lista blanca de los tres valores. El default sigue siendo Lima para no
+  // romper a quien mande el campo vacío, pero PROVINCIA a domicilio ya no se
+  // aplasta contra Lima: se guardaba como pedido limeño y Logistics lo leía así.
+  const DISPATCH = ['MOTORIZADO_LIMA', 'MOTORIZADO_PROVINCIA', 'AGENCIA_PROVINCIA']
+  const dispatchType = DISPATCH.includes(body.dispatch_type ?? '')
+    ? body.dispatch_type!
+    : 'MOTORIZADO_LIMA'
   const agencyName = ['SHALOM', 'OLVA', 'OTRO'].includes(body.agency_name ?? '') ? body.agency_name! : null
   const deliveryReference = body.delivery_reference?.trim() || null
   const pinLat = typeof body.address_lat === 'number' ? body.address_lat : null
@@ -296,9 +302,34 @@ Deno.serve(async (req) => {
 
   const firstName = body.buyer_name ? ' ' + body.buyer_name.split(' ')[0] : ''
   const priceLine = `S/${finalPrice}${discount > 0 ? ` · usaste puntos: −S/${discount}` : ''}`
-  const welcomeBody = dispatchType === 'AGENCIA_PROVINCIA'
-    ? `¡Hola${firstName}! 🎉 Tu ${body.product_name} (${priceLine}) se enviará por agencia${agencyName ? ' ' + agencyName : ''}. Coordinamos el envío por aquí y el saldo lo pagas al recoger. 😊`
-    : `¡Hola${firstName}! 🎉 Tu ${body.product_name} (${priceLine}) llegará a tu puerta sin adelanto.\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊`
+  // Cómo llega, según los TRES destinos. "Sin adelanto" quedó mintiendo cuando
+  // Lima pasó a cobrar S/5, y provincia-a-domicilio caía en esa misma rama.
+  const entrega = dispatchType === 'AGENCIA_PROVINCIA'
+    ? `se enviará por agencia${agencyName ? ' ' + agencyName : ''} y el saldo lo pagas al recoger`
+    : dispatchType === 'MOTORIZADO_PROVINCIA'
+      ? 'te llegará a tu casa y el saldo lo pagas al recibirlo'
+      : 'llegará a tu puerta y el saldo lo pagas al recibirlo'
+
+  // El estado del adelanto va en el PRIMER mensaje: el comprador acaba de yapear
+  // y esa es su única duda. Callarlo lo empuja al WhatsApp del vendedor a
+  // preguntar, que es justo lo que este chat evita.
+  //
+  // Siempre "estamos validando", nunca "confirmado": el cruce corre MÁS ABAJO en
+  // esta misma función, así que a esta altura no se sabe. Cuando cuadra, el
+  // propio cruce manda su "✅ ¡Recibimos tu adelanto!" segundos después y el
+  // comprador ve el sistema trabajando en vivo.
+  //
+  // Regla dura del módulo: **nunca se le dice que su pago no existe.** Si no
+  // cruza, este mensaje queda como la única versión de los hechos, y dice que lo
+  // validamos NOSOTROS — porque en la mayoría de esos casos el fallo es del
+  // lector, no suyo.
+  const advanceLine = advanceAmount > 0
+    ? `\n\n⏳ Estamos validando tu adelanto de S/${advanceAmount}. Te aviso por aquí apenas cuadre.`
+    : ''
+
+  const welcomeBody = `¡Hola${firstName}! 🎉 Gracias por tu compra. Tu ${body.product_name}`
+    + ` (${priceLine}) ${entrega}.${advanceLine}`
+    + '\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊'
 
   await supabase.from('chat_messages').insert({
     session_id: data.id,

@@ -265,7 +265,7 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_verified boolean DEF
 -- seguro para el MVP (todo es COD / motorizado Lima / cierre directo hasta que exista
 -- el pago integrado, provincia o el AI closer). Ver docs/00-CORE-ARCHITECTURE.md.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_method text DEFAULT 'CONTRAENTREGA'; -- YAPE_PLIN | CONTRAENTREGA | TARJETA
-ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS dispatch_type  text DEFAULT 'MOTORIZADO_LIMA'; -- MOTORIZADO_LIMA | AGENCIA_PROVINCIA
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS dispatch_type  text DEFAULT 'MOTORIZADO_LIMA'; -- MOTORIZADO_LIMA | MOTORIZADO_PROVINCIA | AGENCIA_PROVINCIA
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS agency_name    text;                          -- SHALOM | OLVA | OTRO (solo provincia)
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS delivery_reference text;                      -- referencia de la puerta
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS closed_by      text DEFAULT 'DIRECT_CHECKOUT'; -- AI_CLOSER | DIRECT_CHECKOUT
