@@ -441,16 +441,43 @@ describe('AgencyService · data real de Shalom', () => {
 })
 
 describe('DistrictCoverageService · data real del tarifario', () => {
-  it('carga los 178 distritos cubiertos y los 483 seleccionables', async () => {
+  it('el selector trae el padrón COMPLETO del INEI, no una selección a mano', async () => {
+    // Eran 483 escritos a mano: Áncash tenía 14 de 166 distritos y el Callao no
+    // existía. El comprador cuyo distrito faltaba no podía comprar, y esa venta
+    // perdida no dejaba rastro porque el pedido nunca llegaba a crearse.
     const all = await DistrictCoverageService.listDistricts()
-    expect(all.length).toBe(483)
-    expect(all.filter(d => d.covered).length).toBe(178)
+    expect(all.length).toBe(1874)
+    expect(all.filter(d => d.covered).length).toBe(176)
+  })
+
+  it('no repite un distrito con dos nombres distintos', async () => {
+    // El tarifario nombra los distritos a su manera ("Pucallpa" por Callería,
+    // el Callao como provincia de Lima). Sin cruzarlos, el MISMO distrito
+    // entraba dos veces —una con cobertura y otra sin— y quien elegía el
+    // equivocado terminaba en agencia teniendo entrega a casa disponible.
+    const all = await DistrictCoverageService.listDistricts()
+    const claves = all.map(d => `${d.department}|${d.province}|${d.district}`)
+    expect(new Set(claves).size).toBe(claves.length)
+
+    const ventanilla = all.filter(d => d.district === 'Ventanilla')
+    expect(ventanilla).toHaveLength(1)
+    expect(ventanilla[0].covered).toBe(true)
+    expect(ventanilla[0].department).toBe('Callao')
+  })
+
+  it('llegan los distritos que antes faltaban', async () => {
+    const all = await DistrictCoverageService.listDistricts()
+    const hay = (district: string, province: string) =>
+      all.some(d => d.district === district && d.province === province)
+    expect(hay('Paramonga', 'Barranca')).toBe(true)
+    expect(all.filter(d => d.department === 'Áncash').length).toBeGreaterThan(150)
+    expect(all.filter(d => d.department === 'Callao')).toHaveLength(7)
   })
 
   it('el selector incluye distritos SIN cobertura, para que igual puedan comprar', async () => {
     const all = await DistrictCoverageService.listDistricts()
-    expect(all.filter(d => !d.covered).length).toBeGreaterThan(200)
-    const mp = all.find(d => d.district === 'Machu Picchu')
+    expect(all.filter(d => !d.covered).length).toBeGreaterThan(1000)
+    const mp = all.find(d => d.district === 'Machupicchu')
     expect(mp?.covered).toBe(false)
   })
 
