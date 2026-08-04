@@ -197,6 +197,21 @@ function BranchPicker({ agency, near, selected, onSelect, error }: {
             aria-label="Buscar sede"
             className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-2 focus:ring-2 focus:ring-green-500 focus:bg-white"
           />
+          {/* Vuelta al ranking de cercanía. El buscador es un callejón sin salida
+              sin esto: quien entra a "ver todas" para curiosear se queda con 400
+              sedes ordenadas por nada y ya no encuentra la que tenía al lado.
+              Solo aparece si HAY ranking al que volver — sin distrito ubicado no
+              existe, y un botón que no lleva a ningún lado es peor que ninguno. */}
+          {nearKey && fresh && fresh.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setShowAllRequested(false); setQuery('') }}
+              className="mb-2 text-[11px] font-bold text-blue-600 underline"
+            >
+              ← Ver las sedes más cercanas a mí
+            </button>
+          )}
+
           {results === null
             ? <p className="text-[11px] text-gray-400 py-2">Cargando sedes…</p>
             : results.length === 0

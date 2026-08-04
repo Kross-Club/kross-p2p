@@ -7,7 +7,7 @@ import { checkoutReducer, initialCheckoutState } from './machine'
 import type { CheckoutAction } from './machine'
 import { canAdvance, canSubmit, validateStep, validateWhatsapp } from './validation'
 import { clearDraft, loadActiveDraft, loadLastOrder, saveDraft, saveLastOrder } from './persistence'
-import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN } from './checkout.config'
+import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN } from './checkout.config'
 import { effectivePrice } from './product-packs'
 import { CoverageService, coveredCities } from './services/CoverageService'
 import { AgencyService, suggestFreeText } from './services/AgencyService'
@@ -94,7 +94,9 @@ describe('máquina · derivados', () => {
       } },
     )
     expect(s.courierSurcharge).toBe(15.5)
-    expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN) // el recargo NO se le traslada
+    // El recargo del courier (15.5) NO se le traslada: el comprador paga el
+    // adelanto de domicilio (30), que la cobertura IN_ZONE eligió sola.
+    expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_DOMICILIO_PEN)
   })
 
   it('cambiar de región descarta la data de la otra', () => {
@@ -207,9 +209,11 @@ describe('validación', () => {
     expect(s.advanceYapeCode).toBe('965')
   })
 
-  it('sin adelanto (Lima) el paso 3 no pide comprobante', () => {
+  it('Lima también adelanta, así que el paso 3 sí pide el código de Yape', () => {
+    // Cuando Lima era contraentrega puro este paso no validaba nada. Ahora que
+    // adelanta S/5 tiene que exigir lo mismo que provincia.
     const s = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' }, { type: 'GOTO', step: 3 })
-    expect(validateStep(s)).toEqual({})
+    expect(validateStep(s)).not.toEqual({})
   })
 
   it('canSubmit bloquea el doble tap mientras se envía', () => {
@@ -220,6 +224,8 @@ describe('validación', () => {
       { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
       { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
       { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
+      // Lima ya no cierra sin adelanto: hace falta el código del Yape.
+      { type: 'SET_YAPE_CODE', code: '195' },
     )
     expect(canSubmit(complete)).toBe(true)
     expect(canSubmit(run(complete, { type: 'SUBMITTING' }))).toBe(false)
@@ -509,14 +515,17 @@ describe('ajustes tras la revisión de Fase 2', () => {
     { type: 'GOTO', step: 2 },
   )
 
-  it('Lima NO pide DNI: se avanza sin él', () => {
+  it('Lima TAMBIÉN pide DNI: donde hay plata adelantada hay que saber de quién', () => {
+    // Antes Lima se saltaba el DNI porque era contraentrega y pedirlo era
+    // fricción. Ese argumento se cayó cuando Lima pasó a adelantar S/5: sin DNI
+    // no hay con qué cuadrar el Yape ni con qué reconocer al cliente después.
     const s = run(conDatos('LIMA'),
       { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
       { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
     )
-    expect(s.customerInfo.dni).toBe('')
-    expect(validateStep(s).dni).toBeUndefined()
-    expect(canAdvance(s)).toBe(true)
+    expect(validateStep(s).dni).toBeTruthy()
+    expect(canAdvance(s)).toBe(false)
+    expect(canAdvance(run(s, { type: 'SET_DNI', dni: '12345678' }))).toBe(true)
   })
 
   it('provincia SÍ pide DNI: la agencia lo exige para entregar', () => {
@@ -532,22 +541,21 @@ describe('ajustes tras la revisión de Fase 2', () => {
     expect(canAdvance(conDni)).toBe(true)
   })
 
-  it('cambiar a Lima deja de exigir el DNI sin borrar lo ya escrito', () => {
+  it('cambiar de región no borra el DNI ya escrito', () => {
     const s = run(conDatos('PROVINCIA'),
       { type: 'SET_DNI', dni: '12345678' },
       { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
       { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
       { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
     )
-    expect(s.customerInfo.dni).toBe('12345678') // no se pierde si vuelve a provincia
+    expect(s.customerInfo.dni).toBe('12345678')
     expect(canAdvance(s)).toBe(true)
   })
 
   it('el adelanto depende de la agencia: Olva cobra más flete que Shalom', () => {
     const prov = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' })
-    expect(prov.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN) // a domicilio, sin agencia
-    expect(run(prov, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(10)
-    expect(run(prov, { type: 'SET_AGENCY', agency: 'OLVA' }).advanceAmount).toBe(20)
+    expect(run(prov, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(20)
+    expect(run(prov, { type: 'SET_AGENCY', agency: 'OLVA' }).advanceAmount).toBe(25)
   })
 
   it('cambiar de agencia recalcula el adelanto en ambos sentidos', () => {
@@ -555,12 +563,82 @@ describe('ajustes tras la revisión de Fase 2', () => {
       { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
       { type: 'SET_AGENCY', agency: 'OLVA' },
     )
-    expect(s.advanceAmount).toBe(20)
-    expect(run(s, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(10)
+    expect(s.advanceAmount).toBe(25)
+    expect(run(s, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(20)
   })
 
-  it('Lima nunca cobra adelanto, elija lo que elija', () => {
-    expect(run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' }).advanceAmount).toBe(0)
+  it('Lima también adelanta: S/5 fijo', () => {
+    // Era 0. El pedido falso no costaba nada de hacer y sí costaba el viaje del
+    // motorizado; S/5 no espanta a quien va a comprar y sí a quien jugaba.
+    expect(run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' }).advanceAmount).toBe(5)
+  })
+
+  it('a domicilio en provincia cuesta más que recoger en agencia', () => {
+    // El courier cobra bastante más que dejar el paquete en el mostrador, y sin
+    // el método el cálculo caería al base de agencia regalando el diferencial.
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' },
+    )
+    expect(s.advanceAmount).toBe(30)
+  })
+
+  it('elegir "en casa" después de una agencia limpia la agencia', () => {
+    // Si no, el pedido saldría con agencia Y domicilio, y el adelanto cobrado
+    // no calzaría con ninguno de los dos.
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_AGENCY', agency: 'OLVA' },
+      { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' },
+    )
+    expect(s.provinciaConfig?.selectedAgency).toBeNull()
+    expect(s.advanceAmount).toBe(30)
+  })
+
+  it('el borrador no congela la variante: la URL sigue mandando', () => {
+    // Un borrador guardado no traía `variant` y ganaba el default 'A', así que
+    // un ?checkout=B se ignoraba en silencio en cuanto existía uno — que es casi
+    // siempre, porque se guarda apenas el comprador tipea su WhatsApp.
+    localStorage.setItem('kross.checkout.variant', 'B')
+    saveDraft({ ...initialCheckoutState('pack-2', 'A'), step: 2 })
+    expect(loadActiveDraft()?.variant).toBe('B')
+  })
+
+  it('sin cobertura la B NO pregunta: va directo a agencia', () => {
+    // Preguntarle con una sola opción real es cobrarle un clic para llegar al
+    // mismo sitio. BORDERLINE cuenta como sin cobertura: el courier no la
+    // garantiza y ofrecer domicilio ahí es prometer de más.
+    for (const result of ['OUT_OF_ZONE', 'BORDERLINE'] as const) {
+      const s = run(initialCheckoutState('pack-2', 'B'),
+        { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+        { type: 'SET_COVERAGE', check: {
+          result, city: 'PIURA', eta: '5 días', tariff: 0,
+          weekly: false, weekdaysOnly: false, zoned: true, reason: '',
+        } },
+      )
+      expect(s.provinciaConfig?.deliveryMethod).toBe('AGENCIA')
+    }
+  })
+
+  it('la variante B no autodecide el método: lo elige el comprador', () => {
+    const b = run(initialCheckoutState('pack-2', 'B'),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_COVERAGE', check: {
+        result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 0,
+        weekly: false, weekdaysOnly: false, zoned: true, reason: '',
+      } },
+    )
+    expect(b.provinciaConfig?.deliveryMethod).toBeNull()
+
+    // La A sigue decidiendo sola: es justo lo que las separa.
+    const a = run(initialCheckoutState('pack-2', 'A'),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_COVERAGE', check: {
+        result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 0,
+        weekly: false, weekdaysOnly: false, zoned: true, reason: '',
+      } },
+    )
+    expect(a.provinciaConfig?.deliveryMethod).toBe('DOMICILIO')
   })
 
   it('el descuento de retención resta S/5 a cada pack', () => {
@@ -710,5 +788,48 @@ describe('respuestas rápidas del chat', () => {
   it('una etapa desconocida no rompe: cae al par genérico', () => {
     expect(repliesFor(null).length).toBe(2)
     expect(repliesFor('inventada').length).toBe(2)
+  })
+})
+
+describe('cambiar de distrito no deja rastros del anterior', () => {
+  it('limpia la agencia y la sede elegidas', () => {
+    // La sede está atada a una ciudad: quien probó Trujillo, eligió su Shalom y
+    // después cambió a Carhuaz se quedaba con la sede de Trujillo — el paquete
+    // salía a 500 km de donde vive. Y la nota del adelanto mostraba S/20 antes
+    // de que el comprador eligiera nada.
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_AGENCY', agency: 'SHALOM' },
+      { type: 'SET_AGENCY_BRANCH', branchId: '4' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'Áncash', province: 'Carhuaz', district: 'Carhuaz' },
+    )
+    expect(s.provinciaConfig?.selectedAgency).toBeNull()
+    expect(s.provinciaConfig?.selectedAgencyBranchId).toBeNull()
+  })
+})
+
+describe('el paso 2 se revela de a poco', () => {
+  // Cuatro campos de golpe se leen como formulario largo, que es la razón número
+  // uno de abandono en móvil. El nombre y el distrito esperan al DNI — que además
+  // llega con el nombre de RENIEC, así que el campo suele aparecer ya lleno.
+  it('el DNI incompleto no deja avanzar', () => {
+    const s = run(base(),
+      { type: 'SET_WHATSAPP', whatsapp: '987654321' },
+      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
+      { type: 'SET_DNI', dni: '1234' },
+    )
+    expect(validateStep(s, 2).dni).toBeTruthy()
+  })
+
+  it('con el DNI completo, lo que falta es lo que sigue', () => {
+    const s = run(base(),
+      { type: 'SET_WHATSAPP', whatsapp: '987654321' },
+      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
+      { type: 'SET_DNI', dni: '12345678' },
+    )
+    const e = validateStep(s, 2)
+    expect(e.dni).toBeUndefined()
+    expect(e.receiverName).toBeTruthy()
   })
 })

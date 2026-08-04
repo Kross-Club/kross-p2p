@@ -76,11 +76,15 @@ function validateStep2(s: CheckoutState): FieldErrors {
     return e
   }
 
-  // El DNI SOLO se pide en provincia, donde la agencia lo exige para entregar y
-  // donde además hubo dinero adelantado. En Lima es contraentrega en la puerta:
-  // pedirlo ahí es fricción pura en el segmento de mayor volumen.
+  // El DNI se pide SIEMPRE, también en Lima. Antes era solo provincia, con el
+  // argumento de que en Lima es contraentrega y pedirlo es fricción. Ese
+  // argumento se cayó cuando Lima pasó a adelantar: donde hay dinero por
+  // delante hace falta saber a nombre de quién, y el DNI es lo que deja cuadrar
+  // el Yape con la persona. Además es la llave del comprador en todo el
+  // sistema —recompra, puntos, historial— y tenerla solo para provincia partía
+  // en dos la base de clientes.
   // Ver docs/00-CORE-ARCHITECTURE.md · Identidad del comprador.
-  if (s.locationType === 'PROVINCIA') {
+  {
     const dni = validateDni(s.customerInfo.dni)
     if (dni) e.dni = dni
   }

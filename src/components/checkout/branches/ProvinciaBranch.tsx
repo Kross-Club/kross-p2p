@@ -7,8 +7,8 @@
 // callejón sin salida.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Home, PackageCheck } from 'lucide-react'
-import { COPY } from '../../../lib/checkout/checkout.config'
+import { Home, PackageCheck, Store } from 'lucide-react'
+import { ADVANCE_BY_AGENCY, ADVANCE_PROVINCIA_DOMICILIO_PEN, COPY } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
@@ -51,8 +51,14 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
     value: optionKey(d),
     label: d.district,
     detail: `${d.province}, ${d.department}`,
-    badge: d.covered && !d.weekly ? 'A tu puerta' : undefined,
-  })), [all])
+    // En B el domicilio es una OPCIÓN que el comprador todavía va a elegir, así
+    // que el badge promete de menos a propósito: "a tu puerta" se lee como que
+    // ya está decidido, y quien pensaba recoger en agencia siente que le
+    // cambiaron el trato dos pantallas después. En A sí está decidido.
+    badge: d.covered && !d.weekly
+      ? (state.variant === 'B' ? 'Podemos ir a tu casa' : 'Entregamos a tu casa')
+      : undefined,
+  })), [all, state.variant])
 
   const selectedKey = p?.district && p.province && p.department
     ? optionKey({ department: p.department, province: p.province, district: p.district })
@@ -104,10 +110,34 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
 
       {checking && <p className="text-[11px] text-gray-400">Viendo si llegamos a tu zona…</p>}
 
+      {/* Variante B: el método lo elige el comprador, y aparece SOLO después de
+          poner su distrito — antes no se sabe si el courier llega ni cuánto
+          cuesta, así que ofrecerlo sería preguntar a ciegas. Con los dos
+          precios al lado, "recojo yo y ahorro S/10" es una decisión que puede
+          tomar; en la variante A nunca se entera de que existía. */}
+      {/* Solo donde HAY cobertura: sin courier la máquina ya mandó el pedido
+          directo a agencia y no queda nada que preguntar. */}
+      {/* `IN_ZONE` es la llave: antes de elegir distrito no hay veredicto de
+          cobertura, así que sin esto el selector salía ya montado al abrir el
+          paso — preguntándole cómo quiere recibir algo que todavía no sabe si
+          le llega. Y solo con cobertura hay dos opciones reales: sin courier la
+          máquina ya mandó el pedido a agencia y no queda nada que preguntar. */}
+      {!checking && state.variant === 'B'
+        && p?.coverageResult === 'IN_ZONE' && !method && (
+        <MethodPicker
+          onPick={m => {
+            dispatch({ type: 'SET_DELIVERY_METHOD', method: m })
+            trackEvent({ name: 'delivery_method_selected', method: m })
+          }}
+        />
+      )}
+
       {!checking && method === 'DOMICILIO' && (
         <>
           <div className="rounded-2xl px-4 py-3" style={{ background: '#F0FDF4', border: '1px solid #86EFAC' }}>
-            <p className="text-sm font-black text-green-800">✅ {COPY.inZone}</p>
+            <p className="text-sm font-black text-green-800">
+              ✅ {state.variant === 'B' ? COPY.inZoneChosen : COPY.inZone}
+            </p>
             <p className="text-[11px] text-green-700 mt-0.5">
               Entrega en {p?.eta ?? 'pocos días'} con nuestro motorizado aliado.
             </p>
@@ -145,7 +175,9 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
       {!checking && method === 'AGENCIA' && (
         <>
           <div className="rounded-2xl px-4 py-3" style={{ background: '#F5F3FF', border: '1px solid #C4B5FD' }}>
-            <p className="text-sm font-black" style={{ color: '#5B21B6' }}>📦 {COPY.outOfZone}</p>
+            <p className="text-sm font-black" style={{ color: '#5B21B6' }}>
+              📦 {state.variant === 'B' ? COPY.outOfZoneChosen : COPY.outOfZone}
+            </p>
             <p className="text-[11px] mt-0.5" style={{ color: '#6D28D9' }}>{COPY.outOfZoneBenefit}</p>
             {state.deliveryNote && (
               <p className="text-[11px] mt-1.5 font-semibold" style={{ color: '#6D28D9' }}>
@@ -180,17 +212,68 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
         </>
       )}
 
-      {/* El adelanto se avisa ANTES del paso de pago, nunca como sorpresa. */}
+      {/* El adelanto se avisa ANTES del paso de pago, nunca como sorpresa. Pero
+          el monto solo sale cuando ya ESTÁ decidido: hasta que elige casa o
+          agencia —y cuál— puede ser S/20, S/25 o S/30, y `advanceAmount` cae
+          mientras tanto al base de Shalom. Enseñar S/20 y cobrar S/30 es
+          exactamente la sorpresa que este aviso existe para evitar. Sin cifra
+          tranquiliza igual, y la cifra llega cuando es cierta. */}
       {p?.district && (
         <p className="text-[11px] rounded-xl px-3 py-2.5 flex items-start gap-1.5"
           style={{ background: '#FFF7ED', color: '#9A3412' }}>
           <PackageCheck size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#EA580C' }} />
           <span>
-            <strong className="font-black">Adelanto de S/{state.advanceAmount}.</strong>{' '}
-            {COPY.advanceHeadsUpShort}
+            {method === 'DOMICILIO' || p?.selectedAgency ? (
+              <>
+                <strong className="font-black">Adelanto de S/{state.advanceAmount}.</strong>{' '}
+                {COPY.advanceHeadsUpShort}
+              </>
+            ) : COPY.advanceHeadsUpNoAmount}
           </span>
         </p>
       )}
+    </div>
+  )
+}
+
+// ─── Casa o agencia (variante B) ─────────────────────────────────────────────
+// Dos tarjetas con el precio DENTRO. El adelanto es la única diferencia real
+// entre las dos opciones, así que esconderlo hasta el paso del pago convertiría
+// la elección en una sorpresa: el comprador elige "en casa" pensando que es
+// gratis y descubre S/30 dos pantallas después.
+function MethodPicker({ onPick }: { onPick: (m: 'DOMICILIO' | 'AGENCIA') => void }) {
+  return (
+    <div>
+      <p className="text-xs font-black text-gray-700 mb-2">¿Cómo prefieres recibirlo?</p>
+      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Cómo prefieres recibirlo">
+        {/* Este picker solo se monta con cobertura confirmada, así que las dos
+            opciones son reales. Prometer domicilio donde el courier no llega es
+            el reclamo que el checkout entero existe para evitar. */}
+        <button
+            type="button"
+            onClick={() => onPick('DOMICILIO')}
+            className="rounded-2xl px-3 py-3 text-left border border-gray-200 bg-white active:scale-[0.98] transition"
+          >
+            <Home size={18} style={{ color: 'var(--brand)' }} />
+            <p className="text-sm font-black text-gray-900 mt-1.5">En mi casa</p>
+            <p className="text-[11px] text-gray-500">Te lo llevan a la puerta</p>
+            <p className="text-[11px] font-black mt-1" style={{ color: 'var(--brand)' }}>
+              Adelanto S/{ADVANCE_PROVINCIA_DOMICILIO_PEN}
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => onPick('AGENCIA')}
+          className="rounded-2xl px-3 py-3 text-left border border-gray-200 bg-white active:scale-[0.98] transition"
+        >
+          <Store size={18} style={{ color: 'var(--brand)' }} />
+          <p className="text-sm font-black text-gray-900 mt-1.5">Recojo en agencia</p>
+          <p className="text-[11px] text-gray-500">Shalom u Olva</p>
+          <p className="text-[11px] font-black mt-1" style={{ color: 'var(--brand)' }}>
+            Desde S/{ADVANCE_BY_AGENCY.SHALOM}
+          </p>
+        </button>
+      </div>
     </div>
   )
 }

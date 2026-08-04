@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { checkoutReducer, initialCheckoutState } from './machine'
+import { resolveVariant } from './variant'
 import type { CheckoutAction } from './machine'
 import { clearDraft, loadActiveDraft, purgeExpiredDrafts, saveDraft } from './persistence'
 import { canAdvance, isWhatsappComplete, validateStep } from './validation'
@@ -46,7 +47,7 @@ export function hasProgress(state: CheckoutState): boolean {
 }
 
 export function useCheckout({ initialPack, onPartialLead }: UseCheckoutOptions): UseCheckout {
-  const [state, dispatch] = useReducer(checkoutReducer, null, () => initialCheckoutState(initialPack))
+  const [state, dispatch] = useReducer(checkoutReducer, null, () => initialCheckoutState(initialPack, resolveVariant()))
   const [touched, setTouched] = useState<Set<FieldName>>(new Set())
   const timer = useRef(createStepTimer())
 
