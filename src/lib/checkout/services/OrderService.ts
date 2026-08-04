@@ -73,15 +73,24 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       pack_name: ctx.packName ?? undefined,
       buyer_name: s.customerInfo.receiverName.trim(),
       buyer_phone: s.customerInfo.whatsapp,
-      // El DNI solo existe en provincia; en Lima la cuenta se crea por teléfono.
+      // El DNI ahora se pide siempre, también en Lima: donde hay adelanto hace
+      // falta saber a nombre de quién, y es la llave del cliente en recompra.
       document_type: s.customerInfo.dni ? 'DNI' : undefined,
       document_number: s.customerInfo.dni || undefined,
       address: addressOf(s) ?? undefined,
       delivery_reference: referenceOf(s) ?? undefined,
-      dispatch_type: usesAgency ? 'AGENCIA_PROVINCIA' : 'MOTORIZADO_LIMA',
+      // Tres casos, no dos. "No es agencia" NO significa Lima: un domicilio en
+      // provincia lo reparte otro courier, en otros plazos y a otro costo, y
+      // marcarlo como limeño lo mandaba al tablero equivocado.
+      dispatch_type: usesAgency
+        ? 'AGENCIA_PROVINCIA'
+        : s.locationType === 'PROVINCIA' ? 'MOTORIZADO_PROVINCIA' : 'MOTORIZADO_LIMA',
       agency_name: usesAgency ? (s.provinciaConfig?.selectedAgency ?? undefined) : undefined,
       payment_method: s.advanceAmount > 0 ? 'YAPE_PLIN' : 'CONTRAENTREGA',
       closed_by: 'DIRECT_CHECKOUT',
+      // Con cuál de las dos versiones se cerró. Sin esto el experimento no se
+      // puede leer: se sabría cuánta gente vio cada una pero no cuál vendió.
+      checkout_variant: s.variant,
       advance_amount: s.advanceAmount,
       advance_yape_code: s.advanceYapeCode || undefined,
       advance_voucher_url: s.paymentVoucher?.url || undefined,

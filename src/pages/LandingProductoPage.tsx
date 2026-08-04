@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import CheckoutQuiz, { type Product, type BuyerAccount } from '../components/checkout/CheckoutQuiz'
 import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
@@ -9,20 +8,23 @@ import type { CheckoutState } from '../lib/checkout/types'
 
 // Landing de producto (Sales Engine). La imagen vende; el CTA abre el checkout.
 //
-// El checkout multi-paso es el que vende:
-//   · por defecto → CheckoutModal (3 pasos, adelanto por Yape verificado solo y
-//     salida al chat del pedido).
-//   · ?checkout=v1 → CheckoutQuiz, el viejo. Se deja SOLO como escotilla: si algo
-//     sale mal en producción se vuelve al anterior cambiando la URL, sin esperar
-//     un deploy. No es un experimento, es el botón de emergencia.
+// Un solo checkout: `CheckoutModal`. El viejo (`CheckoutQuiz`) se eliminó —no
+// cobraba adelanto, y ahora TODO pedido lo lleva, también en Lima. Dejarlo como
+// escotilla significaba que el botón de emergencia era "cobrar S/0", que es
+// peor que la emergencia.
 //
-// El viejo solo pedía datos; no tenía forma de llevar al comprador al chat, que
-// es de donde sale la tasa de entrega —el número que decide si un COD gana o
-// pierde plata—. Por eso el cambio de default. Ver docs/01-SALES-ENGINE.md.
+// Lo que se mide ahora son dos VERSIONES del mismo checkout (A y B), sorteadas
+// en `lib/checkout/variant.ts`. Ver docs/01-SALES-ENGINE.md.
+/** Producto de la landing. Vivía dentro del checkout viejo; al eliminarlo se
+ *  trae aquí, que es el único sitio que lo usa. */
+export interface Pack { nombre: string; descripcion?: string; precio: number; image?: string }
+export interface Product {
+  id: string; store_id: string | null; nombre: string
+  precio: number; images: string[]; packs: Pack[]
+}
+
 export default function LandingProductoPage() {
   const { landingId } = useParams<{ landingId: string }>()
-  const [searchParams] = useSearchParams()
-  const useNewCheckout = searchParams.get('checkout') !== 'v1'
 
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
@@ -31,7 +33,6 @@ export default function LandingProductoPage() {
   const [showQuiz, setShowQuiz] = useState(false)
   // Pedido reciente de este navegador, si lo hay. Ver `saveLastOrder`.
   const [lastOrder, setLastOrder] = useState<LastOrder | null>(null)
-  const [buyerAccount, setBuyerAccount] = useState<BuyerAccount | null>(null)
   const [packIdx, setPackIdx] = useState(0)
   // Datos de cobro de la MARCA. Cada tienda yapea a su propio número, así que
   // salen de `stores`, nunca de config.
@@ -79,15 +80,6 @@ export default function LandingProductoPage() {
   }, [product?.store_id])
 
   useEffect(() => { setLastOrder(loadLastOrder()) }, [])
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('buyer_session')
-      if (!raw) return
-      const { buyer } = JSON.parse(raw)
-      if (buyer) setBuyerAccount(buyer)
-    } catch { /* ignore */ }
-  }, [])
 
   const packSelection = useMemo(
     () => buildPackSelection(product?.packs, product?.precio ?? 0, product?.images ?? []),
@@ -145,7 +137,7 @@ export default function LandingProductoPage() {
         </button>
       </div>
 
-      {showQuiz && (useNewCheckout ? (
+      {showQuiz && (
         <CheckoutModal
           packs={packSelection.packs}
           unitPrice={packSelection.unitPrice}
@@ -160,15 +152,7 @@ export default function LandingProductoPage() {
             productName: product.nombre,
           }}
         />
-      ) : (
-        <CheckoutQuiz
-          product={product}
-          packs={packs}
-          initialPackIdx={packIdx}
-          buyerAccount={buyerAccount}
-          onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
-        />
-      ))}
+      )}
     </div>
   )
 }

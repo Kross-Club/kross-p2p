@@ -292,3 +292,56 @@ alguien cambia la definición, no puede abrir un agujero sin que falle.
 |---|---|
 | Lima metropolitana (motorizado propio) | 50 |
 | Resto del país (courier o agencia) | 1 824 |
+## Tres formas de entregar, no dos
+
+`dispatch_type` tenía solo `MOTORIZADO_LIMA` y `AGENCIA_PROVINCIA`, y el reparto
+**a domicilio en provincia** no era ninguna de las dos. Caía en la rama de Lima
+por descarte —"no es agencia, entonces es motorizado"— y entraba al tablero como
+pedido limeño: otro courier, otros plazos y otro costo, contados donde no van.
+
+| Valor | Qué es | Adelanto |
+|---|---|---|
+| `MOTORIZADO_LIMA` | Motorizado propio, Lima metropolitana | S/5 |
+| `MOTORIZADO_PROVINCIA` | Courier a la puerta, fuera de Lima | S/30 |
+| `AGENCIA_PROVINCIA` | Mostrador de Shalom u Olva | S/20 · S/25 |
+
+Antes casi no pasaba: la cobertura rara vez elegía domicilio fuera de Lima. Con
+el **checkout B** es una opción que el comprador marca a propósito, así que pasó
+de rareza a caso frecuente.
+
+**Lo que sigue igual:** todo lo que pregunta `=== 'AGENCIA_PROVINCIA'` ("¿es
+recojo?") no cambió — el pin GPS se sigue pidiendo salvo en agencia, y ahora eso
+incluye correctamente al domicilio de provincia, que sí lo necesita.
+
+No hizo falta migración: la columna nunca tuvo `CHECK`, solo un default.
+
+## Deuda conocida · el catálogo de distritos está incompleto 🟡
+
+`src/data/peru-geo.ts` se escribió a mano y tiene **483 distritos de los ~1 895
+del país**. Faltan unos 1 400.
+
+No falla parejo, y ahí está el problema:
+
+| Departamento | Tenemos | Reales |
+|---|---|---|
+| Áncash | 14 | 166 |
+| Cajamarca | 11 | 127 |
+| Junín | 13 | 124 |
+| Ayacucho | 22 | 119 |
+| Cusco | 23 | 112 |
+| **Callao** | **0** | 7 |
+| Lima | 63 | 171 |
+
+Barranca sí está; **Paramonga no**. Y **Callao no existe en el selector**, que no
+es un pueblo perdido: es el segundo puerto del país pegado a Lima.
+
+Para el comprador esto no se lee como "falta un dato": su distrito **no existe**,
+así que no puede terminar la compra. Es una venta perdida silenciosa — no deja
+rastro en ninguna métrica, porque el pedido nunca llega a crearse.
+
+**El arreglo no es agregar Paramonga a mano.** Hay que regenerar el catálogo
+desde el padrón de UBIGEO del INEI (los 1 895 distritos con su código oficial) y
+cruzarlo contra la cobertura del courier, igual que hoy hace
+`scripts/build-districts.mjs`. Los distritos sin veredicto de cobertura entran
+como "sin cobertura a domicilio" — que ya es un camino válido: se entrega por
+agencia.

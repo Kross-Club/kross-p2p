@@ -8,6 +8,7 @@
 
 import { DRAFT_STORAGE_PREFIX, DRAFT_TTL_MS } from './checkout.config'
 import { initialCheckoutState } from './machine'
+import { resolveVariant } from './variant'
 import type { CheckoutState } from './types'
 
 /** Puntero al borrador activo, para poder recuperarlo sin conocer el orderId. */
@@ -50,6 +51,12 @@ function hydrate(saved: CheckoutState): CheckoutState {
   return {
     ...base,
     ...saved,
+    // La variante NO sale del borrador: se vuelve a resolver siempre. Un
+    // borrador viejo no la traía y ganaba el default ('A'), así que un
+    // `?checkout=B` en la URL se ignoraba en silencio en cuanto existía un
+    // borrador guardado — que es casi siempre, porque se guarda al tipear el
+    // WhatsApp. `resolveVariant` respeta la URL primero y el sorteo después.
+    variant: resolveVariant(),
     // Los objetos anidados se completan aparte: el spread de arriba los
     // reemplaza enteros, así que un campo nuevo dentro de ellos se perdería.
     customerInfo: { ...base.customerInfo, ...saved.customerInfo },

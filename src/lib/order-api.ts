@@ -23,8 +23,9 @@ export interface OrderSession {
   address_lat?: number | null
   address_lng?: number | null
   nota?: string | null
-  /** Cómo se entrega: `MOTORIZADO_LIMA` (a la puerta) o `AGENCIA_PROVINCIA`
-   *  (mostrador). Decide si tiene sentido pedir GPS — en agencia no lo tiene. */
+  /** Cómo se entrega: `MOTORIZADO_LIMA`, `MOTORIZADO_PROVINCIA` (los dos a la
+   *  puerta, distinto courier) o `AGENCIA_PROVINCIA` (mostrador). Decide si
+   *  tiene sentido pedir GPS — en agencia no lo tiene. */
   dispatch_type?: string | null
   agency_name?: string | null
   delivery_reference?: string | null

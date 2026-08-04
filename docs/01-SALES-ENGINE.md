@@ -658,3 +658,96 @@ El panel del adelanto decía "sin comprobante adjunto" y ahí se acababa la ayud
 muestra **los 3 dígitos que tecleó el comprador**: es lo único accionable cuando el cruce
 automático no llega, porque con eso se busca el pago en la app de Yape sin depender de
 nadie.
+
+## Adelanto en todos lados, y dos versiones que se miden ✅
+
+### El checkout viejo se eliminó
+
+`CheckoutQuiz` ya no existe. **No cobraba adelanto**, y ahora todo pedido lo
+lleva — también en Lima. Dejarlo como escotilla de emergencia significaba que el
+botón de emergencia era "cobrar S/0", que es peor que la emergencia.
+
+### Los montos
+
+| Destino | Antes | Ahora |
+|---|---|---|
+| Lima metropolitana | S/0 | **S/5** |
+| Provincia · agencia Shalom | S/10 | **S/20** |
+| Provincia · agencia Olva | S/20 | **S/25** |
+| Provincia · entrega en casa | S/10 | **S/30** |
+
+Lima adelantaba S/0 y el rebote lo pagaba la marca entera: el pedido falso no
+cuesta nada de hacer y sí cuesta el viaje del motorizado. S/5 no espanta a quien
+va a comprar y sí a quien estaba jugando.
+
+Entrega en casa a provincia cuesta más porque el courier cobra bastante más que
+dejar el paquete en el mostrador, y ese diferencial no lo puede comer la marca en
+cada pedido.
+
+### El DNI ahora se pide siempre
+
+Antes solo en provincia, con el argumento de que en Lima es contraentrega y
+pedirlo es fricción pura. **Ese argumento se cayó cuando Lima pasó a adelantar**:
+donde hay dinero por delante hace falta saber a nombre de quién, y el DNI es lo
+que deja cuadrar el Yape con la persona. Además es la llave del comprador en todo
+el sistema —recompra, puntos, historial— y tenerla solo para provincia partía en
+dos la base de clientes.
+
+### A y B
+
+| | Quién elige domicilio vs. agencia |
+|---|---|
+| **A** | La cobertura, sola. El comprador nunca se entera de que había opción. |
+| **B** | El **comprador**, después de poner su distrito, con los dos precios delante. |
+
+En B las tarjetas aparecen **solo después del distrito**: antes no se sabe si el
+courier llega ni cuánto cuesta, así que ofrecerlo sería preguntar a ciegas. Y el
+precio va **dentro** de cada tarjeta — esconderlo hasta el paso del pago
+convertiría la elección en una sorpresa.
+
+El reparto es al azar y **estable por dispositivo** (`lib/checkout/variant.ts`):
+sin eso el adelanto le bailaría entre S/20 y S/30 a la misma persona al recargar,
+y una visita contaría en las dos ramas. `?checkout=A|B` fuerza una versión para
+demostrar, sin tocar lo sorteado.
+
+El pedido guarda `order_sessions.checkout_variant`. Sin esa columna se sabría
+cuánta gente vio cada versión pero **no cuál vendió**, que es la única pregunta
+que importa.
+
+> ⚠️ **Volumen.** Un A/B necesita cientos de pedidos por rama para separar señal
+> de ruido. Con el volumen actual los números no deciden nada todavía: sirven para
+> ver que el flujo B no rompe nada, no para elegir ganador.
+
+### Pendiente
+
+- [ ] `dispatch_type` no distingue **domicilio en provincia**: hoy manda
+      `MOTORIZADO_LIMA`, que Logistics lee como reparto de Lima. Antes casi no
+      pasaba; con B es una opción que el comprador elige a propósito. Necesita un
+      tercer valor y que Logistics lo entienda.
+
+## El paso 2 se revela de a poco ✅
+
+El paso pide cuatro cosas —WhatsApp, dónde recibe, DNI, nombre, distrito— y
+mostrarlas todas de golpe se lee como un formulario largo: la razón número uno de
+abandono en móvil.
+
+Ahora **el nombre y el distrito aparecen recién con el DNI completo**. No oculta
+trabajo, lo reparte: cada campo resuelto empuja al siguiente.
+
+Se revela con el DNI y no con cualquier otro campo por un motivo concreto: el DNI
+**trae el nombre desde RENIEC**, así que cuando el campo aparece suele venir ya
+lleno. El comprador ve que el formulario trabaja para él en vez de pedirle.
+
+> Se mide por **longitud** (8 dígitos), no por el resultado de la consulta a
+> RENIEC. Si el servicio está caído o el documento no está en el padrón, el
+> comprador tiene que poder seguir igual: perder la venta por un servicio externo
+> es perderla por algo que no es culpa suya.
+
+Aplica a las dos variantes, A y B.
+
+## "Lima y Callao" en el recuadro ✅
+
+Decía solo **Lima**, y el Callao entra en esa rama: es lo que cubre el motorizado
+propio. Un comprador de Ventanilla o Bellavista leía "Lima" y "Provincia" y no
+tenía forma de saber cuál le tocaba — la duda basta para que escriba por WhatsApp
+en vez de terminar la compra.

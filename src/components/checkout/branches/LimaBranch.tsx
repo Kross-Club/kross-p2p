@@ -3,7 +3,7 @@
 // búsqueda, dirección y referencia. Sin mapa, sin pin, sin adelanto.
 
 import { useEffect, useMemo, useState } from 'react'
-import { COPY } from '../../../lib/checkout/checkout.config'
+import { ADVANCE_LIMA_PEN, COPY } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
@@ -87,8 +87,14 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
         hint="Ayuda al motorizado a llegar sin llamarte."
       />
 
+      {/* Decía "Sin adelantos" y quedó mintiendo cuando Lima pasó a adelantar
+          S/5. Peor que no decir nada: el comprador lee que no paga nada ahora y
+          dos pantallas después le piden yapear — que es exactamente la sorpresa
+          que este checkout existe para no dar. */}
       <p className="text-[11px] text-gray-500 bg-green-50 rounded-xl px-3 py-2.5">
-        ✅ <strong className="font-black text-green-800">Pagas al recibir.</strong> Sin adelantos.
+        ✅ <strong className="font-black text-green-800">
+          Adelanto de S/{ADVANCE_LIMA_PEN}
+        </strong> para reservar tu pedido. El resto lo pagas al recibir.
       </p>
     </div>
   )
