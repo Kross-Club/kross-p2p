@@ -48,6 +48,18 @@ function loadIndex(): Promise<DistrictOption[]> {
   return indexCache
 }
 
+/**
+ * Lima metropolitana = provincia de Lima + Callao. Es lo que cubre el motorizado
+ * propio; todo lo demás va por courier o agencia, incluidas las otras nueve
+ * provincias del departamento de Lima.
+ *
+ * El Callao es su PROPIO departamento en el padrón del INEI, no una provincia de
+ * Lima. Darlo por provincia lo dejaba fuera de las dos ramas.
+ */
+export function isLimaMetro(d: { department: string; province: string }): boolean {
+  return d.department === 'Callao' || (d.department === 'Lima' && d.province === 'Lima')
+}
+
 const deaccent = (s: string): string => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const norm = (s: string): string => deaccent(s).replace(/\s+/g, ' ').trim().toUpperCase()
 
@@ -65,6 +77,24 @@ export const DistrictCoverageService = {
    */
   async listDistricts(): Promise<DistrictOption[]> {
     return loadIndex()
+  },
+
+  /**
+   * Los distritos de cada rama del checkout. Van JUNTOS a propósito: son
+   * complementarios, y escritos por separado dejaron un agujero.
+   *
+   * Lima decía `department === 'Lima' && province ∈ {Lima, Callao}` y provincia
+   * decía `department !== 'Lima'`. Entre las dos se perdían **los 128 distritos
+   * del departamento de Lima que no son Lima metropolitana** —Barranca,
+   * Paramonga, Huacho, Cañete, Huaral, Chancay…— que no aparecían en ninguna
+   * rama. Para esa gente su distrito simplemente no existía.
+   *
+   * Se notaba poco porque el catálogo hecho a mano casi no los listaba. Al traer
+   * el padrón completo del INEI el agujero pasó a ser de 128 distritos reales.
+   */
+  async districtsFor(branch: 'LIMA' | 'PROVINCIA'): Promise<DistrictOption[]> {
+    const all = await loadIndex()
+    return all.filter(d => (branch === 'LIMA') === isLimaMetro(d))
   },
 
   /** Busca distritos por nombre, provincia o departamento (select con búsqueda). */

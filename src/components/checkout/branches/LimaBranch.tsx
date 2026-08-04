@@ -27,12 +27,10 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
 
   useEffect(() => {
     let alive = true
-    DistrictCoverageService.listDistricts()
-      .then(all => {
-        if (!alive) return
-        // Lima metropolitana y Callao: es lo que cubre el motorizado.
-        setDistricts(all.filter(d => d.department === 'Lima' && (d.province === 'Lima' || d.province === 'Callao')))
-      })
+    // La definición vive en el servicio: las dos ramas la comparten para que
+    // ningún distrito quede fuera de ambas. Ver `districtsFor`.
+    DistrictCoverageService.districtsFor('LIMA')
+      .then(list => { if (alive) setDistricts(list) })
       .catch(() => { if (alive) setFailed(true) })
     return () => { alive = false }
   }, [])

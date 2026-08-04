@@ -739,3 +739,35 @@ describe('respuestas rápidas del chat', () => {
     expect(repliesFor('inventada').length).toBe(2)
   })
 })
+
+describe('las dos ramas del checkout cubren TODO el país', () => {
+  it('ningún distrito queda fuera de ambas', async () => {
+    // Lima filtraba `department==='Lima' && province ∈ {Lima, Callao}` y
+    // provincia `department !== 'Lima'`. Entre las dos se perdían los 128
+    // distritos del departamento de Lima que no son Lima metropolitana:
+    // Barranca, Paramonga, Huacho, Cañete, Huaral… Para esa gente su distrito
+    // no existía y no podía comprar.
+    const all = await DistrictCoverageService.listDistricts()
+    const lima = await DistrictCoverageService.districtsFor('LIMA')
+    const prov = await DistrictCoverageService.districtsFor('PROVINCIA')
+    expect(lima.length + prov.length).toBe(all.length)
+    expect(lima.some(d => prov.includes(d))).toBe(false)
+  })
+
+  it('Paramonga y Barranca están en provincia, no en Lima', async () => {
+    const prov = await DistrictCoverageService.districtsFor('PROVINCIA')
+    const enProv = (district: string, province: string) =>
+      prov.some(d => d.district === district && d.province === province)
+    expect(enProv('Paramonga', 'Barranca')).toBe(true)
+    expect(enProv('Barranca', 'Barranca')).toBe(true)
+    expect(enProv('Huacho', 'Huaura')).toBe(true)
+  })
+
+  it('el Callao sigue en Lima aunque el padrón lo liste como departamento propio', async () => {
+    // Es su propio departamento en el INEI, pero para el motorizado es Lima.
+    const lima = await DistrictCoverageService.districtsFor('LIMA')
+    expect(lima.some(d => d.district === 'Ventanilla')).toBe(true)
+    expect(lima.some(d => d.district === 'Miraflores' && d.province === 'Lima')).toBe(true)
+    expect(lima.every(d => d.department === 'Lima' || d.department === 'Callao')).toBe(true)
+  })
+})

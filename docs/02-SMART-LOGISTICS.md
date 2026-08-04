@@ -258,3 +258,37 @@ su propio chunk: **15.9 KB gzip**, solo cuando el comprador abre el selector.
 Ordenar agencias por cercanía no se degradó con los 1 400 distritos nuevos:
 `district-centroids.json` cae distrito → provincia → departamento, y los 25
 departamentos están cubiertos. Todos tienen un punto de referencia razonable.
+
+## Las dos ramas dejaban 128 distritos sin puerta ✅
+
+El selector de Lima filtraba `department === 'Lima' && province ∈ {Lima, Callao}`
+y el de provincia `department !== 'Lima'`. Dos filtros que **tienen** que ser
+complementarios, escritos por separado en archivos distintos.
+
+Entre los dos se perdían **los 128 distritos del departamento de Lima que no son
+Lima metropolitana**: Barranca, Paramonga, Huacho, Cañete, Huaral, Chancay,
+Matucana… Para esa gente el distrito no aparecía en ninguna rama, y no había
+forma de comprar.
+
+Se notaba poco porque el catálogo hecho a mano casi no los listaba. Al traer el
+padrón completo el agujero pasó a ser de 128 distritos reales.
+
+Ahora la definición vive **una sola vez**, en `DistrictCoverageService`:
+
+```ts
+isLimaMetro(d) // Callao, o provincia de Lima
+districtsFor('LIMA' | 'PROVINCIA')
+```
+
+Las dos ramas la comparten, así que **son complementarias por construcción**: hay
+un test que verifica que `lima + provincia === todos` y que no se solapan. Si
+alguien cambia la definición, no puede abrir un agujero sin que falle.
+
+> **El Callao es su propio departamento** en el padrón del INEI, no una provincia
+> de Lima. `isLimaMetro` lo trata como Lima porque para el motorizado lo es —
+> pero el filtro viejo lo buscaba como provincia y lo dejaba fuera de ambas.
+
+| | Distritos |
+|---|---|
+| Lima metropolitana (motorizado propio) | 50 |
+| Resto del país (courier o agencia) | 1 824 |
