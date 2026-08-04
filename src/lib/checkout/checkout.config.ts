@@ -221,12 +221,23 @@ export const COPY = {
 
   inZone: '¡Sí llegamos a tu puerta!',
   outOfZone: 'En tu zona la entrega es en agencia.',
+  // En B las dos son ELECCIÓN del comprador, no veredicto del sistema. El texto
+  // determinante ("en tu zona la entrega ES en agencia") le dice que no tuvo
+  // opción justo después de haberla ejercido, y el botón para volver atrás pasa
+  // a leerse como una excepción que está forzando.
+  inZoneChosen: 'Ok, te lo enviaremos a tu casa.',
+  outOfZoneChosen: 'Con gusto, te lo dejamos en la agencia que prefieras.',
   outOfZoneBenefit: 'Recoges cuando quieras, y pagas el resto ahí.',
   agencyNeutral: 'Elige tu agencia de recojo',
   retryDomicilio: 'Prefiero intentar entrega a domicilio',
 
   advanceHeadsUp: `Se paga un adelanto del envío por Yape y el resto al recibir.`,
   advanceHeadsUpShort: 'El resto lo pagas al recibir tu pedido.',
+  // Antes de elegir cómo recibirlo NO se sabe el monto —cambia entre S/20, S/25
+  // y S/30—, así que la nota tranquiliza sin cifra. Poner una y que después
+  // suba es la sorpresa que el aviso existía para evitar.
+  advanceHeadsUpNoAmount:
+    'Se adelanta una parte del envío por Yape y se descuenta del total: el resto lo pagas al recibir.',
   voucherRequired: 'Sube tu comprobante para terminar',
 
   // ─── Paso 3 ────────────────────────────────────────────────────────────────
