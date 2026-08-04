@@ -15,7 +15,16 @@ React 19 + Vite + TypeScript + Tailwind 4 · Supabase (Postgres/RLS, Edge Functi
 Storage, Realtime) · Vercel (deploy desde `main`) · LiveKit (voz+grabación) · WhatsApp
 Cloud API · Web Push (VAPID) · IA (Decolecta DNI, ElevenLabs closer 🔮).
 
-- Supabase project ref: `ofdjghntvmrdfjhazfvz`.
+### Supabase — organización `Kross Club` (plan Pro)
+
+Dos proyectos bajo la misma org. **Este repo es `PWA`** — verifica el ref antes de cualquier
+comando, comparten organización pero **no** comparten esquema ni convenciones.
+
+| Proyecto | Ref | Región | Qué vive ahí |
+|---|---|---|---|
+| **PWA** | `ofdjghntvmrdfjhazfvz` | `sa-east-1` | **Este repo.** La PWA COD white-label: Sales → Logistics → Loyalty. |
+| **Neural** | `nqibrziksedspoctjhmc` | `us-west-2` | Backoffice SaaS multi-tenant de operaciones COD: integraciones GoHighLevel / Shopify / Shalom / Aliclik, cobertura COD, tracking de envíos. Sistema aparte, no vive en este repo. |
+
 - Deploy función: `supabase functions deploy <n> --project-ref ofdjghntvmrdfjhazfvz`
   (`livekit-webhook` va con `--no-verify-jwt`).
 - Esquema idempotente: `supabase/setup-kross.sql` (correr en SQL Editor).
