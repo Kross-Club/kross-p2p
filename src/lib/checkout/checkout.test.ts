@@ -808,3 +808,28 @@ describe('cambiar de distrito no deja rastros del anterior', () => {
     expect(s.provinciaConfig?.selectedAgencyBranchId).toBeNull()
   })
 })
+
+describe('el paso 2 se revela de a poco', () => {
+  // Cuatro campos de golpe se leen como formulario largo, que es la razón número
+  // uno de abandono en móvil. El nombre y el distrito esperan al DNI — que además
+  // llega con el nombre de RENIEC, así que el campo suele aparecer ya lleno.
+  it('el DNI incompleto no deja avanzar', () => {
+    const s = run(base(),
+      { type: 'SET_WHATSAPP', whatsapp: '987654321' },
+      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
+      { type: 'SET_DNI', dni: '1234' },
+    )
+    expect(validateStep(s, 2).dni).toBeTruthy()
+  })
+
+  it('con el DNI completo, lo que falta es lo que sigue', () => {
+    const s = run(base(),
+      { type: 'SET_WHATSAPP', whatsapp: '987654321' },
+      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
+      { type: 'SET_DNI', dni: '12345678' },
+    )
+    const e = validateStep(s, 2)
+    expect(e.dni).toBeUndefined()
+    expect(e.receiverName).toBeTruthy()
+  })
+})

@@ -34,6 +34,12 @@ interface Step2Props {
 
 export default function Step2Delivery({ state, dispatch, errors, touch }: Step2Props) {
   const { customerInfo, locationType } = state
+
+  // El DNI está completo. Se mide por longitud, no por el resultado de RENIEC:
+  // si la consulta falla o el documento no está en el padrón, el comprador tiene
+  // que poder seguir igual. Bloquear el formulario por un servicio externo caído
+  // es perder la venta por algo que no es culpa suya.
+  const dniReady = customerInfo.dni.replace(/\D/g, '').length === DNI_LENGTH
   const phoneRef = useRef<HTMLDivElement>(null)
 
   // Foco en el primer campo vacío al entrar al paso.
@@ -86,7 +92,16 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
           />
         )}
 
-        {locationType && (
+        {/* Nombre y distrito aparecen recién con el DNI completo. El paso 2 pide
+            cuatro cosas y mostrarlas todas de golpe se lee como un formulario
+            largo — la razón número uno de abandono en móvil. De a poco no oculta
+            trabajo: lo reparte, y cada campo resuelto empuja al siguiente.
+
+            Además el DNI trae el nombre de RENIEC, así que cuando el campo
+            aparece suele venir ya lleno: el comprador ve que el formulario
+            trabaja para él en vez de pedirle. Por eso se revela con el DNI y no
+            con cualquier otro campo. */}
+        {dniReady && (
           <Field
             label="Nombre de quien recibe"
             required
@@ -100,10 +115,10 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
           />
         )}
 
-        {locationType === 'LIMA' && (
+        {dniReady && locationType === 'LIMA' && (
           <LimaBranch state={state} dispatch={dispatch} errors={errors} touch={touch} />
         )}
-        {locationType === 'PROVINCIA' && (
+        {dniReady && locationType === 'PROVINCIA' && (
           <ProvinciaBranch state={state} dispatch={dispatch} errors={errors} touch={touch} />
         )}
       </div>
@@ -119,7 +134,7 @@ function LocationToggle({ value, error, onChange }: {
   onChange: (type: LocationType) => void
 }) {
   const options: { id: LocationType; icon: typeof Truck; title: string; sub: string }[] = [
-    { id: 'LIMA', icon: Truck, title: 'Lima metropolitana', sub: 'Llega a tu puerta' },
+    { id: 'LIMA', icon: Truck, title: 'Lima y Callao', sub: 'Llega a tu puerta' },
     { id: 'PROVINCIA', icon: Store, title: 'Provincia', sub: 'Envío a todo el Perú' },
   ]
 

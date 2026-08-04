@@ -724,3 +724,30 @@ que importa.
       `MOTORIZADO_LIMA`, que Logistics lee como reparto de Lima. Antes casi no
       pasaba; con B es una opción que el comprador elige a propósito. Necesita un
       tercer valor y que Logistics lo entienda.
+
+## El paso 2 se revela de a poco ✅
+
+El paso pide cuatro cosas —WhatsApp, dónde recibe, DNI, nombre, distrito— y
+mostrarlas todas de golpe se lee como un formulario largo: la razón número uno de
+abandono en móvil.
+
+Ahora **el nombre y el distrito aparecen recién con el DNI completo**. No oculta
+trabajo, lo reparte: cada campo resuelto empuja al siguiente.
+
+Se revela con el DNI y no con cualquier otro campo por un motivo concreto: el DNI
+**trae el nombre desde RENIEC**, así que cuando el campo aparece suele venir ya
+lleno. El comprador ve que el formulario trabaja para él en vez de pedirle.
+
+> Se mide por **longitud** (8 dígitos), no por el resultado de la consulta a
+> RENIEC. Si el servicio está caído o el documento no está en el padrón, el
+> comprador tiene que poder seguir igual: perder la venta por un servicio externo
+> es perderla por algo que no es culpa suya.
+
+Aplica a las dos variantes, A y B.
+
+## "Lima y Callao" en el recuadro ✅
+
+Decía solo **Lima**, y el Callao entra en esa rama: es lo que cubre el motorizado
+propio. Un comprador de Ventanilla o Bellavista leía "Lima" y "Provincia" y no
+tenía forma de saber cuál le tocaba — la duda basta para que escriba por WhatsApp
+en vez de terminar la compra.
