@@ -192,6 +192,17 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           lat: null, lng: null,
           coverageResult: 'NOT_CHECKED',
           deliveryMethod: null,
+          // Cambiar de distrito limpia también la agencia y su sede. La sede
+          // está atada a una ciudad: si no se borra, alguien que probó Trujillo
+          // y luego eligió Carhuaz se queda con la sede de Trujillo y el paquete
+          // sale a 500 km de donde vive.
+          //
+          // Y de paso arregla el precio que se adelantaba: con una agencia
+          // pegada de antes, la nota mostraba "Adelanto de S/20" antes de que el
+          // comprador eligiera nada.
+          selectedAgency: null,
+          selectedAgencyBranchId: null,
+          olvaBranchText: null,
         },
         courierSurcharge: null,
         deliveryNote: null,

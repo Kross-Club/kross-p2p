@@ -790,3 +790,21 @@ describe('respuestas rápidas del chat', () => {
     expect(repliesFor('inventada').length).toBe(2)
   })
 })
+
+describe('cambiar de distrito no deja rastros del anterior', () => {
+  it('limpia la agencia y la sede elegidas', () => {
+    // La sede está atada a una ciudad: quien probó Trujillo, eligió su Shalom y
+    // después cambió a Carhuaz se quedaba con la sede de Trujillo — el paquete
+    // salía a 500 km de donde vive. Y la nota del adelanto mostraba S/20 antes
+    // de que el comprador eligiera nada.
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_AGENCY', agency: 'SHALOM' },
+      { type: 'SET_AGENCY_BRANCH', branchId: '4' },
+      { type: 'SET_PROVINCIA_DISTRICT', department: 'Áncash', province: 'Carhuaz', district: 'Carhuaz' },
+    )
+    expect(s.provinciaConfig?.selectedAgency).toBeNull()
+    expect(s.provinciaConfig?.selectedAgencyBranchId).toBeNull()
+  })
+})

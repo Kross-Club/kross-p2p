@@ -225,3 +225,34 @@ recojo?") no cambió — el pin GPS se sigue pidiendo salvo en agencia, y ahora 
 incluye correctamente al domicilio de provincia, que sí lo necesita.
 
 No hizo falta migración: la columna nunca tuvo `CHECK`, solo un default.
+
+## Deuda conocida · el catálogo de distritos está incompleto 🟡
+
+`src/data/peru-geo.ts` se escribió a mano y tiene **483 distritos de los ~1 895
+del país**. Faltan unos 1 400.
+
+No falla parejo, y ahí está el problema:
+
+| Departamento | Tenemos | Reales |
+|---|---|---|
+| Áncash | 14 | 166 |
+| Cajamarca | 11 | 127 |
+| Junín | 13 | 124 |
+| Ayacucho | 22 | 119 |
+| Cusco | 23 | 112 |
+| **Callao** | **0** | 7 |
+| Lima | 63 | 171 |
+
+Barranca sí está; **Paramonga no**. Y **Callao no existe en el selector**, que no
+es un pueblo perdido: es el segundo puerto del país pegado a Lima.
+
+Para el comprador esto no se lee como "falta un dato": su distrito **no existe**,
+así que no puede terminar la compra. Es una venta perdida silenciosa — no deja
+rastro en ninguna métrica, porque el pedido nunca llega a crearse.
+
+**El arreglo no es agregar Paramonga a mano.** Hay que regenerar el catálogo
+desde el padrón de UBIGEO del INEI (los 1 895 distritos con su código oficial) y
+cruzarlo contra la cobertura del courier, igual que hoy hace
+`scripts/build-districts.mjs`. Los distritos sin veredicto de cobertura entran
+como "sin cobertura a domicilio" — que ya es un camino válido: se entrega por
+agencia.
