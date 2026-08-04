@@ -447,16 +447,43 @@ describe('AgencyService · data real de Shalom', () => {
 })
 
 describe('DistrictCoverageService · data real del tarifario', () => {
-  it('carga los 178 distritos cubiertos y los 483 seleccionables', async () => {
+  it('el selector trae el padrón COMPLETO del INEI, no una selección a mano', async () => {
+    // Eran 483 escritos a mano: Áncash tenía 14 de 166 distritos y el Callao no
+    // existía. El comprador cuyo distrito faltaba no podía comprar, y esa venta
+    // perdida no dejaba rastro porque el pedido nunca llegaba a crearse.
     const all = await DistrictCoverageService.listDistricts()
-    expect(all.length).toBe(483)
-    expect(all.filter(d => d.covered).length).toBe(178)
+    expect(all.length).toBe(1874)
+    expect(all.filter(d => d.covered).length).toBe(176)
+  })
+
+  it('no repite un distrito con dos nombres distintos', async () => {
+    // El tarifario nombra los distritos a su manera ("Pucallpa" por Callería,
+    // el Callao como provincia de Lima). Sin cruzarlos, el MISMO distrito
+    // entraba dos veces —una con cobertura y otra sin— y quien elegía el
+    // equivocado terminaba en agencia teniendo entrega a casa disponible.
+    const all = await DistrictCoverageService.listDistricts()
+    const claves = all.map(d => `${d.department}|${d.province}|${d.district}`)
+    expect(new Set(claves).size).toBe(claves.length)
+
+    const ventanilla = all.filter(d => d.district === 'Ventanilla')
+    expect(ventanilla).toHaveLength(1)
+    expect(ventanilla[0].covered).toBe(true)
+    expect(ventanilla[0].department).toBe('Callao')
+  })
+
+  it('llegan los distritos que antes faltaban', async () => {
+    const all = await DistrictCoverageService.listDistricts()
+    const hay = (district: string, province: string) =>
+      all.some(d => d.district === district && d.province === province)
+    expect(hay('Paramonga', 'Barranca')).toBe(true)
+    expect(all.filter(d => d.department === 'Áncash').length).toBeGreaterThan(150)
+    expect(all.filter(d => d.department === 'Callao')).toHaveLength(7)
   })
 
   it('el selector incluye distritos SIN cobertura, para que igual puedan comprar', async () => {
     const all = await DistrictCoverageService.listDistricts()
-    expect(all.filter(d => !d.covered).length).toBeGreaterThan(200)
-    const mp = all.find(d => d.district === 'Machu Picchu')
+    expect(all.filter(d => !d.covered).length).toBeGreaterThan(1000)
+    const mp = all.find(d => d.district === 'Machupicchu')
     expect(mp?.covered).toBe(false)
   })
 
@@ -788,6 +815,38 @@ describe('respuestas rápidas del chat', () => {
   it('una etapa desconocida no rompe: cae al par genérico', () => {
     expect(repliesFor(null).length).toBe(2)
     expect(repliesFor('inventada').length).toBe(2)
+  })
+})
+
+describe('las dos ramas del checkout cubren TODO el país', () => {
+  it('ningún distrito queda fuera de ambas', async () => {
+    // Lima filtraba `department==='Lima' && province ∈ {Lima, Callao}` y
+    // provincia `department !== 'Lima'`. Entre las dos se perdían los 128
+    // distritos del departamento de Lima que no son Lima metropolitana:
+    // Barranca, Paramonga, Huacho, Cañete, Huaral… Para esa gente su distrito
+    // no existía y no podía comprar.
+    const all = await DistrictCoverageService.listDistricts()
+    const lima = await DistrictCoverageService.districtsFor('LIMA')
+    const prov = await DistrictCoverageService.districtsFor('PROVINCIA')
+    expect(lima.length + prov.length).toBe(all.length)
+    expect(lima.some(d => prov.includes(d))).toBe(false)
+  })
+
+  it('Paramonga y Barranca están en provincia, no en Lima', async () => {
+    const prov = await DistrictCoverageService.districtsFor('PROVINCIA')
+    const enProv = (district: string, province: string) =>
+      prov.some(d => d.district === district && d.province === province)
+    expect(enProv('Paramonga', 'Barranca')).toBe(true)
+    expect(enProv('Barranca', 'Barranca')).toBe(true)
+    expect(enProv('Huacho', 'Huaura')).toBe(true)
+  })
+
+  it('el Callao sigue en Lima aunque el padrón lo liste como departamento propio', async () => {
+    // Es su propio departamento en el INEI, pero para el motorizado es Lima.
+    const lima = await DistrictCoverageService.districtsFor('LIMA')
+    expect(lima.some(d => d.district === 'Ventanilla')).toBe(true)
+    expect(lima.some(d => d.district === 'Miraflores' && d.province === 'Lima')).toBe(true)
+    expect(lima.every(d => d.department === 'Lima' || d.department === 'Callao')).toBe(true)
   })
 })
 

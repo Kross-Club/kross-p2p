@@ -203,6 +203,95 @@ El comprobante se abre desde ese panel con URL firmada de 5 minutos (`voucher-ur
 Nunca se sirve como enlace directo: lleva nombre, teléfono parcial y número de operación
 del comprador. Contrato y reglas completas en `00-CORE-ARCHITECTURE.md`.
 
+## El catálogo de distritos sale del padrón del INEI ✅
+
+`src/data/peru-geo.ts` se escribía **a mano** y tenía **483 de los 1 874
+distritos** del país. No fallaba parejo: Áncash tenía 14 de 166, Cajamarca 11 de
+127, faltaba Paramonga y **el Callao entero no existía**.
+
+Para el comprador eso no se lee como "falta un dato": **su distrito no aparece,
+así que no puede terminar la compra**. Y es una venta perdida invisible — no deja
+rastro en ninguna métrica, porque el pedido nunca llega a crearse.
+
+Ahora se genera con `scripts/build-peru-geo.mjs` desde el padrón UBIGEO del INEI,
+copiado a `scripts/sources/ubigeo-*.json` para que el build no dependa de un repo
+ajeno. Va primero en `npm run build:data`.
+
+| | Antes | Ahora |
+|---|---|---|
+| Distritos seleccionables | 483 | **1 874** |
+| Con cobertura a domicilio | 178 | 176 |
+| Departamento de Áncash | 14 | 166 |
+| Callao | 0 | 7 |
+
+### Por qué la cobertura bajó de 178 a 176
+
+No se perdió ninguna: **el tarifario nombra los distritos a su manera** y dos
+filas apuntaban al mismo distrito oficial (`Caleta San José` y
+`San José - Ciudad de Dios` son ambos **San José**, Lambayeque). Antes entraban
+como dos entradas distintas; ahora se funden en la real.
+
+### El mapa de equivalencias
+
+El courier llama `Pucallpa` a **Callería**, `Cercado de Lima` a **Lima**, y trata
+al Callao como provincia de Lima cuando el padrón lo tiene como departamento
+propio. Sin cruzar esos nombres, el **mismo distrito entraba dos veces** al
+selector: una con cobertura (nombre del courier) y otra sin (nombre oficial). El
+comprador veía "Ventanilla" repetido, elegía el equivocado y terminaba yendo a
+agencia **teniendo entrega a domicilio disponible**.
+
+`DISTRICT_ALIAS` en `scripts/build-districts.mjs` resuelve las 22 equivalencias,
+en los dos sentidos: del courier al padrón para construir el índice, y del padrón
+al courier para encontrar la cobertura.
+
+> Las claves van **ya normalizadas** —sin tildes, en mayúsculas—. Escribir
+> `PIÑIPAMPA` en vez de `PINIPAMPA` hace que el alias no calce nunca, y en
+> silencio: el distrito reaparece duplicado sin que nada falle.
+
+### Peso
+
+El índice pesa 232 KB, pero se carga **bajo demanda** (import dinámico) y va en
+su propio chunk: **15.9 KB gzip**, solo cuando el comprador abre el selector.
+
+### Los centroides siguen sirviendo
+
+Ordenar agencias por cercanía no se degradó con los 1 400 distritos nuevos:
+`district-centroids.json` cae distrito → provincia → departamento, y los 25
+departamentos están cubiertos. Todos tienen un punto de referencia razonable.
+
+## Las dos ramas dejaban 128 distritos sin puerta ✅
+
+El selector de Lima filtraba `department === 'Lima' && province ∈ {Lima, Callao}`
+y el de provincia `department !== 'Lima'`. Dos filtros que **tienen** que ser
+complementarios, escritos por separado en archivos distintos.
+
+Entre los dos se perdían **los 128 distritos del departamento de Lima que no son
+Lima metropolitana**: Barranca, Paramonga, Huacho, Cañete, Huaral, Chancay,
+Matucana… Para esa gente el distrito no aparecía en ninguna rama, y no había
+forma de comprar.
+
+Se notaba poco porque el catálogo hecho a mano casi no los listaba. Al traer el
+padrón completo el agujero pasó a ser de 128 distritos reales.
+
+Ahora la definición vive **una sola vez**, en `DistrictCoverageService`:
+
+```ts
+isLimaMetro(d) // Callao, o provincia de Lima
+districtsFor('LIMA' | 'PROVINCIA')
+```
+
+Las dos ramas la comparten, así que **son complementarias por construcción**: hay
+un test que verifica que `lima + provincia === todos` y que no se solapan. Si
+alguien cambia la definición, no puede abrir un agujero sin que falle.
+
+> **El Callao es su propio departamento** en el padrón del INEI, no una provincia
+> de Lima. `isLimaMetro` lo trata como Lima porque para el motorizado lo es —
+> pero el filtro viejo lo buscaba como provincia y lo dejaba fuera de ambas.
+
+| | Distritos |
+|---|---|
+| Lima metropolitana (motorizado propio) | 50 |
+| Resto del país (courier o agencia) | 1 824 |
 ## Tres formas de entregar, no dos
 
 `dispatch_type` tenía solo `MOTORIZADO_LIMA` y `AGENCIA_PROVINCIA`, y el reparto

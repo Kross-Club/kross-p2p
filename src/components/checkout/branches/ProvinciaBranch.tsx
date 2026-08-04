@@ -40,9 +40,10 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
 
   useEffect(() => {
     let alive = true
-    DistrictCoverageService.listDistricts()
-      // Lima tiene su propia rama: aquí solo el resto del país.
-      .then(list => { if (alive) setAll(list.filter(d => d.department !== 'Lima')) })
+    // Todo lo que NO es Lima metropolitana — incluidas las otras provincias del
+    // departamento de Lima (Barranca, Huaral, Cañete…), que antes se perdían.
+    DistrictCoverageService.districtsFor('PROVINCIA')
+      .then(list => { if (alive) setAll(list) })
       .catch(() => { if (alive) setFailed(true) })
     return () => { alive = false }
   }, [])
