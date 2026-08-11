@@ -47,29 +47,45 @@ export interface Empresa {
 
 export const EMPRESA: Empresa = {
   marca: 'Kross',
-  razonSocial: '',            // ⚠️ COMPLETAR — p. ej. "KROSS CLUB S.A.C."
-  ruc: '',                    // ⚠️ COMPLETAR — 11 dígitos
-  domicilioFiscal: '',        // ⚠️ COMPLETAR — dirección fiscal completa
-  telefono: '',               // ⚠️ COMPLETAR — p. ej. "+51 1 700 0000"
-  whatsapp: '',               // ⚠️ COMPLETAR — solo dígitos, p. ej. "51987654321"
-  email: '',                  // ⚠️ COMPLETAR — p. ej. "hola@krossclub.app"
-  emailReclamos: '',          // ⚠️ COMPLETAR — p. ej. "reclamos@krossclub.app"
+  // ⚠️ COMPLETAR — nombres y apellidos del titular EXACTAMENTE como figuran en
+  // SUNAT. El RUC empieza en 10 (persona natural con negocio), así que el
+  // titular es una persona, no una sociedad.
+  razonSocial: '',
+  ruc: '10482968622',
+  domicilioFiscal: 'El Cuadro, Chaclacayo 15472, Lima, Perú',
+  // Un solo número atiende llamada y WhatsApp. Se declara en los dos campos a
+  // propósito: la web ofrece las dos acciones (marcar y escribir) sobre él.
+  telefono: '+51 925 951 393',
+  whatsapp: '51925951393',
+  email: 'equipo@kross.club',
+  // No hay buzón aparte para reclamos: llegan al mismo correo del equipo. Si
+  // mañana se abre uno dedicado, se cambia aquí y se actualiza la hoja del
+  // Libro de Reclamaciones sin tocar nada más.
+  emailReclamos: 'equipo@kross.club',
   horario: 'Lunes a viernes de 9:00 a 18:00 h · Sábados de 9:00 a 13:00 h',
   web: 'https://krossclub.app',
   redes: [
-    // ⚠️ COMPLETAR con las cuentas REALES y borrar las que no existan.
-    // Un icono de red que no lleva a la cuenta es observación directa de Culqi.
-    // { nombre: 'Instagram', url: 'https://instagram.com/…', icono: 'instagram' },
-    // { nombre: 'TikTok',    url: 'https://tiktok.com/@…',   icono: 'tiktok' },
+    { nombre: 'Instagram', url: 'https://www.instagram.com/krossclub.app/', icono: 'instagram' },
   ],
 }
 
 /** Plazo legal de respuesta del Libro de Reclamaciones (Ley 29571, art. 24). */
 export const PLAZO_RESPUESTA_HABILES = 15
 
+/**
+ * Cómo se llama al titular del negocio en las páginas legales.
+ *
+ * SUNAT: los RUC que empiezan en 20 son personas jurídicas —ahí sí hay razón
+ * social—. Los que empiezan en 10, 15 o 17 son personas naturales con negocio,
+ * y llamar "razón social" al nombre de una persona en una Hoja de Reclamación
+ * es sencillamente incorrecto.
+ */
+export const etiquetaTitular = (): string =>
+  EMPRESA.ruc.startsWith('20') ? 'Razón social' : 'Titular'
+
 /** Etiquetas legibles de cada campo, para el aviso de "falta completar". */
 const ETIQUETAS: Record<string, string> = {
-  razonSocial: 'Razón social',
+  razonSocial: 'Razón social / titular',
   ruc: 'RUC',
   domicilioFiscal: 'Domicilio fiscal',
   telefono: 'Teléfono de atención',
@@ -89,6 +105,15 @@ export function camposPendientes(): string[] {
     .map((k) => ETIQUETAS[k])
   if (EMPRESA.redes.length === 0) faltan.push('Redes sociales')
   return faltan
+}
+
+/** 51925951393 → "+51 925 951 393". Un número pegado es de los detalles que
+ *  hacen ver improvisada una página de contacto. */
+export function formatoTelefono(digitos: string): string {
+  const d = (digitos ?? '').replace(/\D/g, '')
+  if (!d) return ''
+  if (d.length === 11 && d.startsWith('51')) return `+51 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8)}`
+  return `+${d}`
 }
 
 /** Enlace de WhatsApp con mensaje inicial, o null si aún no hay número. */

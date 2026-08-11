@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
-import { Phone, Mail, MapPin, Clock, BookOpen, Building2 } from 'lucide-react'
+import { Phone, Mail, MapPin, Clock, BookOpen, Building2, MessageCircle } from 'lucide-react'
 import PublicLayout from '../../components/publico/PublicLayout'
 import { RedIcon } from '../../components/publico/RedIcon'
-import { EMPRESA, whatsappLink } from '../../config/empresa'
+import { EMPRESA, whatsappLink, formatoTelefono, etiquetaTitular } from '../../config/empresa'
 
 // Página de contacto: número, correo y dirección en una URL propia y enlazada
 // desde el menú. Culqi lo pide explícitamente, y es lo primero que busca un
@@ -32,7 +32,8 @@ export default function ContactoPage() {
               href={`tel:${EMPRESA.telefono.replace(/\s/g, '')}`} />
           )}
           {wa && (
-            <Dato icon={<Phone size={18} />} label="WhatsApp" valor={`+${EMPRESA.whatsapp}`} href={wa} externo />
+            <Dato icon={<MessageCircle size={18} />} label="WhatsApp"
+              valor={formatoTelefono(EMPRESA.whatsapp)} href={wa} externo />
           )}
           {EMPRESA.email && (
             <Dato icon={<Mail size={18} />} label="Correo" valor={EMPRESA.email} href={`mailto:${EMPRESA.email}`} />
@@ -53,7 +54,7 @@ export default function ContactoPage() {
               <Building2 size={16} /> Datos del comercio
             </p>
             <ul className="mt-3 text-sm space-y-1.5 text-gray-700">
-              {EMPRESA.razonSocial && <li><b>Razón social:</b> {EMPRESA.razonSocial}</li>}
+              {EMPRESA.razonSocial && <li><b>{etiquetaTitular()}:</b> {EMPRESA.razonSocial}</li>}
               {EMPRESA.ruc && <li><b>RUC:</b> {EMPRESA.ruc}</li>}
               {EMPRESA.domicilioFiscal && <li><b>Domicilio fiscal:</b> {EMPRESA.domicilioFiscal}</li>}
               <li><b>Sitio web:</b> {EMPRESA.web}</li>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BookOpen, Printer, CircleAlert, CheckCircle2 } from 'lucide-react'
 import PublicLayout from '../../components/publico/PublicLayout'
-import { EMPRESA, PLAZO_RESPUESTA_HABILES } from '../../config/empresa'
+import { EMPRESA, PLAZO_RESPUESTA_HABILES, etiquetaTitular } from '../../config/empresa'
 import { useStore, isPlatformHost } from '../../lib/store-context'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -340,7 +340,7 @@ function DatosProveedor({ marca }: { marca: string | null }) {
       <p className="text-xs font-black text-gray-400 uppercase tracking-wide">Datos del proveedor</p>
       <ul className="text-sm text-gray-700 mt-2 space-y-1">
         {marca && <li><b>Establecimiento:</b> {marca} (tienda operada sobre la plataforma {EMPRESA.marca})</li>}
-        {EMPRESA.razonSocial && <li><b>Razón social:</b> {EMPRESA.razonSocial}</li>}
+        {EMPRESA.razonSocial && <li><b>{etiquetaTitular()}:</b> {EMPRESA.razonSocial}</li>}
         {EMPRESA.ruc && <li><b>RUC:</b> {EMPRESA.ruc}</li>}
         {EMPRESA.domicilioFiscal && <li><b>Domicilio fiscal:</b> {EMPRESA.domicilioFiscal}</li>}
         <li><b>Sitio web:</b> {EMPRESA.web}</li>
@@ -386,7 +386,7 @@ function HojaRegistrada({ hoja, marca }: { hoja: Hoja; marca: string | null }) {
 
           <Titulo>Proveedor</Titulo>
           {marca && <Fila label="Establecimiento" valor={`${marca} (plataforma ${EMPRESA.marca})`} />}
-          {EMPRESA.razonSocial && <Fila label="Razón social" valor={EMPRESA.razonSocial} />}
+          {EMPRESA.razonSocial && <Fila label={etiquetaTitular()} valor={EMPRESA.razonSocial} />}
           {EMPRESA.ruc && <Fila label="RUC" valor={EMPRESA.ruc} />}
           {EMPRESA.domicilioFiscal && <Fila label="Domicilio fiscal" valor={EMPRESA.domicilioFiscal} />}
 

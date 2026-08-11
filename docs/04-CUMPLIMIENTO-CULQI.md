@@ -116,19 +116,47 @@ supabase secrets set RESEND_API_KEY=… RECLAMOS_FROM="Kross <reclamos@krossclub
 
 ## Qué falta llenar antes de la revisión
 
-1. **`src/config/empresa.ts`** — razón social, RUC, domicilio fiscal, teléfono,
-   WhatsApp, correo de atención, correo de reclamaciones y las cuentas de redes
-   sociales. Están vacíos a propósito: un RUC inventado en una página legal es
-   peor que no tenerla. En desarrollo, un aviso en pantalla lista lo que falta.
-2. **`src/config/catalogo.ts`** — revisar nombres, descripciones y **precios**:
-   lo que se publica ahí es oferta al público.
-3. **Base de datos** — correr `supabase/setup-kross.sql` en el SQL Editor
-   (idempotente) para crear `web_orders`, `complaints` y sus correlativos.
+1. **`src/config/empresa.ts`** — cargados teléfono/WhatsApp
+   (+51 925 951 393), correo (`equipo@kross.club`), Instagram, RUC
+   (`10482968622`) y domicilio fiscal. Falta **el nombre del titular**, tal
+   como figura en SUNAT: el RUC empieza en 10, o sea persona natural con
+   negocio, así que no hay razón social sino nombres y apellidos. Es
+   obligatorio en la Hoja de Reclamación. En desarrollo, un aviso en pantalla
+   lista lo que falta; `src/config/empresa.test.ts` valida el resto (dígito
+   verificador del RUC, formato del móvil, correos y URLs de redes).
+2. **`src/config/catalogo.ts`** — los precios publicados son la lista de
+   referencia con la que se pasa la revisión. Antes de que la web reciba
+   compras reales hay que confirmarlos: lo que se muestra ahí es oferta al
+   público.
+3. **Base de datos** — correr **solo la sección 15** de
+   `supabase/setup-kross.sql` (crea `web_orders`, `complaints` y sus
+   correlativos):
+
+   ```bash
+   sed -n '/─── 15\. WEB PÚBLICA/,$p' supabase/setup-kross.sql
+   ```
+
+   > ⚠️ **No correr el archivo completo contra producción.** El archivo es
+   > idempotente contra sí mismo, pero producción ya tiene cambios que aún no
+   > están en `main` (el cobro con Culqi del adelanto). En concreto, la
+   > sección 14 recrea `order_sessions_stage_check` **sin** la etapa
+   > `no_entregado`, que producción sí tiene: correrlo entero la borraría del
+   > CHECK y rompería los pedidos no entregados. Mientras `main` no alcance a
+   > producción, se corren solo los bloques nuevos.
 4. **Edge Functions**:
    ```
    supabase functions deploy web-order            --project-ref ofdjghntvmrdfjhazfvz
    supabase functions deploy libro-reclamaciones  --project-ref ofdjghntvmrdfjhazfvz
    ```
+
+## Ojo: hay dos cobros distintos con Culqi
+
+No confundirlos, porque viven en sitios distintos:
+
+| | Qué cobra | Dónde |
+|---|---|---|
+| **Adelanto COD** | El adelanto del pedido de un comprador, con Yape vía Culqi | `culqi-charge` / `culqi-webhook`, en el checkout de las marcas. Ya desplegado en producción, con su esquema (`stores.culqi_enabled`, `store_secrets.culqi_*`, `order_sessions.payment_provider`…) |
+| **Suscripción de la plataforma** | El plan que una marca le compra a Kross en `krossclub.app` | `/pago` → `web-order`. **Todavía no cobra** |
 
 ## Cuando lleguen las llaves de Culqi
 
