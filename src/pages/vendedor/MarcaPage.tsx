@@ -23,6 +23,14 @@ interface StoreRow {
   wa_phone_number_id?: string | null
   wa_display_phone?: string | null
   wa_business_account_id?: string | null
+  // Cobros de la marca
+  yape_number?: string | null
+  yape_holder?: string | null
+  yape_qr_url?: string | null
+  culqi_enabled?: boolean
+  culqi_scope?: string | null
+  /** Derivado por el backend: la llave secreta jamás viaja, solo su presencia. */
+  culqi_secret_configured?: boolean
 }
 
 const ERR: Record<string, string> = {
@@ -31,11 +39,21 @@ const ERR: Record<string, string> = {
   faltan_nombre_slug: 'Completa el nombre y el subdominio.',
   admin_invalido: 'Revisa el correo y la contraseña (mín. 6) del admin.',
   nada_que_guardar: 'No hay cambios para guardar.',
+  auth_requerida: 'Tu sesión venció. Vuelve a entrar para tocar los cobros.',
+  culqi_pk_invalida: 'La llave pública no tiene el formato pk_test_/pk_live_.',
+  culqi_sk_invalida: 'La llave secreta no tiene el formato sk_test_/sk_live_.',
+  culqi_env_mismatch: 'Las llaves son de entornos distintos (una test y una live).',
+  culqi_sin_llaves: 'Pega tus dos llaves de Culqi antes de encender el cobro.',
 }
 
 async function call(payload: Record<string, unknown>) {
+  // El JWT REAL del vendedor: manage-store lo verifica contra Auth, y los
+  // campos de cobro (yape/culqi) SOLO se aceptan por esta vía. El
+  // admin_auth_id del body queda como compat mientras conviven versiones.
+  const { data: authData } = await supabase.auth.getSession()
+  const jwt = authData.session?.access_token ?? ANON
   const res = await fetch(`${BASE}/manage-store`, {
-    method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+    method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   const data = await res.json().catch(() => ({}))
@@ -198,13 +216,27 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [waPhoneId, setWaPhoneId] = useState(store.wa_phone_number_id ?? '')
   const [waDisplay, setWaDisplay] = useState(store.wa_display_phone ?? '')
   const [waBiz, setWaBiz] = useState(store.wa_business_account_id ?? '')
+  // Cobros — del admin de la tienda, no del super: es SU número y SU cuenta.
+  const [yapeNumber, setYapeNumber] = useState(store.yape_number ?? '')
+  const [yapeHolder, setYapeHolder] = useState(store.yape_holder ?? '')
+  const [yapeQr, setYapeQr] = useState<string | null>(store.yape_qr_url ?? null)
+  const [culqiOn, setCulqiOn] = useState(!!store.culqi_enabled)
+  const [culqiScope, setCulqiScope] = useState(store.culqi_scope === 'ALL' ? 'ALL' : 'PROVINCIA')
+  // Las llaves arrancan VACÍAS a propósito: '' = "no tocar la guardada". El
+  // backend jamás las devuelve — solo dice si la secreta está configurada.
+  const [culqiPk, setCulqiPk] = useState('')
+  const [culqiSk, setCulqiSk] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadingIcon, setUploadingIcon] = useState(false)
+  const [uploadingQr, setUploadingQr] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
+  const canEnableCulqi = store.culqi_secret_configured || culqiSk.trim().length > 0
+
   const pick = async (f: File) => { setUploading(true); const url = await uploadLogo(f, adminId); if (url) setLogo(url); setUploading(false) }
   const pickIcon = async (f: File) => { setUploadingIcon(true); const url = await uploadLogo(f, adminId); if (url) setNotifIcon(url); setUploadingIcon(false) }
+  const pickQr = async (f: File) => { setUploadingQr(true); const url = await uploadLogo(f, adminId); if (url) setYapeQr(url); setUploadingQr(false) }
 
   const save = async () => {
     if (!nombre.trim()) { setErr('Ponle un nombre a la marca.'); return }
@@ -212,7 +244,14 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
     const payload: Record<string, unknown> = {
       action: 'update', admin_auth_id: adminId, store_id: store.id,
       nombre: nombre.trim(), logo_url: logo, notif_icon_url: notifIcon, color_primary: cp, color_dark: cd,
+      // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
+      // verificado para estos campos — redirigen dinero, no un logo).
+      yape_number: yapeNumber, yape_holder: yapeHolder, yape_qr_url: yapeQr,
+      culqi_enabled: culqiOn, culqi_scope: culqiScope,
     }
+    // Las llaves SOLO viajan si se escribieron: vacío = conservar la guardada.
+    if (culqiPk.trim()) payload.culqi_public_key = culqiPk.trim()
+    if (culqiSk.trim()) payload.culqi_secret_key = culqiSk.trim()
     if (isSuper) {
       payload.slug = slug; payload.active = active
       payload.wa_enabled = waEnabled
@@ -274,6 +313,67 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             <Power size={16} style={{ color: active ? '#16A34A' : '#DC2626' }} />
           </button>
         )}
+
+        {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU Yape y
+              SU cuenta Culqi. El backend exige el JWT verificado para todo
+              esto: son campos que redirigen dinero. ── */}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: '#FAF5FB', border: '1px solid #E9DDF9' }}>
+          <p className="text-xs font-black mb-2" style={{ color: '#742284' }}>💜 Cobros de la marca</p>
+
+          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Número de Yape (9 dígitos)</label>
+          <input value={yapeNumber} inputMode="numeric" maxLength={9}
+            onChange={e => setYapeNumber(e.target.value.replace(/\D/g, '').slice(0, 9))}
+            placeholder="987654321"
+            className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
+          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Titular, tal como lo muestra Yape</label>
+          <input value={yapeHolder} onChange={e => setYapeHolder(e.target.value)}
+            placeholder="MARCA DEMO SAC"
+            className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2" />
+          <label className="text-[10px] font-bold text-gray-500 mb-1 block">QR de Yape (lo ve el comprador en desktop)</label>
+          <div className="mb-3"><LogoPicker logo={yapeQr} uploading={uploadingQr} onPick={pickQr} /></div>
+
+          {/* Culqi: cobro EN el checkout. El toggle no prende sin llaves — el
+              backend lo rechaza igual, pero el botón muerto avisa antes. */}
+          <div className="border-t pt-3" style={{ borderColor: '#E9DDF9' }}>
+            <button onClick={() => canEnableCulqi && setCulqiOn(v => !v)}
+              className="w-full flex items-center justify-between mb-1"
+              style={{ opacity: canEnableCulqi || culqiOn ? 1 : 0.5 }}>
+              <span className="text-xs font-black" style={{ color: '#742284' }}>
+                Cobrar el adelanto en línea (Culqi)
+              </span>
+              <span className="text-[10px] font-black px-2 py-1 rounded-full"
+                style={{ background: culqiOn ? '#742284' : '#E5E7EB', color: culqiOn ? '#fff' : '#6B7280' }}>
+                {culqiOn ? 'ACTIVO' : 'APAGADO'}
+              </span>
+            </button>
+            <p className="text-[10px] text-gray-500 mb-2">
+              El comprador aprueba con su código de Yape y el cargo entra solo, por el monto
+              exacto, a la cuenta Culqi de tu marca.
+              {!canEnableCulqi && ' Pega tus dos llaves para poder encenderlo.'}
+            </p>
+
+            <label className="text-[10px] font-bold text-gray-500 mb-1 block">¿Dónde cobra?</label>
+            <select value={culqiScope} onChange={e => setCulqiScope(e.target.value === 'ALL' ? 'ALL' : 'PROVINCIA')}
+              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2">
+              <option value="PROVINCIA">Solo provincia (Lima sigue con Yape manual)</option>
+              <option value="ALL">Todo el país, incluida Lima</option>
+            </select>
+
+            <input value={culqiPk} onChange={e => setCulqiPk(e.target.value)} type="password"
+              autoComplete="off" placeholder="Llave pública · pk_live_…"
+              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
+            <input value={culqiSk} onChange={e => setCulqiSk(e.target.value)} type="password"
+              autoComplete="off"
+              placeholder={store.culqi_secret_configured
+                ? 'Llave secreta ✓ configurada — pega una nueva para rotarla'
+                : 'Llave secreta · sk_live_…'}
+              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none font-mono" />
+            <p className="text-[10px] text-gray-400 mt-1.5">
+              Las llaves salen de tu CulqiPanel → Desarrollo → API Keys. La secreta solo se
+              escribe: nunca vuelve a mostrarse.
+            </p>
+          </div>
+        </div>
 
         {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca
             ya tiene su número en WhatsApp Cloud API. */}
