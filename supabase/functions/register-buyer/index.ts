@@ -93,6 +93,31 @@ Deno.serve(async (req) => {
       .single()
     buyer = data
     buyerErr = error
+
+    // 23505 aquí = el TELÉFONO ya existe en la tienda con otro (o ningún) DNI.
+    // Es el comprador de la era pre-DNI volviendo con su documento — el caso
+    // normal de la base vieja, no un ataque. Antes esto moría en 500 y la
+    // venta se perdía; ahora el comprador existente ADOPTA el DNI y conserva
+    // su identidad (puntos, score, historial).
+    if (buyerErr?.code === '23505') {
+      const { data: adopted, error: adoptErr } = await supabase
+        .from('buyers')
+        .upsert(
+          {
+            store_id: body.store_id,
+            phone: body.buyer_phone,
+            document_type: body.document_type ?? 'DNI',
+            document_number: body.document_number,
+            nombre: body.buyer_name,
+            address: body.address ?? null,
+          },
+          { onConflict: 'store_id,phone', ignoreDuplicates: false }
+        )
+        .select('id, score, puntos, address, address_lat, address_lng, address_verified')
+        .single()
+      buyer = adopted
+      buyerErr = adoptErr
+    }
   } else {
     // Fallback: upsert by phone (old registrations without DNI)
     const { data, error } = await supabase

@@ -681,3 +681,20 @@ ALTER TABLE order_sessions ADD CONSTRAINT order_sessions_stage_check
     'preparando'::text, 'en_camino'::text, 'entregado'::text,
     'no_entregado'::text
   ]));
+
+-- ─── 17. UNICIDAD DE BUYERS: POR TIENDA DE VERDAD ────────────────────────────
+-- Los DROP del bloque 0 (idx_buyers_document_number / idx_buyers_phone) creían
+-- limpiar la unicidad GLOBAL de la era pre-multi-tenant, pero producción tenía
+-- además una CONSTRAINT (`buyers_phone_key`) y dos índices con otros nombres
+-- que sobrevivieron. El efecto real: un cliente no podía existir en dos
+-- marcas, y un comprador pre-DNI que volvía CON DNI moría en 500 al chocar
+-- consigo mismo por teléfono. Verificado contra pg_constraint/pg_indexes de
+-- producción el 11-ago-2026 (el 500 exacto: "duplicate key value violates
+-- unique constraint buyers_phone_key"). Quedan vivas SOLO las per-tienda:
+-- idx_buyers_store_doc e idx_buyers_store_phone, que son las que el código
+-- usa como onConflict.
+ALTER TABLE buyers DROP CONSTRAINT IF EXISTS buyers_phone_key;
+DROP INDEX IF EXISTS idx_buyers_phone;
+DROP INDEX IF EXISTS idx_buyers_document_number;
+DROP INDEX IF EXISTS idx_buyers_doc_number;
+DROP INDEX IF EXISTS idx_buyers_doc;
