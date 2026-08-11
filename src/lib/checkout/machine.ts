@@ -6,11 +6,11 @@
 // `courierSurcharge` y `deliveryNote` son DERIVADOS. Ninguna acción los setea
 // directamente — se recalculan en `derive()` después de cada cambio.
 
-import { EXIT_DISCOUNT_PEN, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
+import { CULQI_OTP_LENGTH, EXIT_DISCOUNT_PEN, PHONE_LENGTH_PE, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
 import { methodForCoverage } from './services/DistrictCoverageService'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
-  LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig,
+  LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig, StoreCulqi,
 } from './types'
 
 /** uuid v4. `randomUUID` exige contexto seguro; el fallback cubre dev por http. */
@@ -41,6 +41,9 @@ export function initialCheckoutState(
     needsLocationConfirmation: false,
     paymentVoucher: null,
     advanceYapeCode: '',
+    culqi: null,
+    culqiPhone: '',
+    culqiOtp: '',
     advanceAmount: 0,
     discountPen: 0,
     exitOfferShown: false,
@@ -73,6 +76,10 @@ export type CheckoutAction =
   | { type: 'SET_DELIVERY_METHOD'; method: 'DOMICILIO' | 'AGENCIA' }
   | { type: 'SET_VOUCHER'; url: string; uploadedAt: string }
   | { type: 'SET_YAPE_CODE'; code: string }
+  /** Config de la tienda, inyectada por el modal (puede llegar asíncrona). */
+  | { type: 'SET_CULQI_CONFIG'; culqi: StoreCulqi | null }
+  | { type: 'SET_CULQI_PHONE'; phone: string }
+  | { type: 'SET_CULQI_OTP'; otp: string }
   | { type: 'SET_VERIFICATION'; verification: PaymentVerification; reason?: string | null; matchedAt?: string | null }
   /** El comprador intentó salir: se le ofreció el descuento (una sola vez). */
   | { type: 'EXIT_OFFER_SHOWN' }
@@ -292,6 +299,17 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
 
     case 'SET_YAPE_CODE':
       return derive({ ...state, advanceYapeCode: action.code.replace(/\D/g, '').slice(0, YAPE_CODE_LENGTH) })
+
+    // Las tres acciones Culqi deciden CÓMO se cobra, jamás CUÁNTO:
+    // `advanceAmount` sigue siendo derivado en derive() y ninguna lo toca.
+    case 'SET_CULQI_CONFIG':
+      return derive({ ...state, culqi: action.culqi })
+
+    case 'SET_CULQI_PHONE':
+      return derive({ ...state, culqiPhone: action.phone.replace(/\D/g, '').slice(0, PHONE_LENGTH_PE) })
+
+    case 'SET_CULQI_OTP':
+      return derive({ ...state, culqiOtp: action.otp.replace(/\D/g, '').slice(0, CULQI_OTP_LENGTH) })
 
     case 'SET_VERIFICATION':
       return derive({ ...state, payment: {

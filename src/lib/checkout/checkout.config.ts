@@ -8,7 +8,7 @@
 // BD. Aquí solo están las REGLAS sobre esos packs (cuál se preselecciona, qué
 // badge lleva, cómo se calcula el ahorro).
 
-import type { AgencyName, CoverageMode } from './types'
+import type { AgencyName, CheckoutState, CoverageMode } from './types'
 
 // ─── Adelanto ────────────────────────────────────────────────────────────────
 
@@ -150,6 +150,33 @@ export const YAPE = {
 /** Dígitos del código de seguridad de Yape. Confirmado contra la app real. */
 export const YAPE_CODE_LENGTH = 3
 
+// ─── Cobro en línea con Culqi ────────────────────────────────────────────────
+
+/** El "código de aprobación" de la app Yape: 6 dígitos, en Menú → Código de
+ *  aprobación. No confundir con el código de SEGURIDAD (3 dígitos) del flujo
+ *  manual: aquel evidencia un pago ya hecho; este AUTORIZA un cobro. */
+export const CULQI_OTP_LENGTH = 6
+
+/** Lo que la app de Yape le da de vida al código. El token de Culqi vive 5;
+ *  manda el más corto, y es lo que la UI le advierte al comprador. */
+export const CULQI_OTP_TTL_MIN = 2
+
+/**
+ * ¿Este pedido se cobra con Culqi? Decide la bifurcación del paso 3 y la del
+ * submit. Es una LECTURA pura, no un derivado persistido: no va en `derive()`
+ * porque no forma parte del estado — `culqi` lo inyecta el modal y puede llegar
+ * asíncrono, después de que el comprador ya esté en el paso 3.
+ *
+ * `locationType === null` (aún no eligió destino) da false: sin destino no hay
+ * monto, y la rama Culqi sin monto no existe.
+ */
+export function culqiActiveFor(
+  s: Pick<CheckoutState, 'culqi' | 'locationType' | 'advanceAmount'>,
+): boolean {
+  if (!s.culqi?.enabled || s.advanceAmount <= 0 || !s.locationType) return false
+  return s.culqi.scope === 'ALL' || s.locationType === 'PROVINCIA'
+}
+
 /**
  * ¿La captura del comprobante es obligatoria para terminar el pedido?
  *
@@ -255,6 +282,37 @@ export const COPY = {
   // solo dice DÓNDE mirar, sin repetir lo que ya se ve.
   yapeCodeHint: 'Aparecen en tu pantalla de Yape como “Código de seguridad”.',
   yapeCodePlaceholder: '000',
+
+  // ─── Cobro en línea (Culqi) ────────────────────────────────────────────────
+  // Nada aquí nombra a Culqi: el comprador paga "con Yape" — el motor es
+  // cocina nuestra. Nombrar al procesador solo agrega una marca desconocida
+  // justo en la pantalla donde la confianza decide.
+  culqiTitle: 'Aprueba tu pago con Yape',
+  culqiIntro: 'Genera tu código de aprobación en Yape, pégalo aquí y el cobro entra al toque — sin capturas ni esperas.',
+  culqiPhoneLabel: 'Tu número de Yape',
+  culqiPhoneHint: 'Lo tomamos de tu WhatsApp. Cámbialo si tu Yape es otro.',
+  culqiOtpLabel: 'Código de aprobación de Yape',
+  culqiOtpHint: 'En Yape: Menú → Código de aprobación. Vence en 2 minutos.',
+  culqiOtpPlaceholder: '000000',
+  culqiOtpNew: 'Genera un código NUEVO en Yape: el anterior ya venció o ya se usó.',
+  /** CTA del paso 3 cuando el botón COBRA, no solo registra. */
+  culqiSubmit: 'Pagar y terminar mi pedido',
+  culqiCharging: 'Cobrando tu adelanto…',
+  culqiChargingHint: 'No cierres esta ventana.',
+  // Pedido creado + pago fallido: la pantalla que no puede decir "error" a
+  // secas. Primero lo que SÍ pasó (tu pedido existe), después lo que falta.
+  culqiRetryTitle: 'Tu pedido está guardado — falta el pago',
+  culqiRetryBody: 'No perdiste nada de lo que llenaste. Solo falta cobrar tu adelanto.',
+  culqiRetryCta: 'Reintentar el pago',
+  culqiContactMe: 'Prefiero que me escriban para pagar',
+  // network_after: el dinero PUDO salir. Reintentar aquí es arriesgar un doble
+  // cobro: se espera y se consulta, jamás se re-cobra a ciegas.
+  culqiConfirming: 'Estamos confirmando tu pago…',
+  culqiConfirmingHint: 'No vuelvas a pagar: si tu Yape ya se descontó, tu pedido se confirma solo en unos segundos.',
+  doneUnpaid: 'Registramos tu pedido. Un asesor te escribirá por el chat para coordinar el adelanto.',
+  /** La landing, cuando quedó un pedido con el pago pendiente. */
+  finishPaymentCta: 'Termina el pago de tu pedido',
+
   voucherOptional: 'Adjuntar captura (opcional)',
   voucherAttached: 'Captura adjunta',
   voucherReplace: 'Cambiar',
