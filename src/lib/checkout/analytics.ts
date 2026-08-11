@@ -39,6 +39,10 @@ export type CheckoutEvent =
   | { name: 'payment_verification_result'; result: 'MATCHED' | 'UNMATCHED' | 'TIMEOUT'; seconds: number }
   | { name: 'order_submitted'; orderId: string }
   | { name: 'order_failed'; orderId: string; reason: string }
+  /** El cobro en línea, por separado del registro: son dos embudos. `stage`
+   *  dice DÓNDE murió el que falló — token vencido ≠ sin saldo ≠ red. */
+  | { name: 'culqi_charge_ok'; orderId: string; alreadyPaid: boolean }
+  | { name: 'culqi_charge_failed'; orderId: string; stage: string; code?: string }
   | { name: 'checkout_abandoned'; lastStep: CheckoutStepId }
 
 /** Destino de los eventos. Se reemplaza por el real sin tocar los call sites. */

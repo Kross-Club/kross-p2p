@@ -682,6 +682,7 @@ export default function VendedorPedidoPage() {
         reason={session.payment_reason ?? null}
         yapeCode={session.advance_yape_code ?? null}
         hasVoucher={!!session.advance_voucher_url}
+        provider={session.payment_provider ?? null}
       />
 
       <AddressBar

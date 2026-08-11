@@ -19,6 +19,9 @@ interface OrderDoneProps {
   verification: PaymentVerification
   /** Token del pedido: abre su chat en `/p/:token`. */
   token?: string | null
+  /** Cobro en línea fallido y el comprador eligió que lo contacte un asesor:
+   *  ni caja de verificación ni polling — no hay pago en vuelo que esperar. */
+  unpaid?: boolean
   onClose: () => void
 }
 
@@ -28,17 +31,22 @@ interface OrderDoneProps {
 const POLL_MS = 4000
 const POLL_LIMIT = 22
 
-export default function OrderDone({ orderCode, advance, verification, token, onClose }: OrderDoneProps) {
+export default function OrderDone({ orderCode, advance, verification, token, unpaid, onClose }: OrderDoneProps) {
   // El estado del cruce llega DESPUÉS de esta pantalla: el comprador termina el
   // pedido y su yape puede entrar segundos más tarde. Sin esto la caja se queda
   // en "Estamos verificando" para siempre aunque el pago ya haya cuadrado, y el
   // comprador se va con la duda —que es exactamente el mensaje de WhatsApp que
   // este checkout existe para evitar.
+  //
+  // Con el cobro Culqi exitoso, `verification` YA llega 'MATCHED' por prop: la
+  // caja nace verde y el polling ni se monta — la espera que este efecto
+  // acompaña es exactamente lo que el cobro directo eliminó.
   const [live, setLive] = useState<PaymentVerification>(verification)
 
   useEffect(() => {
-    // Ya cuadró, no hay adelanto que esperar, o no hay token con qué preguntar.
-    if (!token || advance <= 0 || live === 'MATCHED') return
+    // Ya cuadró, no hay adelanto que esperar, no hay pago en vuelo (unpaid), o
+    // no hay token con qué preguntar.
+    if (!token || advance <= 0 || live === 'MATCHED' || unpaid) return
     let tries = 0
     let cancelled = false
 
@@ -51,7 +59,7 @@ export default function OrderDone({ orderCode, advance, verification, token, onC
     }, POLL_MS)
 
     return () => { cancelled = true; clearInterval(id) }
-  }, [token, advance, live])
+  }, [token, advance, live, unpaid])
 
   return (
     <div className="py-6 text-center">
@@ -64,13 +72,13 @@ export default function OrderDone({ orderCode, advance, verification, token, onC
 
       <h2 className="text-xl font-black text-gray-900 mb-1">{COPY.doneTitle}</h2>
       <p className="text-sm text-gray-500 mb-4 px-4">
-        {advance > 0 ? COPY.doneAdvance : COPY.doneCod}
+        {unpaid ? COPY.doneUnpaid : advance > 0 ? COPY.doneAdvance : COPY.doneCod}
       </p>
 
       <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Tu pedido</p>
       <p className="text-base font-black text-gray-800 mb-4">{orderCode}</p>
 
-      {advance > 0 && (
+      {advance > 0 && !unpaid && (
         <div className="mx-auto max-w-[300px] rounded-2xl px-4 py-3 text-xs mb-5"
           style={live === 'MATCHED'
             ? { background: '#F0FDF4', color: '#15803D' }
