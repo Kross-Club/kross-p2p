@@ -122,13 +122,35 @@ supabase secrets set RESEND_API_KEY=… RECLAMOS_FROM="Kross <reclamos@krossclub
    peor que no tenerla. En desarrollo, un aviso en pantalla lista lo que falta.
 2. **`src/config/catalogo.ts`** — revisar nombres, descripciones y **precios**:
    lo que se publica ahí es oferta al público.
-3. **Base de datos** — correr `supabase/setup-kross.sql` en el SQL Editor
-   (idempotente) para crear `web_orders`, `complaints` y sus correlativos.
+3. **Base de datos** — correr **solo la sección 15** de
+   `supabase/setup-kross.sql` (crea `web_orders`, `complaints` y sus
+   correlativos):
+
+   ```bash
+   sed -n '/─── 15\. WEB PÚBLICA/,$p' supabase/setup-kross.sql
+   ```
+
+   > ⚠️ **No correr el archivo completo contra producción.** El archivo es
+   > idempotente contra sí mismo, pero producción ya tiene cambios que aún no
+   > están en `main` (el cobro con Culqi del adelanto). En concreto, la
+   > sección 14 recrea `order_sessions_stage_check` **sin** la etapa
+   > `no_entregado`, que producción sí tiene: correrlo entero la borraría del
+   > CHECK y rompería los pedidos no entregados. Mientras `main` no alcance a
+   > producción, se corren solo los bloques nuevos.
 4. **Edge Functions**:
    ```
    supabase functions deploy web-order            --project-ref ofdjghntvmrdfjhazfvz
    supabase functions deploy libro-reclamaciones  --project-ref ofdjghntvmrdfjhazfvz
    ```
+
+## Ojo: hay dos cobros distintos con Culqi
+
+No confundirlos, porque viven en sitios distintos:
+
+| | Qué cobra | Dónde |
+|---|---|---|
+| **Adelanto COD** | El adelanto del pedido de un comprador, con Yape vía Culqi | `culqi-charge` / `culqi-webhook`, en el checkout de las marcas. Ya desplegado en producción, con su esquema (`stores.culqi_enabled`, `store_secrets.culqi_*`, `order_sessions.payment_provider`…) |
+| **Suscripción de la plataforma** | El plan que una marca le compra a Kross en `krossclub.app` | `/pago` → `web-order`. **Todavía no cobra** |
 
 ## Cuando lleguen las llaves de Culqi
 
