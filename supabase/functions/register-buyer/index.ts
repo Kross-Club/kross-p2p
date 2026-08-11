@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { matchOrderToPayments } from '../_shared/yape-match.ts'
+import { advanceForServer } from '../_shared/advance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -45,9 +46,13 @@ Deno.serve(async (req) => {
     advance_op_number?: string    // N° de operación del adelanto de flete (provincia)
     // ─── Fase 3 · adelanto por Yape ─────────────────────────────────────────
     checkout_id?: string          // uuid del modal: hace el alta IDEMPOTENTE
-    advance_amount?: number       // S/0 en Lima, S/10 Shalom, S/20 Olva
+    advance_amount?: number       // informativo: el monto REAL se deriva en el server
     advance_voucher_url?: string  // ruta en el bucket privado `vouchers`
     advance_yape_code?: string    // código de seguridad tecleado por el comprador
+    // 'CULQI' = el adelanto se cobra en línea vía `culqi-charge`. Saca al pedido
+    // de la piscina del cruce manual: sin esto, un yape ajeno del mismo monto lo
+    // daría por pagado y el cargo real nunca ocurriría. Ver §15.d del esquema.
+    payment_provider?: string
   }
 
   // ─── Idempotencia ──────────────────────────────────────────────────────────
@@ -235,11 +240,25 @@ Deno.serve(async (req) => {
   const token = randomToken()
   const orderId = `ORD-${Date.now()}`
 
-  // ─── Adelanto por Yape ─────────────────────────────────────────────────────
-  // El adelanto lo DERIVA el checkout del destino y de la agencia; aquí solo se
-  // registra. `PENDING` significa "hay dinero que verificar", y es lo que hace
-  // que el pedido aparezca en la cola de cruce de `yape-ingest`.
-  const advanceAmount = typeof body.advance_amount === 'number' && body.advance_amount > 0 ? body.advance_amount : 0
+  // ─── Adelanto ──────────────────────────────────────────────────────────────
+  // Para el checkout directo el monto se DERIVA AQUÍ del destino, nunca del
+  // body: aceptarlo del navegador permitía registrar un pedido de Olva (S/25)
+  // declarando S/1 — y con Culqi ese S/1 se cobraría de verdad y el pedido se
+  // auto-confirmaría. El body solo sirve para detectar front desalineado.
+  // El AI closer conserva su monto negociado: su flujo no pasa por esta tabla.
+  const closedBy = body.closed_by === 'AI_CLOSER' ? 'AI_CLOSER' : 'DIRECT_CHECKOUT'
+  const bodyAdvance = typeof body.advance_amount === 'number' && body.advance_amount > 0 ? body.advance_amount : 0
+  const advanceAmount = closedBy === 'DIRECT_CHECKOUT'
+    ? advanceForServer(dispatchType, agencyName)
+    : bodyAdvance
+  if (closedBy === 'DIRECT_CHECKOUT' && bodyAdvance !== advanceAmount) {
+    // Front y server derivando distinto es un bug de despliegue, no un ataque
+    // necesariamente — pero en ambos casos manda el server y hay que enterarse.
+    console.warn('[register-buyer] advance_amount del body difiere del derivado', JSON.stringify({
+      body_advance: bodyAdvance, derived: advanceAmount, dispatch: dispatchType, agency: agencyName,
+    }))
+  }
+  const paymentProvider = body.payment_provider === 'CULQI' ? 'CULQI' : null
   const advanceVoucherUrl = body.advance_voucher_url?.trim() || null
   const advanceYapeCode = body.advance_yape_code?.replace(/\D/g, '').slice(0, 6) || null
   const paymentVerification = advanceAmount > 0 ? 'PENDING' : 'NOT_REQUIRED'
@@ -250,6 +269,11 @@ Deno.serve(async (req) => {
       order_id: orderId,
       // Align the order to the assigned seller's store so it shows in the team's lists
       store_id: assignedSellerStore ?? body.store_id,
+      // La tienda del PRODUCTO, siempre. El pool de vendedores ya está scoped a
+      // la misma tienda, pero las llaves de Culqi se resuelven por esta columna
+      // — cobrar contra la cuenta de otra marca es el peor bug posible, así que
+      // el invariante queda escrito en la fila, no implícito en el round-robin.
+      origin_store_id: body.store_id,
       token,
       buyer_id: buyer.id,
       buyer_name: body.buyer_name,
@@ -277,7 +301,8 @@ Deno.serve(async (req) => {
       stage: advanceAmount > 0 ? 'validando' : 'confirmado',
       // Costuras del estado central — el checkout las deja escritas desde el día 1
       payment_method: ['YAPE_PLIN', 'CONTRAENTREGA', 'TARJETA'].includes(body.payment_method ?? '') ? body.payment_method : 'CONTRAENTREGA',
-      closed_by: body.closed_by === 'AI_CLOSER' ? 'AI_CLOSER' : 'DIRECT_CHECKOUT',
+      payment_provider: paymentProvider,
+      closed_by: closedBy,
       dispatch_type: dispatchType,
       agency_name: agencyName,
       delivery_reference: deliveryReference,
@@ -357,7 +382,11 @@ Deno.serve(async (req) => {
   // y recién ahí toca "Terminar pedido". Para cuando el pedido existe, su pago
   // ya está guardado y sin consumir. Sin esta pasada, todo pedido de provincia
   // quedaría PENDING esperando un pago que nunca va a volver a llegar.
-  if (advanceAmount > 0) {
+  //
+  // Un pedido Culqi NO entra aquí: su dinero llega por `culqi-charge`, no por
+  // el Yape de la marca. Dejarlo cruzar haría que un yape ajeno del mismo monto
+  // lo diera por pagado — y el cargo real nunca ocurriría.
+  if (advanceAmount > 0 && paymentProvider === null) {
     const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
     const { data: pending } = await supabase
       .from('payment_events')
@@ -436,6 +465,10 @@ Deno.serve(async (req) => {
     JSON.stringify({
       token: data.token,
       session_id: data.id,
+      // La rama idempotente ya lo devolvía; esta no, y el front hace
+      // `setOrderCode(res.order_id)` — el código del pedido llegaba undefined
+      // en todo pedido NUEVO. Con Culqi además el retry del cobro lo necesita.
+      order_id: orderId,
       buyer_id: buyer.id,
       score: buyer.score,
       puntos: buyer.puntos,
