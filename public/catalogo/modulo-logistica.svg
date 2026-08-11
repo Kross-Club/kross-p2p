@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Módulo Smart Logistics — cobertura y entregas">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B0A1F"/><stop offset="1" stop-color="#123A5C"/>
+    </linearGradient>
+    <linearGradient id="ac" x1="240" y1="150" x2="560" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/><stop offset="1" stop-color="#FBBF24"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <circle cx="150" cy="160" r="150" fill="#38BDF8" opacity=".12"/>
+  <circle cx="670" cy="440" r="140" fill="#FBBF24" opacity=".08"/>
+  <!-- Ruta de entrega -->
+  <path d="M180 400 C 300 400, 300 240, 420 240 S 560 320, 640 200" fill="none" stroke="url(#ac)" stroke-width="10" stroke-linecap="round" stroke-dasharray="26 22"/>
+  <circle cx="180" cy="400" r="20" fill="#ffffff" opacity=".55"/>
+  <!-- Pin de destino -->
+  <path d="M640 118 c 42 0 76 34 76 76 c 0 54 -76 128 -76 128 s -76 -74 -76 -128 c 0 -42 34 -76 76 -76 z" fill="#FBBF24"/>
+  <circle cx="640" cy="194" r="28" fill="#0B0A1F"/>
+  <!-- Distritos cubiertos -->
+  <rect x="196" y="452" width="90" height="56" rx="14" fill="#ffffff" opacity=".18"/>
+  <rect x="302" y="452" width="90" height="56" rx="14" fill="#ffffff" opacity=".12"/>
+  <rect x="408" y="452" width="90" height="56" rx="14" fill="#ffffff" opacity=".08"/>
+  <text x="400" y="90" font-family="Nunito, Verdana, sans-serif" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle">Smart Logistics</text>
+  <text x="400" y="566" font-family="Nunito, Verdana, sans-serif" font-size="24" font-weight="600" fill="#7DD3FC" text-anchor="middle">Cobertura, motorizados y provincia</text>
+</svg>

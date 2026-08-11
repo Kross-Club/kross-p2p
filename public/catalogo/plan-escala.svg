@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Plan Escala — equipo, CRM y campañas">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#04121A"/><stop offset="1" stop-color="#0B3B33"/>
+    </linearGradient>
+    <linearGradient id="ac" x1="200" y1="420" x2="620" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C55E"/><stop offset="1" stop-color="#7DE8FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <circle cx="660" cy="140" r="170" fill="#22C55E" opacity=".12"/>
+  <circle cx="130" cy="470" r="130" fill="#7DE8FF" opacity=".08"/>
+  <!-- Barras de crecimiento -->
+  <rect x="212" y="330" width="70" height="120" rx="16" fill="#ffffff" opacity=".2"/>
+  <rect x="302" y="278" width="70" height="172" rx="16" fill="#ffffff" opacity=".3"/>
+  <rect x="392" y="222" width="70" height="228" rx="16" fill="url(#ac)" opacity=".75"/>
+  <rect x="482" y="160" width="70" height="290" rx="16" fill="url(#ac)"/>
+  <!-- Equipo -->
+  <circle cx="247" cy="150" r="34" fill="#7DE8FF" opacity=".85"/>
+  <circle cx="317" cy="180" r="26" fill="#ffffff" opacity=".35"/>
+  <circle cx="187" cy="192" r="22" fill="#ffffff" opacity=".25"/>
+  <text x="400" y="512" font-family="Nunito, Verdana, sans-serif" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle">Plan Escala</text>
+  <text x="400" y="552" font-family="Nunito, Verdana, sans-serif" font-size="24" font-weight="600" fill="#86EFAC" text-anchor="middle">Equipo, CRM y campañas</text>
+</svg>

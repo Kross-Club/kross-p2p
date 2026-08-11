@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Módulo Loyalty — puntos y recompra">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1A0A1F"/><stop offset="1" stop-color="#4A1436"/>
+    </linearGradient>
+    <linearGradient id="ac" x1="280" y1="160" x2="540" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFD400"/><stop offset="1" stop-color="#F472B6"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <circle cx="660" cy="150" r="160" fill="#F472B6" opacity=".14"/>
+  <circle cx="140" cy="460" r="130" fill="#FFD400" opacity=".08"/>
+  <!-- Ciclo de recompra -->
+  <path d="M400 150 a 130 130 0 1 1 -92 38" fill="none" stroke="url(#ac)" stroke-width="14" stroke-linecap="round"/>
+  <path d="M292 142 L308 196 L254 206 Z" fill="#FFD400"/>
+  <!-- Estrella de puntos -->
+  <path d="M400 236 L426 300 L494 306 L442 350 L458 416 L400 380 L342 416 L358 350 L306 306 L374 300 Z" fill="url(#ac)"/>
+  <text x="400" y="516" font-family="Nunito, Verdana, sans-serif" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle">Loyalty</text>
+  <text x="400" y="556" font-family="Nunito, Verdana, sans-serif" font-size="24" font-weight="600" fill="#FBCFE8" text-anchor="middle">Puntos, recompra y campañas</text>
+</svg>

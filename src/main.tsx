@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { StoreProvider } from './lib/store-context'
+import { CarritoProvider } from './lib/carrito'
 
 // Register the service worker globally (all pages, buyer + seller) so push
 // notifications are delivered and shown even when the PWA is in the background
@@ -30,7 +31,11 @@ window.addEventListener('appinstalled', () => {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <StoreProvider>
-      <App />
+      {/* El carrito de la web pública vive por encima del router: así el globo
+          del header mantiene la cuenta al navegar entre páginas. */}
+      <CarritoProvider>
+        <App />
+      </CarritoProvider>
     </StoreProvider>
   </StrictMode>,
 )

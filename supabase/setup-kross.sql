@@ -493,3 +493,108 @@ alter table public.order_sessions
 
 create index if not exists order_sessions_checkout_variant_idx
   on public.order_sessions (checkout_variant) where checkout_variant is not null;
+
+-- ─── 15. WEB PÚBLICA (krossclub.app) ─────────────────────────────────────────
+-- Lo que necesita la web pública de la plataforma para cumplir con los
+-- requisitos de la pasarela de pago (Culqi) y con INDECOPI:
+--   · `web_orders`  → pedidos hechos desde el carrito de krossclub.app
+--   · `complaints`  → Libro de Reclamaciones virtual
+-- Ninguna de las dos se lee desde el navegador: contienen datos personales y
+-- ambas se escriben solo desde Edge Functions con service role.
+
+-- 15.a Pedidos de la web pública -------------------------------------------
+-- Correlativo visible para el cliente: KR-2026-000123.
+CREATE SEQUENCE IF NOT EXISTS web_orders_numero_seq;
+
+CREATE TABLE IF NOT EXISTS web_orders (
+  id           uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  numero       bigint      NOT NULL DEFAULT nextval('web_orders_numero_seq'),
+  codigo       text        UNIQUE,               -- KR-AAAA-NNNNNN (lo pone el trigger)
+  tipo_cliente text        NOT NULL CHECK (tipo_cliente IN ('natural','empresa')),
+  nombre       text        NOT NULL,             -- nombre completo o razón social
+  documento    text        NOT NULL,             -- DNI (8) o RUC (11)
+  email        text        NOT NULL,
+  telefono     text        NOT NULL,
+  nota         text,
+  items        jsonb       NOT NULL DEFAULT '[]',
+  -- Total que se le MOSTRÓ al cliente en el navegador. No es el importe a
+  -- cobrar: cuando se conecte la pasarela, el cobro se calcula en el servidor.
+  total_mostrado numeric   NOT NULL DEFAULT 0,
+  estado       text        NOT NULL DEFAULT 'nuevo'
+                           CHECK (estado IN ('nuevo','contactado','pagado','anulado')),
+  created_at   timestamptz DEFAULT now()
+);
+ALTER TABLE web_orders ENABLE ROW LEVEL SECURITY;  -- sin políticas: solo service role
+CREATE INDEX IF NOT EXISTS idx_web_orders_created ON web_orders(created_at DESC);
+
+-- 15.b Libro de Reclamaciones (D.S. 011-2011-PCM y modificatorias) ----------
+-- Campos obligatorios de la Hoja de Reclamación: correlativo, fecha,
+-- identificación del consumidor, del bien contratado y el detalle, más el
+-- espacio para la respuesta del proveedor (plazo: 15 días hábiles).
+CREATE SEQUENCE IF NOT EXISTS complaints_numero_seq;
+
+CREATE TABLE IF NOT EXISTS complaints (
+  id              uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  numero          bigint      NOT NULL DEFAULT nextval('complaints_numero_seq'),
+  codigo          text        UNIQUE,            -- LR-AAAA-NNNNNN (lo pone el trigger)
+  -- Marca sobre la que se reclama. NULL = la plataforma (krossclub.app).
+  store_id        text,
+  store_nombre    text,
+  tipo            text        NOT NULL CHECK (tipo IN ('RECLAMO','QUEJA')),
+  -- Consumidor
+  consumidor_nombre    text   NOT NULL,
+  consumidor_doc_tipo  text   NOT NULL CHECK (consumidor_doc_tipo IN ('DNI','CE','PASAPORTE','RUC')),
+  consumidor_doc_num   text   NOT NULL,
+  consumidor_domicilio text   NOT NULL,
+  consumidor_telefono  text   NOT NULL,
+  consumidor_email     text   NOT NULL,
+  es_menor        boolean     NOT NULL DEFAULT false,
+  apoderado_nombre   text,                       -- obligatorio si es_menor
+  apoderado_doc_num  text,
+  apoderado_contacto text,
+  -- Bien contratado
+  bien_tipo       text        NOT NULL CHECK (bien_tipo IN ('PRODUCTO','SERVICIO')),
+  bien_desc       text        NOT NULL,
+  monto_reclamado numeric,
+  pedido_ref      text,                          -- código de pedido, si lo hay
+  -- Detalle
+  detalle         text        NOT NULL,
+  pedido_consumidor text      NOT NULL,          -- qué solicita el consumidor
+  -- Respuesta del proveedor
+  estado          text        NOT NULL DEFAULT 'pendiente'
+                              CHECK (estado IN ('pendiente','respondido','cerrado')),
+  respuesta       text,
+  respondido_at   timestamptz,
+  -- Rastro de la presentación
+  copia_email_enviada boolean NOT NULL DEFAULT false,
+  created_at      timestamptz DEFAULT now()
+);
+ALTER TABLE complaints ENABLE ROW LEVEL SECURITY;  -- sin políticas: solo service role
+CREATE INDEX IF NOT EXISTS idx_complaints_created ON complaints(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_complaints_store   ON complaints(store_id, created_at DESC);
+-- Los pendientes son los que corren contra el plazo legal: se listan primero.
+CREATE INDEX IF NOT EXISTS idx_complaints_pendientes
+  ON complaints(created_at) WHERE estado = 'pendiente';
+
+-- 15.c Correlativo legible ---------------------------------------------------
+-- El número correlativo es obligatorio en la Hoja de Reclamación y es lo que
+-- cita el consumidor. Se arma con la hora de Lima: en UTC, un reclamo del 31 de
+-- diciembre por la noche caería en el año siguiente.
+CREATE OR REPLACE FUNCTION set_codigo_correlativo() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.codigo IS NULL THEN
+    NEW.codigo := TG_ARGV[0] || '-'
+      || to_char(now() AT TIME ZONE 'America/Lima', 'YYYY') || '-'
+      || lpad(NEW.numero::text, 6, '0');
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_web_orders_codigo ON web_orders;
+CREATE TRIGGER trg_web_orders_codigo BEFORE INSERT ON web_orders
+  FOR EACH ROW EXECUTE FUNCTION set_codigo_correlativo('KR');
+
+DROP TRIGGER IF EXISTS trg_complaints_codigo ON complaints;
+CREATE TRIGGER trg_complaints_codigo BEFORE INSERT ON complaints
+  FOR EACH ROW EXECUTE FUNCTION set_codigo_correlativo('LR');
