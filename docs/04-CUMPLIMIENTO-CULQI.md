@@ -116,12 +116,16 @@ supabase secrets set RESEND_API_KEY=… RECLAMOS_FROM="Kross <reclamos@krossclub
 
 ## Qué falta llenar antes de la revisión
 
-1. **`src/config/empresa.ts`** — razón social, RUC, domicilio fiscal, teléfono,
-   WhatsApp, correo de atención, correo de reclamaciones y las cuentas de redes
-   sociales. Están vacíos a propósito: un RUC inventado en una página legal es
-   peor que no tenerla. En desarrollo, un aviso en pantalla lista lo que falta.
-2. **`src/config/catalogo.ts`** — revisar nombres, descripciones y **precios**:
-   lo que se publica ahí es oferta al público.
+1. **`src/config/empresa.ts`** — ya están cargados teléfono/WhatsApp
+   (+51 925 951 393), correo (`equipo@kross.club`) e Instagram. Siguen vacíos
+   **razón social, RUC y domicilio fiscal**, a propósito: un RUC inventado en
+   una página legal es peor que no tenerla. Los tres son obligatorios en la
+   Hoja de Reclamación, y la dirección es además requisito de Culqi. En
+   desarrollo, un aviso en pantalla lista lo que falta.
+2. **`src/config/catalogo.ts`** — los precios publicados son la lista de
+   referencia con la que se pasa la revisión. Antes de que la web reciba
+   compras reales hay que confirmarlos: lo que se muestra ahí es oferta al
+   público.
 3. **Base de datos** — correr **solo la sección 15** de
    `supabase/setup-kross.sql` (crea `web_orders`, `complaints` y sus
    correlativos):

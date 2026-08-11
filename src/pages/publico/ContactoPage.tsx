@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
-import { Phone, Mail, MapPin, Clock, BookOpen, Building2 } from 'lucide-react'
+import { Phone, Mail, MapPin, Clock, BookOpen, Building2, MessageCircle } from 'lucide-react'
 import PublicLayout from '../../components/publico/PublicLayout'
 import { RedIcon } from '../../components/publico/RedIcon'
-import { EMPRESA, whatsappLink } from '../../config/empresa'
+import { EMPRESA, whatsappLink, formatoTelefono } from '../../config/empresa'
 
 // Página de contacto: número, correo y dirección en una URL propia y enlazada
 // desde el menú. Culqi lo pide explícitamente, y es lo primero que busca un
@@ -32,7 +32,8 @@ export default function ContactoPage() {
               href={`tel:${EMPRESA.telefono.replace(/\s/g, '')}`} />
           )}
           {wa && (
-            <Dato icon={<Phone size={18} />} label="WhatsApp" valor={`+${EMPRESA.whatsapp}`} href={wa} externo />
+            <Dato icon={<MessageCircle size={18} />} label="WhatsApp"
+              valor={formatoTelefono(EMPRESA.whatsapp)} href={wa} externo />
           )}
           {EMPRESA.email && (
             <Dato icon={<Mail size={18} />} label="Correo" valor={EMPRESA.email} href={`mailto:${EMPRESA.email}`} />
