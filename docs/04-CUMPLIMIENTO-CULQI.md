@@ -116,12 +116,14 @@ supabase secrets set RESEND_API_KEY=… RECLAMOS_FROM="Kross <reclamos@krossclub
 
 ## Qué falta llenar antes de la revisión
 
-1. **`src/config/empresa.ts`** — ya están cargados teléfono/WhatsApp
-   (+51 925 951 393), correo (`equipo@kross.club`) e Instagram. Siguen vacíos
-   **razón social, RUC y domicilio fiscal**, a propósito: un RUC inventado en
-   una página legal es peor que no tenerla. Los tres son obligatorios en la
-   Hoja de Reclamación, y la dirección es además requisito de Culqi. En
-   desarrollo, un aviso en pantalla lista lo que falta.
+1. **`src/config/empresa.ts`** — cargados teléfono/WhatsApp
+   (+51 925 951 393), correo (`equipo@kross.club`), Instagram, RUC
+   (`10482968622`) y domicilio fiscal. Falta **el nombre del titular**, tal
+   como figura en SUNAT: el RUC empieza en 10, o sea persona natural con
+   negocio, así que no hay razón social sino nombres y apellidos. Es
+   obligatorio en la Hoja de Reclamación. En desarrollo, un aviso en pantalla
+   lista lo que falta; `src/config/empresa.test.ts` valida el resto (dígito
+   verificador del RUC, formato del móvil, correos y URLs de redes).
 2. **`src/config/catalogo.ts`** — los precios publicados son la lista de
    referencia con la que se pasa la revisión. Antes de que la web reciba
    compras reales hay que confirmarlos: lo que se muestra ahí es oferta al

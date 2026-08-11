@@ -28,7 +28,7 @@ export default function TerminosPage() {
           {titular}{ruc}
           {EMPRESA.domicilioFiscal ? `, con domicilio en ${EMPRESA.domicilioFiscal}` : ''}
           {EMPRESA.email ? `, correo de contacto ${EMPRESA.email}` : ''}
-          {EMPRESA.telefono ? ` y teléfono ${EMPRESA.telefono}` : ''}, es la titular de la
+          {EMPRESA.telefono ? ` y teléfono ${EMPRESA.telefono}` : ''}, tiene la titularidad de la
           plataforma {EMPRESA.marca}, un software de gestión de comercio contraentrega que se contrata
           por suscripción.
         </p>

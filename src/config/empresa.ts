@@ -47,9 +47,12 @@ export interface Empresa {
 
 export const EMPRESA: Empresa = {
   marca: 'Kross',
-  razonSocial: '',            // ⚠️ COMPLETAR — p. ej. "KROSS CLUB S.A.C."
-  ruc: '',                    // ⚠️ COMPLETAR — 11 dígitos
-  domicilioFiscal: '',        // ⚠️ COMPLETAR — dirección fiscal completa
+  // ⚠️ COMPLETAR — nombres y apellidos del titular EXACTAMENTE como figuran en
+  // SUNAT. El RUC empieza en 10 (persona natural con negocio), así que el
+  // titular es una persona, no una sociedad.
+  razonSocial: '',
+  ruc: '10482968622',
+  domicilioFiscal: 'El Cuadro, Chaclacayo 15472, Lima, Perú',
   // Un solo número atiende llamada y WhatsApp. Se declara en los dos campos a
   // propósito: la web ofrece las dos acciones (marcar y escribir) sobre él.
   telefono: '+51 925 951 393',
@@ -69,9 +72,20 @@ export const EMPRESA: Empresa = {
 /** Plazo legal de respuesta del Libro de Reclamaciones (Ley 29571, art. 24). */
 export const PLAZO_RESPUESTA_HABILES = 15
 
+/**
+ * Cómo se llama al titular del negocio en las páginas legales.
+ *
+ * SUNAT: los RUC que empiezan en 20 son personas jurídicas —ahí sí hay razón
+ * social—. Los que empiezan en 10, 15 o 17 son personas naturales con negocio,
+ * y llamar "razón social" al nombre de una persona en una Hoja de Reclamación
+ * es sencillamente incorrecto.
+ */
+export const etiquetaTitular = (): string =>
+  EMPRESA.ruc.startsWith('20') ? 'Razón social' : 'Titular'
+
 /** Etiquetas legibles de cada campo, para el aviso de "falta completar". */
 const ETIQUETAS: Record<string, string> = {
-  razonSocial: 'Razón social',
+  razonSocial: 'Razón social / titular',
   ruc: 'RUC',
   domicilioFiscal: 'Domicilio fiscal',
   telefono: 'Teléfono de atención',
