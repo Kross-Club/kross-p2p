@@ -310,8 +310,12 @@ export const COPY = {
   culqiConfirming: 'Estamos confirmando tu pago…',
   culqiConfirmingHint: 'No vuelvas a pagar: si tu Yape ya se descontó, tu pedido se confirma solo en unos segundos.',
   doneUnpaid: 'Registramos tu pedido. Un asesor te escribirá por el chat para coordinar el adelanto.',
-  /** La landing, cuando quedó un pedido con el pago pendiente. */
-  finishPaymentCta: 'Termina el pago de tu pedido',
+  /** La landing, cuando quedó un pedido con el pago pendiente. Nombra lo que el
+   *  botón HACE —abrir el chat, donde un asesor cobra— y no lo que uno querría
+   *  que hiciera: decía "Termina el pago" y llevaba al chat, prometiendo un
+   *  cobro que esa pantalla no da. El modal reducido de solo-cobro está
+   *  anotado como follow-up; hasta entonces, el rótulo dice la verdad. */
+  finishPaymentCta: 'Coordinar el pago de tu pedido',
 
   voucherOptional: 'Adjuntar captura (opcional)',
   voucherAttached: 'Captura adjunta',
