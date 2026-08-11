@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       }
 
       // Auto-create buyer from order_sessions data. La unicidad de buyers es
-      // POR TIENDA (bloque 17 del esquema): el onConflict global por 'phone'
+      // POR TIENDA (bloque 18 del esquema): el onConflict global por 'phone'
       // dejó de tener índice que lo respalde, y además pisaba entre marcas.
       const { data: newBuyer } = await supabase
         .from('buyers')

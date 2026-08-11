@@ -682,7 +682,7 @@ ALTER TABLE order_sessions ADD CONSTRAINT order_sessions_stage_check
     'no_entregado'::text
   ]));
 
--- ─── 17. UNICIDAD DE BUYERS: POR TIENDA DE VERDAD ────────────────────────────
+-- ─── 18. UNICIDAD DE BUYERS: POR TIENDA DE VERDAD ────────────────────────────
 -- Los DROP del bloque 0 (idx_buyers_document_number / idx_buyers_phone) creían
 -- limpiar la unicidad GLOBAL de la era pre-multi-tenant, pero producción tenía
 -- además una CONSTRAINT (`buyers_phone_key`) y dos índices con otros nombres

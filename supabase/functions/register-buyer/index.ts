@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     advance_yape_code?: string    // código de seguridad tecleado por el comprador
     // 'CULQI' = el adelanto se cobra en línea vía `culqi-charge`. Saca al pedido
     // de la piscina del cruce manual: sin esto, un yape ajeno del mismo monto lo
-    // daría por pagado y el cargo real nunca ocurriría. Ver §15.d del esquema.
+    // daría por pagado y el cargo real nunca ocurriría. Ver §16.d del esquema.
     payment_provider?: string
   }
 
