@@ -47,10 +47,10 @@ export interface Empresa {
 
 export const EMPRESA: Empresa = {
   marca: 'Kross',
-  // ⚠️ COMPLETAR — nombres y apellidos del titular EXACTAMENTE como figuran en
-  // SUNAT. El RUC empieza en 10 (persona natural con negocio), así que el
-  // titular es una persona, no una sociedad.
-  razonSocial: '',
+  // Nombres y apellidos del titular como figuran en SUNAT. El RUC empieza en 10
+  // (persona natural con negocio), así que el titular es una persona y no una
+  // sociedad: `etiquetaTitular()` lo rotula "Titular", no "Razón social".
+  razonSocial: 'Jhoann Gabriel Junior Pacahuala Garcia',
   ruc: '10482968622',
   domicilioFiscal: 'El Cuadro, Chaclacayo 15472, Lima, Perú',
   // Un solo número atiende llamada y WhatsApp. Se declara en los dos campos a

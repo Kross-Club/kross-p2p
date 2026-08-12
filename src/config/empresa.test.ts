@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { EMPRESA, etiquetaTitular, formatoTelefono, whatsappLink } from './empresa'
+import { EMPRESA, camposPendientes, etiquetaTitular, formatoTelefono, whatsappLink } from './empresa'
 
 // Estos datos se imprimen en los términos, en la política de devoluciones y en
 // la Hoja de Reclamación que se le entrega al consumidor. Un dígito mal
@@ -24,6 +24,19 @@ describe('datos del comercio', () => {
   it('el RUC empieza por un tipo de contribuyente que existe', () => {
     // 10/15/17 persona natural con negocio · 20 persona jurídica.
     expect(['10', '15', '17', '20']).toContain(EMPRESA.ruc.slice(0, 2))
+  })
+
+  // El campo que se quedó en blanco hasta el final, sin que nada lo notara: el
+  // resto del archivo tenía test y el titular no. Sin él la Hoja de Reclamación
+  // sale sin identificar a quién se reclama, que es el requisito, no un adorno.
+  it('no queda ningún dato obligatorio en blanco', () => {
+    expect(camposPendientes()).toEqual([])
+  })
+
+  it('el titular es un nombre de verdad, no un relleno', () => {
+    // Persona natural: nombres Y apellidos. Un solo token es un placeholder.
+    expect(EMPRESA.razonSocial.trim().split(/\s+/).length).toBeGreaterThanOrEqual(2)
+    expect(EMPRESA.razonSocial).not.toMatch(/…|ejemplo|example|COMPLETAR/i)
   })
 
   it('llama al titular como corresponde al tipo de RUC', () => {
