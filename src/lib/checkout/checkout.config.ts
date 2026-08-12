@@ -332,10 +332,13 @@ export const COPY = {
   // que sostiene la tasa de entrega, sonando a algo secundario.
   doneCod: 'Pagas al recibir. Coordinamos la entrega por el chat de tu pedido.',
   doneAdvance: 'Ya registramos tu adelanto. Coordinamos el envío por el chat de tu pedido.',
-  doneClose: 'Listo',
   // Nombra el BENEFICIO, no la mecánica: "abrir el chat" describe un botón,
-  // "coordinar la entrega" describe lo que el comprador gana entrando.
-  doneOpenChat: 'Ver mi pedido y coordinar la entrega',
+  // "rastrear la entrega" describe lo que el comprador gana entrando — y es
+  // literal, no una promesa: `/p/:token` monta el `OrderTracker` con las etapas
+  // del pedido en vivo. Es la única acción de la pantalla final: no compite con
+  // ningún "Listo", porque el que se va sin pasar por el chat es el que después
+  // no reconoce quién le escribe.
+  doneOpenChat: 'Ver mi pedido y rastrear la entrega',
   // La frase que hace el trabajo de verdad. Lo que se juega en esta pantalla no
   // es conversión —la venta ya está cerrada— sino la TASA DE ENTREGA: en COD el
   // motivo número uno de que un pedido no se recoja es que el cliente no

@@ -39,6 +39,20 @@ export type PayPhaseEvent =
   | { type: 'CONFIRMED' }                          // la consulta vio MATCHED
   | { type: 'GIVE_UP' }                            // "prefiero que me escriban"
 
+/**
+ * ¿El pedido YA existe en la base?
+ *
+ * Todo lo que sigue a `IDLE` ocurre después de `register-buyer`: registrar es lo
+ * PRIMERO que hace el submit, antes de cobrar. Cerrar el modal a partir de ahí
+ * no es abandonar un carrito — es salir de una compra hecha. Por eso no se pide
+ * confirmación, no se ofrece el descuento de salida (ofrecerle plata por algo
+ * que ya compró, y devolverlo al paso 1, es la peor pantalla posible) y no se
+ * cuenta como `checkout_abandoned`, que mediría abandonos donde hubo ventas.
+ */
+export function orderRegistered(phase: PayPhase): boolean {
+  return phase.k !== 'IDLE'
+}
+
 export function payPhaseReducer(phase: PayPhase, ev: PayPhaseEvent): PayPhase {
   switch (ev.type) {
     case 'REGISTERED_MANUAL':

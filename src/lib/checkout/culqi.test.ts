@@ -15,7 +15,7 @@ import {
 import { advanceForServer } from '../../../supabase/functions/_shared/advance.ts'
 import { extractWebhookChargeId, extractWebhookStoreId } from '../../../supabase/functions/_shared/culqi.ts'
 import { canRetry, culqiFailureCopy, needsNewOtp } from './culqi-errors'
-import { payPhaseReducer } from './pay-phase'
+import { orderRegistered, payPhaseReducer } from './pay-phase'
 import type { PayPhase } from './pay-phase'
 import type { CheckoutState, StoreCulqi } from './types'
 
@@ -238,6 +238,30 @@ describe('máquina de fases del pago', () => {
     expect(retried.k).toBe('CHARGING')
     // El pedido sigue siendo el MISMO: el retry cobra, no registra otro.
     expect(retried).toMatchObject(ref)
+  })
+
+  it('cerrar solo retiene ANTES de registrar: después es una compra hecha', () => {
+    // IDLE es el único momento en que el pedido todavía no existe. Ahí sí vale
+    // el exit-intent con descuento y contar el abandono.
+    expect(orderRegistered(idle)).toBe(false)
+
+    // A partir del submit el pedido YA está en la base. Retenerlo con un
+    // descuento por algo que acaba de comprar —y devolverlo al paso 1— sería la
+    // peor pantalla del checkout; contarlo como `checkout_abandoned` mediría
+    // abandonos donde hubo ventas.
+    const charging = payPhaseReducer(idle, { type: 'REGISTERED_CULQI', ...ref })
+    const failed = payPhaseReducer(charging, { type: 'CHARGE_FAILED', fail: { stage: 'charge' } })
+    const confirming = payPhaseReducer(charging, { type: 'CHARGE_FAILED', fail: { stage: 'network_after' } })
+    for (const p of [
+      charging,
+      failed,
+      confirming,
+      payPhaseReducer(charging, { type: 'CHARGE_OK' }),
+      payPhaseReducer(idle, { type: 'REGISTERED_MANUAL', ...ref }),
+      payPhaseReducer(failed, { type: 'GIVE_UP' }),
+    ]) {
+      expect(orderRegistered(p)).toBe(true)
+    }
   })
 
   it('network_after va a CONFIRMING, que no tiene reintento — solo consulta', () => {

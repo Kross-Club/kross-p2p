@@ -22,7 +22,6 @@ interface OrderDoneProps {
   /** Cobro en línea fallido y el comprador eligió que lo contacte un asesor:
    *  ni caja de verificación ni polling — no hay pago en vuelo que esperar. */
   unpaid?: boolean
-  onClose: () => void
 }
 
 /** Cada cuánto se vuelve a preguntar y por cuánto tiempo. El yape cruza en
@@ -31,7 +30,7 @@ interface OrderDoneProps {
 const POLL_MS = 4000
 const POLL_LIMIT = 22
 
-export default function OrderDone({ orderCode, advance, verification, token, unpaid, onClose }: OrderDoneProps) {
+export default function OrderDone({ orderCode, advance, verification, token, unpaid }: OrderDoneProps) {
   // El estado del cruce llega DESPUÉS de esta pantalla: el comprador termina el
   // pedido y su yape puede entrar segundos más tarde. Sin esto la caja se queda
   // en "Estamos verificando" para siempre aunque el pago ya haya cuadrado, y el
@@ -95,32 +94,29 @@ export default function OrderDone({ orderCode, advance, verification, token, unp
       )}
 
       {/* El chat es lo que convierte "ya compré" en "sé por dónde me van a
-          escribir". Va ANTES del botón de cerrar y con peso visual propio, pero
-          se OFRECE, no se empuja: sacarlo de aquí automáticamente, justo después
-          de que entregó su plata, se siente a arrebato. Por eso "Listo" se
-          queda — el que quiere cerrar tiene que poder cerrar. */}
+          escribir", y ahí vive el rastreo de la entrega. Es la ÚNICA acción de
+          esta pantalla, en verde sólido: un segundo botón compitiendo ("Listo")
+          repartía el toque entre irse y entrar, y el que se va sin pasar por el
+          chat es exactamente el que después no reconoce quién le escribe — el
+          motivo número uno de que un pedido COD no se recoja.
+          Salir sigue existiendo: la X de la cabecera, que con el pedido ya
+          registrado cierra directo, sin retenerlo con nada (ver `requestClose`
+          en CheckoutModal). Ofrecerse, no empujar, se sostiene: es una salida
+          menos ruidosa, no una salida cerrada. */}
       {token && (
         <>
           <a
             href={`/p/${token}`}
             className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-black text-base
-              border-2 border-green-500 text-green-700 bg-white
+              bg-green-500 text-white shadow-lg shadow-green-200
               focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
           >
             <MessageCircle size={18} strokeWidth={2.5} />
             {COPY.doneOpenChat}
           </a>
-          <p className="text-[11px] text-gray-400 mt-2 mb-3 px-4">{COPY.doneChatHint}</p>
+          <p className="text-[11px] text-gray-400 mt-2 px-4">{COPY.doneChatHint}</p>
         </>
       )}
-
-      <button
-        onClick={onClose}
-        className="w-full py-4 rounded-2xl bg-green-500 text-white font-black text-base shadow-lg shadow-green-200
-          focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
-      >
-        {COPY.doneClose}
-      </button>
     </div>
   )
 }

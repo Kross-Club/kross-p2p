@@ -16,7 +16,7 @@ import { effectivePrice } from '../../lib/checkout/product-packs'
 import { fetchPaymentVerification, submitOrder, uploadVoucher } from '../../lib/checkout/services/OrderService'
 import { chargeAdvance } from '../../lib/checkout/services/CulqiService'
 import { clearAdvancePending, saveLastOrder } from '../../lib/checkout/persistence'
-import { payPhaseReducer } from '../../lib/checkout/pay-phase'
+import { orderRegistered, payPhaseReducer } from '../../lib/checkout/pay-phase'
 import { canRetry, culqiFailureCopy, needsNewOtp } from '../../lib/checkout/culqi-errors'
 import type { SubmitContext } from '../../lib/checkout/services/OrderService'
 import Step1Pack from './steps/Step1Pack'
@@ -82,6 +82,11 @@ export default function CheckoutModal({
     // una tecla repetida. Salir de verdad es un botón explícito del diálogo.
     if (confirmingClose) { setConfirmingClose(false); return }
 
+    // Pedido ya registrado (todo lo que no es IDLE): cerrar es salir de una
+    // compra hecha. Sale directo — sin retenerlo con un descuento por algo que
+    // ya compró y sin contarlo como abandono. Ver `orderRegistered`.
+    if (orderRegistered(phase)) { onClose(); return }
+
     // Con data ingresada se pide confirmación: cerrar por error tras llenar
     // cuatro campos es perder la venta. Nada de confirm() nativo.
     //
@@ -102,7 +107,7 @@ export default function CheckoutModal({
     }
     co.abandon()
     onClose()
-  }, [co, confirmingClose, onClose, state.exitOfferShown, state.discountPen, state.step, dispatch])
+  }, [co, confirmingClose, onClose, phase, state.exitOfferShown, state.discountPen, state.step, dispatch])
 
   // El handler vive en un ref para que el efecto de abajo se monte UNA sola vez.
   // Si dependiera de `requestClose` —que cambia de identidad en cada render— su
@@ -427,7 +432,6 @@ export default function CheckoutModal({
               verification={phase.paid ? 'MATCHED' : state.payment.verification}
               token={phase.token}
               unpaid={phase.unpaid}
-              onClose={onClose}
             />
           )}
         </div>
