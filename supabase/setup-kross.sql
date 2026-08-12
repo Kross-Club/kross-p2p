@@ -698,3 +698,43 @@ DROP INDEX IF EXISTS idx_buyers_phone;
 DROP INDEX IF EXISTS idx_buyers_document_number;
 DROP INDEX IF EXISTS idx_buyers_doc_number;
 DROP INDEX IF EXISTS idx_buyers_doc;
+
+-- ─── 19. EXPERIMENTO A/B DEL CHECKOUT, OPERABLE DESDE EL PANEL ───────────────
+-- La variante (`checkout_variant`, más arriba) se sorteaba 50/50 en el
+-- navegador y no había forma de tocarlo sin un deploy: ni de mandar todo el
+-- tráfico a la ganadora cuando el experimento terminaba, ni de medir cuál
+-- ganaba. Este bloque pone las dos piezas que faltaban.
+
+-- 19.a El mando, en `stores`. Va aquí y no en `store_secrets` porque la landing
+-- necesita leerlo ANTES de que el comprador toque nada, y `stores` ya tiene
+-- SELECT público (política `stores_read`). No es un secreto: es del mismo tipo
+-- que `culqi_scope`. 'SPLIT' = el sorteo de siempre; 'A'/'B' = todo el tráfico
+-- a esa variante (para cuando ya sabes cuál gana).
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS checkout_ab_mode text DEFAULT 'SPLIT';
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_checkout_ab_mode_check;
+ALTER TABLE stores ADD CONSTRAINT stores_checkout_ab_mode_check
+  CHECK (checkout_ab_mode IS NULL OR checkout_ab_mode = ANY (ARRAY['SPLIT'::text, 'A'::text, 'B'::text]));
+
+-- 19.b El DENOMINADOR. `order_sessions.checkout_variant` dice cuántos pedidos
+-- hizo cada variante, pero sin contra qué dividir eso no es una tasa: una
+-- variante puede tener más pedidos solo porque le tocó más gente. El lead
+-- parcial ya se guarda apenas el WhatsApp es válido, así que marcarlo con su
+-- variante da "empezó a llenar → compró" — justo el tramo donde A y B se
+-- diferencian, y sin pedir un solo dato más al comprador.
+--
+-- Ojo al leer los números: la variante SOLO cambia el flujo en provincia con
+-- cobertura del courier (en B el comprador elige domicilio o agencia; en A lo
+-- decide la cobertura). En Lima las dos son idénticas, así que el total global
+-- mezcla tráfico sin experimento. El corte que vale es el de provincia.
+ALTER TABLE checkout_drafts ADD COLUMN IF NOT EXISTS checkout_variant text;
+ALTER TABLE checkout_drafts DROP CONSTRAINT IF EXISTS checkout_drafts_variant_check;
+ALTER TABLE checkout_drafts ADD CONSTRAINT checkout_drafts_variant_check
+  CHECK (checkout_variant IS NULL OR checkout_variant = ANY (ARRAY['A'::text, 'B'::text]));
+
+-- Las dos consultas del contador filtran por tienda y variante.
+CREATE INDEX IF NOT EXISTS idx_checkout_drafts_variant
+  ON checkout_drafts(store_id, checkout_variant)
+  WHERE checkout_variant IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_order_sessions_variant
+  ON order_sessions(store_id, checkout_variant)
+  WHERE checkout_variant IS NOT NULL;

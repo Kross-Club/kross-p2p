@@ -14,6 +14,7 @@ import { AgencyService, suggestFreeText } from './services/AgencyService'
 import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
 import type { CheckoutState } from './types'
 import { stagesFor, stageIndex, toStage } from '../order-stages'
+import { abModeOf, resolveVariant } from './variant'
 import { repliesFor } from '../../components/chat/QuickReplies'
 
 const run = (state: CheckoutState, ...actions: CheckoutAction[]): CheckoutState =>
@@ -629,6 +630,47 @@ describe('ajustes tras la revisión de Fase 2', () => {
     localStorage.setItem('kross.checkout.variant', 'B')
     saveDraft({ ...initialCheckoutState('pack-2', 'A'), step: 2 })
     expect(loadActiveDraft()?.variant).toBe('B')
+  })
+
+  // ─── Reparto del experimento (stores.checkout_ab_mode) ─────────────────────
+  it('en SPLIT sortea una vez y la guarda: la misma persona no cambia de versión', () => {
+    localStorage.clear()
+    const first = resolveVariant('SPLIT')
+    expect(['A', 'B']).toContain(first)
+    expect(localStorage.getItem('kross.checkout.variant')).toBe(first)
+    // Estable por dispositivo: sin esto el adelanto le bailaría entre recargas.
+    for (let i = 0; i < 20; i++) expect(resolveVariant('SPLIT')).toBe(first)
+  })
+
+  it('la tienda puede mandar todo el tráfico a una versión', () => {
+    localStorage.clear()
+    expect(resolveVariant('A')).toBe('A')
+    expect(resolveVariant('B')).toBe('B')
+  })
+
+  it('forzar NUNCA persiste: al volver a 50/50 nadie queda clavado', () => {
+    // Si el modo forzado se guardara, cada dispositivo que pasó por él seguiría
+    // en esa versión para siempre y el siguiente experimento nacería sesgado
+    // sin que nadie lo note. Este es el test que protege esa regla.
+    localStorage.clear()
+    resolveVariant('B')
+    expect(localStorage.getItem('kross.checkout.variant')).toBeNull()
+
+    // Y con un sorteo previo guardado, forzar tampoco lo pisa.
+    localStorage.setItem('kross.checkout.variant', 'A')
+    expect(resolveVariant('B')).toBe('B')
+    expect(localStorage.getItem('kross.checkout.variant')).toBe('A')
+    expect(resolveVariant('SPLIT')).toBe('A')
+  })
+
+  it('un modo desconocido cae en el sorteo, no en una versión fija', () => {
+    // Una marca sin migrar (NULL) o un dato mal escrito no puede decidir el
+    // reparto de nadie.
+    for (const raw of [null, undefined, '', 'C', 'split', 42]) {
+      expect(abModeOf(raw)).toBe('SPLIT')
+    }
+    expect(abModeOf('A')).toBe('A')
+    expect(abModeOf('B')).toBe('B')
   })
 
   it('sin cobertura la B NO pregunta: va directo a agencia', () => {

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
 import { COPY } from '../lib/checkout/checkout.config'
 import type { StoreCulqi } from '../lib/checkout/types'
+import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
 import type { CheckoutState } from '../lib/checkout/types'
@@ -41,6 +42,8 @@ export default function LandingProductoPage() {
   const [yape, setYape] = useState<StoreYape | null>(null)
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
   const [culqi, setCulqi] = useState<StoreCulqi | null>(null)
+  // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
+  const [abMode, setAbMode] = useState<CheckoutAbMode>('SPLIT')
 
   // El `setLoading(false)` vivía DENTRO del `.then`, sin `catch`: una caída de
   // red —el escenario normal del comprador en 4G— dejaba la landing girando
@@ -77,7 +80,7 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     supabase.from('stores')
-      .select('yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope')
+      .select('yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope, checkout_ab_mode')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         // Degradación POR CAMPO: si el select entero falla (p. ej. columnas
@@ -88,6 +91,9 @@ export default function LandingProductoPage() {
         setCulqi(data.culqi_enabled
           ? { enabled: true, scope: data.culqi_scope === 'ALL' ? 'ALL' : 'PROVINCIA' }
           : null)
+        // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
+        // reparto por defecto nunca puede depender de un dato mal escrito.
+        setAbMode(abModeOf(data.checkout_ab_mode))
       })
   }, [product?.store_id])
 
@@ -162,6 +168,7 @@ export default function LandingProductoPage() {
           onPartialLead={state => saveCheckoutDraft(state, product)}
           yape={yape}
           culqi={culqi}
+          abMode={abMode}
           submitContext={{
             storeId: product.store_id ?? '',
             productId: product.id,
@@ -194,6 +201,9 @@ async function saveCheckoutDraft(state: CheckoutState, product: Product) {
         location_type: state.locationType,
         district: state.limaAddress?.district ?? state.provinciaConfig?.district ?? null,
         step: state.step,
+        // El denominador del experimento: sin esto solo se sabe cuántos pedidos
+        // hizo cada variante, no sobre cuánta gente. Ver bloque 19.b.
+        checkout_variant: state.variant,
       }),
     })
   } catch {
