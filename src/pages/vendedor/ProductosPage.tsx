@@ -3,6 +3,7 @@ import { Plus, X, Trash2, Copy, Image as ImageIcon, ExternalLink, GripVertical }
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 import { IMAGE_PRESETS, downscaleImage } from '../../lib/images/downscale'
+import AbTestPanel from './AbTestPanel'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -26,6 +27,9 @@ export default function ProductosPage() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Product | null>(null)
   const [slug, setSlug] = useState<string | null>(null)
+  /** Cuál de los enlaces se acaba de copiar. Sin acuse, copiar no se siente:
+   *  el portapapeles no da señal y el vendedor toca dos veces por las dudas. */
+  const [copiado, setCopiado] = useState<string | null>(null)
 
   // Scope to the store you're currently acting in (effective) — so a super admin
   // who entered a brand sees THAT brand's products.
@@ -45,6 +49,12 @@ export default function ProductosPage() {
   }, [effective?.store_id])
   const landingBase = slug ? `https://${slug}.krossclub.app` : window.location.origin
 
+  const copiar = (url: string, key: string) => {
+    navigator.clipboard?.writeText(url)
+    setCopiado(key)
+    setTimeout(() => setCopiado(c => (c === key ? null : c)), 1500)
+  }
+
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
   if (!effective?.is_admin) {
@@ -62,6 +72,8 @@ export default function ProductosPage() {
         </button>
       </div>
 
+      {effective.store_id && <AbTestPanel storeId={effective.store_id} />}
+
       {products.length === 0 ? (
         <div className="text-center py-14">
           <ImageIcon size={40} className="mx-auto mb-3 opacity-30" />
@@ -77,10 +89,22 @@ export default function ProductosPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-black text-sm text-gray-900 truncate">{p.nombre || 'Sin nombre'}</p>
                 <p className="text-xs text-gray-400">S/{p.precio} · {p.images.length} imagen(es) · {p.packs.length} pack(s)</p>
-                <button onClick={() => { navigator.clipboard?.writeText(`${landingBase}/landing/${p.id}`) }}
-                  className="text-[11px] font-bold mt-1 flex items-center gap-1" style={{ color: 'var(--brand)' }}>
-                  <Copy size={11} /> Copiar link de landing
-                </button>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                  <button onClick={() => copiar(`${landingBase}/landing/${p.id}`, p.id)}
+                    className="text-[11px] font-bold flex items-center gap-1" style={{ color: 'var(--brand)' }}>
+                    <Copy size={11} /> {copiado === p.id ? '¡Copiado!' : 'Copiar link de landing'}
+                  </button>
+                  {/* Los dos enlaces del experimento. `?checkout=` FUERZA la versión
+                      y no la guarda, así que sirven para mandar cada anuncio a una
+                      —y comparar— pero no sortean: quien entre por el link limpio
+                      sigue cayendo en el reparto de la tienda. */}
+                  {(['A', 'B'] as const).map(v => (
+                    <button key={v} onClick={() => copiar(`${landingBase}/landing/${p.id}?checkout=${v}`, `${p.id}-${v}`)}
+                      className="text-[11px] font-bold flex items-center gap-1 text-gray-400">
+                      <Copy size={10} /> {copiado === `${p.id}-${v}` ? '¡Copiado!' : `Versión ${v}`}
+                    </button>
+                  ))}
+                </div>
               </div>
               <a href={`${landingBase}/landing/${p.id}`} target="_blank" rel="noreferrer" className="p-2 rounded-xl" style={{ background: '#F3F4F6', color: '#666' }}><ExternalLink size={14} /></a>
               <button onClick={() => setEditing(p)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#EEF9FF', color: 'var(--brand)' }}>Editar</button>

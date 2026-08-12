@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats'
+    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats' | 'ab_stats'
     admin_auth_id: string
     welcome_points?: number
     welcome_msg?: string
@@ -63,6 +63,9 @@ Deno.serve(async (req) => {
     culqi_scope?: string           // 'PROVINCIA' | 'ALL'
     culqi_public_key?: string | null   // WRITE-ONLY; null = borrar llaves
     culqi_secret_key?: string | null   // WRITE-ONLY; null = borrar llaves
+    // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
+    // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
+    checkout_ab_mode?: string
     // create: first admin login for the new brand
     admin_email?: string
     admin_password?: string
@@ -103,7 +106,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope, checkout_ab_mode')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -159,6 +162,53 @@ Deno.serve(async (req) => {
     return json({ total, imported, activated, pending })
   }
 
+  // ─── AB STATS (qué versión del checkout convierte más) ───────────────────────
+  // Numerador: pedidos por variante. Denominador: leads parciales por variante
+  // (`checkout_drafts`, que se guarda apenas el WhatsApp es válido). Sin el
+  // denominador solo se sabe cuántos pedidos hizo cada versión, no sobre cuánta
+  // gente: una variante puede ganar solo porque le tocó más tráfico ese día.
+  //
+  // Dos precauciones para que el número no mienta:
+  //   · `since` = el primer lead marcado con variante. Los pedidos se cuentan
+  //     desde ahí. Sin esto, los pedidos viejos (que sí traen variante) se
+  //     dividirían entre leads que nunca la tuvieron y la tasa saldría inflada.
+  //   · El corte de PROVINCIA es el que vale: la variante solo cambia el flujo
+  //     ahí (en B el comprador elige domicilio o agencia; en A lo decide la
+  //     cobertura). En Lima las dos son idénticas y solo agregan ruido.
+  if (body.action === 'ab_stats') {
+    const target = (isSuper && body.store_id) ? body.store_id : me.store_id
+    if (!target) return json({ error: 'no_store' }, 400)
+
+    const { data: first } = await supabase
+      .from('checkout_drafts')
+      .select('created_at')
+      .eq('store_id', target).not('checkout_variant', 'is', null)
+      .order('created_at', { ascending: true }).limit(1).maybeSingle()
+    const since = (first as { created_at: string } | null)?.created_at ?? null
+
+    const count = async (table: string, build: (q: any) => any) => {
+      const { count: n } = await build(
+        supabase.from(table).select('order_id', { count: 'exact', head: true }).eq('store_id', target),
+      )
+      return n ?? 0
+    }
+
+    const PROVINCIA_DISPATCH = ['AGENCIA_PROVINCIA', 'MOTORIZADO_PROVINCIA']
+    const porVariante = async (v: 'A' | 'B') => {
+      if (!since) return { leads: 0, pedidos: 0, leadsProvincia: 0, pedidosProvincia: 0 }
+      const draft = (q: any) => q.eq('checkout_variant', v)
+      const order = (q: any) => q.eq('checkout_variant', v).gte('created_at', since)
+      return {
+        leads: await count('checkout_drafts', draft),
+        leadsProvincia: await count('checkout_drafts', (q: any) => draft(q).eq('location_type', 'PROVINCIA')),
+        pedidos: await count('order_sessions', order),
+        pedidosProvincia: await count('order_sessions', (q: any) => order(q).in('dispatch_type', PROVINCIA_DISPATCH)),
+      }
+    }
+
+    return json({ since, A: await porVariante('A'), B: await porVariante('B') })
+  }
+
   // ─── UPDATE BRANDING ─────────────────────────────────────────────────────────
   // Any admin may update their own store. Super admin may update any store and
   // may change the slug (subdomain). A store admin cannot repoint their subdomain.
@@ -208,6 +258,11 @@ Deno.serve(async (req) => {
     if (body.yape_qr_url !== undefined) patch.yape_qr_url = body.yape_qr_url
     if (typeof body.culqi_enabled === 'boolean') patch.culqi_enabled = body.culqi_enabled
     if (body.culqi_scope === 'PROVINCIA' || body.culqi_scope === 'ALL') patch.culqi_scope = body.culqi_scope
+    // Lista blanca: el CHECK de la columna rechaza cualquier otra cosa, y un
+    // 500 aquí tumbaría el guardado entero de la marca por un campo opcional.
+    if (body.checkout_ab_mode === 'SPLIT' || body.checkout_ab_mode === 'A' || body.checkout_ab_mode === 'B') {
+      patch.checkout_ab_mode = body.checkout_ab_mode
+    }
 
     // Llaves WRITE-ONLY. '' u omitido = no tocar la guardada; null = borrarlas
     // (y con ellas se apaga el cobro: unas llaves borradas con el toggle

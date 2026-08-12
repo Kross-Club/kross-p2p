@@ -767,9 +767,41 @@ El pedido guarda `order_sessions.checkout_variant`. Sin esa columna se sabría
 cuánta gente vio cada versión pero **no cuál vendió**, que es la única pregunta
 que importa.
 
+### El mando y el contador ✅
+
+Bloque 19 del esquema. Vendedor → **Productos** trae el panel del experimento
+(`src/pages/vendedor/AbTestPanel.tsx`), y cada producto ofrece sus enlaces
+`?checkout=A` y `?checkout=B` para repartir tráfico de anuncios a mano.
+
+**`stores.checkout_ab_mode`** (`SPLIT` · `A` · `B`) decide el reparto sin deploy:
+`SPLIT` es el sorteo, y `A`/`B` mandan todo a esa versión cuando el experimento
+terminó. Vive en `stores` porque la landing lo necesita antes de que el comprador
+toque nada, y esa tabla ya tiene SELECT público.
+
+**Forzar nunca persiste** — ni por URL ni por `checkout_ab_mode`. Si el modo
+forzado se guardara en `localStorage`, al devolver el switch a 50/50 cada
+dispositivo que pasó por ahí seguiría clavado en esa versión y el experimento
+siguiente nacería sesgado sin que nadie lo note. Hay un test que protege la regla.
+
+**El denominador es `checkout_drafts.checkout_variant`** (19.b): el lead parcial
+ya se guarda apenas el WhatsApp es válido, así que marcarlo con su versión da la
+tasa *empezó a llenar → compró* sin pedirle un dato más al comprador. La analítica
+de front no sirve para esto: `setAnalyticsSink` no se llama en ningún sitio, así
+que en producción los `trackEvent` caen en un sink vacío.
+
+`manage-store` acción **`ab_stats`** hace las cuentas con dos precauciones:
+
+- **`since`** = el primer lead marcado con versión, y los pedidos se cuentan desde
+  ahí. Sin eso, los pedidos viejos (que sí traen variante) se dividirían entre
+  leads que nunca la tuvieron y la tasa saldría inflada.
+- **El corte de PROVINCIA es el que vale.** La variante solo cambia el flujo en
+  provincia con cobertura; en Lima A y B son idénticas y su tráfico solo diluye la
+  señal. El panel pinta ese número en grande y el global en gris, rotulado.
+
 > ⚠️ **Volumen.** Un A/B necesita cientos de pedidos por rama para separar señal
-> de ruido. Con el volumen actual los números no deciden nada todavía: sirven para
-> ver que el flujo B no rompe nada, no para elegir ganador.
+> de ruido. El panel no pinta ganador por debajo de 30 leads por versión y lo dice
+> en pantalla; aun así, con el volumen actual los números sirven para ver que el
+> flujo B no rompe nada, no para elegir ganador.
 
 ### Pendiente
 

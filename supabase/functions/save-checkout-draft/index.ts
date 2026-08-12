@@ -69,6 +69,13 @@ Deno.serve(async (req) => {
       location_type: body.location_type === 'PROVINCIA' ? 'PROVINCIA' : body.location_type === 'LIMA' ? 'LIMA' : null,
       district: clamp(body.district, 120),
       last_step: Number(body.step) || 1,
+      // Denominador del experimento A/B (bloque 19.b). Lista blanca estricta:
+      // el CHECK de la columna rechazaría cualquier otra cosa y tumbaría el
+      // guardado del lead entero — perder el lead por un valor raro sería peor
+      // que perder el dato del experimento.
+      checkout_variant: body.checkout_variant === 'A' || body.checkout_variant === 'B'
+        ? body.checkout_variant
+        : null,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'order_id' })
 

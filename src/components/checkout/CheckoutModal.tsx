@@ -12,6 +12,7 @@ import { useCheckout } from '../../lib/checkout/useCheckout'
 import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN, culqiActiveFor } from '../../lib/checkout/checkout.config'
 import { trackEvent } from '../../lib/checkout/analytics'
 import type { CheckoutState, StoreCulqi } from '../../lib/checkout/types'
+import type { CheckoutAbMode } from '../../lib/checkout/variant'
 import { effectivePrice } from '../../lib/checkout/product-packs'
 import { fetchPaymentVerification, submitOrder, uploadVoucher } from '../../lib/checkout/services/OrderService'
 import { chargeAdvance } from '../../lib/checkout/services/CulqiService'
@@ -49,11 +50,14 @@ interface CheckoutModalProps {
   yape?: StoreYape | null
   /** Config Culqi de la tienda (columnas públicas). Puede llegar asíncrona. */
   culqi?: StoreCulqi | null
+  /** Cómo reparte la tienda el A/B (`stores.checkout_ab_mode`). Asíncrona igual
+   *  que `culqi`: hasta que llegue vale el sorteo 50/50 de siempre. */
+  abMode?: CheckoutAbMode
 }
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, yape = null, culqi = null,
+  submitContext, yape = null, culqi = null, abMode = 'SPLIT',
 }: CheckoutModalProps) {
   const co = useCheckout({ initialPack, onPartialLead })
   const { state, dispatch, errors, touch } = co
@@ -75,6 +79,11 @@ export default function CheckoutModal({
   useEffect(() => {
     dispatch({ type: 'SET_CULQI_CONFIG', culqi: culqi ?? null })
   }, [culqi, dispatch])
+
+  // Igual que la de Culqi: llega asíncrona y con deps reales se corrige sola.
+  useEffect(() => {
+    dispatch({ type: 'SET_AB_MODE', mode: abMode })
+  }, [abMode, dispatch])
 
   const requestClose = useCallback(() => {
     // Con el diálogo de salida ya abierto, cualquier nuevo intento de cerrar

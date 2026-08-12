@@ -8,6 +8,8 @@
 
 import { CULQI_OTP_LENGTH, EXIT_DISCOUNT_PEN, PHONE_LENGTH_PE, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
 import { methodForCoverage } from './services/DistrictCoverageService'
+import { resolveVariant } from './variant'
+import type { CheckoutAbMode } from './variant'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
   LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig, StoreCulqi,
@@ -78,6 +80,9 @@ export type CheckoutAction =
   | { type: 'SET_YAPE_CODE'; code: string }
   /** Config de la tienda, inyectada por el modal (puede llegar asíncrona). */
   | { type: 'SET_CULQI_CONFIG'; culqi: StoreCulqi | null }
+  /** Cómo reparte la tienda el experimento (`stores.checkout_ab_mode`). Llega
+   *  asíncrona, como la config de Culqi, así que re-resuelve la variante. */
+  | { type: 'SET_AB_MODE'; mode: CheckoutAbMode }
   | { type: 'SET_CULQI_PHONE'; phone: string }
   | { type: 'SET_CULQI_OTP'; otp: string }
   | { type: 'SET_VERIFICATION'; verification: PaymentVerification; reason?: string | null; matchedAt?: string | null }
@@ -304,6 +309,13 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     // `advanceAmount` sigue siendo derivado en derive() y ninguna lo toca.
     case 'SET_CULQI_CONFIG':
       return derive({ ...state, culqi: action.culqi })
+
+    // Con la tienda en 'A'/'B' el sorteo del navegador no manda. Se re-resuelve
+    // en vez de asignar `action.mode` a secas porque `?checkout=` sigue ganando
+    // por encima de todo: es la vía para demostrar la otra versión sin tocar la
+    // config de la marca.
+    case 'SET_AB_MODE':
+      return derive({ ...state, variant: resolveVariant(action.mode) })
 
     case 'SET_CULQI_PHONE':
       return derive({ ...state, culqiPhone: action.phone.replace(/\D/g, '').slice(0, PHONE_LENGTH_PE) })
