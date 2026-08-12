@@ -136,13 +136,15 @@ supabase secrets set RESEND_API_KEY=… RECLAMOS_FROM="Kross <reclamos@krossclub
    sed -n '/─── 15\. WEB PÚBLICA/,$p' supabase/setup-kross.sql
    ```
 
-   > ⚠️ **No correr el archivo completo contra producción.** El archivo es
-   > idempotente contra sí mismo, pero producción ya tiene cambios que aún no
-   > están en `main` (el cobro con Culqi del adelanto). En concreto, la
-   > sección 14 recrea `order_sessions_stage_check` **sin** la etapa
-   > `no_entregado`, que producción sí tiene: correrlo entero la borraría del
-   > CHECK y rompería los pedidos no entregados. Mientras `main` no alcance a
-   > producción, se corren solo los bloques nuevos.
+   > ⚠️ **Ojo con el archivo completo.** El bloque 14 recrea
+   > `order_sessions_stage_check` **sin** la etapa `no_entregado` y el bloque
+   > 17 la vuelve a añadir. Correrlo entero, entonces: sin ningún pedido en
+   > `no_entregado` termina bien (manda el 17, que va después); con alguno, el
+   > bloque 14 falla al validar las filas existentes y el editor de Supabase
+   > deshace todo. Ninguno de los dos es una sorpresa silenciosa, pero el `sed`
+   > de arriba sigue siendo lo barato: imprime la sección 15 y todo lo que le
+   > sigue (16-18 — cobro con Culqi, `no_entregado` y la unicidad de `buyers`),
+   > idempotente y ya aplicado en producción.
 4. **Edge Functions**:
    ```
    supabase functions deploy web-order            --project-ref ofdjghntvmrdfjhazfvz

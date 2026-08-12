@@ -53,18 +53,47 @@ Deno.serve(async (req) => {
     wa_phone_number_id?: string
     wa_display_phone?: string
     wa_business_account_id?: string
+    // Cobros — número de Yape de la marca y cuenta Culqi. SOLO por JWT
+    // verificado (ver abajo): redirigir el Yape o la sk de una tienda es
+    // desviar su dinero, no cambiarle el logo.
+    yape_number?: string
+    yape_holder?: string
+    yape_qr_url?: string | null
+    culqi_enabled?: boolean
+    culqi_scope?: string           // 'PROVINCIA' | 'ALL'
+    culqi_public_key?: string | null   // WRITE-ONLY; null = borrar llaves
+    culqi_secret_key?: string | null   // WRITE-ONLY; null = borrar llaves
     // create: first admin login for the new brand
     admin_email?: string
     admin_password?: string
     admin_nombre?: string
   }
 
-  if (!body.admin_auth_id) return json({ error: 'missing_admin' }, 400)
+  // ─── Identidad del que llama ───────────────────────────────────────────────
+  // El camino REAL es el JWT del vendedor en el Authorization: se verifica
+  // contra Auth y se ignora cualquier id del body. El camino legacy
+  // (body.admin_auth_id + anon key) existía desde antes y `sellers` tiene
+  // SELECT público, así que ese id lo conoce cualquiera: se tolera SOLO para
+  // los campos que ya gestionaba (branding/retención) mientras el front viejo
+  // siga desplegado, y JAMÁS para los campos de cobro. Retirarlo del todo es
+  // deuda anotada en docs/01-SALES-ENGINE.md §3.3.
+  const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
+  let callerId: string | null = null
+  let trusted = false
+  if (bearer) {
+    const { data: authed } = await supabase.auth.getUser(bearer)
+    if (authed?.user) { callerId = authed.user.id; trusted = true }
+  }
+  if (!callerId) {
+    if (!body.admin_auth_id) return json({ error: 'missing_admin' }, 400)
+    callerId = body.admin_auth_id
+    console.warn('[manage-store] auth legacy por admin_auth_id (deprecado) · action=' + body.action)
+  }
 
   const { data: me } = await supabase
     .from('sellers')
     .select('is_admin, is_super_admin, store_id')
-    .eq('auth_user_id', body.admin_auth_id)
+    .eq('auth_user_id', callerId)
     .maybeSingle()
 
   if (!me?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
@@ -74,12 +103,27 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
     if (error) return json({ error: error.message }, 400)
-    return json({ stores: data ?? [], is_super: isSuper })
+
+    // ¿La tienda tiene su llave secreta configurada? Se deriva SIN traer la
+    // llave: seleccionar solo store_id de las filas donde existe. Traer la sk
+    // a memoria para computar un boolean es dejarla a un console.log de
+    // distancia de la respuesta.
+    const ids = (data ?? []).map(s => (s as { id: string }).id)
+    const configured = new Set<string>()
+    if (ids.length) {
+      const { data: rows } = await supabase.from('store_secrets')
+        .select('store_id').in('store_id', ids).not('culqi_secret_key', 'is', null)
+      for (const r of rows ?? []) configured.add((r as { store_id: string }).store_id)
+    }
+    const enriched = (data ?? []).map(s => ({
+      ...s, culqi_secret_configured: configured.has((s as { id: string }).id),
+    }))
+    return json({ stores: enriched, is_super: isSuper })
   }
 
   // ─── WHATSAPP USAGE (para el cobro 2x por plantilla) ─────────────────────────
@@ -149,9 +193,71 @@ Deno.serve(async (req) => {
       patch.slug = slug
     }
 
-    if (Object.keys(patch).length === 0) return json({ error: 'nada_que_guardar' }, 400)
-    const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
-    if (error) return json({ error: error.message }, 400)
+    // ─── Cobros: Yape de la marca + cuenta Culqi ──────────────────────────────
+    // Cualquier admin gestiona los de SU tienda, pero SOLO con JWT verificado:
+    // el camino legacy usa un id que cualquiera lee con la anon key, y estos
+    // campos redirigen dinero.
+    const touchesPayments = body.yape_number !== undefined || body.yape_holder !== undefined
+      || body.yape_qr_url !== undefined || body.culqi_enabled !== undefined
+      || body.culqi_scope !== undefined || body.culqi_public_key !== undefined
+      || body.culqi_secret_key !== undefined
+    if (touchesPayments && !trusted) return json({ error: 'auth_requerida' }, 403)
+
+    if (typeof body.yape_number === 'string') patch.yape_number = body.yape_number.replace(/\D/g, '').slice(0, 9) || null
+    if (typeof body.yape_holder === 'string') patch.yape_holder = body.yape_holder.trim() || null
+    if (body.yape_qr_url !== undefined) patch.yape_qr_url = body.yape_qr_url
+    if (typeof body.culqi_enabled === 'boolean') patch.culqi_enabled = body.culqi_enabled
+    if (body.culqi_scope === 'PROVINCIA' || body.culqi_scope === 'ALL') patch.culqi_scope = body.culqi_scope
+
+    // Llaves WRITE-ONLY. '' u omitido = no tocar la guardada; null = borrarlas
+    // (y con ellas se apaga el cobro: unas llaves borradas con el toggle
+    // prendido dejarían a toda la tienda pidiendo códigos que nunca cobran).
+    const wipeKeys = body.culqi_public_key === null || body.culqi_secret_key === null
+    const culqiPk = typeof body.culqi_public_key === 'string' ? body.culqi_public_key.trim() : ''
+    const culqiSk = typeof body.culqi_secret_key === 'string' ? body.culqi_secret_key.trim() : ''
+    if (culqiPk && !/^pk_(test|live)_/.test(culqiPk)) return json({ error: 'culqi_pk_invalida' }, 400)
+    if (culqiSk && !/^sk_(test|live)_/.test(culqiSk)) return json({ error: 'culqi_sk_invalida' }, 400)
+    if (culqiPk && culqiSk) {
+      const env = (k: string) => (k.includes('_live_') ? 'live' : 'test')
+      // pk_live + sk_test pasa ambos regex y deja a la tienda cobrando contra
+      // dos entornos: fallo silencioso en producción.
+      if (env(culqiPk) !== env(culqiSk)) return json({ error: 'culqi_env_mismatch' }, 400)
+    }
+
+    let wroteSecrets = false
+    if (wipeKeys) {
+      const { error } = await supabase.from('store_secrets')
+        .update({ culqi_public_key: null, culqi_secret_key: null, culqi_keys_updated_at: new Date().toISOString() })
+        .eq('store_id', targetId)
+      if (error) return json({ error: error.message }, 400)
+      patch.culqi_enabled = false
+      wroteSecrets = true
+    } else if (culqiPk || culqiSk) {
+      const secretPatch: Record<string, unknown> = { store_id: targetId, culqi_keys_updated_at: new Date().toISOString() }
+      if (culqiPk) secretPatch.culqi_public_key = culqiPk
+      if (culqiSk) secretPatch.culqi_secret_key = culqiSk
+      const { error } = await supabase.from('store_secrets').upsert(secretPatch, { onConflict: 'store_id' })
+      if (error) return json({ error: error.message }, 400)
+      wroteSecrets = true
+    }
+
+    // Prender el cobro exige que las DOS llaves existan YA. Sin este gate, un
+    // toggle prendido "para dejarlo listo" pinta el formulario de código de
+    // aprobación en toda la tienda mientras culqi-charge rebota cada intento —
+    // y cada comprador termina con un pedido creado sin cobrar.
+    if (patch.culqi_enabled === true) {
+      const { data: sec } = await supabase.from('store_secrets')
+        .select('store_id').eq('store_id', targetId)
+        .not('culqi_public_key', 'is', null).not('culqi_secret_key', 'is', null)
+        .maybeSingle()
+      if (!sec) return json({ error: 'culqi_sin_llaves' }, 400)
+    }
+
+    if (Object.keys(patch).length === 0 && !wroteSecrets) return json({ error: 'nada_que_guardar' }, 400)
+    if (Object.keys(patch).length > 0) {
+      const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
+      if (error) return json({ error: error.message }, 400)
+    }
     return json({ ok: true })
   }
 

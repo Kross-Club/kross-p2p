@@ -226,13 +226,11 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
 }) {
   const [busy, setBusy] = useState(false)
   const stageLabel: Record<string, string> = {
-    nuevo: 'Nuevo', validando: 'Validando', confirmado: 'Confirmado', preparando: 'Preparando', en_camino: 'En camino', entregado: 'Entregado'
+    nuevo: 'Nuevo', validando: 'Validando', confirmado: 'Confirmado', preparando: 'Preparando', en_camino: 'En camino', entregado: 'Entregado',
+    no_entregado: 'No entregado',
   }
 
-  const advance = async () => {
-    const idx = STAGES.indexOf(current)
-    if (idx >= STAGES.length - 1 || busy) return
-    const next = STAGES[idx + 1]
+  const push = async (next: string) => {
     setBusy(true)
     try {
       // Persisted server-side (service role) — client writes were blocked by RLS.
@@ -251,16 +249,44 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
     }
   }
 
+  const advance = () => {
+    const idx = STAGES.indexOf(current)
+    if (idx >= STAGES.length - 1 || busy) return
+    push(STAGES[idx + 1])
+  }
+
+  // Terminal de fracaso, con confirmación: es lo que alimenta la tasa de
+  // entrega, y marcarlo por error ensucia la métrica que la marca vende.
+  const markUndelivered = () => {
+    if (busy) return
+    if (!window.confirm('¿Marcar como NO ENTREGADO? Cierra el pedido y cuenta en la tasa de entrega.')) return
+    push('no_entregado')
+  }
+
   const idx = STAGES.indexOf(current)
+  const terminal = current === 'entregado' || current === 'no_entregado'
+  // Solo tiene sentido rendirse cuando el pedido ya salió al mundo: antes de
+  // confirmado lo que corresponde es cancelar, no "no entregar".
+  const canFail = canWrite && !terminal && ['confirmado', 'preparando', 'en_camino'].includes(current)
   return (
     <div className="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-100">
       <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Estado:</span>
-      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--brand)', color: 'white' }}>
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+        style={current === 'no_entregado'
+          ? { background: '#FEE2E2', color: '#DC2626' }
+          : { background: 'var(--brand)', color: 'white' }}>
         {stageLabel[current] || current}
       </span>
-      {canWrite && idx < STAGES.length - 1 && (
+      {canFail && (
+        <button onClick={markUndelivered} disabled={busy}
+          className="ml-auto text-[10px] font-black px-2.5 py-1 rounded-full disabled:opacity-50"
+          style={{ background: '#FEE2E2', color: '#DC2626' }}>
+          ✕ No entregado
+        </button>
+      )}
+      {canWrite && !terminal && idx < STAGES.length - 1 && (
         <button onClick={advance} disabled={busy}
-          className="ml-auto text-[10px] font-black px-3 py-1 rounded-full disabled:opacity-50"
+          className={`${canFail ? '' : 'ml-auto '}text-[10px] font-black px-3 py-1 rounded-full disabled:opacity-50`}
           style={{ background: '#FFD400', color: '#111' }}>
           {busy ? '…' : `→ ${stageLabel[STAGES[idx + 1]]}`}
         </button>
@@ -682,6 +708,7 @@ export default function VendedorPedidoPage() {
         reason={session.payment_reason ?? null}
         yapeCode={session.advance_yape_code ?? null}
         hasVoucher={!!session.advance_voucher_url}
+        provider={session.payment_provider ?? null}
       />
 
       <AddressBar

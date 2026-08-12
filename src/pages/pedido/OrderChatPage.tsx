@@ -28,6 +28,21 @@ function OrderTracker({ stage, advanceAmount }: { stage: string; advanceAmount?:
   const current = STAGES[currentIdx]
   const pct = STAGES.length > 1 ? (currentIdx / (STAGES.length - 1)) * 100 : 0
 
+  // Cierre en fracaso: la barra de progreso no aplica (no hay avance que
+  // mostrar y pintarla al inicio se leería como "algo se atascó"). Aviso
+  // neutro, sin culpas — el chat sigue abierto para retomar la venta.
+  if (stage === 'no_entregado') {
+    return (
+      <div className="mx-4 mt-3 mb-1 bg-white rounded-2xl px-4 py-3.5 shadow-sm" style={{ border: '1.5px solid #F0F0F0' }}>
+        <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: '#9CA3AF' }}>Estado de tu pedido</p>
+        <p className="text-xs font-bold text-gray-700">📦 Pedido cerrado</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">
+          Este pedido se cerró sin entregarse. Si quieres retomarlo, escríbenos por aquí y lo vemos al toque.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="mx-4 mt-3 mb-1 bg-white rounded-2xl px-4 py-3.5 shadow-sm" style={{ border: '1.5px solid #F0F0F0' }}>
       <div className="flex items-center justify-between mb-3">

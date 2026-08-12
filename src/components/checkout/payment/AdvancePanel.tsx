@@ -27,10 +27,14 @@ interface AdvancePanelProps {
    *  verifica a mano en la app de Yape cuando el cruce automático no llega. */
   yapeCode: string | null
   hasVoucher: boolean
+  /** 'CULQI' = el adelanto se cobra en línea. La ayuda del código de 3 dígitos
+   *  y la nota del comprobante no aplican: no hay yape manual que buscar. */
+  provider?: string | null
 }
 
 export default function AdvancePanel({
   sessionId, sellerAuthId, advanceAmount, verification, reason, yapeCode, hasVoucher,
+  provider = null,
 }: AdvancePanelProps) {
   const [url, setUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -95,21 +99,37 @@ export default function AdvancePanel({
         </p>
       )}
 
-      {/* El código tecleado es lo ÚNICO accionable cuando el cruce no llega:
-          con él se busca el pago en la app de Yape sin depender de nadie. Antes
-          el panel decía "sin comprobante" y ahí se acababa la ayuda. */}
-      {!matched && yapeCode && (
-        <p className="text-[11px] text-gray-500 mt-1.5">
-          El cliente dice haber yapeado con el código{' '}
-          <strong className="font-black tracking-widest text-gray-800">{yapeCode}</strong>
-          {' '}· búscalo en tu Yape si no cruza solo.
-        </p>
-      )}
+      {/* La ayuda accionable depende del MOTOR del cobro. Con Culqi no hay
+          yape que buscar ni captura que esperar: o el cargo entró (verificado)
+          o falló y el cobro se coordina por el chat. Mostrar aquí la ayuda del
+          código de 3 dígitos mandaría al vendedor a revisar su app de Yape
+          buscando un pago que jamás va a llegar por ahí. */}
+      {provider === 'CULQI' ? (
+        !matched && (
+          <p className="text-[11px] text-gray-500 mt-1.5">
+            El cobro en línea aún no entra. Si el cliente no reintenta,
+            coordina el adelanto por el chat.
+          </p>
+        )
+      ) : (
+        <>
+          {/* El código tecleado es lo ÚNICO accionable cuando el cruce no llega:
+              con él se busca el pago en la app de Yape sin depender de nadie. Antes
+              el panel decía "sin comprobante" y ahí se acababa la ayuda. */}
+          {!matched && yapeCode && (
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              El cliente dice haber yapeado con el código{' '}
+              <strong className="font-black tracking-widest text-gray-800">{yapeCode}</strong>
+              {' '}· búscalo en tu Yape si no cruza solo.
+            </p>
+          )}
 
-      {!hasVoucher && (
-        <p className="text-[11px] text-gray-400 mt-1.5">
-          Sin comprobante adjunto — es lo normal: el cruce usa el código, no la captura.
-        </p>
+          {!hasVoucher && (
+            <p className="text-[11px] text-gray-400 mt-1.5">
+              Sin comprobante adjunto — es lo normal: el cruce usa el código, no la captura.
+            </p>
+          )}
+        </>
       )}
 
       {error && <p className="text-[11px] text-red-500 mt-1.5">{error}</p>}

@@ -48,6 +48,17 @@ export type PaymentVerification = 'NOT_REQUIRED' | 'PENDING' | 'MATCHED' | 'UNMA
 
 export type CheckoutStatus = 'DRAFT' | 'SUBMITTING' | 'SUBMITTED' | 'ERROR'
 
+/** Dónde cobra Culqi: solo provincia, o todo el país incluida Lima. Es la
+ *  retirada operativa — replegarse a 'PROVINCIA' no requiere deploy. */
+export type CulqiScope = 'PROVINCIA' | 'ALL'
+
+/** Config de cobro en línea de la TIENDA (columnas públicas de `stores`).
+ *  La inyecta el modal en cada apertura; jamás viene del borrador guardado. */
+export interface StoreCulqi {
+  enabled: boolean
+  scope: CulqiScope
+}
+
 export interface CustomerInfo {
   dni: string
   whatsapp: string
@@ -124,6 +135,17 @@ export interface CheckoutState {
    * permite decidir sin ambigüedad entre dos pedidos del mismo monto.
    */
   advanceYapeCode: string
+  /**
+   * Config Culqi de la tienda. `null` = la tienda no cobra en línea (o aún no
+   * cargó). NO es un derivado ni sobrevive al borrador: el modal la reinyecta
+   * en cada apertura, para que un borrador guardado con Culqi activo no pueda
+   * forzar el cobro en una tienda que lo apagó.
+   */
+  culqi: StoreCulqi | null
+  /** Celular que aprueba en Yape. Se prellena del WhatsApp; editable. */
+  culqiPhone: string
+  /** Código de aprobación de Yape (6 dígitos, vence en 2 min). Jamás persiste. */
+  culqiOtp: string
   /** Derivado del destino Y de la agencia elegida. Nunca editable a mano. */
   advanceAmount: number
   /** Descuento de retención aplicado, en soles. Se resta de CADA pack. */

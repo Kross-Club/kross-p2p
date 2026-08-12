@@ -184,6 +184,10 @@ Deno.serve(async (req) => {
     .select('id, order_id, buyer_name, advance_amount, advance_yape_code, created_at')
     .eq('store_id', storeId)
     .eq('payment_verification', 'PENDING')
+    // Los pedidos Culqi no participan del cruce manual: su dinero llega por
+    // `culqi-charge`, no por el Yape de la marca. Un yape ajeno del mismo monto
+    // los daría por pagados y el cargo real nunca ocurriría.
+    .is('payment_provider', null)
     .gte('created_at', since)
     .order('created_at', { ascending: true })
 

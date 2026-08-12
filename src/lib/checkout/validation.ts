@@ -6,13 +6,14 @@
 // Los mensajes de error dicen CÓMO arreglarlo, no qué está mal: "Deben ser 9
 // dígitos" convierte mejor que "Teléfono inválido".
 
-import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_REQUIRED, YAPE_CODE_LENGTH } from './checkout.config'
+import { COVERAGE_MODE, CULQI_OTP_LENGTH, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_REQUIRED, YAPE_CODE_LENGTH, culqiActiveFor } from './checkout.config'
 import { hasBranchList } from './services/AgencyService'
 import type { CheckoutState, CheckoutStepId } from './types'
 
 export type FieldName =
   | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName' | 'locationType'
   | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch' | 'voucher' | 'yapeCode'
+  | 'culqiPhone' | 'culqiOtp'
 
 export type FieldErrors = Partial<Record<FieldName, string>>
 
@@ -132,10 +133,37 @@ export function validateYapeCode(code: string): string | null {
   return null
 }
 
+/** El celular que aprueba en Yape: mismas reglas que un celular peruano. */
+export function validateCulqiPhone(phone: string): string | null {
+  const d = digits(phone)
+  if (!d) return 'Pon el celular con el que vas a yapear'
+  if (d.length !== PHONE_LENGTH_PE) return `Deben ser ${PHONE_LENGTH_PE} dígitos`
+  if (!d.startsWith('9')) return 'Un celular peruano empieza con 9'
+  return null
+}
+
+export function validateCulqiOtp(otp: string): string | null {
+  const d = digits(otp)
+  if (!d) return 'Genera tu código de aprobación en Yape'
+  if (d.length !== CULQI_OTP_LENGTH) return `Son ${CULQI_OTP_LENGTH} dígitos`
+  return null
+}
+
 function validateStep3(s: CheckoutState): FieldErrors {
-  // Lima paga 100 % contraentrega: no hay nada que verificar y el CTA queda
-  // habilitado de una. Es el segmento de mayor volumen y el flujo más corto.
+  // Sin adelanto no hay nada que verificar y el CTA queda habilitado de una.
   if (s.advanceAmount <= 0) return {}
+
+  // Cobro en línea: lo obligatorio es el celular + el código de aprobación.
+  // Ni el código de seguridad de 3 dígitos ni la captura aplican — no hay
+  // notificación que cruzar ni evidencia que revisar: el cargo ES la prueba.
+  if (culqiActiveFor(s)) {
+    const e: FieldErrors = {}
+    const ph = validateCulqiPhone(s.culqiPhone)
+    if (ph) e.culqiPhone = ph
+    const otp = validateCulqiOtp(s.culqiOtp)
+    if (otp) e.culqiOtp = otp
+    return e
+  }
 
   const e: FieldErrors = {}
 

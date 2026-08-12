@@ -10,6 +10,12 @@
 
 export type OrderStage =
   | 'nuevo' | 'validando' | 'confirmado' | 'preparando' | 'en_camino' | 'entregado'
+  // Terminal de FRACASO. No es un paso de la barra (stagesFor no lo incluye:
+  // un punto que solo puede encenderse en la derrota no pertenece al tracker
+  // que el comprador mira para tranquilizarse) — es el cierre que hace
+  // computable la tasa de entrega: entregado / (entregado + no_entregado).
+  // Lo marca una persona, nunca el sistema.
+  | 'no_entregado'
 
 export interface StageStep {
   key: OrderStage
@@ -54,6 +60,6 @@ export function stageIndex(stage: string | null | undefined, steps: StageStep[])
 
 /** Normaliza lo que venga de la BD. Una etapa desconocida cae a `nuevo`. */
 export function toStage(value: string | null | undefined): OrderStage {
-  const all: OrderStage[] = ['nuevo', 'validando', 'confirmado', 'preparando', 'en_camino', 'entregado']
+  const all: OrderStage[] = ['nuevo', 'validando', 'confirmado', 'preparando', 'en_camino', 'entregado', 'no_entregado']
   return all.includes(value as OrderStage) ? (value as OrderStage) : 'nuevo'
 }

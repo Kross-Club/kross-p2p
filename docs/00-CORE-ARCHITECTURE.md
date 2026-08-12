@@ -98,14 +98,18 @@ type MerchantCustomerSession = {
   sale:      { productId: string
                paymentMethod: 'YAPE_PLIN' | 'CONTRAENTREGA' | 'TARJETA'
                closedBy: 'AI_CLOSER' | 'DIRECT_CHECKOUT' }
-  // Adelanto por Yape (provincia). Sales lo cobra y lo cruza; Logistics decide
-  // con él si despacha. Por eso vive en el contrato y no dentro de Sales.
-  advance:   { amountPen: number            // 0 en Lima, 10 Shalom, 20 Olva
+  // Adelanto. Sales lo cobra (manual §3.1-3.2 o Culqi §3.3, según la tienda);
+  // Logistics decide con él si despacha. Por eso vive en el contrato.
+  advance:   { amountPen: number            // Lima 5 · Shalom 20 · Olva 25 · domicilio provincia 30
                verification: 'NOT_REQUIRED' | 'PENDING' | 'MATCHED'
-               yapeCode?: string            // 3 dígitos tecleados por el comprador
+               provider?: 'CULQI' | null    // NULL = flujo manual; separa las piscinas de cruce
+               providerChargeId?: string    // chr_… de Culqi, en payment_events
+               yapeCode?: string            // 3 dígitos tecleados (solo flujo manual)
                voucherPath?: string         // ruta en el bucket PRIVADO `vouchers`
                reason?: string }            // veredicto interno — NUNCA al comprador
   stage:     'nuevo' | 'validando' | 'confirmado' | 'preparando' | 'en_camino' | 'entregado'
+             | 'no_entregado'               // terminal de fracaso: lo marca una persona;
+                                            // tasa de entrega = entregado/(entregado+no_entregado)
   loyalty:   { pointsEarned: number; nextReorderDate: Date }
 }
 ```
@@ -134,8 +138,10 @@ Mapeo actual → objetivo:
 | `delivery.agencyName` | `order_sessions.agency_name` (columna lista, provincia pendiente) | 🟡 |
 | `sale.paymentMethod` | `order_sessions.payment_method` (def `CONTRAENTREGA`) — escrito por checkout | ✅ |
 | `sale.closedBy` | `order_sessions.closed_by` (def `DIRECT_CHECKOUT`) — escrito por checkout | ✅ |
-| `advance.amountPen` | `order_sessions.advance_amount` — lo deriva el checkout del destino | ✅ |
-| `advance.verification` | `order_sessions.payment_verification` — la cruza `yape-ingest` | ✅ |
+| `advance.amountPen` | `order_sessions.advance_amount` — lo deriva el SERVIDOR (`_shared/advance.ts`) | ✅ |
+| `advance.verification` | `order_sessions.payment_verification` — la cruza `yape-ingest` o la fija `culqi-charge` | ✅ |
+| `advance.provider` | `order_sessions.payment_provider` — 'CULQI' o NULL | ✅ |
+| `advance.providerChargeId` | `payment_events.provider_charge_id` (por `matched_order_id`) | ✅ |
 | `advance.yapeCode` | `order_sessions.advance_yape_code` | ✅ |
 | `advance.voucherPath` | `order_sessions.advance_voucher_url` (bucket privado) | ✅ |
 | `advance.reason` | `order_sessions.payment_reason` — solo Ventas | ✅ |
