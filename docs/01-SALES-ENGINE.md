@@ -446,17 +446,27 @@ en 2 minutos" cuando el contador real va en segundos.
 > | **A · Acreditar PCI DSS** (SAQ-D al buzón de riesgos) | Papeleo de cumplimiento y la obligación que conlleva | Todo lo de abajo intacto: nuestro campo, nuestra estética, cero script ajeno |
 > | **B · Culqi Checkout** (popup) | Cae el "CERO script de terceros"; el comprador teclea en el popup de Culqi; hay que replantear el submit en dos fases y su recuperación | Funciona sin acreditación |
 >
-> Mientras se decide, la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
+> **Decidido (13-ago-2026): camino A.** El trámite entero —qué pedir, el expediente que lo
+> sustenta, el correo y el checklist del día que aprueben— vive en
+> **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)**. El argumento en una línea: por el riel Yape no
+> pasa una tarjeta (celular + código de aprobación → token `ype_`), así que no hay entorno
+> de datos de tarjeta que acreditar; lo que se pide es la autorización con **alcance Yape**.
+>
+> Hasta que respondan, la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
 
 **Límites de Yape que impone Culqi** (misma página): monto máximo **S/ 2000** por pago y
 **solo soles**. Los adelantos de Kross (S/5–S/30) caben de sobra, pero el techo importa si
 alguna vez se cobra el pedido entero.
 
-> ⚠️ **Deuda que hace ese diagnóstico caro.** `culqi-charge` loguea `{status, code}`, y esta
-> respuesta **no trae `code`**: el motivo viaja en `type` y `merchant_message`. El primer
-> fallo live salió como `{status: 400, code: null}` y no dijo nada. Falta loguear ambos
-> campos — en los logs de la función y **solo ahí**: nunca en `payment_reason` ni en un
-> mensaje `sellers`, que pueden acabar frente al comprador vía `get-session?viewer=seller`.
+> ✅ **Saldado — el próximo fallo dirá por qué.** Esa respuesta **no trae `code`**: el motivo
+> viaja en `type` y `merchant_message`, así que loguear `{status, code}` imprimía
+> `{400, null}` y costó una tarde de diagnóstico a ciegas. `errorForLog` (`_shared/culqi.ts`)
+> arma la línea con el diagnóstico **propio de Culqi** —lista de campos cerrada y fijada por
+> test, porque por esa función pasan la llave, el celular y el OTP— y va a los logs de la
+> función y **solo ahí**: nunca a `payment_reason` ni a un mensaje `sellers`, que pueden
+> acabar frente al comprador vía `get-session?viewer=seller`. `culqi-webhook` usa la misma
+> línea, donde además separa el 401 (llave de la tienda mal cargada o rotada) del 404 (cargo
+> ajeno o forjado — la red de seguridad haciendo su trabajo).
 
 **Sandbox**: llaves `pk_test_/sk_test_` del panel de integración; Yape de prueba
 `900000001` / OTP `425251`. El webhook se registra en CulqiPanel → Desarrollo → Webhooks

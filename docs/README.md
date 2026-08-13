@@ -35,6 +35,7 @@ La doc está organizada en dos capas complementarias:
 | 02 · Logistics | [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md) | Geolocalización, motorizados Lima, envíos a provincia |
 | 03 · Loyalty | [`03-LOYALTY-ENGINE.md`](./03-LOYALTY-ENGINE.md) | Recompra, puntos, campañas WhatsApp, LTV |
 | 04 · Cumplimiento | [`04-CUMPLIMIENTO-CULQI.md`](./04-CUMPLIMIENTO-CULQI.md) | Web pública, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
+| 05 · PCI / SAQ-D | [`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md) | El permiso para usar la API directa de Culqi: qué pedir, el expediente técnico y el correo al buzón de riesgos |
 
 ### Cómo trabajamos
 

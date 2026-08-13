@@ -47,16 +47,16 @@ fecha de arriba.
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |
 |---|---|---|---|---|
-| 1 | **El cobro en línea no pasa del token**: `400 authentication_error` — "tu código de comercio no está autorizado para realizar este tipo de peticiones" — con las llaves live y el código correctos. **Causa en investigación**, ver abajo. | 12-ago-2026 | Confirmar en la doc de Culqi si Yape exige **CulqiJS / Checkout v4** en vez de tokenizar server-to-server. Detalle en `01-SALES-ENGINE.md` §3.3. | Fundador + dev |
+| 1 | **El cobro en línea no pasa del token**: `400 authentication_error` — "tu código de comercio no está autorizado para realizar este tipo de peticiones" — con las llaves live y el código correctos. **Causa confirmada**: la API directa exige acreditación PCI DSS. | 12-ago-2026 | **Pedir a Culqi la autorización de API con alcance Yape.** Expediente técnico, petición y borrador del correo listos en **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)** — solo falta mandarlo. | Fundador |
 | 2 | **Webhook de Culqi sin registrar** en el panel. Es la red que evita que un cargo cobrado quede sin registrar si la respuesta se pierde. | — | CulqiPanel → Desarrollo → Webhooks: evento `charge.creation.succeeded` a `https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/culqi-webhook`. El Basic es opcional (solo se exige si existe el secret `CULQI_WEBHOOK_BASIC`). | Fundador |
 
 > El bloqueo 2 no se puede comprobar desde el repo — vive en el panel de Culqi. Si ya está
 > registrado, táchalo aquí.
 
-### Bloqueo 1 · causa confirmada, decisión pendiente
+### Bloqueo 1 · causa confirmada, decisión tomada (13-ago-2026)
 
 **Confirmado contra la documentación de Culqi** (Pagos Online → Cargo único → Yape, sección
-*Usando APIs*): interactuar directamente con la API **exige cumplir PCI DSS 3.2 y enviar el
+*Usando APIs*): interactuar directamente con la API **exige cumplir PCI DSS y enviar el
 formulario SAQ-D al buzón de riesgos de Culqi**. Nuestro código es correcto; lo que falta es
 esa acreditación. Por eso el error habla de "este *tipo* de peticiones", y por eso soporte
 dice que no hay nada que activar: por Culqi Checkout funciona hoy sin papeleo.
@@ -64,11 +64,14 @@ dice que no hay nada que activar: por Culqi Checkout funciona hoy sin papeleo.
 **Descartado:** que Culqi tenga que "activar Yape" en el comercio. La primera lectura de esta
 sesión —pedir la habilitación a soporte— era **incorrecta**.
 
-**Decisión pendiente**, detallada en `01-SALES-ENGINE.md` §3.3:
+**Decisión: camino A — se acredita y se pide la autorización.** No se cae a Culqi Checkout
+(saca al comprador de la pantalla en el momento de la venta) ni al cruce por notificación de
+§3.1 (depende de un APK o un MacroDroid vivo en un Android ajeno).
 
-- **A · Acreditar PCI DSS** (SAQ-D): conserva el checkout tal como está, cuesta cumplimiento.
-- **B · Culqi Checkout**: funciona ya, pero cae el "CERO script de terceros en la PWA" y el
-  comprador pasa a teclear dentro del popup de Culqi.
+Todo el manejo del trámite vive en **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)**: qué pedir
+exactamente, el expediente técnico que lo sustenta —el riel Yape no transporta datos de
+tarjeta, así que no hay CDE que escanear—, el borrador del correo a `riesgos@culqi.com` y el
+checklist del día que aprueben.
 
 ## Deuda técnica conocida
 
@@ -76,8 +79,7 @@ Anotada donde vive, para que no haya que redescubrirla:
 
 | Deuda | Dónde | Por qué importa |
 |---|---|---|
-| `culqi-charge` loguea solo `{status, code}`, y los errores de Culqi traen el motivo en `type` / `merchant_message`. | `01-SALES-ENGINE.md` §3.3 · `culqi-charge/index.ts` | El primer fallo de cobro live salió como `{status: 400, code: null}` y costó una tarde de diagnóstico a ciegas. |
-| `payment_reason` y los mensajes `sellers` pueden acabar frente al comprador vía `get-session?viewer=seller`. | `culqi-charge/index.ts:331` | Obliga a que **ningún texto de terceros** (como el `merchant_message` de Culqi) entre ahí. Es la razón de que los motivos de fallo sean frases cortas y propias. |
+| `payment_reason` y los mensajes `sellers` pueden acabar frente al comprador vía `get-session?viewer=seller`. | `culqi-charge/index.ts:331` | Obliga a que **ningún texto de terceros** (como el `merchant_message` de Culqi) entre ahí. Es la razón de que los motivos de fallo sean frases cortas y propias, y de que `errorForLog` vaya **solo** a los logs de la función. |
 | `manage-store` mantiene vivo el camino legacy `admin_auth_id` para branding. | `01-SALES-ENGINE.md` §3.3 · `manage-store/index.ts:82` | Doble superficie de auth. Los campos de cobro ya exigen JWT verificado; falta retirar el resto. |
 | Catálogo de distritos incompleto 🟡 | `02-SMART-LOGISTICS.md` § Deuda conocida | Afecta la cobertura de reparto. |
 
