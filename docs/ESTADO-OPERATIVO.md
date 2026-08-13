@@ -47,11 +47,30 @@ fecha de arriba.
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |
 |---|---|---|---|---|
-| 1 | **Culqi no ha habilitado Yape** en el código de comercio de Gadicaf. Sin eso, el token responde `400 authentication_error` con el celular y el código perfectos. | 12-ago-2026 | Escribir a **culqi.com/soporte** pidiendo la habilitación de Yape. Detalle y respuesta literal en `01-SALES-ENGINE.md` §3.3. | Fundador |
+| 1 | **El cobro en línea no pasa del token**: `400 authentication_error` — "tu código de comercio no está autorizado para realizar este tipo de peticiones" — con las llaves live y el código correctos. **Causa en investigación**, ver abajo. | 12-ago-2026 | Confirmar en la doc de Culqi si Yape exige **CulqiJS / Checkout v4** en vez de tokenizar server-to-server. Detalle en `01-SALES-ENGINE.md` §3.3. | Fundador + dev |
 | 2 | **Webhook de Culqi sin registrar** en el panel. Es la red que evita que un cargo cobrado quede sin registrar si la respuesta se pierde. | — | CulqiPanel → Desarrollo → Webhooks: evento `charge.creation.succeeded` a `https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/culqi-webhook`. El Basic es opcional (solo se exige si existe el secret `CULQI_WEBHOOK_BASIC`). | Fundador |
 
 > El bloqueo 2 no se puede comprobar desde el repo — vive en el panel de Culqi. Si ya está
 > registrado, táchalo aquí.
+
+### Bloqueo 1 · lo que se sabe y lo que no
+
+**Descartado:** que Culqi tenga que "activar Yape". Soporte responde que es asunto de
+integración, no de activación (12-ago-2026). La primera lectura de esta sesión —pedir la
+habilitación a soporte— era **incorrecta**.
+
+**Hipótesis viva:** el problema es el *tipo* de integración. Los SDK oficiales recomiendan
+**CulqiJS / Checkout v4** en vez de llamar a la API para crear tokens, y el flujo documentado
+de Yape es un popup de Culqi donde el comprador teclea celular y código. `culqi-charge`
+tokeniza server-to-server, que encaja con "este tipo de peticiones".
+
+**Sin verificar, y es importante:** el proxy de egress de la sesión **bloquea todo el dominio
+`culqi.com`** (`docs.`, `apidocs.`, CDN incluidos), así que la documentación oficial no se
+pudo leer desde aquí. Hay que abrirla a mano:
+`docs.culqi.com/es/documentacion/pagos-online/cargo-unico/tokens-yape`.
+
+**Si se confirma, no es un parche**: cae el "CERO script de terceros en la PWA" de §3.3, y el
+comprador pasaría a teclear dentro del popup de Culqi en vez de en nuestro campo.
 
 ## Deuda técnica conocida
 

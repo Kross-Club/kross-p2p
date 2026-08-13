@@ -414,21 +414,35 @@ en 2 minutos" cuando el contador real va en segundos.
   bit, §3.1 y §3.2 intactos. `culqi_scope='PROVINCIA'` deja Lima en manual como retirada
   operativa sin deploy.
 
-**Requisito de cuenta: Yape se habilita aparte, y conectar las llaves NO basta.** El
-código de comercio tiene que estar autorizado por Culqi para tokenizar Yape; tener tarjeta
-activa no lo incluye. Sin esa afiliación, `POST secure/tokens/yape` responde `400` **antes
-de mirar el celular o el código** — da igual lo buenos que sean:
-
-```json
-{"object":"error","type":"authentication_error",
- "merchant_message":"Tu código de comercio no está autorizado para realizar este tipo
-  de peticiones. Contáctate con culqi.com/soporte para obtener mas información."}
-```
-
-Se pide a **culqi.com/soporte**. Mientras no llegue, la tienda va con `culqi_enabled=false`:
-el paso 3 manual funciona bit a bit y ningún comprador se topa con un cobro que no puede
-pasar. Es lo primero que hay que verificar al conectar una marca nueva — el síntoma
-(`400` en el token, con celular y código correctos) es idéntico al de un OTP mal tecleado.
+> ### 🚧 El cobro en línea NO funciona todavía — causa en investigación
+>
+> `POST secure/tokens/yape` responde `400` **antes de mirar el celular o el código**, con
+> llaves live correctas:
+>
+> ```json
+> {"object":"error","type":"authentication_error",
+>  "merchant_message":"Tu código de comercio no está autorizado para realizar este tipo
+>   de peticiones. Contáctate con culqi.com/soporte para obtener mas información."}
+> ```
+>
+> **Soporte de Culqi descarta que sea una activación de su lado**: responde que "tiene que
+> integrarlo con su desarrollador, no es que Culqi tenga que activárselo" (12-ago-2026).
+>
+> **La hipótesis viva es que el problema es el _tipo_ de integración, no el método de pago.**
+> Los SDK oficiales recomiendan **CulqiJS / Checkout v4** en lugar de llamar a la API
+> directamente para crear tokens, y el flujo documentado de Yape es un **popup de Culqi**
+> donde el comprador escribe su celular y su código de aprobación. Nosotros tokenizamos
+> server-to-server desde `culqi-charge` — que encaja con "este tipo de peticiones".
+>
+> **Si se confirma, cae una decisión de este documento**: el "CERO script de terceros en la
+> PWA" de abajo. CulqiJS obliga a cargar el script de Culqi en el checkout y a que el
+> comprador teclee dentro de su popup, no en nuestro campo.
+>
+> **Pendiente**: leer `docs.culqi.com/es/documentacion/pagos-online/cargo-unico/tokens-yape`
+> y confirmar cuál es el flujo soportado. No se pudo verificar desde la sesión — el proxy de
+> egress bloquea todo el dominio `culqi.com`.
+>
+> Mientras tanto la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
 
 > ⚠️ **Deuda que hace ese diagnóstico caro.** `culqi-charge` loguea `{status, code}`, y esta
 > respuesta **no trae `code`**: el motivo viaja en `type` y `merchant_message`. El primer
