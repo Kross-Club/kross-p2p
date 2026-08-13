@@ -152,9 +152,9 @@ export const YAPE_CODE_LENGTH = 3
 
 // ─── Cobro en línea con Culqi ────────────────────────────────────────────────
 
-/** El "código de aprobación" de la app Yape: 6 dígitos, en Menú → Código de
- *  aprobación. No confundir con el código de SEGURIDAD (3 dígitos) del flujo
- *  manual: aquel evidencia un pago ya hecho; este AUTORIZA un cobro. */
+/** El "código de aprobación" de la app Yape: 6 dígitos, en Aprobar compras →
+ *  Código de aprobación. No confundir con el código de SEGURIDAD (3 dígitos)
+ *  del flujo manual: aquel evidencia un pago ya hecho; este AUTORIZA un cobro. */
 export const CULQI_OTP_LENGTH = 6
 
 /** Lo que la app de Yape le da de vida al código. El token de Culqi vive 5;
@@ -292,7 +292,7 @@ export const COPY = {
   culqiPhoneLabel: 'Tu número de Yape',
   culqiPhoneHint: 'Lo tomamos de tu WhatsApp. Cámbialo si tu Yape es otro.',
   culqiOtpLabel: 'Código de aprobación de Yape',
-  culqiOtpHint: 'En Yape: Aprobar compras → Código de aprobación.',
+  culqiOtpHint: 'En Yape: Aprobar compras → Código de aprobación. Vence en 2 minutos.',
   culqiOtpPlaceholder: '000000',
   culqiOtpNew: 'Genera un código NUEVO en Yape: el anterior ya venció o ya se usó.',
   /** CTA del paso 3 cuando el botón COBRA, no solo registra. */

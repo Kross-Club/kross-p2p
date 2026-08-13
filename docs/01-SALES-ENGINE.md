@@ -414,7 +414,7 @@ en 2 minutos" cuando el contador real va en segundos.
   bit, §3.1 y §3.2 intactos. `culqi_scope='PROVINCIA'` deja Lima en manual como retirada
   operativa sin deploy.
 
-> ### 🚧 El cobro en línea NO funciona todavía — causa en investigación
+> ### 🚧 La API directa exige acreditar PCI DSS — hoy el cobro no pasa del token
 >
 > `POST secure/tokens/yape` responde `400` **antes de mirar el celular o el código**, con
 > llaves live correctas:
@@ -425,24 +425,32 @@ en 2 minutos" cuando el contador real va en segundos.
 >   de peticiones. Contáctate con culqi.com/soporte para obtener mas información."}
 > ```
 >
-> **Soporte de Culqi descarta que sea una activación de su lado**: responde que "tiene que
-> integrarlo con su desarrollador, no es que Culqi tenga que activárselo" (12-ago-2026).
+> **La causa está documentada por Culqi**, en la página de Yape (Pagos Online → Cargo único
+> → Yape), sección *Usando APIs*:
 >
-> **La hipótesis viva es que el problema es el _tipo_ de integración, no el método de pago.**
-> Los SDK oficiales recomiendan **CulqiJS / Checkout v4** en lugar de llamar a la API
-> directamente para crear tokens, y el flujo documentado de Yape es un **popup de Culqi**
-> donde el comprador escribe su celular y su código de aprobación. Nosotros tokenizamos
-> server-to-server desde `culqi-charge` — que encaja con "este tipo de peticiones".
+> > *"Recuerda que cuando interactúas directamente con el API necesitas cumplir la normativa
+> > de **PCI DSS 3.2**. Por ello, te pedimos que llenes el formulario **SAQ-D** y lo envíes al
+> > buzón de riesgos Culqi."*
 >
-> **Si se confirma, cae una decisión de este documento**: el "CERO script de terceros en la
-> PWA" de abajo. CulqiJS obliga a cargar el script de Culqi en el checkout y a que el
-> comprador teclee dentro de su popup, no en nuestro campo.
+> O sea: **la implementación de abajo es correcta** —llave pública para el token, secreta
+> para el cargo, tal como documentan— y lo que falta es el **permiso** para usar la API
+> directa. De ahí la literalidad del error: "este *tipo* de peticiones". Y de ahí también que
+> soporte responda que no hay nada que activar: por **Culqi Checkout** funciona hoy sin
+> papeleo, porque el comprador teclea dentro del popup de Culqi y el comercio nunca toca el
+> código.
 >
-> **Pendiente**: leer `docs.culqi.com/es/documentacion/pagos-online/cargo-unico/tokens-yape`
-> y confirmar cuál es el flujo soportado. No se pudo verificar desde la sesión — el proxy de
-> egress bloquea todo el dominio `culqi.com`.
+> **Las dos salidas, y no son equivalentes:**
 >
-> Mientras tanto la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
+> | | Qué cuesta | Qué conserva |
+> |---|---|---|
+> | **A · Acreditar PCI DSS** (SAQ-D al buzón de riesgos) | Papeleo de cumplimiento y la obligación que conlleva | Todo lo de abajo intacto: nuestro campo, nuestra estética, cero script ajeno |
+> | **B · Culqi Checkout** (popup) | Cae el "CERO script de terceros"; el comprador teclea en el popup de Culqi; hay que replantear el submit en dos fases y su recuperación | Funciona sin acreditación |
+>
+> Mientras se decide, la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
+
+**Límites de Yape que impone Culqi** (misma página): monto máximo **S/ 2000** por pago y
+**solo soles**. Los adelantos de Kross (S/5–S/30) caben de sobra, pero el techo importa si
+alguna vez se cobra el pedido entero.
 
 > ⚠️ **Deuda que hace ese diagnóstico caro.** `culqi-charge` loguea `{status, code}`, y esta
 > respuesta **no trae `code`**: el motivo viaja en `type` y `merchant_message`. El primer

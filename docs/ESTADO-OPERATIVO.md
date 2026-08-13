@@ -53,24 +53,22 @@ fecha de arriba.
 > El bloqueo 2 no se puede comprobar desde el repo — vive en el panel de Culqi. Si ya está
 > registrado, táchalo aquí.
 
-### Bloqueo 1 · lo que se sabe y lo que no
+### Bloqueo 1 · causa confirmada, decisión pendiente
 
-**Descartado:** que Culqi tenga que "activar Yape". Soporte responde que es asunto de
-integración, no de activación (12-ago-2026). La primera lectura de esta sesión —pedir la
-habilitación a soporte— era **incorrecta**.
+**Confirmado contra la documentación de Culqi** (Pagos Online → Cargo único → Yape, sección
+*Usando APIs*): interactuar directamente con la API **exige cumplir PCI DSS 3.2 y enviar el
+formulario SAQ-D al buzón de riesgos de Culqi**. Nuestro código es correcto; lo que falta es
+esa acreditación. Por eso el error habla de "este *tipo* de peticiones", y por eso soporte
+dice que no hay nada que activar: por Culqi Checkout funciona hoy sin papeleo.
 
-**Hipótesis viva:** el problema es el *tipo* de integración. Los SDK oficiales recomiendan
-**CulqiJS / Checkout v4** en vez de llamar a la API para crear tokens, y el flujo documentado
-de Yape es un popup de Culqi donde el comprador teclea celular y código. `culqi-charge`
-tokeniza server-to-server, que encaja con "este tipo de peticiones".
+**Descartado:** que Culqi tenga que "activar Yape" en el comercio. La primera lectura de esta
+sesión —pedir la habilitación a soporte— era **incorrecta**.
 
-**Sin verificar, y es importante:** el proxy de egress de la sesión **bloquea todo el dominio
-`culqi.com`** (`docs.`, `apidocs.`, CDN incluidos), así que la documentación oficial no se
-pudo leer desde aquí. Hay que abrirla a mano:
-`docs.culqi.com/es/documentacion/pagos-online/cargo-unico/tokens-yape`.
+**Decisión pendiente**, detallada en `01-SALES-ENGINE.md` §3.3:
 
-**Si se confirma, no es un parche**: cae el "CERO script de terceros en la PWA" de §3.3, y el
-comprador pasaría a teclear dentro del popup de Culqi en vez de en nuestro campo.
+- **A · Acreditar PCI DSS** (SAQ-D): conserva el checkout tal como está, cuesta cumplimiento.
+- **B · Culqi Checkout**: funciona ya, pero cae el "CERO script de terceros en la PWA" y el
+  comprador pasa a teclear dentro del popup de Culqi.
 
 ## Deuda técnica conocida
 

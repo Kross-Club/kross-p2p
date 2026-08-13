@@ -17,16 +17,16 @@
 // material de marca ajeno, y va ARRIBA del campo (quien ya sabe la ignora en
 // medio segundo; quien no, la ve antes de quedarse mirando un input vacío).
 //
-// La caducidad no se promete en minutos: la app enseña un contador de segundos
-// y prometer "2 minutos" —como hacía la versión anterior— relaja justo cuando
-// hay que correr. El círculo transmite la urgencia sin inventar un número.
+// Los 2 minutos son el número que documenta Culqi ("vigencia de 2 minutos como
+// máximo"), no una estimación nuestra. El anillo dibuja el contador que la app
+// enseña de verdad; el número de dentro es una foto del tiempo que queda.
 
 export default function CulqiApprovalHint() {
   return (
     <div className="rounded-2xl overflow-hidden mb-2"
       style={{ background: '#F7F1FD', border: '1px solid #E9DDF9' }}>
       <svg viewBox="0 0 320 100" className="w-full block" role="img"
-        aria-label="En Yape, en la pantalla de inicio toca Aprobar compras: te da un código de 6 números con cuenta regresiva.">
+        aria-label="En Yape, en la pantalla de inicio toca Aprobar compras: te da un código de 6 números que vence en 2 minutos.">
         {/* Cantos morados de Yape: bastan para que se reconozca la app. */}
         <rect width="320" height="100" fill="#742384" />
         <rect x="8" width="304" height="100" fill="#fff" />
@@ -104,7 +104,7 @@ export default function CulqiApprovalHint() {
         <text x="187" y="66.8" textAnchor="middle" fontSize="7" fontWeight="700"
           fill="#742384" fontFamily="system-ui, sans-serif">38</text>
         <text x="200" y="67" fontSize="8.5" fontWeight="700" fill="#B06A2E"
-          fontFamily="system-ui, sans-serif">Vence rápido</text>
+          fontFamily="system-ui, sans-serif">Vence en 2 min</text>
 
         <rect x="178" y="76" width="120" height="1" fill="#EDEDF2" />
         <text x="178" y="90" fontSize="8" fontWeight="700" letterSpacing="0.4"
