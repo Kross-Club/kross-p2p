@@ -24,7 +24,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import {
-  chargeForStorage, createCharge, createYapeToken, declineCodeOf,
+  chargeForStorage, createCharge, createYapeToken, declineCodeOf, errorForLog,
 } from '../_shared/culqi.ts'
 
 const supabase = createClient(
@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
     }
     // OTP mal tecleado, vencido (>2 min), ya usado, o número sin Yape.
     await notePaymentFailure(session, 'Pago en línea falló: código de aprobación inválido o vencido')
-    console.error('[culqi-charge] token_failed', JSON.stringify({ status: token.status, code: token.error?.code ?? null }))
+    console.error('[culqi-charge] token_failed', JSON.stringify(errorForLog(token.status, token.error)))
     return json({
       ok: false, stage: 'token', code: token.error?.code,
       user_message: token.error?.user_message ?? 'Tu código no fue aceptado. Genera uno nuevo en Yape e inténtalo de nuevo.',
@@ -240,7 +240,7 @@ Deno.serve(async (req) => {
     await releaseLock(originStoreId, lockKey)
     const decline = declineCodeOf(charge.error)
     await notePaymentFailure(session, `Pago en línea falló: cargo rechazado${decline ? ` (${decline})` : ''}`)
-    console.error('[culqi-charge] charge_failed', JSON.stringify({ status: charge.status, code: decline ?? null }))
+    console.error('[culqi-charge] charge_failed', JSON.stringify(errorForLog(charge.status, charge.error)))
     return json({
       ok: false, stage: 'charge', code: charge.error?.code, decline_code: decline,
       user_message: charge.error?.user_message ?? 'El cargo no pasó. Revisa tu saldo de Yape e inténtalo de nuevo.',

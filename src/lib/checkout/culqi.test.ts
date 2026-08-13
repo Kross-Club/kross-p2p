@@ -13,7 +13,7 @@ import {
   ADVANCE_PROVINCIA_PEN, culqiActiveFor,
 } from './checkout.config'
 import { advanceForServer } from '../../../supabase/functions/_shared/advance.ts'
-import { extractWebhookChargeId, extractWebhookStoreId } from '../../../supabase/functions/_shared/culqi.ts'
+import { errorForLog, extractWebhookChargeId, extractWebhookStoreId } from '../../../supabase/functions/_shared/culqi.ts'
 import { canRetry, culqiFailureCopy, needsNewOtp } from './culqi-errors'
 import { orderRegistered, payPhaseReducer } from './pay-phase'
 import type { PayPhase } from './pay-phase'
@@ -300,5 +300,52 @@ describe('extractores del webhook · las 3 formas del payload', () => {
     expect(extractWebhookChargeId({ data: { id: 'evt_123' } })).toBeNull()
     expect(extractWebhookChargeId({ data: { id: 'chr_../inyeccion' } })).toBeNull()
     expect(extractWebhookStoreId({ data: { id: 'chr_x', metadata: {} } })).toBeNull()
+  })
+})
+
+describe('errorForLog · que el próximo fallo de cobro diga POR QUÉ', () => {
+  it('el 400 que bloqueó el cobro live: sin `code`, el motivo está en type + merchant_message', () => {
+    // Respuesta real de `POST secure/tokens/yape` con llaves live correctas.
+    // Loguear solo {status, code} imprimía {400, null} y no decía nada.
+    const log = errorForLog(400, {
+      object: 'error',
+      type: 'authentication_error',
+      merchant_message: 'Tu código de comercio no está autorizado para realizar este tipo de peticiones. Contáctate con culqi.com/soporte para obtener mas información.',
+    })
+    expect(log.type).toBe('authentication_error')
+    expect(log.code).toBeNull()
+    expect(String(log.merchant_message)).toContain('no está autorizado')
+  })
+
+  it('un rechazo de cargo trae su decline_code, en cualquiera de las dos grafías', () => {
+    expect(errorForLog(402, { decline_code: 'insufficient_funds' }).decline_code).toBe('insufficient_funds')
+    expect(errorForLog(402, { declined_code: 'insufficient_funds' }).decline_code).toBe('insufficient_funds')
+  })
+
+  it('`code` no se disfraza de decline: son campos distintos', () => {
+    // `declineCodeOf` cae a `code` para la RESPUESTA; el log no, para que se
+    // vea si Culqi mandó decline de verdad o solo un code genérico.
+    const log = errorForLog(402, { code: 'invalid_token' })
+    expect(log.code).toBe('invalid_token')
+    expect(log.decline_code).toBeNull()
+  })
+
+  it('un fallo de red (error null) no revienta: todo en null salvo el status', () => {
+    const log = errorForLog(0, null)
+    expect(log.status).toBe(0)
+    expect(Object.values(log).filter((v) => v !== null && v !== 0)).toHaveLength(0)
+  })
+
+  it('SOLO salen campos de Culqi: nada del request puede colarse al log', () => {
+    // La lista es el contrato. Si alguien agrega un campo aquí, que sea una
+    // decisión y no un descuido: por esta función pasan llave, celular y OTP.
+    expect(Object.keys(errorForLog(400, { type: 'x' })).sort()).toEqual(
+      ['charge_id', 'code', 'decline_code', 'merchant_message', 'param', 'status', 'type'],
+    )
+  })
+
+  it('un merchant_message desmedido se corta antes de inflar la línea', () => {
+    const log = errorForLog(400, { merchant_message: 'x'.repeat(1000) })
+    expect(String(log.merchant_message)).toHaveLength(300)
   })
 })

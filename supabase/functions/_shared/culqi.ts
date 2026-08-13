@@ -132,6 +132,34 @@ export function declineCodeOf(err: CulqiError | null): string | undefined {
   return err?.decline_code ?? err?.declined_code ?? err?.code
 }
 
+/** Máximo de `merchant_message` que entra al log. Es texto enlatado de Culqi;
+ *  el corte solo evita que una respuesta rara infle la línea. */
+const LOG_MSG_MAX = 300
+
+/** Lo que de un error de Culqi SÍ se puede loguear: su propio diagnóstico.
+ *  Nunca nuestro request — ni la llave, ni el celular, ni el OTP.
+ *
+ *  Existe porque el motivo NO siempre viaja en `code`. El 400 que devuelve un
+ *  comercio sin permiso de API directa trae el porqué entero en `type` +
+ *  `merchant_message` y `code` ausente: loguear `{status, code}` imprimía
+ *  `{400, null}`, que costó una tarde de diagnóstico a ciegas.
+ *
+ *  `merchant_message` lo redacta Culqi PARA el comercio (a diferencia de
+ *  `user_message`, que es para el pagador). Va a los logs de la función y SOLO
+ *  ahí: jamás a `payment_reason` ni a un mensaje `sellers`, que pueden acabar
+ *  frente al comprador por `get-session?viewer=seller`. */
+export function errorForLog(status: number, err: CulqiError | null): Record<string, unknown> {
+  return {
+    status,
+    type: err?.type ?? null,
+    code: err?.code ?? null,
+    decline_code: err?.decline_code ?? err?.declined_code ?? null,
+    param: err?.param ?? null,
+    charge_id: err?.charge_id ?? null,
+    merchant_message: err?.merchant_message?.slice(0, LOG_MSG_MAX) ?? null,
+  }
+}
+
 // ─── Parseo defensivo del webhook ────────────────────────────────────────────
 // Culqi entrega el evento en (al menos) tres formas observadas en la calle:
 //   1. { type: 'charge.creation.succeeded', data: '{"id":"chr_..."}' }  ← data STRING
