@@ -292,7 +292,7 @@ export const COPY = {
   culqiPhoneLabel: 'Tu número de Yape',
   culqiPhoneHint: 'Lo tomamos de tu WhatsApp. Cámbialo si tu Yape es otro.',
   culqiOtpLabel: 'Código de aprobación de Yape',
-  culqiOtpHint: 'En Yape: Menú → Código de aprobación. Vence en 2 minutos.',
+  culqiOtpHint: 'En Yape: Aprobar compras → Código de aprobación.',
   culqiOtpPlaceholder: '000000',
   culqiOtpNew: 'Genera un código NUEVO en Yape: el anterior ya venció o ya se usó.',
   /** CTA del paso 3 cuando el botón COBRA, no solo registra. */
