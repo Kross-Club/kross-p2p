@@ -1,7 +1,8 @@
 # CLAUDE.md — Kross
 
 > Léeme primero. Contexto para trabajar en este repo sin re-explicar nada.
-> Al iniciar una sesión: lee este archivo y el `.md` del módulo que vayas a tocar en `/docs`.
+> Al iniciar una sesión: lee este archivo, `docs/ESTADO-OPERATIVO.md` (qué está vivo y qué
+> está bloqueado hoy) y el `.md` del módulo que vayas a tocar en `/docs`.
 
 ## Qué es Kross
 
@@ -40,6 +41,7 @@ comando, comparten organización pero **no** comparten esquema ni convenciones.
 | `docs/02-SMART-LOGISTICS.md` | Geolocalización, motorizados, envíos a provincia |
 | `docs/03-LOYALTY-ENGINE.md` | Recompra, puntos, campañas WhatsApp, LTV |
 | `docs/04-CUMPLIMIENTO-CULQI.md` | Web pública, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
+| `docs/ESTADO-OPERATIVO.md` | **Qué marca está viva, qué la bloquea y qué deuda hay abierta.** Léelo al empezar sesión |
 | `docs/GIT-FLOW.md` | Nomenclatura de ramas/commits y flujo de PR |
 | `docs/ICP Sales/` · `docs/ICP LTV/` | Capa estratégica (por qué / para quién) |
 
