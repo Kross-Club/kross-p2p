@@ -364,16 +364,18 @@ calidad del dato apuntan al mismo lado:
 ese botón se oculta y manda el QR + el número copiable. Ninguna pantalla dice "ábrelo en
 tu celular": el flujo entero se puede grabar desde una laptop.
 
-#### 3.3 Cobro directo con Culqi ✅ (por tienda)
+#### 3.3 Cobro directo con Culqi ✅ (por tienda · requiere afiliación Yape)
 
 La alternativa determinista al cruce por notificación: **cada marca conecta su propia
 cuenta Culqi** (llaves en el panel → Cobros) y el adelanto se cobra EN el checkout. El
-comprador genera su **código de aprobación** en Yape (6 dígitos, Menú → Código de
-aprobación, vence en 2 min), lo pega, y el cargo entra por el **monto exacto** con
-confirmación instantánea. No confundir los dos códigos: el de SEGURIDAD (3 dígitos)
-*evidencia* un pago ya hecho y alimenta el cruce de §3.1; el de APROBACIÓN *autoriza* un
-cobro. `CulqiApprovalHint` existe porque el segundo está escondido en un menú que el
-comprador jamás abrió.
+comprador genera su **código de aprobación** en Yape (6 dígitos; **Aprobar compras** en la
+pantalla de inicio, con cuenta regresiva de segundos), lo pega, y el cargo entra por el
+**monto exacto** con confirmación instantánea. No confundir los dos códigos: el de
+SEGURIDAD (3 dígitos) *evidencia* un pago ya hecho y alimenta el cruce de §3.1; el de
+APROBACIÓN *autoriza* un cobro. `CulqiApprovalHint` existe porque el segundo vive en una
+pantalla que el comprador jamás abrió — y se dibuja **contra capturas de la app, nunca de
+memoria**: la primera versión mandaba a un "Menú de Yape" que no existe, y prometía "vence
+en 2 minutos" cuando el contador real va en segundos.
 
 ```
   paso 3 ──registro──▶ register-buyer (payment_provider='CULQI', idempotente)
@@ -411,6 +413,28 @@ comprador jamás abrió.
 - **Las tiendas sin Culqi no notan nada**: `culqi_enabled=false` → paso 3 manual bit a
   bit, §3.1 y §3.2 intactos. `culqi_scope='PROVINCIA'` deja Lima en manual como retirada
   operativa sin deploy.
+
+**Requisito de cuenta: Yape se habilita aparte, y conectar las llaves NO basta.** El
+código de comercio tiene que estar autorizado por Culqi para tokenizar Yape; tener tarjeta
+activa no lo incluye. Sin esa afiliación, `POST secure/tokens/yape` responde `400` **antes
+de mirar el celular o el código** — da igual lo buenos que sean:
+
+```json
+{"object":"error","type":"authentication_error",
+ "merchant_message":"Tu código de comercio no está autorizado para realizar este tipo
+  de peticiones. Contáctate con culqi.com/soporte para obtener mas información."}
+```
+
+Se pide a **culqi.com/soporte**. Mientras no llegue, la tienda va con `culqi_enabled=false`:
+el paso 3 manual funciona bit a bit y ningún comprador se topa con un cobro que no puede
+pasar. Es lo primero que hay que verificar al conectar una marca nueva — el síntoma
+(`400` en el token, con celular y código correctos) es idéntico al de un OTP mal tecleado.
+
+> ⚠️ **Deuda que hace ese diagnóstico caro.** `culqi-charge` loguea `{status, code}`, y esta
+> respuesta **no trae `code`**: el motivo viaja en `type` y `merchant_message`. El primer
+> fallo live salió como `{status: 400, code: null}` y no dijo nada. Falta loguear ambos
+> campos — en los logs de la función y **solo ahí**: nunca en `payment_reason` ni en un
+> mensaje `sellers`, que pueden acabar frente al comprador vía `get-session?viewer=seller`.
 
 **Sandbox**: llaves `pk_test_/sk_test_` del panel de integración; Yape de prueba
 `900000001` / OTP `425251`. El webhook se registra en CulqiPanel → Desarrollo → Webhooks
