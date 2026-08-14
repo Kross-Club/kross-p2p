@@ -176,12 +176,15 @@ vendiendo.
 
 ## 8. El día que aprueben — checklist
 
-En este orden, y sin saltarse el 2: sin webhook, un cargo cobrado cuya respuesta se pierda
-queda sin registrar.
+En este orden. El paso que no se podía saltar —sin webhook, un cargo cobrado cuya respuesta
+se pierda queda sin registrar— ya está puesto.
 
-1. **Registrar el webhook** (bloqueo #2). CulqiPanel → Desarrollo → Webhooks:
-   evento `charge.creation.succeeded` → `https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/culqi-webhook`.
-   El Basic es opcional (solo se exige si existe el secret `CULQI_WEBHOOK_BASIC`).
+1. ✅ **Webhook registrado y comprobado (14-ago-2026)**. En el panel
+   (`charge.creation.succeeded` → `https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/culqi-webhook`)
+   y el endpoint verificado en vivo: sin puerta JWT y sin Basic exigido. **No definir
+   `CULQI_WEBHOOK_BASIC`** salvo que se cargue el mismo `usuario:clave` en el panel — si no,
+   toda entrega rebota con 401 y, siendo una red de seguridad, el fallo no se nota. Cómo
+   re-comprobarlo: [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md) § Bloqueo 2.
 2. **Encender el cobro** de Gadicaf:
    ```sql
    update stores set culqi_enabled = true where id = 't1';

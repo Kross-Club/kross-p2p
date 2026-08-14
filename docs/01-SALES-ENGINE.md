@@ -470,7 +470,14 @@ alguna vez se cobra el pedido entero.
 
 **Sandbox**: llaves `pk_test_/sk_test_` del panel de integración; Yape de prueba
 `900000001` / OTP `425251`. El webhook se registra en CulqiPanel → Desarrollo → Webhooks
-(`charge.creation.succeeded` y `failed`) con el Basic de `CULQI_WEBHOOK_BASIC`.
+(`charge.creation.succeeded` y `failed`).
+
+> **El Basic es opcional y hoy está apagado.** `culqi-webhook` solo lo exige si existe el
+> secret `CULQI_WEBHOOK_BASIC`, y **no está definido** (comprobado el 14-ago-2026). Ponerlo
+> sin cargar el mismo `usuario:clave` en el panel hace que toda entrega rebote con 401, y
+> siendo una red de seguridad no se nota hasta el día que hace falta. Cómo comprobar el
+> endpoint en un minuto, sin curl y sin escribir en la BD:
+> [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md) § Bloqueo 2.
 
 ## Métricas del módulo
 - Tiempo landing→pedido, % de campos autocompletados por DNI, tasa de cierre por canal

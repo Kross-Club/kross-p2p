@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 12-ago-2026.**
+> **Última verificación contra la base: 14-ago-2026.**
 > Qué marca está viva, qué le falta, y qué deudas hay abiertas. Lo que el código no dice.
 
 ## Cómo leer esto (y por qué no miente)
@@ -48,10 +48,6 @@ fecha de arriba.
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |
 |---|---|---|---|---|
 | 1 | **El cobro en línea no pasa del token**: `400 authentication_error` — "tu código de comercio no está autorizado para realizar este tipo de peticiones" — con las llaves live y el código correctos. **Causa confirmada**: la API directa exige acreditación PCI DSS. | 12-ago-2026 | **Pedir a Culqi la autorización de API con alcance Yape.** Expediente técnico, petición y borrador del correo listos en **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)** — solo falta mandarlo. | Fundador |
-| 2 | **Webhook de Culqi sin registrar** en el panel. Es la red que evita que un cargo cobrado quede sin registrar si la respuesta se pierde. | — | CulqiPanel → Desarrollo → Webhooks: evento `charge.creation.succeeded` a `https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/culqi-webhook`. El Basic es opcional (solo se exige si existe el secret `CULQI_WEBHOOK_BASIC`). | Fundador |
-
-> El bloqueo 2 no se puede comprobar desde el repo — vive en el panel de Culqi. Si ya está
-> registrado, táchalo aquí.
 
 ### Bloqueo 1 · causa confirmada, decisión tomada (13-ago-2026)
 
@@ -72,6 +68,44 @@ Todo el manejo del trámite vive en **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)**: 
 exactamente, el expediente técnico que lo sustenta —el riel Yape no transporta datos de
 tarjeta, así que no hay CDE que escanear—, el borrador del correo a `riesgos@culqi.com` y el
 checklist del día que aprueben.
+
+### Bloqueo 2 · saldado (14-ago-2026) — webhook registrado y endpoint comprobado
+
+El webhook quedó registrado en el panel (`charge.creation.succeeded` →
+`https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/culqi-webhook`) y **el lado servidor
+está comprobado en vivo**, no supuesto. Importa porque **el panel de Culqi no manda ping al
+crear el webhook**: en 24 h no llegó ni una petición, así que quedaba configurado *sin
+probar* — y los tres fallos posibles (URL mal escrita, puerta JWT, Basic desparejado) son
+**silenciosos**: se descubren perdiendo un cobro real.
+
+Se comprobó desde el propio Postgres con `pg_net`, sin curl y sin escribir nada: un `GET`
+corta en `culqi-webhook/index.ts:38` y un `POST {}` corta en la línea 54, los dos antes de
+tocar la BD.
+
+```sql
+select net.http_get (url := 'https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/culqi-webhook') as get_id,
+       net.http_post(url := 'https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/culqi-webhook',
+                     body := '{}'::jsonb) as post_id;
+-- ~4 s después, con los ids que devolvió:
+select id, status_code, content_type, left(content, 200) from net._http_response where id in (…);
+```
+
+| Se espera | Qué prueba | Si sale otra cosa |
+|---|---|---|
+| `GET` → `200` `text/plain` · `ok` | el gateway **no** exige JWT | `401 {"message":"Missing authorization header"}` = hay que redesplegar con `--no-verify-jwt` |
+| `POST {}` → `200` `application/json` · `{"ok":true}` | **no** se exige Basic | `401 Unauthorized` (texto plano) = hay `CULQI_WEBHOOK_BASIC` puesto, y el panel tiene que mandar ese mismo `usuario:clave` |
+
+Que los cuerpos coincidan con el fuente prueba de paso que la URL es la correcta y que lo
+desplegado es este código. El log `[culqi-webhook] sin charge id extraíble` confirma que los
+motivos —que en esta función viven **solo** en los logs— sí se escriben.
+
+> ⚠️ **`CULQI_WEBHOOK_BASIC` hoy no está definido, y así debe seguir** mientras el panel no
+> tenga un Basic configurado. Ponerlo por "endurecer" el endpoint, sin cargar el mismo
+> `usuario:clave` en Culqi, hace que **toda** entrega rebote con 401 — y siendo una red de
+> seguridad, eso no se nota hasta el día que hace falta.
+
+La primera entrega real no llegará hasta que se destrabe el bloqueo 1: sin autorización de
+API no hay cargo que anunciar.
 
 ## Deuda técnica conocida
 
