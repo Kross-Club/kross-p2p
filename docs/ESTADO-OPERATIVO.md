@@ -47,7 +47,7 @@ fecha de arriba.
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |
 |---|---|---|---|---|
-| 1 | **El cobro en línea no pasa del token**: `400 authentication_error` — "tu código de comercio no está autorizado para realizar este tipo de peticiones" — con las llaves live y el código correctos. **Causa confirmada**: la API directa exige acreditación PCI DSS. | 12-ago-2026 | **Pedir a Culqi la autorización de API con alcance Yape.** Expediente técnico, petición y borrador del correo listos en **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)** — solo falta mandarlo. | Fundador |
+| 1 | **El cobro en línea no pasa del token**: `400 authentication_error` — "tu código de comercio no está autorizado para realizar este tipo de peticiones" — con las llaves live y el código correctos. **Causa confirmada**: la API directa exige autorización del comercio (acreditación PCI DSS). Soporte propuso otra causa el 14-ago y quedó **descartada con evidencia reproducible**. | 12-ago-2026 | **Insistir con la autorización de API, alcance Yape.** Respuesta al ticket lista para enviar en **[`05-PCI-SAQ-D.md` §6.1](./05-PCI-SAQ-D.md)**; expediente y correo a riesgos en el mismo doc. | Fundador |
 
 ### Bloqueo 1 · causa confirmada, decisión tomada (13-ago-2026)
 
@@ -59,6 +59,17 @@ dice que no hay nada que activar: por Culqi Checkout funciona hoy sin papeleo.
 
 **Descartado:** que Culqi tenga que "activar Yape" en el comercio. La primera lectura de esta
 sesión —pedir la habilitación a soporte— era **incorrecta**.
+
+**También descartado (14-ago-2026): la explicación de soporte.** Contestaron que la
+integración opera bien y que el error venía de mandar *peticiones de prueba con llaves live*.
+No se sostiene: una petición a `POST secure/tokens/yape` con la `pk_live` y **sin
+`number_phone` ni `otp`** —sin un solo dato de prueba— devuelve **el mismo error, byte por
+byte**, que la misma petición con los datos de prueba. El rechazo es de autorización del
+comercio y ocurre antes de validar el cuerpo. La sonda, la respuesta literal y la contestación
+lista para enviar están en [`05-PCI-SAQ-D.md` §1.1 y §6.1](./05-PCI-SAQ-D.md).
+
+Que el comercio opere normal por **Culqi Checkout** —lo que soporte verificó— es coherente con
+el diagnóstico, no contra él: Checkout no exige la autorización de API directa.
 
 **Decisión: camino A — se acredita y se pide la autorización.** No se cae a Culqi Checkout
 (saca al comprador de la pantalla en el momento de la venta) ni al cruce por notificación de

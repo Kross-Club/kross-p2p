@@ -452,6 +452,12 @@ en 2 minutos" cuando el contador real va en segundos.
 > pasa una tarjeta (celular + código de aprobación → token `ype_`), así que no hay entorno
 > de datos de tarjeta que acreditar; lo que se pide es la autorización con **alcance Yape**.
 >
+> **Soporte contestó el 14-ago-2026 culpando al entorno de las llaves** —"peticiones de prueba
+> con llaves live"— y quedó **descartado**: la misma petición **sin `number_phone` ni `otp`**,
+> sin un solo dato de prueba, devuelve el error idéntico. No viene de los datos. La evidencia y
+> la respuesta lista para enviar están en
+> [`05-PCI-SAQ-D.md` §1.1 y §6.1](./05-PCI-SAQ-D.md).
+>
 > Hasta que respondan, la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
 
 **Límites de Yape que impone Culqi** (misma página): monto máximo **S/ 2000** por pago y

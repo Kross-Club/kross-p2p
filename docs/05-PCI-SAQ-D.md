@@ -36,6 +36,43 @@ el código**, con llaves live correctas:
    hoy rige **v4.0.1**. El texto de Culqi es boilerplate viejo — conviene saberlo para no
    llenar el formulario equivocado, y conviene decirlo al preguntar.
 
+### 1.1 · La primera respuesta de soporte, y por qué no se sostiene (14-ago-2026)
+
+Soporte contestó que su equipo técnico validó la plataforma, que **"la integración opera de
+manera correcta"**, y que el error se debía a *"enviar peticiones de prueba utilizando las
+credenciales/llaves de Producción (Live) en lugar de las de Prueba (Test)"*, con la
+recomendación de usar `sk_test_` para probar y `sk_live_` para vender.
+
+**Comprobado y descartado, con evidencia reproducible.** Dos peticiones a
+`POST secure/tokens/yape` con la `pk_live` de Gadicaf, el **14-ago-2026 a las 20:28 (hora
+Perú) / 01:28 UTC del 15**:
+
+| Sonda | Cuerpo enviado | Respuesta |
+|---|---|---|
+| **A** | `{"amount":500,"currency_code":"PEN"}` — **sin `number_phone` y sin `otp`** | `400` `authentication_error` · *"Tu código de comercio no está autorizado…"* |
+| **B** | lo mismo **+** `number_phone:900000001`, `otp:425251` (los datos de prueba) | **idéntica, byte por byte** |
+
+La sonda A **no contiene un solo dato de prueba** — solo un monto. Aun así devuelve el mismo
+error, lo que sitúa el rechazo en la **autorización del comercio, antes de validar el
+cuerpo**. Un error causado por mezclar entornos exigiría que la petición llevara datos del
+entorno equivocado; la sonda A no lleva ninguno.
+
+Dos cosas más que se leen del propio mensaje:
+
+- **La llave live es válida y está reconocida.** Culqi identifica el comercio y niega *el
+  tipo de petición*, no la credencial. Una llave inválida daría otro error.
+- **El código nuestro no es la variable.** El mismo camino, con `pk_test_/sk_test_`,
+  tokeniza y cobra correctamente. Lo único que cambia entre el caso que funciona y el que no
+  es el entorno del código de comercio — que es precisamente lo que hay que autorizar.
+
+> Al responder el ticket, adjunta la **sonda A** tal cual: es la que cierra la puerta a la
+> explicación de "datos de prueba", porque no lleva datos. Reproducirla no cuesta nada ni
+> cobra a nadie — una tokenización fallida no mueve dinero.
+
+**Lo que la respuesta sí confirma, sin querer:** que por Culqi Checkout el comercio opera
+normal. Eso es coherente con el diagnóstico, no contra él — Checkout no exige la
+autorización de API directa, y por eso "la plataforma está correcta" y el API sigue cerrado.
+
 ## 2. Qué es el SAQ-D de verdad
 
 No es un trámite de una vez. Es el cajón de sastre de los cuestionarios PCI: *"todos los
@@ -152,6 +189,67 @@ correo como respaldo con el expediente adjunto. Canales: (01) 643 1050 · 970 14
 >
 > Adjunto el detalle técnico de la integración (flujo de datos, manejo de llaves, TLS y
 > política de logs) por si ayuda a la evaluación. Quedamos atentos.
+
+### 6.1 · Respuesta al ticket de soporte (lista para enviar)
+
+Para contestar la respuesta descrita en §1.1. El objetivo no es discutir: es entregar el dato
+que descarta su diagnóstico, para que el ticket suba de nivel en vez de cerrarse.
+
+> **Asunto:** Re: Error 400 `authentication_error` en `/v2/tokens/yape` — la causa no es el
+> entorno de las llaves
+>
+> Buenas tardes, y gracias por la revisión.
+>
+> Les escribo porque el diagnóstico no coincide con lo que observamos, y quiero darles el
+> dato que lo descarta para no hacernos perder tiempo a ambos.
+>
+> Entiendo la recomendación —`sk_test_` para pruebas, `sk_live_` para ventas reales— y ya la
+> seguimos: nuestras pruebas de integración corren con llaves de test, y en ese entorno la
+> tokenización y el cargo funcionan sin problema.
+>
+> El error que reportamos ocurre con las llaves **live** y **no depende de los datos
+> enviados**. Lo comprobamos con dos peticiones a `POST https://secure.culqi.com/v2/tokens/yape`,
+> ambas con nuestra llave pública live, el **14-08-2026 a las 20:28 hora Perú (01:28 UTC del
+> 15-08)**:
+>
+> 1. Cuerpo `{"amount": 500, "currency_code": "PEN"}` — **sin `number_phone` y sin `otp`**;
+>    es decir, sin ningún dato de prueba.
+> 2. El mismo cuerpo más `number_phone: 900000001` y `otp: 425251` (los datos de prueba de su
+>    documentación).
+>
+> **Las dos respondieron exactamente lo mismo:**
+>
+> ```json
+> {"object": "error", "type": "authentication_error",
+>  "merchant_message": "Tu código de comercio no está autorizado para realizar este tipo de peticiones. Contáctate con culqi.com/soporte para obtener mas información."}
+> ```
+>
+> La primera petición no contenía datos de prueba de ningún tipo. Si la causa fuera mezclar
+> credenciales de producción con datos de prueba, esa petición no podría fallar por ese
+> motivo. El rechazo ocurre al validar la autorización del comercio, antes de mirar el cuerpo.
+>
+> Nótese además que el mensaje identifica correctamente nuestro comercio y niega *el tipo de
+> petición*, no la credencial: la llave live es válida y está siendo reconocida.
+>
+> Nuestra lectura, a partir de su documentación de Yape (sección *Usando APIs*), es que el uso
+> directo del API requiere una autorización asociada al cumplimiento PCI DSS, y que es esa
+> autorización la que falta en nuestro código de comercio. Eso también explica por qué desde
+> su lado la plataforma "opera correctamente": por Culqi Checkout el comercio funciona, porque
+> Checkout no exige esa autorización.
+>
+> Con eso, nuestras consultas concretas:
+>
+> 1. ¿Pueden autorizar nuestro código de comercio para `POST /v2/tokens/yape` y
+>    `POST /v2/charges` con `source_id` de tipo `ype_`, manteniendo **deshabilitada** la
+>    tokenización de tarjeta (`POST /v2/tokens`)? No la usamos ni la necesitamos.
+> 2. Si de todas formas se requiere un SAQ, ¿cuál corresponde a un comercio que **no**
+>    almacena, procesa ni transmite datos de tarjeta? Nuestro flujo es únicamente celular +
+>    código de aprobación de Yape, servidor a servidor, sin CulqiJS en el navegador.
+> 3. ¿Sobre qué versión de la norma? Su documentación cita PCI DSS 3.2, retirada por el PCI
+>    SSC en marzo de 2024; hoy rige la v4.0.1.
+>
+> Quedo atento. Si les sirve, puedo repetir la petición 1 en el momento que indiquen para que
+> la ubiquen en sus registros.
 
 ## 7. Si Culqi insiste en el SAQ-D completo
 
