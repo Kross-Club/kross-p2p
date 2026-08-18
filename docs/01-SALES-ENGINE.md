@@ -364,16 +364,18 @@ calidad del dato apuntan al mismo lado:
 ese botón se oculta y manda el QR + el número copiable. Ninguna pantalla dice "ábrelo en
 tu celular": el flujo entero se puede grabar desde una laptop.
 
-#### 3.3 Cobro directo con Culqi ✅ (por tienda)
+#### 3.3 Cobro directo con Culqi ✅ (por tienda · requiere afiliación Yape)
 
 La alternativa determinista al cruce por notificación: **cada marca conecta su propia
 cuenta Culqi** (llaves en el panel → Cobros) y el adelanto se cobra EN el checkout. El
-comprador genera su **código de aprobación** en Yape (6 dígitos, Menú → Código de
-aprobación, vence en 2 min), lo pega, y el cargo entra por el **monto exacto** con
-confirmación instantánea. No confundir los dos códigos: el de SEGURIDAD (3 dígitos)
-*evidencia* un pago ya hecho y alimenta el cruce de §3.1; el de APROBACIÓN *autoriza* un
-cobro. `CulqiApprovalHint` existe porque el segundo está escondido en un menú que el
-comprador jamás abrió.
+comprador genera su **código de aprobación** en Yape (6 dígitos; **Aprobar compras** en la
+pantalla de inicio, con cuenta regresiva de segundos), lo pega, y el cargo entra por el
+**monto exacto** con confirmación instantánea. No confundir los dos códigos: el de
+SEGURIDAD (3 dígitos) *evidencia* un pago ya hecho y alimenta el cruce de §3.1; el de
+APROBACIÓN *autoriza* un cobro. `CulqiApprovalHint` existe porque el segundo vive en una
+pantalla que el comprador jamás abrió — y se dibuja **contra capturas de la app, nunca de
+memoria**: la primera versión mandaba a un "Menú de Yape" que no existe, y prometía "vence
+en 2 minutos" cuando el contador real va en segundos.
 
 ```
   paso 3 ──registro──▶ register-buyer (payment_provider='CULQI', idempotente)
@@ -412,9 +414,76 @@ comprador jamás abrió.
   bit, §3.1 y §3.2 intactos. `culqi_scope='PROVINCIA'` deja Lima en manual como retirada
   operativa sin deploy.
 
+> ### 🚧 La API directa exige acreditar PCI DSS — hoy el cobro no pasa del token
+>
+> `POST secure/tokens/yape` responde `400` **antes de mirar el celular o el código**, con
+> llaves live correctas:
+>
+> ```json
+> {"object":"error","type":"authentication_error",
+>  "merchant_message":"Tu código de comercio no está autorizado para realizar este tipo
+>   de peticiones. Contáctate con culqi.com/soporte para obtener mas información."}
+> ```
+>
+> **La causa está documentada por Culqi**, en la página de Yape (Pagos Online → Cargo único
+> → Yape), sección *Usando APIs*:
+>
+> > *"Recuerda que cuando interactúas directamente con el API necesitas cumplir la normativa
+> > de **PCI DSS 3.2**. Por ello, te pedimos que llenes el formulario **SAQ-D** y lo envíes al
+> > buzón de riesgos Culqi."*
+>
+> O sea: **la implementación de abajo es correcta** —llave pública para el token, secreta
+> para el cargo, tal como documentan— y lo que falta es el **permiso** para usar la API
+> directa. De ahí la literalidad del error: "este *tipo* de peticiones". Y de ahí también que
+> soporte responda que no hay nada que activar: por **Culqi Checkout** funciona hoy sin
+> papeleo, porque el comprador teclea dentro del popup de Culqi y el comercio nunca toca el
+> código.
+>
+> **Las dos salidas, y no son equivalentes:**
+>
+> | | Qué cuesta | Qué conserva |
+> |---|---|---|
+> | **A · Acreditar PCI DSS** (SAQ-D al buzón de riesgos) | Papeleo de cumplimiento y la obligación que conlleva | Todo lo de abajo intacto: nuestro campo, nuestra estética, cero script ajeno |
+> | **B · Culqi Checkout** (popup) | Cae el "CERO script de terceros"; el comprador teclea en el popup de Culqi; hay que replantear el submit en dos fases y su recuperación | Funciona sin acreditación |
+>
+> **Decidido (13-ago-2026): camino A.** El trámite entero —qué pedir, el expediente que lo
+> sustenta, el correo y el checklist del día que aprueben— vive en
+> **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)**. El argumento en una línea: por el riel Yape no
+> pasa una tarjeta (celular + código de aprobación → token `ype_`), así que no hay entorno
+> de datos de tarjeta que acreditar; lo que se pide es la autorización con **alcance Yape**.
+>
+> **Soporte contestó el 14-ago-2026 culpando al entorno de las llaves** —"peticiones de prueba
+> con llaves live"— y quedó **descartado**: la misma petición **sin `number_phone` ni `otp`**,
+> sin un solo dato de prueba, devuelve el error idéntico. No viene de los datos. La evidencia y
+> la respuesta lista para enviar están en
+> [`05-PCI-SAQ-D.md` §1.1 y §6.1](./05-PCI-SAQ-D.md).
+>
+> Hasta que respondan, la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
+
+**Límites de Yape que impone Culqi** (misma página): monto máximo **S/ 2000** por pago y
+**solo soles**. Los adelantos de Kross (S/5–S/30) caben de sobra, pero el techo importa si
+alguna vez se cobra el pedido entero.
+
+> ✅ **Saldado — el próximo fallo dirá por qué.** Esa respuesta **no trae `code`**: el motivo
+> viaja en `type` y `merchant_message`, así que loguear `{status, code}` imprimía
+> `{400, null}` y costó una tarde de diagnóstico a ciegas. `errorForLog` (`_shared/culqi.ts`)
+> arma la línea con el diagnóstico **propio de Culqi** —lista de campos cerrada y fijada por
+> test, porque por esa función pasan la llave, el celular y el OTP— y va a los logs de la
+> función y **solo ahí**: nunca a `payment_reason` ni a un mensaje `sellers`, que pueden
+> acabar frente al comprador vía `get-session?viewer=seller`. `culqi-webhook` usa la misma
+> línea, donde además separa el 401 (llave de la tienda mal cargada o rotada) del 404 (cargo
+> ajeno o forjado — la red de seguridad haciendo su trabajo).
+
 **Sandbox**: llaves `pk_test_/sk_test_` del panel de integración; Yape de prueba
 `900000001` / OTP `425251`. El webhook se registra en CulqiPanel → Desarrollo → Webhooks
-(`charge.creation.succeeded` y `failed`) con el Basic de `CULQI_WEBHOOK_BASIC`.
+(`charge.creation.succeeded` y `failed`).
+
+> **El Basic es opcional y hoy está apagado.** `culqi-webhook` solo lo exige si existe el
+> secret `CULQI_WEBHOOK_BASIC`, y **no está definido** (comprobado el 14-ago-2026). Ponerlo
+> sin cargar el mismo `usuario:clave` en el panel hace que toda entrega rebote con 401, y
+> siendo una red de seguridad no se nota hasta el día que hace falta. Cómo comprobar el
+> endpoint en un minuto, sin curl y sin escribir en la BD:
+> [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md) § Bloqueo 2.
 
 ## Métricas del módulo
 - Tiempo landing→pedido, % de campos autocompletados por DNI, tasa de cierre por canal

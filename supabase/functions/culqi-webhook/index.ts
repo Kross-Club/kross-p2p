@@ -19,7 +19,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import {
-  chargeForStorage, extractWebhookChargeId, extractWebhookStoreId, getCharge,
+  chargeForStorage, errorForLog, extractWebhookChargeId, extractWebhookStoreId, getCharge,
 } from '../_shared/culqi.ts'
 
 const supabase = createClient(
@@ -66,8 +66,10 @@ Deno.serve(async (req) => {
   if (!charge.ok) {
     if ('network' in charge && charge.network) return retry() // transitorio nuestro
     // 404/401 con la sk de la tienda = cargo forjado, ajeno, o evento `failed`
-    // de un cargo que nunca existió. Nada que escribir.
-    console.log('[culqi-webhook] charge no verificable', JSON.stringify({ charge_id: chargeId, status: charge.status }))
+    // de un cargo que nunca existió. Nada que escribir — pero el log SÍ separa
+    // los casos: un 401 es la llave de la tienda mal cargada o rotada (bug de
+    // configuración, se arregla), un 404 es la red de seguridad funcionando.
+    console.log('[culqi-webhook] charge no verificable', JSON.stringify({ ...errorForLog(charge.status, charge.error), charge_id: chargeId }))
     return ok()
   }
 
