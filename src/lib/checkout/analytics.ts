@@ -43,6 +43,13 @@ export type CheckoutEvent =
    *  dice DÓNDE murió el que falló — token vencido ≠ sin saldo ≠ red. */
   | { name: 'culqi_charge_ok'; orderId: string; alreadyPaid: boolean }
   | { name: 'culqi_charge_failed'; orderId: string; stage: string; code?: string }
+  // 360pay: emitir el cupón no es cobrar. `issued` mide que el comprador llegó
+  // a tener CÓMO pagar; el pago en sí lo confirma el webhook, así que la tasa
+  // que importa —cuántos de los emitidos terminan pagados— se calcula contra
+  // los pedidos, no contra un evento del front: quien paga ya se fue a Yape y
+  // puede no volver nunca a esta pantalla.
+  | { name: 'pay360_coupon_issued'; orderId: string }
+  | { name: 'pay360_issue_failed'; orderId: string; stage: string; code?: string }
   | { name: 'checkout_abandoned'; lastStep: CheckoutStepId }
 
 /** Destino de los eventos. Se reemplaza por el real sin tocar los call sites. */

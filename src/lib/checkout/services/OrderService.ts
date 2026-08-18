@@ -9,7 +9,7 @@
 
 import { supabase } from '../../supabase'
 import { IMAGE_PRESETS, downscaleImage } from '../../images/downscale'
-import { VOUCHER, culqiActiveFor } from '../checkout.config'
+import { VOUCHER, culqiActiveFor, pay360ActiveFor } from '../checkout.config'
 import type { CheckoutState } from '../types'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -89,10 +89,12 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
         : s.locationType === 'PROVINCIA' ? 'MOTORIZADO_PROVINCIA' : 'MOTORIZADO_LIMA',
       agency_name: usesAgency ? (s.provinciaConfig?.selectedAgency ?? undefined) : undefined,
       payment_method: s.advanceAmount > 0 ? 'YAPE_PLIN' : 'CONTRAENTREGA',
-      // 'CULQI' saca al pedido de la piscina del cruce manual desde el ALTA:
-      // su dinero llega por culqi-charge, no por el Yape de la marca. Para una
-      // tienda sin Culqi el campo ni viaja — payload idéntico al de siempre.
-      payment_provider: culqiActiveFor(s) ? 'CULQI' : undefined,
+      // El provider saca al pedido de la piscina del cruce manual desde el
+      // ALTA: su dinero llega por su propio motor, no por el Yape de la marca,
+      // y dejarlo dentro haría que un yape ajeno del mismo monto lo diera por
+      // pagado. Para una tienda sin cobro en línea el campo ni viaja — payload
+      // idéntico al de siempre.
+      payment_provider: pay360ActiveFor(s) ? '360PAY' : culqiActiveFor(s) ? 'CULQI' : undefined,
       closed_by: 'DIRECT_CHECKOUT',
       // Con cuál de las dos versiones se cerró. Sin esto el experimento no se
       // puede leer: se sabría cuánta gente vio cada una pero no cuál vendió.

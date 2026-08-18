@@ -223,6 +223,16 @@ export const VOUCHER_REQUIRED = false
  */
 export const VERIFICATION_TIMEOUT_MS = 20_000
 
+/**
+ * Cada cuánto se consulta el pedido mientras el comprador paga en Yape.
+ *
+ * 3 s y no menos: el comprador está EN OTRA APP, así que una consulta más
+ * rápida no le adelanta nada —no está mirando— y sí multiplica llamadas a
+ * `get-session` por cada pedido en vuelo. Y no más, porque cuando vuelve sí
+ * mira, y ahí los segundos se notan.
+ */
+export const PAY360_POLL_MS = 3000
+
 /** Backoff del polling mientras se espera el match (ms). */
 export const VERIFICATION_POLL_MS = [1000, 2000, 3000, 5000, 5000] as const
 
@@ -335,6 +345,28 @@ export const COPY = {
    *  cobro que esa pantalla no da. El modal reducido de solo-cobro está
    *  anotado como follow-up; hasta entonces, el rótulo dice la verdad. */
   finishPaymentCta: 'Coordinar el pago de tu pedido',
+
+  // ─── Cobro con 360pay ──────────────────────────────────────────────────────
+  // Igual que con Culqi, el comprador paga "con Yape": el recaudador es cocina
+  // nuestra. Nombrar a 360pay solo agrega una marca desconocida justo en la
+  // pantalla donde la confianza decide.
+  pay360Title: 'Paga tu adelanto con Yape',
+  pay360Intro: 'Toca el botón y Yape se abre con todo listo. No tienes que escribir el monto ni buscar ningún número.',
+  pay360AmountLabel: 'Monto a pagar',
+  pay360Cta: 'Pagar con Yape',
+  // Lo que hay que decir ANTES de que se vaya: Yape no lo devuelve solo, y
+  // volver sin entender qué pasó es donde se pierden los pedidos ya pagados.
+  pay360AfterHint: 'Cuando termines en Yape, vuelve a esta ventana: tu pedido se confirma solo.',
+  pay360CodeLabel: '¿Pagas desde tu computadora?',
+  pay360CodeCopy: 'Copiar',
+  // El nombre del servicio importa tanto como el código: sin él, el comprador
+  // no sabe qué buscar en la lista de pagos de servicios de su app.
+  pay360CodeHint: 'En tu Yape entra a “Pagar servicios”, busca 360Pay y pega este código.',
+  // La espera. No dice "verificando" a secas: el comprador acaba de salir de la
+  // app y tiene que saber que lo suyo ya está hecho.
+  pay360Waiting: 'Esperando tu pago…',
+  pay360WaitingHint: 'Apenas Yape confirme, esta pantalla cambia sola. Puedes cerrarla: tu pedido ya está registrado.',
+  pay360IssueFailed: 'No pudimos generar tu pago. Vuelve a intentarlo.',
 
   voucherOptional: 'Adjuntar captura (opcional)',
   voucherAttached: 'Captura adjunta',

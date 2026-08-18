@@ -9,13 +9,15 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { ArrowLeft, Loader2, X } from 'lucide-react'
 import { useCheckout } from '../../lib/checkout/useCheckout'
-import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN, culqiActiveFor } from '../../lib/checkout/checkout.config'
+import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN, PAY360_POLL_MS, culqiActiveFor, pay360ActiveFor } from '../../lib/checkout/checkout.config'
 import { trackEvent } from '../../lib/checkout/analytics'
-import type { CheckoutState, StoreCulqi } from '../../lib/checkout/types'
+import type { CheckoutState, StoreCulqi, StorePay360 } from '../../lib/checkout/types'
 import type { CheckoutAbMode } from '../../lib/checkout/variant'
 import { effectivePrice } from '../../lib/checkout/product-packs'
 import { fetchPaymentVerification, submitOrder, uploadVoucher } from '../../lib/checkout/services/OrderService'
 import { chargeAdvance } from '../../lib/checkout/services/CulqiService'
+import { issueCoupon } from '../../lib/checkout/services/Pay360Service'
+import Pay360Box from './payment/Pay360Box'
 import { clearAdvancePending, saveLastOrder } from '../../lib/checkout/persistence'
 import { orderRegistered, payPhaseReducer } from '../../lib/checkout/pay-phase'
 import { canRetry, culqiFailureCopy, needsNewOtp } from '../../lib/checkout/culqi-errors'
@@ -50,6 +52,8 @@ interface CheckoutModalProps {
   yape?: StoreYape | null
   /** Config Culqi de la tienda (columnas públicas). Puede llegar asíncrona. */
   culqi?: StoreCulqi | null
+  /** Config 360pay de la tienda. Mismas reglas que `culqi`. */
+  pay360?: StorePay360 | null
   /** Cómo reparte la tienda el A/B (`stores.checkout_ab_mode`). Asíncrona igual
    *  que `culqi`: hasta que llegue vale el sorteo 50/50 de siempre. */
   abMode?: CheckoutAbMode
@@ -57,7 +61,7 @@ interface CheckoutModalProps {
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, yape = null, culqi = null, abMode = 'SPLIT',
+  submitContext, yape = null, culqi = null, pay360 = null, abMode = 'SPLIT',
 }: CheckoutModalProps) {
   const co = useCheckout({ initialPack, onPartialLead })
   const { state, dispatch, errors, touch } = co
@@ -79,6 +83,10 @@ export default function CheckoutModal({
   useEffect(() => {
     dispatch({ type: 'SET_CULQI_CONFIG', culqi: culqi ?? null })
   }, [culqi, dispatch])
+
+  useEffect(() => {
+    dispatch({ type: 'SET_PAY360_CONFIG', pay360: pay360 ?? null })
+  }, [pay360, dispatch])
 
   // Igual que la de Culqi: llega asíncrona y con deps reales se corrige sola.
   useEffect(() => {
@@ -162,6 +170,36 @@ export default function CheckoutModal({
   const pack = packs.find(p => p.id === state.selectedPack) ?? null
   const price = pack ? effectivePrice(pack.precio, state.discountPen) : 0
 
+  // Token del pedido en curso. Un ref y no una dep: el callback de emisión se
+  // vuelve a llamar en el retry, y re-crearlo en cada cambio de fase reintroduce
+  // el doble tap que el reducer justamente evita.
+  const phaseRef = useRef('')
+  useEffect(() => {
+    if (phase.k !== 'IDLE' && 'token' in phase) phaseRef.current = phase.token
+  }, [phase])
+
+  // ─── Fase 2 (360pay) · emitir el cupón ────────────────────────────────────
+  // No cobra: devuelve CÓMO pagar. El "sí, entró" llega después, por el webhook,
+  // y esta pantalla lo ve por el polling de abajo.
+  const issue = useCallback(async () => {
+    const res = await issueCoupon({ orderToken: phaseRef.current })
+    if (res.ok) {
+      if (res.alreadyPaid) {
+        phaseDispatch({ type: 'PAID' })
+        return
+      }
+      trackEvent({ name: 'pay360_coupon_issued', orderId: state.orderId })
+      phaseDispatch({ type: 'COUPON_ISSUED', coupon: {
+        deeplink: res.deeplink, consumerCode: res.consumerCode, amountPen: res.amountPen,
+      } })
+      return
+    }
+    trackEvent({ name: 'pay360_issue_failed', orderId: state.orderId, stage: res.stage, code: res.code })
+    phaseDispatch({ type: 'ISSUE_FAILED' })
+    // El pedido YA existe: se marca para que la landing ofrezca retomarlo.
+    saveLastOrder(phaseRef.current, '', submitContext?.productId ?? null, { advancePending: true })
+  }, [state.orderId, submitContext])
+
   // ─── Fase 2 · el cobro. Solo existe con Culqi activo. ─────────────────────
   // Toma el teléfono y el OTP del estado EN el momento de cobrar, y el pedido
   // de la referencia explícita — jamás de un closure viejo.
@@ -194,7 +232,8 @@ export default function CheckoutModal({
     // Guard duro del doble tap: con un pago ya en marcha, este botón no existe
     // (el pie se desmonta), pero el guard queda por si algo lo re-monta.
     if (phase.k !== 'IDLE') return
-    const culqiActive = culqiActiveFor(state)
+    const pay360Active = pay360ActiveFor(state)
+    const culqiActive = !pay360Active && culqiActiveFor(state)
     setSubmitError(null)
     dispatch({ type: 'SUBMITTING' })
     try {
@@ -215,6 +254,12 @@ export default function CheckoutModal({
       // El borrador deja de existir: un pedido enviado no se reabre.
       co.clear()
 
+      if (pay360Active) {
+        phaseRef.current = ref.token
+        phaseDispatch({ type: 'REGISTERED_PAY360', ...ref })
+        await issue()
+        return
+      }
       if (!culqiActive) {
         // Flujo manual: directo a la pantalla final, como siempre.
         phaseDispatch({ type: 'REGISTERED_MANUAL', ...ref })
@@ -229,7 +274,34 @@ export default function CheckoutModal({
       setSubmitError(COPY.submitError)
       trackEvent({ name: 'order_failed', orderId: state.orderId, reason })
     }
-  }, [state, submitContext, price, pack, dispatch, co, phase.k, charge])
+  }, [state, submitContext, price, pack, dispatch, co, phase.k, charge, issue])
+
+  // ─── La espera del pago ───────────────────────────────────────────────────
+  // El comprador se fue a Yape, en otra app. Aquí se consulta el pedido hasta
+  // ver el MATCHED que dejó el webhook. No hay timeout que corte: el pedido ya
+  // está registrado y la pantalla dice que se puede cerrar, así que seguir
+  // consultando mientras esté abierta no le cuesta nada y le ahorra el susto de
+  // volver y no ver su pago reflejado.
+  useEffect(() => {
+    if (phase.k !== 'AWAITING') return
+    let alive = true
+    const tick = async () => {
+      const v = await fetchPaymentVerification(phase.token)
+      if (!alive) return
+      if (v === 'MATCHED') phaseDispatch({ type: 'PAID' })
+    }
+    const id = setInterval(tick, PAY360_POLL_MS)
+    void tick()
+    return () => { alive = false; clearInterval(id) }
+  }, [phase])
+
+  // Retry de la emisión: SOLO desde ISSUE_FAILED. El reducer ya lo impone; el
+  // guard evita el viaje de red.
+  const retryIssue = useCallback(async () => {
+    if (phase.k !== 'ISSUE_FAILED') return
+    phaseDispatch({ type: 'RETRY' })
+    await issue()
+  }, [phase.k, issue])
 
   // Retry del cobro: SOLO desde CHARGE_FAILED, y jamás re-registra.
   const retryCharge = useCallback(async () => {
@@ -357,6 +429,57 @@ export default function CheckoutModal({
           )}
 
           {/* ── Cobro en vuelo ── */}
+          {/* 360pay · emitiendo el cupón. Dura lo que una llamada; sin pantalla
+                propia el botón se quedaría mudo y el comprador volvería a tocar. */}
+          {phase.k === 'ISSUING' && (
+            <div className="py-10 text-center">
+              <Loader2 size={34} className="animate-spin mx-auto mb-4 text-[#742284]" />
+              <p className="text-base font-black text-gray-900">{COPY.submitting}</p>
+            </div>
+          )}
+
+          {phase.k === 'AWAITING' && (
+            <div className="py-2">
+              <Pay360Box coupon={phase.coupon} />
+              <div className="mt-4 flex items-center justify-center gap-2 text-center">
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-gray-200 border-t-[#742284]" />
+                <p className="text-sm font-bold text-gray-700">{COPY.pay360Waiting}</p>
+              </div>
+              <p className="mt-1 px-4 text-center text-xs text-gray-400">{COPY.pay360WaitingHint}</p>
+              <button
+                type="button"
+                onClick={() => phaseDispatch({ type: 'GIVE_UP' })}
+                className="mt-3 w-full py-2 text-xs font-bold text-gray-400 underline"
+              >
+                {COPY.culqiContactMe}
+              </button>
+            </div>
+          )}
+
+          {phase.k === 'ISSUE_FAILED' && (
+            <div className="py-2 text-center">
+                {/* Primero lo que SÍ pasó. El pedido existe: decir "error" a
+                    secas empuja a rehacer una compra que ya está hecha. */}
+              <h2 className="mb-0.5 text-xl font-black text-gray-900">{COPY.culqiRetryTitle}</h2>
+              <p className="mb-3 text-sm text-gray-500">{COPY.culqiRetryBody}</p>
+              <p className="mb-4 text-sm text-gray-700">{COPY.pay360IssueFailed}</p>
+              <button
+                type="button"
+                onClick={retryIssue}
+                className="w-full rounded-xl bg-[#742284] px-4 py-3.5 text-base font-black text-white"
+              >
+                {COPY.culqiRetryCta}
+              </button>
+              <button
+                type="button"
+                onClick={() => phaseDispatch({ type: 'GIVE_UP' })}
+                className="mt-2 w-full py-2 text-xs font-bold text-gray-400 underline"
+              >
+                {COPY.culqiContactMe}
+              </button>
+            </div>
+          )}
+
           {phase.k === 'CHARGING' && (
             <div className="py-10 text-center">
               <Loader2 size={34} className="animate-spin mx-auto mb-4 text-green-600" />
