@@ -13,10 +13,9 @@
 //   3. Dedupe por X-360Pay-Event-Id (NO Delivery-Id: cambia en cada reintento,
 //      así que dedupear por él dejaría entrar el mismo pago una vez por intento).
 //   4. **Re-consulta del cupón contra 360pay.** La firma dice que el mensaje es
-//      auténtico; la consulta dice que el pago existe. Mientras el separador de
-//      la cadena firmada no esté verificado contra un evento real
-//      (docs/06-360PAY.md §10.a), esta es la que manda: ningún pedido se marca
-//      pagado por la firma sola.
+//      auténtico; la consulta dice que el pago existe. La doc lo pide explícito:
+//      "no dependas del número de intento para decidir si el pago es válido;
+//      usa el estado y los IDs del payload".
 //   5. El MONTO se contrasta contra el del pedido. Un cupón pagado por menos no
 //      es un adelanto pagado.
 //
@@ -125,7 +124,13 @@ Deno.serve(async (req) => {
     return await ignore(storeId, dedupeKey, 'pedido de otro motor de cobro')
   }
   if (session.payment_verification === 'MATCHED') {
-    return await ignore(storeId, dedupeKey, 'adelanto ya verificado')
+    // No es un duplicado ni un error: la doc avisa que si el cupón ya estaba
+    // pagado y DESPUÉS se corrige el código bancario (`operation_number`,
+    // `bank_tx_id`), 360pay emite otro PAYMENT_PAID con un Event-Id DISTINTO.
+    // O sea, pasa el dedupe legítimamente. Se registra como actualización y no
+    // se vuelve a tocar el pedido: re-confirmar lo ya confirmado solo puede
+    // romperlo.
+    return await ignore(storeId, dedupeKey, 'actualización de un pago ya verificado')
   }
 
   // 4 · la VERDAD la da 360pay, no el payload

@@ -319,9 +319,10 @@ export const SIGNATURE_TOLERANCE_MS = 5 * 60_000
  * payload"*, así que la fecha entra en la cadena — firmar solo el body dejaría
  * el timestamp sin proteger y el replay abierto.
  *
- * ⚠️ El SEPARADOR no está documentado. Se asume `.` (la convención de Stripe y
- * derivados). Confirmar contra un evento real antes de producción: si no calza,
- * es esta única línea.
+ * VERIFICADO contra el ejemplo oficial de `/docs/webhooks`:
+ *   crypto.createHmac('sha256', signingSecret).update(timestamp + '.' + rawBody)
+ * y la ventana que usan es `Math.abs(now - timestamp) > 5 * 60 * 1000`, o sea
+ * acotada por ambos lados — igual que `SIGNATURE_TOLERANCE_MS`.
  */
 export function signedPayload(timestamp: string, rawBody: string): string {
   return `${timestamp}.${rawBody}`

@@ -201,6 +201,19 @@ describe('firma del webhook', () => {
   const ts = '2026-08-18T21:59:50.000Z'
   const sign = (b = body, t = ts) => hmacHex(secret, signedPayload(t, b))
 
+  it('la cadena firmada es exactamente `timestamp + "." + body`', () => {
+    // Fijado contra el ejemplo oficial de /docs/webhooks:
+    //   createHmac('sha256', secret).update(timestamp + '.' + rawBody)
+    // Cualquier otro separador rechazaría TODOS los eventos legítimos, y sin
+    // ruido: el webhook no falla, simplemente no confirma ningún pago.
+    expect(signedPayload('2026-08-18T21:59:50.000Z', '{"a":1}'))
+      .toBe('2026-08-18T21:59:50.000Z.{"a":1}')
+  })
+
+  it('la ventana de replay es la misma que usa su ejemplo (5 min)', () => {
+    expect(SIGNATURE_TOLERANCE_MS).toBe(5 * 60 * 1000)
+  })
+
   it('acepta la firma correcta', async () => {
     const r = await verifySignature(secret, body, { signature: await sign(), timestamp: ts }, now)
     expect(r.ok).toBe(true)
@@ -355,6 +368,34 @@ describe('fases del cobro con 360pay', () => {
     const p = run({ k: 'IDLE' }, { type: 'REGISTERED_CULQI', ...ref }, { type: 'CHARGE_OK' })
     expect(p.k).toBe('DONE')
     if (p.k === 'DONE') expect(p.paid).toBe(true)
+  })
+})
+
+describe('payload real del evento PAYMENT_PAID', () => {
+  // Del ejemplo oficial. Va PLANO, sin envoltorio `data` — pero el hook admite
+  // `payload_mapping`, así que el handler tiene que aguantar las dos formas.
+  const evento = {
+    event: 'ticket.paid',
+    _id: '64b1f...',
+    external_ref: 'ORD-9988',
+    payment_reference: 'A1B2C3D4E5F6G7',
+    amount: 150.5,
+    status: 'paid',
+    paid_at: '2026-05-30T12:30:00.000Z',
+    operation_number: 'OP-12345',
+    bank_tx_id: 'BCP-1234567',
+  }
+
+  it('el estado se lee con isPaid, no del nombre del evento', () => {
+    // `event` dice "ticket.paid" (nomenclatura legacy) mientras el hook es
+    // PAYMENT_PAID: atarse al nombre del evento es atarse a un alias.
+    expect(isPaid(evento)).toBe(true)
+    expect(isPaid({ ...evento, status: 'active' })).toBe(false)
+  })
+
+  it('el monto viene en soles con decimales, no en céntimos', () => {
+    expect(evento.amount).toBe(150.5)
+    expect(Number.isInteger(evento.amount)).toBe(false)
   })
 })
 
