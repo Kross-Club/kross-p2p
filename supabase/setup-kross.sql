@@ -738,3 +738,63 @@ CREATE INDEX IF NOT EXISTS idx_checkout_drafts_variant
 CREATE INDEX IF NOT EXISTS idx_order_sessions_variant
   ON order_sessions(store_id, checkout_variant)
   WHERE checkout_variant IS NOT NULL;
+
+-- ─── 20. COBRO CON 360PAY (cupón + deep link de Yape) ────────────────────────
+-- Segundo motor de cobro en línea, y el primero que NO depende de acreditación
+-- PCI: nunca tocamos credenciales de pago. Kross es PARTNER de 360pay y cada
+-- marca es un "business" creado bajo esa cuenta — al revés que Culqi, donde
+-- cada marca pega SUS llaves. Ver docs/06-360PAY.md.
+--
+-- El flujo: se emite un CUPÓN por el adelanto → el comprador lo paga con el
+-- deep link de pago de servicios de Yape (que abre pre-llenado) → 360pay avisa
+-- por webhook firmado. El cruce es determinístico por `external_ref`, no la
+-- heurística de monto + código de 3 dígitos del flujo manual.
+
+-- 20.a Identificadores del negocio en 360pay. NO son secretos: `business_id` y
+-- los GUID de Yape solo sirven para armar el enlace, y el enlace es público por
+-- definición (se le da al comprador). Por eso viven en `stores`, que ya tiene
+-- SELECT público, igual que `culqi_scope`.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_enabled        boolean DEFAULT false;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_business_id    text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_payment_prefix text;   -- 3 chars, prefijo del código de pago
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_company_id     text;   -- GUID de 360Pay en Yape
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_service_id     text;   -- GUID del servicio en Yape
+-- Ambiente por tienda: una marca puede quedar en sandbox mientras otra ya cobra
+-- de verdad. Sin esto, probar obligaría a un deploy para volver a producción.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_env            text DEFAULT 'sandbox';
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_pay360_env_check;
+ALTER TABLE stores ADD CONSTRAINT stores_pay360_env_check
+  CHECK (pay360_env IS NULL OR pay360_env = ANY (ARRAY['sandbox'::text, 'live'::text]));
+
+-- 20.b Secretos, en `store_secrets` (service role only). El `hook_signing_secret`
+-- 360pay lo muestra UNA SOLA VEZ, en la respuesta de crear el negocio: si no se
+-- captura ahí, la única salida es rotarlo. `hook_id` sirve para saber con qué
+-- secreto verificar cuando llegue un evento (viene en X-360Pay-Hook-Id).
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS pay360_hook_id          text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS pay360_hook_secret      text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS pay360_secrets_updated_at timestamptz;
+-- La llave de PARTNER no va aquí: es de la plataforma, no de una tienda, y vive
+-- en el secreto de entorno PAY360_PARTNER_KEY de las Edge Functions.
+
+-- 20.c El cupón vivo del pedido. `pay360_coupon_id` es el `_id` que devuelve
+-- 360pay y con el que se re-consulta el estado; `pay360_consumer_code` es el
+-- código del COMPRADOR (no del cupón) que va en el deep link.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pay360_coupon_id     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pay360_consumer_code text;
+
+-- 20.d Buscar el pedido por el cupón que avisa el webhook. El evento trae
+-- `external_ref` (= id de la sesión) pero también puede llegar identificando
+-- solo el cupón; con este índice las dos rutas son baratas.
+CREATE INDEX IF NOT EXISTS idx_order_sessions_pay360_coupon
+  ON order_sessions(pay360_coupon_id)
+  WHERE pay360_coupon_id IS NOT NULL;
+
+-- 20.e `payment_provider` gana el valor '360PAY'. Sigue siendo la línea que
+-- separa las piscinas de cruce: `yape-ingest` solo consume pedidos con
+-- `payment_provider IS NULL`, así que un pedido de 360pay no puede ser dado por
+-- pagado por un yape ajeno del mismo monto.
+--
+-- El anti-duplicado del webhook reutiliza el índice único (store_id, dedupe_key)
+-- del 13.c con `dedupe_key = '360pay:' || X-360Pay-Event-Id`. Se deduplica por
+-- **Event-Id** y no por Delivery-Id: el segundo cambia en cada reintento, así
+-- que deduplicar por él dejaría entrar el mismo pago una vez por intento.
