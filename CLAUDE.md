@@ -40,6 +40,7 @@ comando, comparten organización pero **no** comparten esquema ni convenciones.
 | `docs/02-SMART-LOGISTICS.md` | Geolocalización, motorizados, envíos a provincia |
 | `docs/03-LOYALTY-ENGINE.md` | Recompra, puntos, campañas WhatsApp, LTV |
 | `docs/04-CUMPLIMIENTO-CULQI.md` | Web pública, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
+| `docs/05-360PAY.md` | 🔮 360pay como pasarela por defecto: seam de proveedor, credenciales de partner, qué falta del spec |
 | `docs/GIT-FLOW.md` | Nomenclatura de ramas/commits y flujo de PR |
 | `docs/ICP Sales/` · `docs/ICP LTV/` | Capa estratégica (por qué / para quién) |
 
