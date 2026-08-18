@@ -232,11 +232,100 @@ export function yapeDeeplink(input: {
   return `${YAPE_SERVICES_PAY_URL}?${q.toString()}`
 }
 
+// ─── Código de pago (`consumerCode`) ─────────────────────────────────────────
+// Confirmado con el partner: identifica al **CLIENTE**, no al cupón, y lo
+// definimos nosotros. Formato: prefijo del negocio (3) + sufijo, **14 en total**
+// como máximo (ejemplos reales: `TED1234`, `TED46558912`, `TED19478876653`).
+//
+// Dos decisiones que no son de estilo:
+//
+// · **Solo dígitos en el sufijo.** El spec dice "alfanumérico", pero los tres
+//   ejemplos del partner son numéricos y esto termina tecleado en un flujo de
+//   pago de servicios bancario. Si después se confirma que aceptan letras, se
+//   amplía sin romper códigos ya emitidos; al revés no.
+// · **Derivado por HMAC, no del teléfono ni del DNI.** Lo evidente era
+//   `prefijo + celular`: estable, único y legible. Pero el código se teclea en
+//   Yape y devuelve los cupones pendientes de ese cliente — o sea, quien
+//   adivine un código ve cuánto debe esa persona y a qué marca. Con el celular
+//   como código, adivinarlo es saber un número que medio mundo tiene. El HMAC
+//   con el secreto de la tienda mantiene la estabilidad y quita la adivinanza.
+
+export const CONSUMER_CODE_MAX = 14
+export const CONSUMER_CODE_PREFIX_LEN = 3
+
+/**
+ * Código de pago del comprador. **Estable por comprador**: el mismo `buyerKey`
+ * da siempre el mismo código, que es justo lo que hace falta cuando el mismo
+ * cliente vuelve a comprar — 360pay lo resuelve al mismo `customer`.
+ *
+ * `buyerKey` debe identificar al comprador DENTRO de la tienda (id de buyer, o
+ * `store_id:celular`). `secret` es de la tienda y nunca sale del servidor.
+ */
+export async function consumerCodeFor(
+  prefix: string, secret: string, buyerKey: string,
+): Promise<string> {
+  const p = prefix.trim().toUpperCase().slice(0, CONSUMER_CODE_PREFIX_LEN)
+  if (p.length !== CONSUMER_CODE_PREFIX_LEN) {
+    throw new Error('consumerCodeFor: el prefijo del negocio es de 3 caracteres')
+  }
+  const digits = CONSUMER_CODE_MAX - p.length
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const mac = new Uint8Array(
+    await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(buyerKey)),
+  )
+  // Se consumen bytes hasta llenar los dígitos: tomar el entero de los primeros
+  // 8 bytes pasaría por Number y perdería precisión sobre 2^53.
+  let out = ''
+  for (let i = 0; out.length < digits; i++) out += (mac[i % mac.length] % 10).toString()
+  return p + out
+}
+
+export function isValidConsumerCode(code: string): boolean {
+  return /^[A-Z0-9]{4,14}$/.test(code) && code.length <= CONSUMER_CODE_MAX
+}
+
 // ─── Firma del webhook ───────────────────────────────────────────────────────
-// El partner confirmó que se firma el BODY CRUDO. Por eso el handler tiene que
-// leer `await req.text()` y verificar ANTES de parsear: si se re-serializa el
-// JSON, cualquier diferencia de orden o espacios rompe la firma de un evento
-// legítimo.
+// Headers que manda 360pay (documentados):
+//
+//   X-360Pay-Event-Id     id ESTABLE del evento → idempotencia
+//   X-360Pay-Delivery-Id  cambia entre reintentos → NO sirve para deduplicar
+//   X-360Pay-Hook-Id      qué hook lo originó → con qué secreto verificar
+//   X-360Pay-Timestamp    fecha ISO **usada para firmar**
+//   X-360Pay-Signature    HMAC-SHA256 en formato `sha256=<hex>`
+//   X-360Pay-Attempt      número de intento
+//
+// El `Event-Id` es el que va al `dedupe_key` de `payment_events`: deduplicar por
+// `Delivery-Id` no deduplica nada, porque cada reintento trae uno nuevo y el
+// mismo pago entraría tantas veces como intentos haga 360pay.
+
+export const PAY360_HEADERS = {
+  eventId: 'X-360Pay-Event-Id',
+  deliveryId: 'X-360Pay-Delivery-Id',
+  hookId: 'X-360Pay-Hook-Id',
+  timestamp: 'X-360Pay-Timestamp',
+  signature: 'X-360Pay-Signature',
+  attempt: 'X-360Pay-Attempt',
+} as const
+
+/** Ventana de replay. Una firma válida es válida para siempre: sin esto, quien
+ *  capture un evento legítimo puede re-enviarlo cuando quiera. */
+export const SIGNATURE_TOLERANCE_MS = 5 * 60_000
+
+/**
+ * Qué se firma. El header de fecha se documenta como *"usada para firmar el
+ * payload"*, así que la fecha entra en la cadena — firmar solo el body dejaría
+ * el timestamp sin proteger y el replay abierto.
+ *
+ * ⚠️ El SEPARADOR no está documentado. Se asume `.` (la convención de Stripe y
+ * derivados). Confirmar contra un evento real antes de producción: si no calza,
+ * es esta única línea.
+ */
+export function signedPayload(timestamp: string, rawBody: string): string {
+  return `${timestamp}.${rawBody}`
+}
 
 /** Comparación en tiempo constante: un `===` sobre firmas filtra, por el
  *  tiempo que tarda en fallar, cuántos bytes iniciales acertó quien prueba. */
@@ -251,29 +340,50 @@ export function toHex(buf: ArrayBuffer): string {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** HMAC-SHA256 del body crudo, en hex. */
-export async function signBody(secret: string, rawBody: string): Promise<string> {
+/** HMAC-SHA256 en hex de una cadena cualquiera. */
+export async function hmacHex(secret: string, payload: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(secret),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   )
-  return toHex(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody)))
+  return toHex(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload)))
+}
+
+export interface SignatureCheck {
+  ok: boolean
+  /** Por qué falló — para el log del servidor, jamás para una respuesta. */
+  reason?: 'no_secret' | 'no_signature' | 'no_timestamp' | 'bad_format' | 'stale' | 'mismatch'
 }
 
 /**
- * Verifica `X-360Pay-Signature`. Tolera el prefijo `sha256=` que usan varias
- * pasarelas y la firma pelada, porque el formato exacto no está documentado.
+ * Verifica `X-360Pay-Signature` contra el body CRUDO.
  *
- * ⚠️ Pendiente de confirmar contra un evento real: algoritmo (se asume
- * HMAC-SHA256) y codificación (se asume hex). Hasta entonces esta función NO
- * debe ser lo único que autoriza marcar un pedido como pagado — el webhook
- * re-consulta el cupón con `getCoupon`, igual que hace `culqi-webhook`.
+ * El handler tiene que llamar a esto con `await req.text()` y ANTES de parsear:
+ * re-serializar el JSON cambia orden y espacios, y rompe la firma de un evento
+ * legítimo.
+ *
+ * `nowMs` se inyecta para poder testear la ventana de replay sin reloj falso.
  */
 export async function verifySignature(
-  secret: string, rawBody: string, header: string | null,
-): Promise<boolean> {
-  if (!secret || !header) return false
-  const received = header.trim().replace(/^sha256=/i, '').toLowerCase()
-  if (!/^[0-9a-f]{64}$/.test(received)) return false
-  return timingSafeEqual(await signBody(secret, rawBody), received)
+  secret: string,
+  rawBody: string,
+  headers: { signature?: string | null; timestamp?: string | null },
+  nowMs: number = Date.now(),
+): Promise<SignatureCheck> {
+  if (!secret) return { ok: false, reason: 'no_secret' }
+  if (!headers.signature) return { ok: false, reason: 'no_signature' }
+  if (!headers.timestamp) return { ok: false, reason: 'no_timestamp' }
+
+  const received = headers.signature.trim().replace(/^sha256=/i, '').toLowerCase()
+  if (!/^[0-9a-f]{64}$/.test(received)) return { ok: false, reason: 'bad_format' }
+
+  const ts = Date.parse(headers.timestamp)
+  if (Number.isNaN(ts)) return { ok: false, reason: 'no_timestamp' }
+  // Se acota por ambos lados: un timestamp del futuro es tan sospechoso como
+  // uno viejo, y sin el límite superior bastaría con adelantarlo para que la
+  // firma capturada no venza nunca.
+  if (Math.abs(nowMs - ts) > SIGNATURE_TOLERANCE_MS) return { ok: false, reason: 'stale' }
+
+  const expected = await hmacHex(secret, signedPayload(headers.timestamp, rawBody))
+  return timingSafeEqual(expected, received) ? { ok: true } : { ok: false, reason: 'mismatch' }
 }

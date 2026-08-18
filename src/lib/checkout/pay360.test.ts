@@ -8,8 +8,9 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  isPaid, pay360BaseUrl, signBody, timingSafeEqual, unwrap, verifySignature,
-  yapeDeeplink, YAPE_SERVICES_PAY_URL,
+  CONSUMER_CODE_MAX, PAY360_HEADERS, SIGNATURE_TOLERANCE_MS, consumerCodeFor, hmacHex,
+  isPaid, isValidConsumerCode, pay360BaseUrl, signedPayload, timingSafeEqual, unwrap,
+  verifySignature, yapeDeeplink, YAPE_SERVICES_PAY_URL,
 } from '../../../supabase/functions/_shared/pay360.ts'
 
 describe('bases por ambiente', () => {
@@ -96,40 +97,128 @@ describe('deep link de Yape', () => {
   })
 })
 
+describe('código de pago (consumerCode)', () => {
+  const secret = 'secreto-de-la-tienda'
+
+  it('respeta el formato del partner: prefijo de 3 + total de 14', async () => {
+    const code = await consumerCodeFor('TED', secret, 'buyer-1')
+    expect(code).toHaveLength(CONSUMER_CODE_MAX)
+    expect(code.startsWith('TED')).toBe(true)
+    expect(isValidConsumerCode(code)).toBe(true)
+  })
+
+  it('el sufijo es solo dígitos', async () => {
+    // Los tres ejemplos del partner son numéricos y esto se teclea en un flujo
+    // bancario: letras se agregan si se confirma que las aceptan, no antes.
+    const code = await consumerCodeFor('TED', secret, 'buyer-1')
+    expect(code.slice(3)).toMatch(/^\d{11}$/)
+  })
+
+  it('es ESTABLE por comprador — el que vuelve cae en el mismo cliente', async () => {
+    const a = await consumerCodeFor('TED', secret, 'buyer-1')
+    const b = await consumerCodeFor('TED', secret, 'buyer-1')
+    expect(a).toBe(b)
+  })
+
+  it('distintos compradores dan códigos distintos', async () => {
+    const a = await consumerCodeFor('TED', secret, 'buyer-1')
+    const b = await consumerCodeFor('TED', secret, 'buyer-2')
+    expect(a).not.toBe(b)
+  })
+
+  it('no es adivinable desde el celular del comprador', async () => {
+    // Quien teclea un código en Yape ve los cupones pendientes de ese cliente.
+    // Si el código fuera `prefijo + celular`, adivinar cuánto debe alguien sería
+    // saber su número. Con otro secreto, el mismo comprador da otro código.
+    const phone = '987654321'
+    const code = await consumerCodeFor('TED', secret, phone)
+    expect(code).not.toContain(phone)
+    expect(await consumerCodeFor('TED', 'otro-secreto', phone)).not.toBe(code)
+  })
+
+  it('normaliza el prefijo y rechaza el que no mide 3', async () => {
+    expect(await consumerCodeFor('ted', secret, 'b')).toMatch(/^TED/)
+    await expect(consumerCodeFor('TE', secret, 'b')).rejects.toThrow()
+    await expect(consumerCodeFor('', secret, 'b')).rejects.toThrow()
+  })
+
+  it('acepta las tres longitudes de ejemplo del partner', () => {
+    expect(isValidConsumerCode('TED1234')).toBe(true)
+    expect(isValidConsumerCode('TED46558912')).toBe(true)
+    expect(isValidConsumerCode('TED19478876653')).toBe(true)
+    expect(isValidConsumerCode('TED194788766531')).toBe(false)  // 15
+    expect(isValidConsumerCode('TED-1234')).toBe(false)
+  })
+})
+
 describe('firma del webhook', () => {
   const secret = 'whsec_VsLSN43xjcHqk4UoW6Fv5P8v3v8YGxQ2pLkV9fR8y1A'
   const body = '{"type":"PAYMENT_PAID","data":{"external_ref":"ORD-9988"}}'
+  const now = Date.parse('2026-08-18T22:00:00.000Z')
+  const ts = '2026-08-18T21:59:50.000Z'
+  const sign = (b = body, t = ts) => hmacHex(secret, signedPayload(t, b))
 
-  it('acepta la firma correcta del body crudo', async () => {
-    const sig = await signBody(secret, body)
-    expect(await verifySignature(secret, body, sig)).toBe(true)
+  it('acepta la firma correcta', async () => {
+    const r = await verifySignature(secret, body, { signature: await sign(), timestamp: ts }, now)
+    expect(r.ok).toBe(true)
   })
 
-  it('tolera el prefijo sha256= y las mayúsculas', async () => {
-    const sig = await signBody(secret, body)
-    expect(await verifySignature(secret, body, `sha256=${sig.toUpperCase()}`)).toBe(true)
+  it('acepta el formato documentado sha256=<hex>', async () => {
+    const r = await verifySignature(secret, body,
+      { signature: `sha256=${(await sign()).toUpperCase()}`, timestamp: ts }, now)
+    expect(r.ok).toBe(true)
+  })
+
+  it('la fecha entra en la firma: cambiarla la invalida', async () => {
+    // Si se firmara solo el body, el timestamp quedaría sin proteger y se
+    // podría re-fechar un evento capturado para que nunca venza.
+    const r = await verifySignature(secret, body,
+      { signature: await sign(), timestamp: '2026-08-18T21:59:51.000Z' }, now)
+    expect(r).toEqual({ ok: false, reason: 'mismatch' })
   })
 
   it('rechaza si el body cambió aunque sea un byte', async () => {
-    const sig = await signBody(secret, body)
-    expect(await verifySignature(secret, `${body} `, sig)).toBe(false)
+    const r = await verifySignature(secret, `${body} `, { signature: await sign(), timestamp: ts }, now)
+    expect(r.ok).toBe(false)
+  })
+
+  it('rechaza eventos viejos (replay)', async () => {
+    const old = new Date(now - SIGNATURE_TOLERANCE_MS - 1000).toISOString()
+    const r = await verifySignature(secret, body, { signature: await sign(body, old), timestamp: old }, now)
+    expect(r).toEqual({ ok: false, reason: 'stale' })
+  })
+
+  it('rechaza eventos del futuro', async () => {
+    const ahead = new Date(now + SIGNATURE_TOLERANCE_MS + 1000).toISOString()
+    const r = await verifySignature(secret, body, { signature: await sign(body, ahead), timestamp: ahead }, now)
+    expect(r).toEqual({ ok: false, reason: 'stale' })
+  })
+
+  it('rechaza secreto, firma o fecha ausentes, y formatos inválidos', async () => {
+    const sig = await sign()
+    expect((await verifySignature('', body, { signature: sig, timestamp: ts }, now)).reason).toBe('no_secret')
+    expect((await verifySignature(secret, body, { signature: null, timestamp: ts }, now)).reason).toBe('no_signature')
+    expect((await verifySignature(secret, body, { signature: sig, timestamp: null }, now)).reason).toBe('no_timestamp')
+    expect((await verifySignature(secret, body, { signature: 'no-hex', timestamp: ts }, now)).reason).toBe('bad_format')
+    expect((await verifySignature(secret, body, { signature: sig, timestamp: 'ayer' }, now)).reason).toBe('no_timestamp')
   })
 
   it('rechaza con otro secreto', async () => {
-    const sig = await signBody('otro-secreto', body)
-    expect(await verifySignature(secret, body, sig)).toBe(false)
-  })
-
-  it('rechaza firma ausente, vacía o con forma inválida', async () => {
-    expect(await verifySignature(secret, body, null)).toBe(false)
-    expect(await verifySignature(secret, body, '')).toBe(false)
-    expect(await verifySignature(secret, body, 'no-es-hex')).toBe(false)
-    expect(await verifySignature('', body, await signBody(secret, body))).toBe(false)
+    const otra = await hmacHex('otro', signedPayload(ts, body))
+    expect((await verifySignature(secret, body, { signature: otra, timestamp: ts }, now)).reason).toBe('mismatch')
   })
 
   it('la comparación no corta al primer byte distinto', () => {
     expect(timingSafeEqual('abc', 'abc')).toBe(true)
     expect(timingSafeEqual('abc', 'abd')).toBe(false)
     expect(timingSafeEqual('abc', 'ab')).toBe(false)
+  })
+
+  it('la idempotencia va por Event-Id, no por Delivery-Id', () => {
+    // Delivery-Id cambia en cada reintento: deduplicar por él no deduplica
+    // nada, y el mismo pago entraría tantas veces como intentos haga 360pay.
+    expect(PAY360_HEADERS.eventId).toBe('X-360Pay-Event-Id')
+    expect(PAY360_HEADERS.deliveryId).toBe('X-360Pay-Delivery-Id')
+    expect(PAY360_HEADERS.eventId).not.toBe(PAY360_HEADERS.deliveryId)
   })
 })
