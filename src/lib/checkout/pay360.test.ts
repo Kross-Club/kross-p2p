@@ -54,6 +54,49 @@ describe('sobre { success, data, message }', () => {
   })
 })
 
+describe('alta de negocio (respuesta real del sandbox, 18-ago-2026)', () => {
+  // Fijado contra la respuesta REAL de POST /partners/v1/businesses. Viene con
+  // DOBLE sobre —`{success, data:{success, business_id…}}`— y es la forma que
+  // `unwrap` tiene que dejar utilizable.
+  const real = {
+    success: true,
+    data: {
+      success: true,
+      business_id: '6a84e5c6b254ddaacd1441a2',
+      payment_prefix: 'KRS',
+      config_id: '6a84e5c6b254ddaacd1441a3',
+      hook_ids: ['6a84e5c6b254ddaacd1441a4'],
+      hook_signing_secrets: [{ hook_id: '6a84e5c6b254ddaacd1441a4', signing_secret: 'whsec_REDACTADO' }],
+    },
+    message: 'Business created and linked to partner successfully',
+  }
+
+  it('el sobre de afuera se quita y queda el negocio', () => {
+    const r = unwrap<typeof real.data>(201, real)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.data.business_id).toBe('6a84e5c6b254ddaacd1441a2')
+    expect(r.data.payment_prefix).toBe('KRS')
+    expect(r.data.hook_signing_secrets?.[0].hook_id).toBe(r.data.hook_ids[0])
+  })
+
+  it('el prefijo que devuelve es el que arma el código de pago', async () => {
+    const r = unwrap<typeof real.data>(201, real)
+    if (!r.ok) throw new Error('unwrap falló')
+    const code = await consumerCodeFor(r.data.payment_prefix, 'secreto', 'buyer-1')
+    expect(code.startsWith('KRS')).toBe(true)
+    expect(isValidConsumerCode(code)).toBe(true)
+  })
+
+  it('la respuesta NO trae company_id ni service_id', () => {
+    // Documentado como hallazgo, no como supuesto: el partner dijo que salían
+    // al crear el negocio y no vinieron. Por eso el deep link los resuelve con
+    // override por tienda sobre un default de plataforma.
+    expect('company_id' in real.data).toBe(false)
+    expect('service_id' in real.data).toBe(false)
+  })
+})
+
 describe('estado del pago', () => {
   it('solo `paid` cuenta como pagado', () => {
     expect(isPaid({ status: 'paid' })).toBe(true)

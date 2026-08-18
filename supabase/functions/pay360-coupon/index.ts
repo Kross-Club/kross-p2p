@@ -108,8 +108,16 @@ Deno.serve(async (req) => {
       .select('payment_ingest_token').eq('store_id', originStoreId).maybeSingle(),
   ])
 
+  // Los GUID de Yape parecen ser de 360Pay (el recaudador), no de cada marca:
+  // en el enlace de ejemplo van junto a `name=360Pay`, y quien distingue a la
+  // marca es el PREFIJO del código de pago. Por eso se resuelven con override
+  // por tienda sobre un default de plataforma: si la hipótesis se confirma, se
+  // configura una vez en el entorno y toda tienda nueva funciona sin tocar nada.
+  const companyId = store?.pay360_company_id || Deno.env.get('PAY360_YAPE_COMPANY_ID') || ''
+  const serviceId = store?.pay360_service_id || Deno.env.get('PAY360_YAPE_SERVICE_ID') || ''
+
   const ready = store?.pay360_enabled && store.pay360_business_id && store.pay360_payment_prefix
-    && store.pay360_company_id && store.pay360_service_id && PARTNER_KEY
+    && companyId && serviceId && PARTNER_KEY
   if (!ready) {
     await notePaymentFailure(session, 'Pago en línea no disponible: tienda sin configurar 360pay')
     return json({ ok: false, stage: 'config', code: 'store_not_configured', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 409)
@@ -186,12 +194,7 @@ Deno.serve(async (req) => {
     coupon_id: coupon.data._id,
     // El enlace se arma en el SERVIDOR: así el front no necesita conocer los
     // GUID de Yape ni puede alterar a qué servicio apunta.
-    deeplink: yapeDeeplink({
-      companyId: String(store.pay360_company_id),
-      serviceId: String(store.pay360_service_id),
-      consumerCode,
-      name: '360Pay',
-    }),
+    deeplink: yapeDeeplink({ companyId, serviceId, consumerCode, name: '360Pay' }),
   })
 })
 
