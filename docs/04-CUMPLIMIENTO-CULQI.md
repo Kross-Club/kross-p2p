@@ -157,7 +157,7 @@ No confundirlos, porque viven en sitios distintos:
 
 | | Qué cobra | Dónde |
 |---|---|---|
-| **Adelanto COD** | El adelanto del pedido de un comprador, con Yape vía Culqi | `culqi-charge` / `culqi-webhook`, en el checkout de las marcas. Ya desplegado en producción, con su esquema (`stores.culqi_enabled`, `store_secrets.culqi_*`, `order_sessions.payment_provider`…) |
+| **Adelanto COD** | El adelanto del pedido de un comprador, con Yape vía Culqi | `culqi-charge` / `culqi-webhook`, en el checkout de las marcas. Ya desplegado en producción, con su esquema (`stores.culqi_enabled`, `store_secrets.culqi_*`, `order_sessions.payment_provider`…). **Las llaves solas no cobran**: usar la API directa exige que Culqi autorice el código de comercio (acreditación PCI DSS / SAQ-D) — el trámite completo en [`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md) |
 | **Suscripción de la plataforma** | El plan que una marca le compra a Kross en `krossclub.app` | `/pago` → `web-order`. **Todavía no cobra** |
 
 ## Cuando lleguen las llaves de Culqi

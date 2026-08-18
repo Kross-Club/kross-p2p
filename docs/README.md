@@ -34,6 +34,16 @@ La doc está organizada en dos capas complementarias:
 | 01 · Sales | [`01-SALES-ENGINE.md`](./01-SALES-ENGINE.md) | IA Closer, DNI (Decolecta), checkout CRO, pagos |
 | 02 · Logistics | [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md) | Geolocalización, motorizados Lima, envíos a provincia |
 | 03 · Loyalty | [`03-LOYALTY-ENGINE.md`](./03-LOYALTY-ENGINE.md) | Recompra, puntos, campañas WhatsApp, LTV |
+| 04 · Cumplimiento | [`04-CUMPLIMIENTO-CULQI.md`](./04-CUMPLIMIENTO-CULQI.md) | Web pública, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
+| 05 · PCI / SAQ-D | [`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md) | El permiso para usar la API directa de Culqi: qué pedir, el expediente técnico y el correo al buzón de riesgos |
+| 06 · 360pay 🔮 | [`06-360PAY.md`](./06-360PAY.md) | 360pay como pasarela por defecto: el seam de proveedor que hoy no existe, el modelo de credenciales de partner y qué falta del spec |
+
+### Cómo trabajamos
+
+| Archivo | Cubre |
+|---|---|
+| [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md) | Qué marca está viva, qué la bloquea y qué deuda hay abierta. **Empieza aquí** si vuelves después de un tiempo |
+| [`GIT-FLOW.md`](./GIT-FLOW.md) | Nomenclatura de ramas y commits, flujo de PR |
 
 ## Regla de ejecución (para Claude Code / devs)
 
