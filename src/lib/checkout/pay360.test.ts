@@ -265,3 +265,116 @@ describe('firma del webhook', () => {
     expect(PAY360_HEADERS.eventId).not.toBe(PAY360_HEADERS.deliveryId)
   })
 })
+
+// ─── Máquina de fases del cobro con cupón ────────────────────────────────────
+// La rama de 360pay NO es simétrica a la de Culqi: con Culqi el cobro ocurre
+// dentro de la llamada, con 360pay se emite y se espera. Lo que se prueba aquí
+// es que esa espera no se pueda confundir con un cobro en duda, y que ninguna
+// transición mande al comprador a pagar dos veces.
+
+import { orderRegistered, payPhaseReducer } from './pay-phase'
+import type { CouponRef, PayPhase } from './pay-phase'
+import { pay360ActiveFor } from './checkout.config'
+import type { StorePay360 } from './types'
+
+const ref = { token: 't', orderCode: 'ORD-1', sessionId: 's1' }
+const cupon: CouponRef = { deeplink: 'https://www.yape.com.pe/app/…', consumerCode: 'KRS12345678901', amountPen: 5 }
+const run = (start: PayPhase, ...evs: Parameters<typeof payPhaseReducer>[1][]) =>
+  evs.reduce(payPhaseReducer, start)
+
+describe('fases del cobro con 360pay', () => {
+  it('el camino feliz: emitir → esperar → pagado', () => {
+    const p = run({ k: 'IDLE' },
+      { type: 'REGISTERED_PAY360', ...ref },
+      { type: 'COUPON_ISSUED', coupon: cupon },
+      { type: 'PAID' })
+    expect(p.k).toBe('DONE')
+    if (p.k === 'DONE') expect(p.paid).toBe(true)
+  })
+
+  it('AWAITING lleva el enlace y el código de respaldo', () => {
+    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
+    expect(p.k).toBe('AWAITING')
+    if (p.k === 'AWAITING') expect(p.coupon.consumerCode).toBe('KRS12345678901')
+  })
+
+  it('esperar el pago NO es lo mismo que un cobro en duda', () => {
+    // CONFIRMING significa "el dinero pudo salir y hay que averiguar"; AWAITING
+    // significa "todavía no paga". Reusar CONFIRMING haría que un pedido recién
+    // emitido se leyera como un cobro dudoso.
+    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
+    expect(p.k).not.toBe('CONFIRMING')
+  })
+
+  it('desde AWAITING no se puede re-emitir: el cupón está vivo', () => {
+    const awaiting = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
+    expect(payPhaseReducer(awaiting, { type: 'RETRY' })).toEqual(awaiting)
+  })
+
+  it('un cupón que llega tarde no pisa el estado', () => {
+    // Respuesta atrasada de un intento anterior: pintar su enlace mandaría al
+    // comprador a pagar un cupón que ya se anuló.
+    const done = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref },
+      { type: 'COUPON_ISSUED', coupon: cupon }, { type: 'PAID' })
+    expect(payPhaseReducer(done, { type: 'COUPON_ISSUED', coupon: cupon })).toEqual(done)
+  })
+
+  it('el fallo al emitir sí se puede reintentar', () => {
+    const failed = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'ISSUE_FAILED' })
+    expect(failed.k).toBe('ISSUE_FAILED')
+    expect(payPhaseReducer(failed, { type: 'RETRY' }).k).toBe('ISSUING')
+  })
+
+  it('si pagó mientras reintentaba, gana el pago', () => {
+    // Decirle "falló" a quien ya pagó es el peor final posible.
+    const failed = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'ISSUE_FAILED' })
+    const p = payPhaseReducer(failed, { type: 'PAID' })
+    expect(p.k).toBe('DONE')
+    if (p.k === 'DONE') expect(p.paid).toBe(true)
+  })
+
+  it('"prefiero que me escriban" sale desde la espera', () => {
+    const awaiting = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
+    const p = payPhaseReducer(awaiting, { type: 'GIVE_UP' })
+    expect(p.k).toBe('DONE')
+    if (p.k === 'DONE') expect(p.unpaid).toBe(true)
+  })
+
+  it('emitido = pedido ya registrado: cerrar no es abandonar un carrito', () => {
+    const issuing = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref })
+    expect(orderRegistered(issuing)).toBe(true)
+  })
+
+  it('no se puede emitir dos veces desde IDLE ni saltarse el registro', () => {
+    const issuing = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref })
+    expect(payPhaseReducer(issuing, { type: 'REGISTERED_PAY360', ...ref })).toEqual(issuing)
+    expect(payPhaseReducer({ k: 'IDLE' }, { type: 'COUPON_ISSUED', coupon: cupon })).toEqual({ k: 'IDLE' })
+  })
+
+  it('la rama de Culqi queda intacta', () => {
+    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_CULQI', ...ref }, { type: 'CHARGE_OK' })
+    expect(p.k).toBe('DONE')
+    if (p.k === 'DONE') expect(p.paid).toBe(true)
+  })
+})
+
+describe('¿aplica 360pay a este pedido?', () => {
+  const ON: StorePay360 = { enabled: true, scope: 'ALL' }
+  const PROV: StorePay360 = { enabled: true, scope: 'PROVINCIA' }
+
+  it('sin destino no hay monto, y sin monto no hay cobro', () => {
+    expect(pay360ActiveFor({ pay360: ON, locationType: null, advanceAmount: 5 })).toBe(false)
+    expect(pay360ActiveFor({ pay360: ON, locationType: 'LIMA', advanceAmount: 0 })).toBe(false)
+  })
+
+  it('el scope acota dónde cobra', () => {
+    expect(pay360ActiveFor({ pay360: PROV, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
+    expect(pay360ActiveFor({ pay360: PROV, locationType: 'PROVINCIA', advanceAmount: 20 })).toBe(true)
+    expect(pay360ActiveFor({ pay360: ON, locationType: 'LIMA', advanceAmount: 5 })).toBe(true)
+  })
+
+  it('apagado o sin config, no cobra', () => {
+    expect(pay360ActiveFor({ pay360: null, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
+    expect(pay360ActiveFor({ pay360: { enabled: false, scope: 'ALL' }, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
+  })
+})

@@ -177,6 +177,25 @@ export function culqiActiveFor(
   return s.culqi.scope === 'ALL' || s.locationType === 'PROVINCIA'
 }
 
+// ─── Cobro con 360pay (cupón + deep link de Yape) ────────────────────────────
+
+/**
+ * ¿Este pedido se cobra con 360pay? Misma forma que `culqiActiveFor`, y misma
+ * razón para no ser un derivado: la config la inyecta el modal y puede llegar
+ * asíncrona, después de que el comprador ya esté en el paso 3.
+ *
+ * **360pay gana sobre Culqi si los dos están activos.** No es arbitrario: es el
+ * único de los dos que hoy puede cobrar de verdad — Culqi está bloqueado a la
+ * espera de la acreditación PCI (ver `05-PCI-SAQ-D.md`). Si esa acreditación
+ * llega, esta precedencia es la línea que se cambia.
+ */
+export function pay360ActiveFor(
+  s: Pick<CheckoutState, 'pay360' | 'locationType' | 'advanceAmount'>,
+): boolean {
+  if (!s.pay360?.enabled || s.advanceAmount <= 0 || !s.locationType) return false
+  return s.pay360.scope === 'ALL' || s.locationType === 'PROVINCIA'
+}
+
 /**
  * ¿La captura del comprobante es obligatoria para terminar el pedido?
  *

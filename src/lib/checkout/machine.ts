@@ -12,7 +12,7 @@ import { resolveVariant } from './variant'
 import type { CheckoutAbMode } from './variant'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
-  LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig, StoreCulqi,
+  LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig, StoreCulqi, StorePay360,
 } from './types'
 
 /** uuid v4. `randomUUID` exige contexto seguro; el fallback cubre dev por http. */
@@ -44,6 +44,7 @@ export function initialCheckoutState(
     paymentVoucher: null,
     advanceYapeCode: '',
     culqi: null,
+    pay360: null,
     culqiPhone: '',
     culqiOtp: '',
     advanceAmount: 0,
@@ -80,6 +81,7 @@ export type CheckoutAction =
   | { type: 'SET_YAPE_CODE'; code: string }
   /** Config de la tienda, inyectada por el modal (puede llegar asíncrona). */
   | { type: 'SET_CULQI_CONFIG'; culqi: StoreCulqi | null }
+  | { type: 'SET_PAY360_CONFIG'; pay360: StorePay360 | null }
   /** Cómo reparte la tienda el experimento (`stores.checkout_ab_mode`). Llega
    *  asíncrona, como la config de Culqi, así que re-resuelve la variante. */
   | { type: 'SET_AB_MODE'; mode: CheckoutAbMode }
@@ -309,6 +311,8 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     // `advanceAmount` sigue siendo derivado en derive() y ninguna lo toca.
     case 'SET_CULQI_CONFIG':
       return derive({ ...state, culqi: action.culqi })
+    case 'SET_PAY360_CONFIG':
+      return derive({ ...state, pay360: action.pay360 })
 
     // Con la tienda en 'A'/'B' el sorteo del navegador no manda. Se re-resuelve
     // en vez de asignar `action.mode` a secas porque `?checkout=` sigue ganando
