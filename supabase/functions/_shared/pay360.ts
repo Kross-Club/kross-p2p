@@ -287,6 +287,29 @@ export function isValidConsumerCode(code: string): boolean {
   return /^[A-Z0-9]{4,14}$/.test(code) && code.length <= CONSUMER_CODE_MAX
 }
 
+/**
+ * ¿El cupón trae su propio enlace de pago?
+ *
+ * El partner pidió NO mapear `companyId`/`serviceId` — son internos suyos. La
+ * lectura sana de eso es que el enlace debería salir de ellos, no armarse de
+ * nuestro lado con identificadores que no nos toca conocer. El esquema declara
+ * `additionalProperties: true`, así que puede venir un campo que el OpenAPI no
+ * lista, y hoy no se puede comprobar: el negocio está en `pending_activation`
+ * hasta que se firme el contrato.
+ *
+ * Por eso se BUSCA en vez de asumir. Si aparece, gana sobre el enlace que
+ * armamos nosotros; si no, `yapeDeeplink` sigue siendo el camino. Se prueba una
+ * lista corta de nombres plausibles: fallar por el nombre del campo sería
+ * fallar por una letra.
+ */
+export function paymentUrlOf(coupon: Record<string, unknown>): string | null {
+  for (const k of ['payment_url', 'payment_link', 'deeplink', 'deep_link', 'yape_url', 'checkout_url']) {
+    const v = coupon[k]
+    if (typeof v === 'string' && v.startsWith('https://')) return v
+  }
+  return null
+}
+
 // ─── Firma del webhook ───────────────────────────────────────────────────────
 // Headers que manda 360pay (documentados):
 //

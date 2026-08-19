@@ -757,8 +757,11 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_variant
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_enabled        boolean DEFAULT false;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_business_id    text;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_payment_prefix text;   -- 3 chars, prefijo del código de pago
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_company_id     text;   -- GUID de 360Pay en Yape
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_service_id     text;   -- GUID del servicio en Yape
+-- Los identificadores de Yape (companyId/serviceId) NO se guardan por tienda:
+-- 360pay los declara INTERNOS suyos y pidió no mapearlos. Son los mismos para
+-- todos sus comercios —quien distingue a la marca es el prefijo del código de
+-- pago—, así que viven como secreto de plataforma en las Edge Functions, y solo
+-- como respaldo: si el cupón trae su propio enlace de pago, ese gana.
 -- Ambiente por tienda: una marca puede quedar en sandbox mientras otra ya cobra
 -- de verdad. Sin esto, probar obligaría a un deploy para volver a producción.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_env            text DEFAULT 'sandbox';

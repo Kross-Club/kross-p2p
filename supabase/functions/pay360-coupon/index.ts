@@ -26,7 +26,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import {
   annulCoupon, consumerCodeFor, createCoupon, getCoupon, isPaid,
-  pay360BaseUrl, yapeDeeplink, type Pay360Env,
+  pay360BaseUrl, paymentUrlOf, yapeDeeplink, type Pay360Env,
 } from '../_shared/pay360.ts'
 
 const supabase = createClient(
@@ -102,22 +102,22 @@ Deno.serve(async (req) => {
   const originStoreId = String(session.origin_store_id ?? session.store_id)
   const [{ data: store }, { data: secrets }] = await Promise.all([
     supabase.from('stores')
-      .select('pay360_enabled, pay360_business_id, pay360_payment_prefix, pay360_company_id, pay360_service_id, pay360_env')
+      .select('pay360_enabled, pay360_business_id, pay360_payment_prefix, pay360_env')
       .eq('id', originStoreId).maybeSingle(),
     supabase.from('store_secrets')
       .select('payment_ingest_token').eq('store_id', originStoreId).maybeSingle(),
   ])
 
-  // Los GUID de Yape parecen ser de 360Pay (el recaudador), no de cada marca:
-  // en el enlace de ejemplo van junto a `name=360Pay`, y quien distingue a la
-  // marca es el PREFIJO del código de pago. Por eso se resuelven con override
-  // por tienda sobre un default de plataforma: si la hipótesis se confirma, se
-  // configura una vez en el entorno y toda tienda nueva funciona sin tocar nada.
-  const companyId = store?.pay360_company_id || Deno.env.get('PAY360_YAPE_COMPANY_ID') || ''
-  const serviceId = store?.pay360_service_id || Deno.env.get('PAY360_YAPE_SERVICE_ID') || ''
+  // Los identificadores de Yape son INTERNOS de 360pay y el partner pidió no
+  // mapearlos: por eso no viven por tienda, sino como secreto de plataforma —
+  // son los mismos para todos sus comercios, y quien distingue a la marca es el
+  // PREFIJO del código de pago. Sirven de respaldo: si el cupón trae su propio
+  // enlace, ese gana (ver `paymentUrlOf`).
+  const companyId = Deno.env.get('PAY360_YAPE_COMPANY_ID') ?? ''
+  const serviceId = Deno.env.get('PAY360_YAPE_SERVICE_ID') ?? ''
 
   const ready = store?.pay360_enabled && store.pay360_business_id && store.pay360_payment_prefix
-    && companyId && serviceId && PARTNER_KEY
+    && PARTNER_KEY
   if (!ready) {
     await notePaymentFailure(session, 'Pago en línea no disponible: tienda sin configurar 360pay')
     return json({ ok: false, stage: 'config', code: 'store_not_configured', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 409)
@@ -180,6 +180,20 @@ Deno.serve(async (req) => {
     return json({ ok: false, stage: 'coupon', code: 'create_failed', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 502)
   }
 
+  // El enlace: primero el que mande 360pay, y si no viene, el que armamos. Si
+  // no hay ninguno el cupón YA está emitido, así que no se puede fallar en
+  // silencio — se deja el pedido a un asesor en vez de mostrar un botón muerto.
+  const deeplink = paymentUrlOf(coupon.data as Record<string, unknown>)
+    ?? (companyId && serviceId
+      ? yapeDeeplink({ companyId, serviceId, consumerCode, name: '360Pay' })
+      : null)
+
+  if (!deeplink) {
+    await notePaymentFailure(session, 'Cupón emitido pero sin enlace de pago — falta configurar el servicio de Yape')
+    console.error('[pay360-coupon] sin enlace de pago', JSON.stringify({ coupon: coupon.data._id }))
+    return json({ ok: false, stage: 'config', code: 'no_payment_link', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 409)
+  }
+
   await supabase.from('order_sessions').update({
     pay360_coupon_id: coupon.data._id,
     pay360_consumer_code: consumerCode,
@@ -192,9 +206,9 @@ Deno.serve(async (req) => {
     amount_pen: rowAmount,
     consumer_code: consumerCode,
     coupon_id: coupon.data._id,
-    // El enlace se arma en el SERVIDOR: así el front no necesita conocer los
-    // GUID de Yape ni puede alterar a qué servicio apunta.
-    deeplink: yapeDeeplink({ companyId, serviceId, consumerCode, name: '360Pay' }),
+    // El enlace se resuelve en el SERVIDOR: el front no conoce los
+    // identificadores de Yape ni puede alterar a qué servicio apunta.
+    deeplink,
   })
 })
 

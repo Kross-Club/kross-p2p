@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CONSUMER_CODE_MAX, PAY360_HEADERS, SIGNATURE_TOLERANCE_MS, consumerCodeFor, hmacHex,
-  isPaid, isValidConsumerCode, pay360BaseUrl, signedPayload, timingSafeEqual, unwrap,
+  isPaid, isValidConsumerCode, pay360BaseUrl, paymentUrlOf, signedPayload, timingSafeEqual, unwrap,
   verifySignature, yapeDeeplink, YAPE_SERVICES_PAY_URL,
 } from '../../../supabase/functions/_shared/pay360.ts'
 
@@ -191,6 +191,27 @@ describe('código de pago (consumerCode)', () => {
     expect(isValidConsumerCode('TED19478876653')).toBe(true)
     expect(isValidConsumerCode('TED194788766531')).toBe(false)  // 15
     expect(isValidConsumerCode('TED-1234')).toBe(false)
+  })
+})
+
+describe('enlace de pago del cupón', () => {
+  it('prefiere el enlace que mande 360pay', () => {
+    expect(paymentUrlOf({ _id: 'c1', payment_url: 'https://pay.360pay.pe/abc' }))
+      .toBe('https://pay.360pay.pe/abc')
+    expect(paymentUrlOf({ _id: 'c1', deeplink: 'https://www.yape.com.pe/app/x' }))
+      .toBe('https://www.yape.com.pe/app/x')
+  })
+
+  it('si no viene ninguno, devuelve null y el caller arma el suyo', () => {
+    expect(paymentUrlOf({ _id: 'c1', amount: 5, status: 'active' })).toBeNull()
+  })
+
+  it('ignora valores que no son URL https', () => {
+    // Un `payment_url` vacío o relativo no es un enlace: dárselo al botón lo
+    // deja muerto justo en el paso del cobro.
+    expect(paymentUrlOf({ payment_url: '' })).toBeNull()
+    expect(paymentUrlOf({ payment_url: '/pagar' })).toBeNull()
+    expect(paymentUrlOf({ payment_url: 'http://inseguro.pe/x' })).toBeNull()
   })
 })
 
