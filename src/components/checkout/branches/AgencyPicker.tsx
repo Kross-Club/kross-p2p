@@ -39,6 +39,11 @@ const AGENCY_LABEL: Record<AgencyName, string> = {
 interface AgencyPickerProps {
   /** Punto de referencia para ordenar sedes: centroide del distrito elegido. */
   near: { lat: number; lng: number } | null
+  /** El adelanto de recoger cambia por región: en provincia cubre el flete
+   *  interprovincial (S/20–25) y en Lima es el filtro anti-rebote (S/5). Sin
+   *  esto la tarjeta mostraba el monto de provincia a un comprador limeño,
+   *  contradiciendo al selector de método que tiene justo encima. */
+  isProvincia: boolean
   agency: AgencyName | null
   branchId: string | null
   /** Texto libre para agencias sin listado. */
@@ -56,7 +61,7 @@ interface AgencyPickerProps {
 }
 
 export default function AgencyPicker({
-  near, agency, branchId, freeText, errorAgency, errorBranch,
+  near, isProvincia, agency, branchId, freeText, errorAgency, errorBranch,
   onSelectPoint, onChooseOther, onBackToList, onFreeText, onBlur,
 }: AgencyPickerProps) {
   // `OTRO` es la única agencia sin listado: ahí no hay punto que ordenar y la
@@ -89,6 +94,7 @@ export default function AgencyPicker({
   return (
     <PointPicker
       near={near}
+      isProvincia={isProvincia}
       agency={agency}
       branchId={branchId}
       error={errorBranch ?? errorAgency}
@@ -100,8 +106,9 @@ export default function AgencyPicker({
 
 // ─── Puntos de recojo de TODAS las agencias, ordenados por cercanía ──────────
 
-function PointPicker({ near, agency, branchId, error, onSelectPoint, onChooseOther }: {
+function PointPicker({ near, isProvincia, agency, branchId, error, onSelectPoint, onChooseOther }: {
   near: { lat: number; lng: number } | null
+  isProvincia: boolean
   agency: AgencyName | null
   branchId: string | null
   error?: string
@@ -170,6 +177,7 @@ function PointPicker({ near, agency, branchId, error, onSelectPoint, onChooseOth
               <li key={pointKey(b)}>
                 <PointCard
                   branch={b}
+                  isProvincia={isProvincia}
                   selected={selectedKey === pointKey(b)}
                   /* El badge sale del ORDEN, no de una constante: quien queda
                      primero es quien está más cerca, y eso cambia por zona. */
@@ -225,6 +233,7 @@ function PointPicker({ near, agency, branchId, error, onSelectPoint, onChooseOth
                     <li key={pointKey(b)}>
                       <PointCard
                         branch={b}
+                        isProvincia={isProvincia}
                         selected={selectedKey === pointKey(b)}
                         onSelect={() => pick(b)}
                       />
@@ -251,8 +260,9 @@ function PointPicker({ near, agency, branchId, error, onSelectPoint, onChooseOth
   )
 }
 
-function PointCard({ branch, selected, nearest, distanceKm, onSelect }: {
+function PointCard({ branch, isProvincia, selected, nearest, distanceKm, onSelect }: {
   branch: AgencyBranch
+  isProvincia: boolean
   selected: boolean
   /** El más cercano del ranking. No lo trae el buscador, que no ordena por distancia. */
   nearest?: boolean
@@ -286,7 +296,7 @@ function PointCard({ branch, selected, nearest, distanceKm, onSelect }: {
         </span>
         <span className="block text-[11px] text-gray-500 line-clamp-2">{branch.address}</span>
         <span className="block text-[10px] font-black text-gray-400 mt-1">
-          Adelanto S/{advanceFor(true, branch.agency)}
+          Adelanto S/{advanceFor(isProvincia, branch.agency, 'AGENCIA')}
         </span>
       </span>
       <span className="flex flex-col items-end gap-1 flex-shrink-0">

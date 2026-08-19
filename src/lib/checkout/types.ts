@@ -81,17 +81,24 @@ export interface ProvinciaConfig {
   lat: number | null
   lng: number | null
   coverageResult: CoverageResult | null
-  deliveryMethod: DeliveryMethod | null
-  /** Courier del punto elegido. Se deriva del punto, no se elige por separado. */
-  selectedAgency: AgencyName | null
-  /** Id de sede dentro del listado de `selectedAgency`. Los ids solo son únicos
-   *  por agencia, así que este campo NO identifica un punto sin el de arriba. */
-  selectedAgencyBranchId: string | null
-  /** Texto libre para las agencias sin listado (`OTRO`). Marca el pedido para
-   *  verificación manual de Logística. El nombre es histórico: cuando se creó,
-   *  Olva era la única sin listado; hoy tiene sus 424 sedes. */
-  olvaBranchText: string | null
   address?: { addressText: string; reference: string }
+}
+
+/**
+ * El punto de recojo elegido. Vive en la raíz del estado y NO dentro de
+ * `provinciaConfig`, porque recoger en agencia dejó de ser cosa de provincia:
+ * Shalom tiene 163 sedes en el departamento de Lima y Olva 128.
+ */
+export interface PickupPoint {
+  /** Courier del punto. Se deriva del punto, no se elige por separado. */
+  agency: AgencyName | null
+  /** Id de sede dentro del listado de `agency`. Los ids solo son únicos por
+   *  agencia —197 se repiten entre las dos—, así que este campo NO identifica
+   *  un punto sin el de arriba. */
+  branchId: string | null
+  /** Texto libre para las agencias sin listado (`OTRO`). Marca el pedido para
+   *  verificación manual de Logística. */
+  freeText: string | null
 }
 
 export interface PaymentVoucher {
@@ -132,6 +139,15 @@ export interface CheckoutState {
   variant: CheckoutVariant
   limaAddress: LimaAddress | null
   provinciaConfig: ProvinciaConfig | null
+  /**
+   * Cómo recibe el pedido. En la raíz porque aplica a las DOS regiones: en Lima
+   * se puede recoger en agencia igual que en provincia. En provincia lo propone
+   * la cobertura (o lo elige el comprador en la variante B); en Lima siempre lo
+   * elige él, porque el motorizado propio llega a todo Lima metropolitana.
+   */
+  deliveryMethod: DeliveryMethod | null
+  /** Punto elegido cuando `deliveryMethod` es AGENCIA. */
+  pickup: PickupPoint
   /** true si falta lat/lng o el resultado de cobertura es BORDERLINE. */
   needsLocationConfirmation: boolean
   paymentVoucher: PaymentVoucher | null

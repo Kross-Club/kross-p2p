@@ -64,7 +64,7 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
   }, [districtKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const checking = Boolean(districtKey) && checked !== districtKey
-  const method = p?.deliveryMethod
+  const method = state.deliveryMethod
 
   return (
     <div className="space-y-3.5">
@@ -148,9 +148,10 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
 
           <AgencyPicker
             near={center}
-            agency={p?.selectedAgency ?? null}
-            branchId={p?.selectedAgencyBranchId ?? null}
-            freeText={p?.olvaBranchText ?? null}
+          isProvincia={true}
+            agency={state.pickup.agency}
+            branchId={state.pickup.branchId}
+            freeText={state.pickup.freeText}
             errorAgency={errors.agency}
             errorBranch={errors.agencyBranch}
             onSelectPoint={(agency, branchId) => {
@@ -187,7 +188,7 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
           style={{ background: '#FFF7ED', color: '#9A3412' }}>
           <PackageCheck size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#EA580C' }} />
           <span>
-            {method === 'DOMICILIO' || p?.selectedAgency ? (
+            {method === 'DOMICILIO' || state.pickup.agency ? (
               <>
                 <strong className="font-black">Adelanto de S/{state.advanceAmount}.</strong>{' '}
                 {COPY.advanceHeadsUpShort}

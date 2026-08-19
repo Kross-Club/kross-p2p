@@ -46,6 +46,34 @@ const finite = (v: unknown, fallback: number): number =>
  * campo, y el paso 1 hacía `precio - undefined` → **todos los packs mostraban
  * `S/NaN`**. Un comprador que ve NaN donde va el precio no compra.
  */
+/**
+ * Sube a la raíz el método y el punto de recojo de un borrador guardado cuando
+ * vivían dentro de `provinciaConfig`.
+ *
+ * Se movieron al subir el recojo en agencia a Lima: dejarlos anidados en la
+ * config de provincia habría obligado a que un pedido limeño arrastrara un
+ * `provinciaConfig`. Sin esta migración, quien tenía un borrador con su Shalom
+ * ya elegido volvía a un checkout sin método ni sede — y como el adelanto se
+ * deriva de ellos, además veía el monto equivocado.
+ */
+function liftPickup(saved: CheckoutState): Partial<CheckoutState> {
+  const legacy = saved.provinciaConfig as (typeof saved.provinciaConfig & {
+    deliveryMethod?: CheckoutState['deliveryMethod']
+    selectedAgency?: CheckoutState['pickup']['agency']
+    selectedAgencyBranchId?: string | null
+    olvaBranchText?: string | null
+  }) | null
+
+  return {
+    deliveryMethod: saved.deliveryMethod ?? legacy?.deliveryMethod ?? null,
+    pickup: {
+      agency: saved.pickup?.agency ?? legacy?.selectedAgency ?? null,
+      branchId: saved.pickup?.branchId ?? legacy?.selectedAgencyBranchId ?? null,
+      freeText: saved.pickup?.freeText ?? legacy?.olvaBranchText ?? null,
+    },
+  }
+}
+
 function hydrate(saved: CheckoutState): CheckoutState {
   const base = initialCheckoutState()
   return {
@@ -61,6 +89,7 @@ function hydrate(saved: CheckoutState): CheckoutState {
     // reemplaza enteros, así que un campo nuevo dentro de ellos se perdería.
     customerInfo: { ...base.customerInfo, ...saved.customerInfo },
     payment: { ...base.payment, ...saved.payment },
+    ...liftPickup(saved),
     // Los números que entran a aritmética se validan de verdad, no solo por
     // ausencia: basta un `null` guardado para propagar NaN a toda la pantalla.
     discountPen: finite(saved.discountPen, base.discountPen),

@@ -9,6 +9,8 @@ import { canAdvance, canSubmit, validateStep, validateWhatsapp } from './validat
 import { clearDraft, loadActiveDraft, loadLastOrder, saveDraft, saveLastOrder } from './persistence'
 import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN } from './checkout.config'
 import { effectivePrice } from './product-packs'
+import { dispatchTypeFor } from './services/OrderService'
+import { isPickupDispatch } from '../session'
 import { CoverageService, coveredCities } from './services/CoverageService'
 import { AgencyService, LISTED_AGENCIES, describePickupDistance, pointKey, suggestFreeText } from './services/AgencyService'
 import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
@@ -87,6 +89,83 @@ describe('máquina · la región se deriva del distrito', () => {
   })
 })
 
+// ─── Recoger en agencia también en Lima ──────────────────────────────────────
+// Shalom tiene 163 sedes en el departamento de Lima y Olva 128, así que el
+// mostrador es una opción real ahí. Al dejar de ser cosa de provincia, el método
+// y el punto subieron a la raíz del estado.
+
+describe('recojo en agencia · las dos regiones', () => {
+  const conPunto = (region: CheckoutAction) => run(base(),
+    region,
+    { type: 'SET_DELIVERY_METHOD', method: 'AGENCIA' },
+    { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
+  )
+
+  it('en Lima se puede elegir recojo, y el punto queda guardado', () => {
+    const s = conPunto(LIMA_D)
+    expect(s.locationType).toBe('LIMA')
+    expect(s.deliveryMethod).toBe('AGENCIA')
+    expect(s.pickup.agency).toBe('SHALOM')
+    expect(s.pickup.branchId).toBe('4')
+  })
+
+  it('recoger no deja coordenada pendiente en ninguna región', () => {
+    // Antes `needsLocationConfirmation` solo miraba provincia, así que un recojo
+    // en Lima quedaba marcado como "falta ubicar la puerta" — y no hay puerta.
+    expect(conPunto(LIMA_D).needsLocationConfirmation).toBe(false)
+    expect(conPunto(PROV_D).needsLocationConfirmation).toBe(false)
+  })
+
+  it('el despacho distingue las CUATRO combinaciones de región y método', () => {
+    // Equivocarse aquí no falla: `register-buyer` aplasta lo desconocido contra
+    // MOTORIZADO_LIMA y el motorizado sale a una casa por un paquete que está
+    // en el mostrador.
+    expect(dispatchTypeFor(conPunto(LIMA_D))).toBe('AGENCIA_LIMA')
+    expect(dispatchTypeFor(conPunto(PROV_D))).toBe('AGENCIA_PROVINCIA')
+    expect(dispatchTypeFor(run(base(), LIMA_D, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' })))
+      .toBe('MOTORIZADO_LIMA')
+    expect(dispatchTypeFor(run(base(), PROV_D, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' })))
+      .toBe('MOTORIZADO_PROVINCIA')
+  })
+
+  it('los dos tipos de recojo se reconocen como recojo', () => {
+    // El chat le pide el pin de su casa a quien NO recoge. Comparar contra un
+    // solo valor se lo pedía al limeño que va a pasar por el mostrador.
+    expect(isPickupDispatch('AGENCIA_LIMA')).toBe(true)
+    expect(isPickupDispatch('AGENCIA_PROVINCIA')).toBe(true)
+    expect(isPickupDispatch('MOTORIZADO_LIMA')).toBe(false)
+    expect(isPickupDispatch(null)).toBe(false)
+  })
+
+  it('en Lima con recojo no se exige dirección, sí el punto', () => {
+    const sinPunto = run(base(),
+      { type: 'SET_WHATSAPP', whatsapp: '987654321' },
+      { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
+      { type: 'SET_DNI', dni: '12345678' },
+      LIMA_D,
+      { type: 'SET_DELIVERY_METHOD', method: 'AGENCIA' },
+      { type: 'GOTO', step: 2 },
+    )
+    expect(validateStep(sinPunto).addressText).toBeUndefined()
+    expect(validateStep(sinPunto).agency).toBeTruthy()
+    expect(canAdvance(run(sinPunto, { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' }))).toBe(true)
+  })
+
+  it('cambiar de distrito en Lima descarta el punto elegido', () => {
+    // La sede era la de su distrito anterior.
+    const s = run(conPunto(LIMA_D),
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Surquillo' })
+    expect(s.pickup.agency).toBeNull()
+    expect(s.deliveryMethod).toBeNull()
+  })
+
+  it('volver a "en casa" descarta el punto, para que no salgan los dos', () => {
+    const s = run(conPunto(PROV_D), { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' })
+    expect(s.pickup.agency).toBeNull()
+    expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_DOMICILIO_PEN)
+  })
+})
+
 describe('máquina · derivados', () => {
   it('Lima no cobra adelanto y provincia sí', () => {
     expect(run(base(), LIMA_D).advanceAmount).toBe(ADVANCE_LIMA_PEN)
@@ -115,7 +194,7 @@ describe('máquina · derivados', () => {
         tariff: 21.5, weekly: true, weekdaysOnly: false, zoned: false, reason: 'semanal',
       } },
     )
-    expect(s.provinciaConfig?.deliveryMethod).toBe('AGENCIA')
+    expect(s.deliveryMethod).toBe('AGENCIA')
     // Recoge en agencia: no hay puerta que ubicar, así que no queda pendiente.
     expect(s.needsLocationConfirmation).toBe(false)
     // El aviso SÍ se le muestra: prometer 48h donde el courier pasa una vez por
@@ -131,7 +210,7 @@ describe('máquina · derivados', () => {
         weekly: false, weekdaysOnly: false, zoned: false, reason: '',
       } },
     )
-    expect(s.provinciaConfig?.deliveryMethod).toBe('DOMICILIO')
+    expect(s.deliveryMethod).toBe('DOMICILIO')
     // El pedido se cierra igual; la coordenada se afina después en el chat.
     expect(s.needsLocationConfirmation).toBe(true)
   })
@@ -143,8 +222,8 @@ describe('máquina · derivados', () => {
     const cov = { city: 'TRUJILLO', eta: '48h', tariff: 15.5, weekly: false, weekdaysOnly: false, zoned: false, reason: '' }
     const inZone = run(withCity, { type: 'SET_COVERAGE', check: { ...cov, result: 'IN_ZONE' } })
     const outZone = run(withCity, { type: 'SET_COVERAGE', check: { ...cov, result: 'OUT_OF_ZONE' } })
-    expect(inZone.provinciaConfig?.deliveryMethod).toBe('DOMICILIO')
-    expect(outZone.provinciaConfig?.deliveryMethod).toBe('AGENCIA')
+    expect(inZone.deliveryMethod).toBe('DOMICILIO')
+    expect(outZone.deliveryMethod).toBe('AGENCIA')
   })
 
   it('guarda el recargo del courier sin tocar el adelanto del comprador', () => {
@@ -312,6 +391,35 @@ describe('persistencia', () => {
     const s = run(base(), { type: 'SUBMITTED' })
     saveDraft(s)
     expect(loadActiveDraft()).toBeNull()
+  })
+
+  it('sube a la raíz el punto de recojo de un borrador de la versión anterior', () => {
+    // El método y la sede vivían dentro de `provinciaConfig` hasta que recoger
+    // en agencia dejó de ser cosa de provincia. Sin migrarlos, quien tenía su
+    // Shalom ya elegido volvía a un checkout sin método ni sede — y como el
+    // adelanto se DERIVA de ellos, además veía el monto equivocado.
+    const s = run(base(), PROV_D, { type: 'GOTO', step: 2 })
+    saveDraft(s)
+
+    const key = `kross_checkout:${s.orderId}`
+    const stored = JSON.parse(localStorage.getItem(key)!)
+    delete stored.state.deliveryMethod
+    delete stored.state.pickup
+    stored.state.provinciaConfig = {
+      ...stored.state.provinciaConfig,
+      deliveryMethod: 'AGENCIA',
+      selectedAgency: 'OLVA',
+      selectedAgencyBranchId: '695',
+      olvaBranchText: null,
+    }
+    localStorage.setItem(key, JSON.stringify(stored))
+
+    const restored = loadActiveDraft()
+    expect(restored?.deliveryMethod).toBe('AGENCIA')
+    expect(restored?.pickup.agency).toBe('OLVA')
+    expect(restored?.pickup.branchId).toBe('695')
+    // Y el adelanto vuelve a calzar con el courier recuperado.
+    expect(checkoutReducer(restored!, { type: 'RESTORE', state: restored! }).advanceAmount).toBe(25)
   })
 
   it('descarta borradores vencidos', () => {
@@ -765,7 +873,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
       { type: 'SET_AGENCY', agency: 'OLVA' },
       { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' },
     )
-    expect(s.provinciaConfig?.selectedAgency).toBeNull()
+    expect(s.pickup.agency).toBeNull()
     expect(s.advanceAmount).toBe(30)
   })
 
@@ -790,7 +898,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
           weekly: false, weekdaysOnly: false, zoned: true, reason: '',
         } },
       )
-      expect(s.provinciaConfig?.deliveryMethod).toBe('AGENCIA')
+      expect(s.deliveryMethod).toBe('AGENCIA')
     }
   })
 
@@ -802,7 +910,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
         weekly: false, weekdaysOnly: false, zoned: true, reason: '',
       } },
     )
-    expect(b.provinciaConfig?.deliveryMethod).toBeNull()
+    expect(b.deliveryMethod).toBeNull()
 
     // La A sigue decidiendo sola: es justo lo que las separa.
     const a = run(initialCheckoutState('pack-2', 'A'),
@@ -812,7 +920,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
         weekly: false, weekdaysOnly: false, zoned: true, reason: '',
       } },
     )
-    expect(a.provinciaConfig?.deliveryMethod).toBe('DOMICILIO')
+    expect(a.deliveryMethod).toBe('DOMICILIO')
   })
 
   it('el descuento de retención resta S/5 a cada pack', () => {
@@ -1005,8 +1113,8 @@ describe('elegir un punto de recojo', () => {
       PROV_D,
       { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
     )
-    expect(s.provinciaConfig?.selectedAgency).toBe('OLVA')
-    expect(s.provinciaConfig?.selectedAgencyBranchId).toBe('695')
+    expect(s.pickup.agency).toBe('OLVA')
+    expect(s.pickup.branchId).toBe('695')
     // El adelanto sale del courier del punto: Olva cobra más flete que Shalom.
     expect(s.advanceAmount).toBe(25)
   })
@@ -1017,8 +1125,8 @@ describe('elegir un punto de recojo', () => {
       { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
       { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
     )
-    expect(s.provinciaConfig?.selectedAgency).toBe('SHALOM')
-    expect(s.provinciaConfig?.selectedAgencyBranchId).toBe('4')
+    expect(s.pickup.agency).toBe('SHALOM')
+    expect(s.pickup.branchId).toBe('4')
     expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN)
   })
 
@@ -1029,7 +1137,7 @@ describe('elegir un punto de recojo', () => {
       { type: 'SET_OLVA_TEXT', text: 'Marvisur Av. España' },
       { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
     )
-    expect(s.provinciaConfig?.olvaBranchText).toBeNull()
+    expect(s.pickup.freeText).toBeNull()
   })
 
   it('volver del texto libre deja la elección en blanco, no en un courier', () => {
@@ -1041,9 +1149,9 @@ describe('elegir un punto de recojo', () => {
       { type: 'SET_OLVA_TEXT', text: 'Marvisur Av. España' },
       { type: 'CLEAR_PICKUP_POINT' },
     )
-    expect(s.provinciaConfig?.selectedAgency).toBeNull()
-    expect(s.provinciaConfig?.selectedAgencyBranchId).toBeNull()
-    expect(s.provinciaConfig?.olvaBranchText).toBeNull()
+    expect(s.pickup.agency).toBeNull()
+    expect(s.pickup.branchId).toBeNull()
+    expect(s.pickup.freeText).toBeNull()
   })
 })
 
@@ -1059,8 +1167,8 @@ describe('cambiar de distrito no deja rastros del anterior', () => {
       { type: 'SET_AGENCY_BRANCH', branchId: '4' },
       { type: 'SET_DISTRICT', department: 'Áncash', province: 'Carhuaz', district: 'Carhuaz' },
     )
-    expect(s.provinciaConfig?.selectedAgency).toBeNull()
-    expect(s.provinciaConfig?.selectedAgencyBranchId).toBeNull()
+    expect(s.pickup.agency).toBeNull()
+    expect(s.pickup.branchId).toBeNull()
   })
 })
 

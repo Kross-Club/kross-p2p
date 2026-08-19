@@ -123,6 +123,34 @@ el sistema ya tenía y cobraba un tap para llegar al mismo sitio.
 - ⚠️ `DistrictCoverageService.districtsFor()` ya no alimenta la UI. Se mantiene porque los
   tests la usan para verificar que las dos ramas siguen siendo complementarias.
 
+#### Recoger en agencia también en Lima ✅
+
+Shalom tiene **163 sedes en el departamento de Lima** y Olva 128, así que el mostrador es
+una opción real ahí, no un parche de provincia. `LimaBranch` ofrece las dos tarjetas —«En
+mi casa» y «Recojo en agencia»— y monta el mismo `AgencyPicker`.
+
+- A diferencia de provincia, en Lima **no hay veredicto de cobertura que esperar**: el
+  motorizado propio llega a todo Lima metropolitana, así que las dos opciones se muestran
+  siempre y la elección es del comprador.
+- **El método y el punto subieron a la raíz del estado** (`deliveryMethod` y `pickup`).
+  Vivían dentro de `provinciaConfig`, y dejarlos ahí obligaba a que un pedido limeño
+  arrastrara una config de provincia. `persistence.ts` migra los borradores guardados.
+- `ADVANCE_LIMA_AGENCIA_PEN` es su propia constante aunque hoy valga lo mismo que el de
+  domicilio (S/5): el filtro anti-rebote aplica igual, pero el flete Lima→mostrador contra
+  el viaje del motorizado **no está medido**. Cuando se mida, se separa en una línea.
+- ⚠️ **`dispatch_type` pasó de tres valores a cuatro** (región × método) y esto NO es solo
+  frontend: `register-buyer` tiene lista blanca y **aplasta contra `MOTORIZADO_LIMA` todo
+  lo que no reconoce**. Sin `AGENCIA_LIMA` ahí, un recojo en Lima se guardaba como entrega
+  a domicilio y el motorizado salía a una casa por un paquete que estaba en el mostrador.
+- Por lo mismo se agregó `isPickupDispatch()` en `src/lib/session.ts`: comparar contra
+  `=== 'AGENCIA_PROVINCIA'` estaba regado por el código —`AddressBar` entre otros— y con
+  el valor nuevo le pedía el pin de su casa a quien va a pasar por el mostrador.
+
+**Deploy:** este cambio requiere redesplegar la función.
+```
+supabase functions deploy register-buyer --project-ref ofdjghntvmrdfjhazfvz
+```
+
 **c) Copy del DNI ✅.** El anterior —*"Para crear tu cuenta y que puedas seguir tu
 pedido"*— planteaba un beneficio nuestro como si fuera suyo. Ahora dice **"La agencia te
 lo pedirá para entregarte el paquete"**: un hecho de su mundo, verificable, no un trámite

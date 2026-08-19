@@ -10,7 +10,7 @@
 import { supabase } from '../../supabase'
 import { IMAGE_PRESETS, downscaleImage } from '../../images/downscale'
 import { VOUCHER } from '../checkout.config'
-import type { CheckoutState } from '../types'
+import type { CheckoutState, DispatchType } from '../types'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -37,29 +37,49 @@ function addressOf(s: CheckoutState): string | null {
   if (s.locationType === 'LIMA') {
     const a = s.limaAddress
     if (!a) return null
+    // Agencia: la dirección del pedido es el destino, no la casa — vale para
+    // Lima igual que para provincia.
+    if (s.deliveryMethod === 'AGENCIA') return [a.district, 'Lima'].filter(Boolean).join(', ') || null
     return [a.addressText, a.district].filter(Boolean).join(', ') || null
   }
   const p = s.provinciaConfig
   if (!p) return null
-  if (p.deliveryMethod === 'DOMICILIO') {
+  if (s.deliveryMethod === 'DOMICILIO') {
     return [p.address?.addressText, p.district, p.province].filter(Boolean).join(', ') || null
   }
-  // Agencia: la dirección del pedido es el destino, no la casa.
   return [p.district, p.province, p.department].filter(Boolean).join(', ') || null
 }
 
 /** Referencia de la puerta (domicilio) o sede de recojo (agencia). */
 function referenceOf(s: CheckoutState): string | null {
+  // En agencia la "referencia" es la sede de recojo, en cualquier región.
+  if (s.deliveryMethod === 'AGENCIA') {
+    return s.pickup.branchId ?? s.pickup.freeText?.trim() ?? null
+  }
   if (s.locationType === 'LIMA') return s.limaAddress?.reference?.trim() || null
-  const p = s.provinciaConfig
-  if (!p) return null
-  if (p.deliveryMethod === 'DOMICILIO') return p.address?.reference?.trim() || null
-  return p.selectedAgencyBranchId ?? p.olvaBranchText?.trim() ?? null
+  return s.provinciaConfig?.address?.reference?.trim() || null
+}
+
+/**
+ * Región × método → `dispatch_type`. Son CUATRO casos, no dos.
+ *
+ * Vale la pena como función aparte porque equivocarse aquí **no falla**: la
+ * lista blanca de `register-buyer` aplasta cualquier valor desconocido contra
+ * `MOTORIZADO_LIMA`, así que un error manda al motorizado a una casa por un
+ * paquete que está en el mostrador, sin que nada avise.
+ *
+ * "No es agencia" no significa Lima —un domicilio en provincia lo reparte otro
+ * courier, en otros plazos y a otro costo— y "agencia" ya no significa
+ * provincia, desde que Lima puede recoger.
+ */
+export function dispatchTypeFor(s: CheckoutState): DispatchType {
+  const isProvincia = s.locationType === 'PROVINCIA'
+  if (s.deliveryMethod === 'AGENCIA') return isProvincia ? 'AGENCIA_PROVINCIA' : 'AGENCIA_LIMA'
+  return isProvincia ? 'MOTORIZADO_PROVINCIA' : 'MOTORIZADO_LIMA'
 }
 
 export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise<SubmitResult> {
-  const isProvincia = s.locationType === 'PROVINCIA'
-  const usesAgency = isProvincia && s.provinciaConfig?.deliveryMethod === 'AGENCIA'
+  const usesAgency = s.deliveryMethod === 'AGENCIA'
 
   const res = await fetch(`${BASE}/register-buyer`, {
     method: 'POST',
@@ -79,13 +99,8 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       document_number: s.customerInfo.dni || undefined,
       address: addressOf(s) ?? undefined,
       delivery_reference: referenceOf(s) ?? undefined,
-      // Tres casos, no dos. "No es agencia" NO significa Lima: un domicilio en
-      // provincia lo reparte otro courier, en otros plazos y a otro costo, y
-      // marcarlo como limeño lo mandaba al tablero equivocado.
-      dispatch_type: usesAgency
-        ? 'AGENCIA_PROVINCIA'
-        : s.locationType === 'PROVINCIA' ? 'MOTORIZADO_PROVINCIA' : 'MOTORIZADO_LIMA',
-      agency_name: usesAgency ? (s.provinciaConfig?.selectedAgency ?? undefined) : undefined,
+      dispatch_type: dispatchTypeFor(s),
+      agency_name: usesAgency ? (s.pickup.agency ?? undefined) : undefined,
       payment_method: s.advanceAmount > 0 ? 'YAPE_PLIN' : 'CONTRAENTREGA',
       closed_by: 'DIRECT_CHECKOUT',
       // Con cuál de las dos versiones se cerró. Sin esto el experimento no se

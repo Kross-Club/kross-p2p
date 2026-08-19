@@ -96,6 +96,8 @@ function validateStep2(s: CheckoutState): FieldErrors {
   if (s.locationType === 'LIMA') {
     const a = s.limaAddress
     if (!a?.district) e.district = 'Elige tu distrito'
+    // Lima también puede recoger en agencia: ahí no hay dirección que pedir.
+    if (s.deliveryMethod === 'AGENCIA') return { ...e, ...validatePickup(s) }
     const addr = validateAddressText(a?.addressText ?? '')
     if (addr) e.addressText = addr
     // El pin NO se valida: en modo DISTRICT el pedido se cierra sin él.
@@ -108,29 +110,33 @@ function validateStep2(s: CheckoutState): FieldErrors {
     return e
   }
 
-  if (p.deliveryMethod === 'DOMICILIO') {
+  if (s.deliveryMethod === 'DOMICILIO') {
     const addr = validateAddressText(p.address?.addressText ?? '')
     if (addr) e.addressText = addr
     return e
   }
 
-  // Rama agencia. Es la salida que SIEMPRE está abierta: si el distrito no tiene
-  // cobertura a domicilio, o el comprador la prefiere, aquí elige su punto.
-  //
-  // El comprador elige un PUNTO y la agencia viene con él, así que este error
-  // solo aparece cuando no llegó a elegir ninguno — por eso habla de dónde
-  // recoge, no de qué courier prefiere: esa pregunta ya no se le hace.
-  if (!p.selectedAgency) {
-    e.agency = 'Elige dónde vas a recoger tu pedido'
-    return e
-  }
+  return { ...e, ...validatePickup(s) }
+}
+
+/**
+ * El punto de recojo, igual en las dos regiones.
+ *
+ * Es la salida que SIEMPRE está abierta: si el distrito no tiene cobertura a
+ * domicilio, o el comprador prefiere recoger, aquí elige su punto.
+ *
+ * Elige un PUNTO y la agencia viene con él, así que el primer error solo aparece
+ * cuando no llegó a elegir ninguno — por eso habla de dónde recoge, no de qué
+ * courier prefiere: esa pregunta ya no se le hace.
+ */
+function validatePickup(s: CheckoutState): FieldErrors {
+  const { agency, branchId, freeText } = s.pickup
+  if (!agency) return { agency: 'Elige dónde vas a recoger tu pedido' }
   // Shalom y Olva tienen listado; las demás caen a texto libre.
-  if (hasBranchList(p.selectedAgency)) {
-    if (!p.selectedAgencyBranchId) e.agencyBranch = 'Elige el punto donde vas a recoger'
-  } else if (!p.olvaBranchText?.trim()) {
-    e.agencyBranch = 'Escribe en qué agencia vas a recoger'
+  if (hasBranchList(agency)) {
+    return branchId ? {} : { agencyBranch: 'Elige el punto donde vas a recoger' }
   }
-  return e
+  return freeText?.trim() ? {} : { agencyBranch: 'Escribe en qué agencia vas a recoger' }
 }
 
 export function validateYapeCode(code: string): string | null {

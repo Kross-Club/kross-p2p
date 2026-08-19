@@ -16,7 +16,22 @@ export type PaymentMethod = 'YAPE_PLIN' | 'CONTRAENTREGA' | 'TARJETA'
  * pasaba porque la cobertura rara vez elegía domicilio fuera de Lima; con el
  * checkout B es una opción que el comprador marca a propósito.
  */
-export type DispatchType = 'MOTORIZADO_LIMA' | 'MOTORIZADO_PROVINCIA' | 'AGENCIA_PROVINCIA'
+export type DispatchType =
+  | 'MOTORIZADO_LIMA' | 'MOTORIZADO_PROVINCIA'
+  | 'AGENCIA_PROVINCIA' | 'AGENCIA_LIMA'
+
+/**
+ * ¿Este pedido lo RECOGE el comprador, o se lo llevan?
+ *
+ * Existe porque `dispatch_type` codifica dos cosas en un solo enum —región y
+ * método— y comparar contra un valor concreto se rompe cada vez que aparece una
+ * combinación nueva. Cuando Lima pasó a poder recoger en agencia, todo
+ * `=== 'AGENCIA_PROVINCIA'` regado por el código quedaba tratando ese pedido
+ * como entrega a domicilio.
+ */
+export function isPickupDispatch(d: string | null | undefined): boolean {
+  return d === 'AGENCIA_PROVINCIA' || d === 'AGENCIA_LIMA'
+}
 export type AgencyName = 'SHALOM' | 'OLVA' | 'OTRO'
 export type ClosedBy = 'AI_CLOSER' | 'DIRECT_CHECKOUT'
 

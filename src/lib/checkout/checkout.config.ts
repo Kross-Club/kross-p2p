@@ -20,6 +20,19 @@ import type { AgencyName, CoverageMode } from './types'
  */
 export const ADVANCE_LIMA_PEN = 5
 
+/**
+ * Adelanto cuando el comprador de Lima elige **recoger en agencia** (Shalom
+ * tiene 163 sedes en el departamento, Olva 128).
+ *
+ * Igual al de domicilio a propósito, y es una decisión que conviene revisar con
+ * números reales, no una equivalencia obvia. El razonamiento de los S/5 en Lima
+ * es el filtro anti-rebote —"no espanta a quien va a comprar y sí a quien estaba
+ * jugando"—, y ese filtro aplica igual recoja o le lleven. Lo que NO está medido
+ * es el flete Lima→mostrador contra el viaje del motorizado; si resulta que uno
+ * cuesta bastante más, el monto se separa aquí y en ningún otro lado.
+ */
+export const ADVANCE_LIMA_AGENCIA_PEN = 5
+
 /** Base de provincia por agencia (Shalom). El saldo se paga al recoger. */
 export const ADVANCE_PROVINCIA_PEN = 20
 
@@ -64,7 +77,8 @@ export function advanceFor(
   agency: AgencyName | null,
   method?: 'DOMICILIO' | 'AGENCIA' | null,
 ): number {
-  if (!isProvincia) return ADVANCE_LIMA_PEN
+  // En Lima el método también importa desde que se puede recoger en agencia.
+  if (!isProvincia) return method === 'AGENCIA' ? ADVANCE_LIMA_AGENCIA_PEN : ADVANCE_LIMA_PEN
   if (method === 'DOMICILIO') return ADVANCE_PROVINCIA_DOMICILIO_PEN
   return (agency && ADVANCE_BY_AGENCY[agency]) || ADVANCE_PROVINCIA_PEN
 }

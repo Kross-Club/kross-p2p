@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     closed_by?: string       // AI_CLOSER | DIRECT_CHECKOUT (default directo)
     checkout_variant?: string // A | B — qué versión del checkout cerró el pedido
     // Costuras de ENTREGA del checkout guiado (Quiz). Ver docs/01-SALES-ENGINE.md.
-    dispatch_type?: string        // MOTORIZADO_LIMA | MOTORIZADO_PROVINCIA | AGENCIA_PROVINCIA
+    dispatch_type?: string        // MOTORIZADO_LIMA | MOTORIZADO_PROVINCIA | AGENCIA_PROVINCIA | AGENCIA_LIMA
     agency_name?: string          // SHALOM | OLVA | OTRO (solo provincia)
     delivery_reference?: string   // referencia de la dirección / agencia destino
     address_lat?: number          // pin GPS fijado en el checkout
@@ -112,10 +112,13 @@ Deno.serve(async (req) => {
   // El checkout guiado ya trae el tipo de despacho, la agencia (provincia), una
   // referencia y —en Lima— el pin GPS. Un pin fresco actualiza la dirección guardada
   // del buyer para que los próximos pedidos la hereden sin re-preguntar.
-  // Lista blanca de los tres valores. El default sigue siendo Lima para no
-  // romper a quien mande el campo vacío, pero PROVINCIA a domicilio ya no se
-  // aplasta contra Lima: se guardaba como pedido limeño y Logistics lo leía así.
-  const DISPATCH = ['MOTORIZADO_LIMA', 'MOTORIZADO_PROVINCIA', 'AGENCIA_PROVINCIA']
+  // Lista blanca de los CUATRO valores: región × método. El default sigue siendo
+  // Lima para no romper a quien mande el campo vacío, pero ojo con esa red de
+  // seguridad — un valor no listado NO falla, se aplasta contra MOTORIZADO_LIMA.
+  // Por eso agregar aquí es obligatorio al sumar una combinación: sin
+  // AGENCIA_LIMA, un recojo en Lima se guardaba como entrega a domicilio y el
+  // motorizado salía a una casa por un paquete que estaba en el mostrador.
+  const DISPATCH = ['MOTORIZADO_LIMA', 'MOTORIZADO_PROVINCIA', 'AGENCIA_PROVINCIA', 'AGENCIA_LIMA']
   const dispatchType = DISPATCH.includes(body.dispatch_type ?? '')
     ? body.dispatch_type!
     : 'MOTORIZADO_LIMA'
@@ -302,9 +305,10 @@ Deno.serve(async (req) => {
 
   const firstName = body.buyer_name ? ' ' + body.buyer_name.split(' ')[0] : ''
   const priceLine = `S/${finalPrice}${discount > 0 ? ` · usaste puntos: −S/${discount}` : ''}`
-  // Cómo llega, según los TRES destinos. "Sin adelanto" quedó mintiendo cuando
+  // Cómo llega, según los CUATRO destinos. "Sin adelanto" quedó mintiendo cuando
   // Lima pasó a cobrar S/5, y provincia-a-domicilio caía en esa misma rama.
-  const entrega = dispatchType === 'AGENCIA_PROVINCIA'
+  const esRecojo = dispatchType === 'AGENCIA_PROVINCIA' || dispatchType === 'AGENCIA_LIMA'
+  const entrega = esRecojo
     ? `se enviará por agencia${agencyName ? ' ' + agencyName : ''} y el saldo lo pagas al recoger`
     : dispatchType === 'MOTORIZADO_PROVINCIA'
       ? 'te llegará a tu casa y el saldo lo pagas al recibirlo'

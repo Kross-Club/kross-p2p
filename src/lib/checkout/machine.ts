@@ -10,7 +10,7 @@ import { EXIT_DISCOUNT_PEN, YAPE_CODE_LENGTH, advanceFor } from './checkout.conf
 import { isLimaMetro, methodForCoverage } from './services/DistrictCoverageService'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
-  LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig,
+  LimaAddress, LocationType, PackId, PaymentVerification, PickupPoint, ProvinciaConfig,
 } from './types'
 
 /** uuid v4. `randomUUID` exige contexto seguro; el fallback cubre dev por http. */
@@ -38,6 +38,8 @@ export function initialCheckoutState(
     locationType: null,
     limaAddress: null,
     provinciaConfig: null,
+    deliveryMethod: null,
+    pickup: { ...EMPTY_PICKUP },
     needsLocationConfirmation: false,
     paymentVoucher: null,
     advanceYapeCode: '',
@@ -96,9 +98,9 @@ const EMPTY_LIMA: LimaAddress = {
 }
 const EMPTY_PROVINCIA: ProvinciaConfig = {
   department: null, province: null, district: null, city: null, eta: null,
-  lat: null, lng: null, coverageResult: null, deliveryMethod: null,
-  selectedAgency: null, selectedAgencyBranchId: null, olvaBranchText: null,
+  lat: null, lng: null, coverageResult: null,
 }
+const EMPTY_PICKUP: PickupPoint = { agency: null, branchId: null, freeText: null }
 
 /**
  * Recalcula todo lo derivado. Se llama después de CADA acción, así que el estado
@@ -108,19 +110,18 @@ function derive(s: CheckoutState): CheckoutState {
   const isProvincia = s.locationType === 'PROVINCIA'
   // El adelanto sale del destino Y de la agencia: Olva cobra más flete que
   // Shalom. A domicilio (sin agencia) va el base.
-  const advanceAmount = advanceFor(
-    isProvincia,
-    s.provinciaConfig?.selectedAgency ?? null,
-    s.provinciaConfig?.deliveryMethod ?? null,
-  )
+  const advanceAmount = advanceFor(isProvincia, s.pickup.agency, s.deliveryMethod)
 
   // El pedido se cierra SIN coordenada: la cobertura se decide por distrito. La
   // marca queda para que Logística afine la dirección después (AddressBar en el
   // chat del pedido), no para bloquear la venta.
+  // Recoger en agencia no tiene puerta que ubicar, en ninguna de las dos
+  // regiones: solo el domicilio deja una coordenada pendiente.
   const needsLocationConfirmation =
-    isProvincia ? s.provinciaConfig?.deliveryMethod === 'DOMICILIO' && s.provinciaConfig?.lat == null
-      : s.locationType === 'LIMA' ? s.limaAddress?.lat == null
-        : false
+    s.deliveryMethod === 'AGENCIA' ? false
+      : isProvincia ? s.deliveryMethod === 'DOMICILIO' && s.provinciaConfig?.lat == null
+        : s.locationType === 'LIMA' ? s.limaAddress?.lat == null
+          : false
 
   // El adelanto solo entra a verificación si realmente hay algo que verificar.
   const verification: PaymentVerification =
@@ -168,6 +169,8 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           provinciaConfig: next === 'PROVINCIA'
             ? { ...EMPTY_PROVINCIA, department, province, district, coverageResult: 'NOT_CHECKED' }
             : null,
+          deliveryMethod: null,
+          pickup: { ...EMPTY_PICKUP },
           courierSurcharge: null,
           deliveryNote: null,
         })
@@ -177,7 +180,13 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         if (lima().district === district && lima().province === province) return state
         // Otro distrito de Lima: la dirección escrita para el anterior ya no
         // corresponde, pero el pin sí se descarta — apunta a la zona vieja.
-        return derive({ ...state, limaAddress: { ...lima(), department, province, district, lat: null, lng: null } })
+        return derive({
+          ...state,
+          limaAddress: { ...lima(), department, province, district, lat: null, lng: null },
+          // Si había elegido recoger, la sede era la de su distrito anterior.
+          deliveryMethod: null,
+          pickup: { ...EMPTY_PICKUP },
+        })
       }
 
       const p = prov()
@@ -194,19 +203,17 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           eta: null,
           lat: null, lng: null,
           coverageResult: 'NOT_CHECKED',
-          deliveryMethod: null,
-          // Cambiar de distrito limpia también la agencia y su sede. La sede
-          // está atada a una ciudad: si no se borra, alguien que probó Trujillo
-          // y luego eligió Carhuaz se queda con la sede de Trujillo y el paquete
-          // sale a 500 km de donde vive.
-          //
-          // Y de paso arregla el precio que se adelantaba: con una agencia
-          // pegada de antes, la nota mostraba "Adelanto de S/20" antes de que el
-          // comprador eligiera nada.
-          selectedAgency: null,
-          selectedAgencyBranchId: null,
-          olvaBranchText: null,
         },
+        // Cambiar de distrito limpia también el método y el punto. La sede está
+        // atada a una ciudad: si no se borra, alguien que probó Trujillo y luego
+        // eligió Carhuaz se queda con la sede de Trujillo y el paquete sale a
+        // 500 km de donde vive.
+        //
+        // Y de paso arregla el precio que se adelantaba: con una agencia pegada
+        // de antes, la nota mostraba "Adelanto de S/20" antes de que el
+        // comprador eligiera nada.
+        deliveryMethod: null,
+        pickup: { ...EMPTY_PICKUP },
         courierSurcharge: null,
         deliveryNote: null,
       })
@@ -246,7 +253,8 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           city: check.city,
           eta: check.eta,
           coverageResult: check.result,
-          // En B el método lo elige el comprador: se deja en null a propósito
+        },
+        // En B el método lo elige el comprador: se deja en null a propósito
           // para que la UI muestre las dos tarjetas con su precio. Autodecidir
           // aquí sería exactamente lo que la variante existe para no hacer.
           // ...pero SOLO donde de verdad hay dos opciones. Sin cobertura del
@@ -254,10 +262,9 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           // enseñarle una sola tarjeta y cobrarle un clic para llegar al mismo
           // sitio: las agencias. BORDERLINE también va directo — el courier no
           // garantiza esa zona y ofrecer domicilio ahí es prometer de más.
-          deliveryMethod: state.variant === 'B' && check.result === 'IN_ZONE'
-            ? null
-            : methodForCoverage(check.result),
-        },
+        deliveryMethod: state.variant === 'B' && check.result === 'IN_ZONE'
+          ? null
+          : methodForCoverage(check.result),
         // Tarifa del courier: costo de la marca, jamás se le traslada al comprador.
         courierSurcharge: check.tariff,
         deliveryNote: note,
@@ -267,22 +274,26 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     // El comprador no coloca el pin o el mapa falla: nunca se le bloquea, va a
     // agencia con copy neutro y el pedido se cierra igual.
     case 'CHOOSE_AGENCY_BRANCH_FLOW':
-      return derive({ ...state, provinciaConfig: { ...prov(), deliveryMethod: 'AGENCIA' } })
+      return derive({ ...state, deliveryMethod: 'AGENCIA' })
 
     case 'RETRY_DOMICILIO':
-      return derive({ ...state, provinciaConfig: { ...prov(), deliveryMethod: null, coverageResult: 'NOT_CHECKED' } })
+      return derive({
+        ...state,
+        deliveryMethod: null,
+        pickup: { ...EMPTY_PICKUP },
+        provinciaConfig: { ...prov(), coverageResult: 'NOT_CHECKED' },
+      })
 
     case 'SET_AGENCY':
-      return derive({ ...state, provinciaConfig: {
-        ...prov(),
-        selectedAgency: action.agency,
+      return derive({ ...state, pickup: {
+        agency: action.agency,
         // Cambiar de agencia limpia la selección de la anterior.
-        selectedAgencyBranchId: null,
-        olvaBranchText: null,
+        branchId: null,
+        freeText: null,
       } })
 
     case 'SET_AGENCY_BRANCH':
-      return derive({ ...state, provinciaConfig: { ...prov(), selectedAgencyBranchId: action.branchId } })
+      return derive({ ...state, pickup: { ...state.pickup, branchId: action.branchId } })
 
     // El comprador elige un PUNTO, no un courier: la agencia viene con el punto.
     // Va en una sola acción a propósito — despachar SET_AGENCY y después
@@ -290,36 +301,30 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     // SET_AGENCY limpia la sede, invertir el orden por descuido borraría la
     // elección recién hecha.
     case 'SET_PICKUP_POINT':
-      return derive({ ...state, provinciaConfig: {
-        ...prov(),
-        selectedAgency: action.agency,
-        selectedAgencyBranchId: action.branchId,
+      return derive({ ...state, pickup: {
+        agency: action.agency,
+        branchId: action.branchId,
         // Elegir un punto del listado descarta el texto libre de `OTRO`.
-        olvaBranchText: null,
+        freeText: null,
       } })
 
     // Vuelta al listado desde el texto libre de `OTRO`. Deja la elección en
     // blanco en vez de apuntar a un courier concreto: cuál corresponde lo dice
     // la distancia, y el picker lo resuelve al montar.
     case 'CLEAR_PICKUP_POINT':
-      return derive({ ...state, provinciaConfig: {
-        ...prov(), selectedAgency: null, selectedAgencyBranchId: null, olvaBranchText: null,
-      } })
+      return derive({ ...state, pickup: { ...EMPTY_PICKUP } })
 
     case 'SET_OLVA_TEXT':
-      return derive({ ...state, provinciaConfig: { ...prov(), olvaBranchText: action.text } })
+      return derive({ ...state, pickup: { ...state.pickup, freeText: action.text } })
 
     case 'SET_DELIVERY_METHOD':
-      // Cambiar de método invalida la agencia ya elegida: si vuelve a "en casa"
+      // Cambiar de método invalida el punto ya elegido: si vuelve a "en casa"
       // después de haber marcado Shalom, el pedido saldría con agencia Y
       // domicilio, y el adelanto cobrado no calzaría con ninguno de los dos.
       return derive({
         ...state,
-        provinciaConfig: {
-          ...prov(),
-          deliveryMethod: action.method,
-          selectedAgency: action.method === 'DOMICILIO' ? null : prov().selectedAgency,
-        },
+        deliveryMethod: action.method,
+        pickup: action.method === 'DOMICILIO' ? { ...EMPTY_PICKUP } : state.pickup,
       })
 
     case 'SET_PROVINCIA_ADDRESS':
