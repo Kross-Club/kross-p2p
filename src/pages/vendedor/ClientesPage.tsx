@@ -46,10 +46,12 @@ export default function ClientesPage() {
   const [invTemplate, setInvTemplate] = useState<string>('')
   const [inviting, setInviting] = useState(false)
 
-  const loadStats = () => {
+  const loadStats = async () => {
     if (!real) return
+    // JWT real: manage-store autentica por Auth; el admin_auth_id queda de compat.
+    const { data: auth } = await supabase.auth.getSession()
     fetch(`${BASE}/manage-store`, {
-      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { Authorization: `Bearer ${auth.session?.access_token ?? ANON}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'client_stats', admin_auth_id: real.auth_user_id, store_id: storeId }),
     }).then(r => r.json()).then(setStats).catch(() => {})
   }
@@ -107,8 +109,9 @@ export default function ClientesPage() {
   const saveReward = async () => {
     setSavingReward(true)
     try {
+      const { data: auth } = await supabase.auth.getSession()
       await fetch(`${BASE}/manage-store`, {
-        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        method: 'POST', headers: { Authorization: `Bearer ${auth.session?.access_token ?? ANON}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update', admin_auth_id: real?.auth_user_id, store_id: storeId, welcome_points: pts, welcome_msg: msg, points_rate: rate }),
       })
     } finally { setSavingReward(false) }

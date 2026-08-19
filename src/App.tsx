@@ -10,6 +10,15 @@ import TiendaPage from './pages/comprador/TiendaPage'
 import LandingProductoPage from './pages/LandingProductoPage'
 import PrivacidadPage from './pages/PrivacidadPage'
 import CheckoutDemoPage from './pages/CheckoutDemoPage'
+import HomePage from './pages/publico/HomePage'
+import ServiciosPage from './pages/publico/ServiciosPage'
+import ServicioDetallePage from './pages/publico/ServicioDetallePage'
+import CarritoPage from './pages/publico/CarritoPage'
+import PagoPage from './pages/publico/PagoPage'
+import ContactoPage from './pages/publico/ContactoPage'
+import TerminosPage from './pages/legal/TerminosPage'
+import CambiosDevolucionesPage from './pages/legal/CambiosDevolucionesPage'
+import LibroReclamacionesPage from './pages/legal/LibroReclamacionesPage'
 import ChatsPage from './pages/comprador/ChatsPage'
 import ChatDetalleComprador from './pages/comprador/ChatDetalleComprador'
 import PerfilPage from './pages/comprador/PerfilPage'
@@ -28,8 +37,16 @@ import OrderChatPage from './pages/pedido/OrderChatPage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
 import BuyerPresenceTracker from './components/BuyerPresenceTracker'
 import BuyerCallListener from './components/BuyerCallListener'
+import { isPlatformHost } from './lib/store-context'
 
-// Smart home: seller session → seller dashboard, buyer session → mis-pedidos, else → acceso
+// Smart home: seller session → seller dashboard, buyer session → mis-pedidos.
+//
+// Sin sesión hay dos casos distintos:
+//   · en el subdominio de una marca → el acceso del comprador, como siempre;
+//   · en krossclub.app → la WEB PÚBLICA de la plataforma. Antes también caía en
+//     /acceso, que en este dominio solo sabe decir "esta página es de cada
+//     marca": quien entraba de fuera no encontraba ni qué vendemos ni cómo
+//     contactarnos, y una pasarela de pago no puede revisar eso.
 function HomeRedirect() {
   const [dest, setDest] = useState<string | null>(null)
 
@@ -37,9 +54,12 @@ function HomeRedirect() {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) { setDest('/vendedor/chats'); return }
       const buyer = localStorage.getItem('buyer_session')
-      setDest(buyer ? '/mis-pedidos' : '/acceso')
+      if (buyer) { setDest('/mis-pedidos'); return }
+      setDest(isPlatformHost() ? 'PUBLICA' : '/acceso')
     })
   }, [])
+
+  if (dest === 'PUBLICA') return <HomePage />
 
   if (!dest) return (
     <div className="min-h-screen flex items-center justify-center"
@@ -96,6 +116,25 @@ export default function App() {
         <Route path="/p/:token" element={<OrderChatPage />} />
         <Route path="/vendedor/pedido/:token" element={<VendedorPedidoPage />} />
         <Route path="/landing/:landingId" element={<LandingProductoPage />} />
+
+        {/* Web pública + páginas legales. Viven en TODOS los dominios (la
+            plataforma y cada marca): los términos, la política de devoluciones
+            y el Libro de Reclamaciones tienen que ser alcanzables desde
+            cualquier URL donde alguien compre. */}
+        <Route path="/servicios" element={<ServiciosPage />} />
+        <Route path="/servicios/:slug" element={<ServicioDetallePage />} />
+        <Route path="/carrito" element={<CarritoPage />} />
+        <Route path="/pago" element={<PagoPage />} />
+        <Route path="/contacto" element={<ContactoPage />} />
+        <Route path="/terminos" element={<TerminosPage />} />
+        <Route path="/cambios-y-devoluciones" element={<CambiosDevolucionesPage />} />
+        <Route path="/libro-de-reclamaciones" element={<LibroReclamacionesPage />} />
+        {/* Alias: es como la gente escribe la URL a mano y como la citan otros
+            sitios. Mejor redirigir que devolver "esta página no existe". */}
+        <Route path="/reclamaciones" element={<Navigate to="/libro-de-reclamaciones" replace />} />
+        <Route path="/libro-reclamaciones" element={<Navigate to="/libro-de-reclamaciones" replace />} />
+        <Route path="/terminos-y-condiciones" element={<Navigate to="/terminos" replace />} />
+        <Route path="/devoluciones" element={<Navigate to="/cambios-y-devoluciones" replace />} />
         <Route path="/privacidad" element={<PrivacidadPage />} />
         {/* Revisión del checkout con packs de ejemplo. Solo en desarrollo:
             no se registra en el bundle de producción. */}

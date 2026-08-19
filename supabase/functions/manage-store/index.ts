@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats'
+    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats' | 'ab_stats'
     home_delivery_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
@@ -54,18 +54,50 @@ Deno.serve(async (req) => {
     wa_phone_number_id?: string
     wa_display_phone?: string
     wa_business_account_id?: string
+    // Cobros — número de Yape de la marca y cuenta Culqi. SOLO por JWT
+    // verificado (ver abajo): redirigir el Yape o la sk de una tienda es
+    // desviar su dinero, no cambiarle el logo.
+    yape_number?: string
+    yape_holder?: string
+    yape_qr_url?: string | null
+    culqi_enabled?: boolean
+    culqi_scope?: string           // 'PROVINCIA' | 'ALL'
+    culqi_public_key?: string | null   // WRITE-ONLY; null = borrar llaves
+    culqi_secret_key?: string | null   // WRITE-ONLY; null = borrar llaves
+    // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
+    // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
+    checkout_ab_mode?: string
     // create: first admin login for the new brand
     admin_email?: string
     admin_password?: string
     admin_nombre?: string
   }
 
-  if (!body.admin_auth_id) return json({ error: 'missing_admin' }, 400)
+  // ─── Identidad del que llama ───────────────────────────────────────────────
+  // El camino REAL es el JWT del vendedor en el Authorization: se verifica
+  // contra Auth y se ignora cualquier id del body. El camino legacy
+  // (body.admin_auth_id + anon key) existía desde antes y `sellers` tiene
+  // SELECT público, así que ese id lo conoce cualquiera: se tolera SOLO para
+  // los campos que ya gestionaba (branding/retención) mientras el front viejo
+  // siga desplegado, y JAMÁS para los campos de cobro. Retirarlo del todo es
+  // deuda anotada en docs/01-SALES-ENGINE.md §3.3.
+  const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
+  let callerId: string | null = null
+  let trusted = false
+  if (bearer) {
+    const { data: authed } = await supabase.auth.getUser(bearer)
+    if (authed?.user) { callerId = authed.user.id; trusted = true }
+  }
+  if (!callerId) {
+    if (!body.admin_auth_id) return json({ error: 'missing_admin' }, 400)
+    callerId = body.admin_auth_id
+    console.warn('[manage-store] auth legacy por admin_auth_id (deprecado) · action=' + body.action)
+  }
 
   const { data: me } = await supabase
     .from('sellers')
     .select('is_admin, is_super_admin, store_id')
-    .eq('auth_user_id', body.admin_auth_id)
+    .eq('auth_user_id', callerId)
     .maybeSingle()
 
   if (!me?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
@@ -75,12 +107,27 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, home_delivery_enabled')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope, checkout_ab_mode, home_delivery_enabled')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
     if (error) return json({ error: error.message }, 400)
-    return json({ stores: data ?? [], is_super: isSuper })
+
+    // ¿La tienda tiene su llave secreta configurada? Se deriva SIN traer la
+    // llave: seleccionar solo store_id de las filas donde existe. Traer la sk
+    // a memoria para computar un boolean es dejarla a un console.log de
+    // distancia de la respuesta.
+    const ids = (data ?? []).map(s => (s as { id: string }).id)
+    const configured = new Set<string>()
+    if (ids.length) {
+      const { data: rows } = await supabase.from('store_secrets')
+        .select('store_id').in('store_id', ids).not('culqi_secret_key', 'is', null)
+      for (const r of rows ?? []) configured.add((r as { store_id: string }).store_id)
+    }
+    const enriched = (data ?? []).map(s => ({
+      ...s, culqi_secret_configured: configured.has((s as { id: string }).id),
+    }))
+    return json({ stores: enriched, is_super: isSuper })
   }
 
   // ─── WHATSAPP USAGE (para el cobro 2x por plantilla) ─────────────────────────
@@ -114,6 +161,53 @@ Deno.serve(async (req) => {
     const activated = await countWhere((q: any) => q.not('activated_at', 'is', null))
     const pending = await countWhere((q: any) => q.is('activated_at', null).is('invited_at', null).not('phone', 'is', null))
     return json({ total, imported, activated, pending })
+  }
+
+  // ─── AB STATS (qué versión del checkout convierte más) ───────────────────────
+  // Numerador: pedidos por variante. Denominador: leads parciales por variante
+  // (`checkout_drafts`, que se guarda apenas el WhatsApp es válido). Sin el
+  // denominador solo se sabe cuántos pedidos hizo cada versión, no sobre cuánta
+  // gente: una variante puede ganar solo porque le tocó más tráfico ese día.
+  //
+  // Dos precauciones para que el número no mienta:
+  //   · `since` = el primer lead marcado con variante. Los pedidos se cuentan
+  //     desde ahí. Sin esto, los pedidos viejos (que sí traen variante) se
+  //     dividirían entre leads que nunca la tuvieron y la tasa saldría inflada.
+  //   · El corte de PROVINCIA es el que vale: la variante solo cambia el flujo
+  //     ahí (en B el comprador elige domicilio o agencia; en A lo decide la
+  //     cobertura). En Lima las dos son idénticas y solo agregan ruido.
+  if (body.action === 'ab_stats') {
+    const target = (isSuper && body.store_id) ? body.store_id : me.store_id
+    if (!target) return json({ error: 'no_store' }, 400)
+
+    const { data: first } = await supabase
+      .from('checkout_drafts')
+      .select('created_at')
+      .eq('store_id', target).not('checkout_variant', 'is', null)
+      .order('created_at', { ascending: true }).limit(1).maybeSingle()
+    const since = (first as { created_at: string } | null)?.created_at ?? null
+
+    const count = async (table: string, build: (q: any) => any) => {
+      const { count: n } = await build(
+        supabase.from(table).select('order_id', { count: 'exact', head: true }).eq('store_id', target),
+      )
+      return n ?? 0
+    }
+
+    const PROVINCIA_DISPATCH = ['AGENCIA_PROVINCIA', 'MOTORIZADO_PROVINCIA']
+    const porVariante = async (v: 'A' | 'B') => {
+      if (!since) return { leads: 0, pedidos: 0, leadsProvincia: 0, pedidosProvincia: 0 }
+      const draft = (q: any) => q.eq('checkout_variant', v)
+      const order = (q: any) => q.eq('checkout_variant', v).gte('created_at', since)
+      return {
+        leads: await count('checkout_drafts', draft),
+        leadsProvincia: await count('checkout_drafts', (q: any) => draft(q).eq('location_type', 'PROVINCIA')),
+        pedidos: await count('order_sessions', order),
+        pedidosProvincia: await count('order_sessions', (q: any) => order(q).in('dispatch_type', PROVINCIA_DISPATCH)),
+      }
+    }
+
+    return json({ since, A: await porVariante('A'), B: await porVariante('B') })
   }
 
   // ─── UPDATE BRANDING ─────────────────────────────────────────────────────────
@@ -158,9 +252,76 @@ Deno.serve(async (req) => {
       patch.slug = slug
     }
 
-    if (Object.keys(patch).length === 0) return json({ error: 'nada_que_guardar' }, 400)
-    const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
-    if (error) return json({ error: error.message }, 400)
+    // ─── Cobros: Yape de la marca + cuenta Culqi ──────────────────────────────
+    // Cualquier admin gestiona los de SU tienda, pero SOLO con JWT verificado:
+    // el camino legacy usa un id que cualquiera lee con la anon key, y estos
+    // campos redirigen dinero.
+    const touchesPayments = body.yape_number !== undefined || body.yape_holder !== undefined
+      || body.yape_qr_url !== undefined || body.culqi_enabled !== undefined
+      || body.culqi_scope !== undefined || body.culqi_public_key !== undefined
+      || body.culqi_secret_key !== undefined
+    if (touchesPayments && !trusted) return json({ error: 'auth_requerida' }, 403)
+
+    if (typeof body.yape_number === 'string') patch.yape_number = body.yape_number.replace(/\D/g, '').slice(0, 9) || null
+    if (typeof body.yape_holder === 'string') patch.yape_holder = body.yape_holder.trim() || null
+    if (body.yape_qr_url !== undefined) patch.yape_qr_url = body.yape_qr_url
+    if (typeof body.culqi_enabled === 'boolean') patch.culqi_enabled = body.culqi_enabled
+    if (body.culqi_scope === 'PROVINCIA' || body.culqi_scope === 'ALL') patch.culqi_scope = body.culqi_scope
+    // Lista blanca: el CHECK de la columna rechaza cualquier otra cosa, y un
+    // 500 aquí tumbaría el guardado entero de la marca por un campo opcional.
+    if (body.checkout_ab_mode === 'SPLIT' || body.checkout_ab_mode === 'A' || body.checkout_ab_mode === 'B') {
+      patch.checkout_ab_mode = body.checkout_ab_mode
+    }
+
+    // Llaves WRITE-ONLY. '' u omitido = no tocar la guardada; null = borrarlas
+    // (y con ellas se apaga el cobro: unas llaves borradas con el toggle
+    // prendido dejarían a toda la tienda pidiendo códigos que nunca cobran).
+    const wipeKeys = body.culqi_public_key === null || body.culqi_secret_key === null
+    const culqiPk = typeof body.culqi_public_key === 'string' ? body.culqi_public_key.trim() : ''
+    const culqiSk = typeof body.culqi_secret_key === 'string' ? body.culqi_secret_key.trim() : ''
+    if (culqiPk && !/^pk_(test|live)_/.test(culqiPk)) return json({ error: 'culqi_pk_invalida' }, 400)
+    if (culqiSk && !/^sk_(test|live)_/.test(culqiSk)) return json({ error: 'culqi_sk_invalida' }, 400)
+    if (culqiPk && culqiSk) {
+      const env = (k: string) => (k.includes('_live_') ? 'live' : 'test')
+      // pk_live + sk_test pasa ambos regex y deja a la tienda cobrando contra
+      // dos entornos: fallo silencioso en producción.
+      if (env(culqiPk) !== env(culqiSk)) return json({ error: 'culqi_env_mismatch' }, 400)
+    }
+
+    let wroteSecrets = false
+    if (wipeKeys) {
+      const { error } = await supabase.from('store_secrets')
+        .update({ culqi_public_key: null, culqi_secret_key: null, culqi_keys_updated_at: new Date().toISOString() })
+        .eq('store_id', targetId)
+      if (error) return json({ error: error.message }, 400)
+      patch.culqi_enabled = false
+      wroteSecrets = true
+    } else if (culqiPk || culqiSk) {
+      const secretPatch: Record<string, unknown> = { store_id: targetId, culqi_keys_updated_at: new Date().toISOString() }
+      if (culqiPk) secretPatch.culqi_public_key = culqiPk
+      if (culqiSk) secretPatch.culqi_secret_key = culqiSk
+      const { error } = await supabase.from('store_secrets').upsert(secretPatch, { onConflict: 'store_id' })
+      if (error) return json({ error: error.message }, 400)
+      wroteSecrets = true
+    }
+
+    // Prender el cobro exige que las DOS llaves existan YA. Sin este gate, un
+    // toggle prendido "para dejarlo listo" pinta el formulario de código de
+    // aprobación en toda la tienda mientras culqi-charge rebota cada intento —
+    // y cada comprador termina con un pedido creado sin cobrar.
+    if (patch.culqi_enabled === true) {
+      const { data: sec } = await supabase.from('store_secrets')
+        .select('store_id').eq('store_id', targetId)
+        .not('culqi_public_key', 'is', null).not('culqi_secret_key', 'is', null)
+        .maybeSingle()
+      if (!sec) return json({ error: 'culqi_sin_llaves' }, 400)
+    }
+
+    if (Object.keys(patch).length === 0 && !wroteSecrets) return json({ error: 'nada_que_guardar' }, 400)
+    if (Object.keys(patch).length > 0) {
+      const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
+      if (error) return json({ error: error.message }, 400)
+    }
     return json({ ok: true })
   }
 

@@ -38,6 +38,8 @@ export interface OrderSession {
   advance_voucher_url?: string | null
   advance_yape_code?: string | null
   advance_amount?: number | string | null
+  /** 'CULQI' = el adelanto se cobra en línea; NULL = flujo Yape manual. */
+  payment_provider?: string | null
   items?: OrderItem[] | null
   buyer_can_call?: boolean
   assigned_seller_id?: string | null

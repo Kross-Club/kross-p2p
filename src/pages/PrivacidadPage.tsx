@@ -1,13 +1,19 @@
 import { useStore } from '../lib/store-context'
+import PublicLayout from '../components/publico/PublicLayout'
 
 // Public privacy policy — needed for Meta app publishing, PWA/app-store listings,
 // and general compliance. Covers the Kross platform (and its white-label brands).
+//
+// Va dentro de `PublicLayout` para que lleve el mismo pie que el resto de las
+// páginas públicas: contacto, enlaces legales y Libro de Reclamaciones. Una
+// política de privacidad sin salida hacia el libro deja al usuario sin el
+// canal formal de reclamo justo donde va a buscarlo.
 export default function PrivacidadPage() {
   const { store } = useStore()
   const marca = store.nombre || 'Kross'
 
   return (
-    <div className="min-h-screen bg-white">
+    <PublicLayout>
       <div className="max-w-[720px] mx-auto px-5 py-10 text-gray-800">
         <h1 className="text-2xl font-black mb-1">Política de Privacidad</h1>
         <p className="text-sm text-gray-500 mb-6">Última actualización: 16 de julio de 2026</p>
@@ -83,7 +89,7 @@ export default function PrivacidadPage() {
           esta Política de Privacidad.
         </p>
       </div>
-    </div>
+    </PublicLayout>
   )
 }
 

@@ -8,7 +8,7 @@
 // BD. Aquí solo están las REGLAS sobre esos packs (cuál se preselecciona, qué
 // badge lleva, cómo se calcula el ahorro).
 
-import type { AgencyName, CoverageMode } from './types'
+import type { AgencyName, CheckoutState, CoverageMode } from './types'
 
 // ─── Adelanto ────────────────────────────────────────────────────────────────
 
@@ -192,6 +192,33 @@ export const YAPE = {
 /** Dígitos del código de seguridad de Yape. Confirmado contra la app real. */
 export const YAPE_CODE_LENGTH = 3
 
+// ─── Cobro en línea con Culqi ────────────────────────────────────────────────
+
+/** El "código de aprobación" de la app Yape: 6 dígitos, en Aprobar compras →
+ *  Código de aprobación. No confundir con el código de SEGURIDAD (3 dígitos)
+ *  del flujo manual: aquel evidencia un pago ya hecho; este AUTORIZA un cobro. */
+export const CULQI_OTP_LENGTH = 6
+
+/** Lo que la app de Yape le da de vida al código. El token de Culqi vive 5;
+ *  manda el más corto, y es lo que la UI le advierte al comprador. */
+export const CULQI_OTP_TTL_MIN = 2
+
+/**
+ * ¿Este pedido se cobra con Culqi? Decide la bifurcación del paso 3 y la del
+ * submit. Es una LECTURA pura, no un derivado persistido: no va en `derive()`
+ * porque no forma parte del estado — `culqi` lo inyecta el modal y puede llegar
+ * asíncrono, después de que el comprador ya esté en el paso 3.
+ *
+ * `locationType === null` (aún no eligió destino) da false: sin destino no hay
+ * monto, y la rama Culqi sin monto no existe.
+ */
+export function culqiActiveFor(
+  s: Pick<CheckoutState, 'culqi' | 'locationType' | 'advanceAmount'>,
+): boolean {
+  if (!s.culqi?.enabled || s.advanceAmount <= 0 || !s.locationType) return false
+  return s.culqi.scope === 'ALL' || s.locationType === 'PROVINCIA'
+}
+
 /**
  * ¿La captura del comprobante es obligatoria para terminar el pedido?
  *
@@ -300,6 +327,41 @@ export const COPY = {
   // solo dice DÓNDE mirar, sin repetir lo que ya se ve.
   yapeCodeHint: 'Aparecen en tu pantalla de Yape como “Código de seguridad”.',
   yapeCodePlaceholder: '000',
+
+  // ─── Cobro en línea (Culqi) ────────────────────────────────────────────────
+  // Nada aquí nombra a Culqi: el comprador paga "con Yape" — el motor es
+  // cocina nuestra. Nombrar al procesador solo agrega una marca desconocida
+  // justo en la pantalla donde la confianza decide.
+  culqiTitle: 'Aprueba tu pago con Yape',
+  culqiIntro: 'Genera tu código de aprobación en Yape, pégalo aquí y el cobro entra al toque — sin capturas ni esperas.',
+  culqiPhoneLabel: 'Tu número de Yape',
+  culqiPhoneHint: 'Lo tomamos de tu WhatsApp. Cámbialo si tu Yape es otro.',
+  culqiOtpLabel: 'Código de aprobación de Yape',
+  culqiOtpHint: 'En Yape: Aprobar compras → Código de aprobación. Vence en 2 minutos.',
+  culqiOtpPlaceholder: '000000',
+  culqiOtpNew: 'Genera un código NUEVO en Yape: el anterior ya venció o ya se usó.',
+  /** CTA del paso 3 cuando el botón COBRA, no solo registra. */
+  culqiSubmit: 'Pagar y terminar mi pedido',
+  culqiCharging: 'Cobrando tu adelanto…',
+  culqiChargingHint: 'No cierres esta ventana.',
+  // Pedido creado + pago fallido: la pantalla que no puede decir "error" a
+  // secas. Primero lo que SÍ pasó (tu pedido existe), después lo que falta.
+  culqiRetryTitle: 'Tu pedido está guardado — falta el pago',
+  culqiRetryBody: 'No perdiste nada de lo que llenaste. Solo falta cobrar tu adelanto.',
+  culqiRetryCta: 'Reintentar el pago',
+  culqiContactMe: 'Prefiero que me escriban para pagar',
+  // network_after: el dinero PUDO salir. Reintentar aquí es arriesgar un doble
+  // cobro: se espera y se consulta, jamás se re-cobra a ciegas.
+  culqiConfirming: 'Estamos confirmando tu pago…',
+  culqiConfirmingHint: 'No vuelvas a pagar: si tu Yape ya se descontó, tu pedido se confirma solo en unos segundos.',
+  doneUnpaid: 'Registramos tu pedido. Un asesor te escribirá por el chat para coordinar el adelanto.',
+  /** La landing, cuando quedó un pedido con el pago pendiente. Nombra lo que el
+   *  botón HACE —abrir el chat, donde un asesor cobra— y no lo que uno querría
+   *  que hiciera: decía "Termina el pago" y llevaba al chat, prometiendo un
+   *  cobro que esa pantalla no da. El modal reducido de solo-cobro está
+   *  anotado como follow-up; hasta entonces, el rótulo dice la verdad. */
+  finishPaymentCta: 'Coordinar el pago de tu pedido',
+
   voucherOptional: 'Adjuntar captura (opcional)',
   voucherAttached: 'Captura adjunta',
   voucherReplace: 'Cambiar',
@@ -315,10 +377,13 @@ export const COPY = {
   // que sostiene la tasa de entrega, sonando a algo secundario.
   doneCod: 'Pagas al recibir. Coordinamos la entrega por el chat de tu pedido.',
   doneAdvance: 'Ya registramos tu adelanto. Coordinamos el envío por el chat de tu pedido.',
-  doneClose: 'Listo',
   // Nombra el BENEFICIO, no la mecánica: "abrir el chat" describe un botón,
-  // "coordinar la entrega" describe lo que el comprador gana entrando.
-  doneOpenChat: 'Ver mi pedido y coordinar la entrega',
+  // "rastrear la entrega" describe lo que el comprador gana entrando — y es
+  // literal, no una promesa: `/p/:token` monta el `OrderTracker` con las etapas
+  // del pedido en vivo. Es la única acción de la pantalla final: no compite con
+  // ningún "Listo", porque el que se va sin pasar por el chat es el que después
+  // no reconoce quién le escribe.
+  doneOpenChat: 'Ver mi pedido y rastrear la entrega',
   // La frase que hace el trabajo de verdad. Lo que se juega en esta pantalla no
   // es conversión —la venta ya está cerrada— sino la TASA DE ENTREGA: en COD el
   // motivo número uno de que un pedido no se recoja es que el cliente no

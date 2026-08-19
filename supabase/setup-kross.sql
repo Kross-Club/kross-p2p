@@ -508,3 +508,248 @@ alter table public.order_sessions
 
 create index if not exists order_sessions_checkout_variant_idx
   on public.order_sessions (checkout_variant) where checkout_variant is not null;
+
+-- ─── 15. WEB PÚBLICA (krossclub.app) ─────────────────────────────────────────
+-- Lo que necesita la web pública de la plataforma para cumplir con los
+-- requisitos de la pasarela de pago (Culqi) y con INDECOPI:
+--   · `web_orders`  → pedidos hechos desde el carrito de krossclub.app
+--   · `complaints`  → Libro de Reclamaciones virtual
+-- Ninguna de las dos se lee desde el navegador: contienen datos personales y
+-- ambas se escriben solo desde Edge Functions con service role.
+
+-- 15.a Pedidos de la web pública -------------------------------------------
+-- Correlativo visible para el cliente: KR-2026-000123.
+CREATE SEQUENCE IF NOT EXISTS web_orders_numero_seq;
+
+CREATE TABLE IF NOT EXISTS web_orders (
+  id           uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  numero       bigint      NOT NULL DEFAULT nextval('web_orders_numero_seq'),
+  codigo       text        UNIQUE,               -- KR-AAAA-NNNNNN (lo pone el trigger)
+  tipo_cliente text        NOT NULL CHECK (tipo_cliente IN ('natural','empresa')),
+  nombre       text        NOT NULL,             -- nombre completo o razón social
+  documento    text        NOT NULL,             -- DNI (8) o RUC (11)
+  email        text        NOT NULL,
+  telefono     text        NOT NULL,
+  nota         text,
+  items        jsonb       NOT NULL DEFAULT '[]',
+  -- Total que se le MOSTRÓ al cliente en el navegador. No es el importe a
+  -- cobrar: cuando se conecte la pasarela, el cobro se calcula en el servidor.
+  total_mostrado numeric   NOT NULL DEFAULT 0,
+  estado       text        NOT NULL DEFAULT 'nuevo'
+                           CHECK (estado IN ('nuevo','contactado','pagado','anulado')),
+  created_at   timestamptz DEFAULT now()
+);
+ALTER TABLE web_orders ENABLE ROW LEVEL SECURITY;  -- sin políticas: solo service role
+CREATE INDEX IF NOT EXISTS idx_web_orders_created ON web_orders(created_at DESC);
+
+-- 15.b Libro de Reclamaciones (D.S. 011-2011-PCM y modificatorias) ----------
+-- Campos obligatorios de la Hoja de Reclamación: correlativo, fecha,
+-- identificación del consumidor, del bien contratado y el detalle, más el
+-- espacio para la respuesta del proveedor (plazo: 15 días hábiles).
+CREATE SEQUENCE IF NOT EXISTS complaints_numero_seq;
+
+CREATE TABLE IF NOT EXISTS complaints (
+  id              uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  numero          bigint      NOT NULL DEFAULT nextval('complaints_numero_seq'),
+  codigo          text        UNIQUE,            -- LR-AAAA-NNNNNN (lo pone el trigger)
+  -- Marca sobre la que se reclama. NULL = la plataforma (krossclub.app).
+  store_id        text,
+  store_nombre    text,
+  tipo            text        NOT NULL CHECK (tipo IN ('RECLAMO','QUEJA')),
+  -- Consumidor
+  consumidor_nombre    text   NOT NULL,
+  consumidor_doc_tipo  text   NOT NULL CHECK (consumidor_doc_tipo IN ('DNI','CE','PASAPORTE','RUC')),
+  consumidor_doc_num   text   NOT NULL,
+  consumidor_domicilio text   NOT NULL,
+  consumidor_telefono  text   NOT NULL,
+  consumidor_email     text   NOT NULL,
+  es_menor        boolean     NOT NULL DEFAULT false,
+  apoderado_nombre   text,                       -- obligatorio si es_menor
+  apoderado_doc_num  text,
+  apoderado_contacto text,
+  -- Bien contratado
+  bien_tipo       text        NOT NULL CHECK (bien_tipo IN ('PRODUCTO','SERVICIO')),
+  bien_desc       text        NOT NULL,
+  monto_reclamado numeric,
+  pedido_ref      text,                          -- código de pedido, si lo hay
+  -- Detalle
+  detalle         text        NOT NULL,
+  pedido_consumidor text      NOT NULL,          -- qué solicita el consumidor
+  -- Respuesta del proveedor
+  estado          text        NOT NULL DEFAULT 'pendiente'
+                              CHECK (estado IN ('pendiente','respondido','cerrado')),
+  respuesta       text,
+  respondido_at   timestamptz,
+  -- Rastro de la presentación
+  copia_email_enviada boolean NOT NULL DEFAULT false,
+  created_at      timestamptz DEFAULT now()
+);
+ALTER TABLE complaints ENABLE ROW LEVEL SECURITY;  -- sin políticas: solo service role
+CREATE INDEX IF NOT EXISTS idx_complaints_created ON complaints(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_complaints_store   ON complaints(store_id, created_at DESC);
+-- Los pendientes son los que corren contra el plazo legal: se listan primero.
+CREATE INDEX IF NOT EXISTS idx_complaints_pendientes
+  ON complaints(created_at) WHERE estado = 'pendiente';
+
+-- 15.c Correlativo legible ---------------------------------------------------
+-- El número correlativo es obligatorio en la Hoja de Reclamación y es lo que
+-- cita el consumidor. Se arma con la hora de Lima: en UTC, un reclamo del 31 de
+-- diciembre por la noche caería en el año siguiente.
+CREATE OR REPLACE FUNCTION set_codigo_correlativo() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.codigo IS NULL THEN
+    NEW.codigo := TG_ARGV[0] || '-'
+      || to_char(now() AT TIME ZONE 'America/Lima', 'YYYY') || '-'
+      || lpad(NEW.numero::text, 6, '0');
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_web_orders_codigo ON web_orders;
+CREATE TRIGGER trg_web_orders_codigo BEFORE INSERT ON web_orders
+  FOR EACH ROW EXECUTE FUNCTION set_codigo_correlativo('KR');
+
+DROP TRIGGER IF EXISTS trg_complaints_codigo ON complaints;
+CREATE TRIGGER trg_complaints_codigo BEFORE INSERT ON complaints
+  FOR EACH ROW EXECUTE FUNCTION set_codigo_correlativo('LR');
+
+-- ─── 16. COBRO CON CULQI (Yape con código de aprobación) ─────────────────────
+-- La tienda que conecta su cuenta Culqi cobra el adelanto EN el checkout: el
+-- comprador genera su código de aprobación en Yape (6 dígitos, vence en 2 min),
+-- lo pega, y Kross hace el cargo server-side con las llaves de ESA tienda. El
+-- dinero entra directo a la cuenta Culqi de la marca. El flujo manual (caja con
+-- número + código de 3 dígitos + cruce por `yape-ingest`) queda intacto para
+-- las tiendas sin Culqi. Ver docs/01-SALES-ENGINE.md §3.3.
+
+-- 16.a Flags PÚBLICOS en stores. Solo lo que el checkout necesita para decidir
+-- qué UI pintar — `stores` tiene SELECT público (política `stores_read`), así
+-- que aquí no puede vivir ninguna llave. El scope acota DÓNDE cobra Culqi:
+-- 'PROVINCIA' deja Lima en manual; 'ALL' cobra en todo el país. Es la retirada
+-- operativa: si la conversión limeña sufre, se repliega desde el panel sin
+-- tocar código.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS culqi_enabled boolean DEFAULT false;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS culqi_scope   text    DEFAULT 'PROVINCIA';
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_culqi_scope_check;
+ALTER TABLE stores ADD CONSTRAINT stores_culqi_scope_check
+  CHECK (culqi_scope IN ('PROVINCIA', 'ALL'));
+
+-- 16.b Llaves por tienda, en `store_secrets` (service role only, sin políticas
+-- — ver 13.a-bis). Van AMBAS aquí, también la pública: la tokenización es
+-- server-to-server (secure.culqi.com/v2/tokens/yape acepta la pk desde un
+-- backend), el navegador nunca la necesita, y una pk expuesta permite generar
+-- tokens contra la cuenta de la marca sin motivo.
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS culqi_public_key      text; -- pk_test_/pk_live_
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS culqi_secret_key      text; -- sk_test_/sk_live_
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS culqi_keys_updated_at timestamptz;
+-- Una tienda puede usar Culqi sin haber configurado nunca el lector de Yape:
+-- su fila en store_secrets nace sin token de ingesta. `yape-ingest` ya trata
+-- el NULL como "ingesta apagada" (responde 401), así que soltar el NOT NULL
+-- no abre nada.
+ALTER TABLE store_secrets ALTER COLUMN payment_ingest_token DROP NOT NULL;
+
+-- 16.c El cargo de Culqi entra a `payment_events` como un pago más: misma
+-- trazabilidad, misma tabla que audita cuánto cobró cada marca. `provider`
+-- distingue la fuente del dinero; `provider_charge_id` es el chr_... de Culqi
+-- y `provider_fee_pen` la comisión en soles (para que la marca vea lo que de
+-- verdad recibe). El anti-duplicado NO necesita índice nuevo:
+-- dedupe_key = 'culqi:' || charge_id reutiliza el índice único
+-- (store_id, dedupe_key) del 13.c — si el webhook y `culqi-charge` graban el
+-- mismo cargo, el segundo choca en 23505 y es no-op. El mismo índice sostiene
+-- el claim-lock 'culqi:lock:' || session_id con el que `culqi-charge` se
+-- asegura de que dos toques concurrentes no generen dos cargos reales.
+-- `source` gana el valor 'CULQI' (la columna es texto libre, sin constraint).
+ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider           text;
+ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider_charge_id text;
+ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider_fee_pen   numeric;
+
+-- 16.d Marca de procedencia del pedido. NULL = flujo manual; 'CULQI' = el
+-- adelanto se cobra en línea. Es la línea que separa las dos piscinas de
+-- cruce: un pedido Culqi NO puede ser consumido por el cruce manual (un yape
+-- ajeno de igual monto lo daría por pagado y `culqi-charge` respondería
+-- "ya pagado" sin haber cobrado un sol). `register-buyer` la escribe al alta
+-- y tanto su reverse-match como `yape-ingest` excluyen estos pedidos.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_provider text;
+
+-- 16.e Tienda de ORIGEN del pedido (la del producto). `register-buyer` puede
+-- asignar la sesión a la tienda de un vendedor de OTRA marca cuando no hay
+-- Ventas disponible en la propia (round-robin cross-store), y las llaves de
+-- Culqi se tienen que resolver por la marca que VENDE, jamás por la del
+-- vendedor asignado — cobrar a la cuenta de otra marca es el peor bug posible.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS origin_store_id text;
+
+-- 16.f Contador de intentos de cobro. Con un order_token válido (el propio) se
+-- podrían lanzar intentos ilimitados contra la pk de la marca — quemar su
+-- antifraude o probar OTPs de terceros. Corte duro en `culqi-charge`.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_charge_attempts int DEFAULT 0;
+
+-- ─── 17. ETAPA TERMINAL `no_entregado` ───────────────────────────────────────
+-- Hasta aquí la máquina de etapas solo avanzaba: un pedido rechazado en puerta
+-- era indistinguible de uno en camino, y la TASA DE ENTREGA — la métrica que
+-- define un negocio COD — no se podía calcular. `no_entregado` es terminal y
+-- lo marca una persona de Ventas/Logística, nunca el sistema.
+-- tasa de entrega = entregado / (entregado + no_entregado).
+ALTER TABLE order_sessions DROP CONSTRAINT IF EXISTS order_sessions_stage_check;
+ALTER TABLE order_sessions ADD CONSTRAINT order_sessions_stage_check
+  CHECK (stage = ANY (ARRAY[
+    'nuevo'::text, 'validando'::text, 'confirmado'::text,
+    'preparando'::text, 'en_camino'::text, 'entregado'::text,
+    'no_entregado'::text
+  ]));
+
+-- ─── 18. UNICIDAD DE BUYERS: POR TIENDA DE VERDAD ────────────────────────────
+-- Los DROP del bloque 0 (idx_buyers_document_number / idx_buyers_phone) creían
+-- limpiar la unicidad GLOBAL de la era pre-multi-tenant, pero producción tenía
+-- además una CONSTRAINT (`buyers_phone_key`) y dos índices con otros nombres
+-- que sobrevivieron. El efecto real: un cliente no podía existir en dos
+-- marcas, y un comprador pre-DNI que volvía CON DNI moría en 500 al chocar
+-- consigo mismo por teléfono. Verificado contra pg_constraint/pg_indexes de
+-- producción el 11-ago-2026 (el 500 exacto: "duplicate key value violates
+-- unique constraint buyers_phone_key"). Quedan vivas SOLO las per-tienda:
+-- idx_buyers_store_doc e idx_buyers_store_phone, que son las que el código
+-- usa como onConflict.
+ALTER TABLE buyers DROP CONSTRAINT IF EXISTS buyers_phone_key;
+DROP INDEX IF EXISTS idx_buyers_phone;
+DROP INDEX IF EXISTS idx_buyers_document_number;
+DROP INDEX IF EXISTS idx_buyers_doc_number;
+DROP INDEX IF EXISTS idx_buyers_doc;
+
+-- ─── 19. EXPERIMENTO A/B DEL CHECKOUT, OPERABLE DESDE EL PANEL ───────────────
+-- La variante (`checkout_variant`, más arriba) se sorteaba 50/50 en el
+-- navegador y no había forma de tocarlo sin un deploy: ni de mandar todo el
+-- tráfico a la ganadora cuando el experimento terminaba, ni de medir cuál
+-- ganaba. Este bloque pone las dos piezas que faltaban.
+
+-- 19.a El mando, en `stores`. Va aquí y no en `store_secrets` porque la landing
+-- necesita leerlo ANTES de que el comprador toque nada, y `stores` ya tiene
+-- SELECT público (política `stores_read`). No es un secreto: es del mismo tipo
+-- que `culqi_scope`. 'SPLIT' = el sorteo de siempre; 'A'/'B' = todo el tráfico
+-- a esa variante (para cuando ya sabes cuál gana).
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS checkout_ab_mode text DEFAULT 'SPLIT';
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_checkout_ab_mode_check;
+ALTER TABLE stores ADD CONSTRAINT stores_checkout_ab_mode_check
+  CHECK (checkout_ab_mode IS NULL OR checkout_ab_mode = ANY (ARRAY['SPLIT'::text, 'A'::text, 'B'::text]));
+
+-- 19.b El DENOMINADOR. `order_sessions.checkout_variant` dice cuántos pedidos
+-- hizo cada variante, pero sin contra qué dividir eso no es una tasa: una
+-- variante puede tener más pedidos solo porque le tocó más gente. El lead
+-- parcial ya se guarda apenas el WhatsApp es válido, así que marcarlo con su
+-- variante da "empezó a llenar → compró" — justo el tramo donde A y B se
+-- diferencian, y sin pedir un solo dato más al comprador.
+--
+-- Ojo al leer los números: la variante SOLO cambia el flujo en provincia con
+-- cobertura del courier (en B el comprador elige domicilio o agencia; en A lo
+-- decide la cobertura). En Lima las dos son idénticas, así que el total global
+-- mezcla tráfico sin experimento. El corte que vale es el de provincia.
+ALTER TABLE checkout_drafts ADD COLUMN IF NOT EXISTS checkout_variant text;
+ALTER TABLE checkout_drafts DROP CONSTRAINT IF EXISTS checkout_drafts_variant_check;
+ALTER TABLE checkout_drafts ADD CONSTRAINT checkout_drafts_variant_check
+  CHECK (checkout_variant IS NULL OR checkout_variant = ANY (ARRAY['A'::text, 'B'::text]));
+
+-- Las dos consultas del contador filtran por tienda y variante.
+CREATE INDEX IF NOT EXISTS idx_checkout_drafts_variant
+  ON checkout_drafts(store_id, checkout_variant)
+  WHERE checkout_variant IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_order_sessions_variant
+  ON order_sessions(store_id, checkout_variant)
+  WHERE checkout_variant IS NOT NULL;

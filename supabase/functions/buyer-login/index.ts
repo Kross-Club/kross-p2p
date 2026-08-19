@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     if (!buyer) {
       const { data: session } = await supabase
         .from('order_sessions')
-        .select('buyer_name, buyer_phone')
+        .select('buyer_name, buyer_phone, store_id')
         .or(`buyer_phone.eq.${withPrefix},buyer_phone.eq.${withoutPrefix},buyer_phone.eq.${digits}`)
         .maybeSingle()
 
@@ -78,12 +78,14 @@ Deno.serve(async (req) => {
         })
       }
 
-      // Auto-create buyer from order_sessions data
+      // Auto-create buyer from order_sessions data. La unicidad de buyers es
+      // POR TIENDA (bloque 18 del esquema): el onConflict global por 'phone'
+      // dejó de tener índice que lo respalde, y además pisaba entre marcas.
       const { data: newBuyer } = await supabase
         .from('buyers')
         .upsert(
-          { phone: session.buyer_phone, nombre: session.buyer_name },
-          { onConflict: 'phone', ignoreDuplicates: false }
+          { store_id: session.store_id ?? null, phone: session.buyer_phone, nombre: session.buyer_name },
+          { onConflict: 'store_id,phone', ignoreDuplicates: false }
         )
         .select('id, nombre, phone, document_type, document_number, score, puntos, address')
         .single()

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { TrendingUp, Repeat, DollarSign, Package, RotateCcw, Send, Settings } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -51,8 +52,10 @@ export default function RetencionPage() {
   const saveCfg = async () => {
     setSavingCfg(true)
     try {
+      // JWT real: manage-store autentica por Auth; el admin_auth_id queda de compat.
+      const { data: auth } = await supabase.auth.getSession()
       await fetch(`${BASE}/manage-store`, {
-        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        method: 'POST', headers: { Authorization: `Bearer ${auth.session?.access_token ?? ANON}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update', admin_auth_id: real?.auth_user_id, store_id: storeId, restock_days: restock, winback_days: winback }),
       })
       load()

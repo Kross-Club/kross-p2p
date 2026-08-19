@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Plan Vende — cierre de ventas asistido con IA">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0A0F26"/><stop offset="1" stop-color="#2A1450"/>
+    </linearGradient>
+    <linearGradient id="ac" x1="220" y1="140" x2="600" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A78BFA"/><stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <circle cx="150" cy="130" r="170" fill="#A78BFA" opacity=".14"/>
+  <circle cx="670" cy="470" r="150" fill="#38BDF8" opacity=".10"/>
+  <!-- Conversación que cierra la venta -->
+  <rect x="190" y="150" width="290" height="96" rx="28" fill="#ffffff" opacity=".16"/>
+  <rect x="222" y="182" width="180" height="14" rx="7" fill="#ffffff" opacity=".55"/>
+  <rect x="222" y="210" width="120" height="14" rx="7" fill="#ffffff" opacity=".35"/>
+  <rect x="330" y="272" width="290" height="118" rx="28" fill="url(#ac)"/>
+  <rect x="364" y="304" width="200" height="14" rx="7" fill="#0A0F26" opacity=".55"/>
+  <rect x="364" y="332" width="150" height="14" rx="7" fill="#0A0F26" opacity=".38"/>
+  <rect x="364" y="358" width="96" height="14" rx="7" fill="#0A0F26" opacity=".25"/>
+  <!-- Chispa de IA -->
+  <path d="M624 168 L640 214 L686 230 L640 246 L624 292 L608 246 L562 230 L608 214 Z" fill="#FFD400"/>
+  <text x="400" y="500" font-family="Nunito, Verdana, sans-serif" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle">Plan Vende</text>
+  <text x="400" y="540" font-family="Nunito, Verdana, sans-serif" font-size="24" font-weight="600" fill="#C4B5FD" text-anchor="middle">Cierre de ventas asistido con IA</text>
+</svg>

@@ -37,8 +37,9 @@
 | `analytics.ts` | `trackEvent()` con interfaz lista para enchufar Pixel/GA4 |
 | `services/` | `DistrictCoverageService` (decide la venta), `CoverageService` (polígonos, post-venta), `AgencyService`, `PaymentVerificationService` |
 
-- **3 pasos:** pack → datos+entrega → resumen+pago. El adelanto de provincia es
-  **S/10** (`ADVANCE_PROVINCIA_PEN`); Lima va 100 % contraentrega.
+- **3 pasos:** pack → datos+entrega → resumen+pago. Adelantos vigentes: Lima **S/5**,
+  Shalom **S/20**, Olva **S/25**, domicilio en provincia **S/30** — única fuente:
+  `checkout.config.ts` (y su espejo server-side `_shared/advance.ts`, ver §3.3).
 - **Idempotencia:** cada checkout nace con un `orderId` uuid. `register-buyer` debe
   aceptarlo para que un doble tap no genere dos pedidos (pendiente, Fase 3).
 - **No hay mapa en el checkout.** La cobertura se decide por **distrito** (178 cubiertos,
@@ -187,7 +188,7 @@ pedido"*— planteaba un beneficio nuestro como si fuera suyo. Ahora dice **"La 
 lo pedirá para entregarte el paquete"**: un hecho de su mundo, verificable, no un trámite
 del nuestro.
 
-**e) El adelanto depende de la AGENCIA ✅.** Shalom cobra S/10 y **Olva S/20**, porque su
+**e) El adelanto depende de la AGENCIA ✅.** Shalom cobra S/20 y **Olva S/25**, porque su
 flete es más caro. `advanceFor(isProvincia, agency)` en `checkout.config.ts` es la única
 fuente del monto. El adelanto se muestra **en la tarjeta de cada agencia, antes de
 elegir** — que el número suba después de haber elegido se lee como cambio de precio a
@@ -444,6 +445,127 @@ calidad del dato apuntan al mismo lado:
 ese botón se oculta y manda el QR + el número copiable. Ninguna pantalla dice "ábrelo en
 tu celular": el flujo entero se puede grabar desde una laptop.
 
+#### 3.3 Cobro directo con Culqi ✅ (por tienda · requiere afiliación Yape)
+
+La alternativa determinista al cruce por notificación: **cada marca conecta su propia
+cuenta Culqi** (llaves en el panel → Cobros) y el adelanto se cobra EN el checkout. El
+comprador genera su **código de aprobación** en Yape (6 dígitos; **Aprobar compras** en la
+pantalla de inicio, con cuenta regresiva de segundos), lo pega, y el cargo entra por el
+**monto exacto** con confirmación instantánea. No confundir los dos códigos: el de
+SEGURIDAD (3 dígitos) *evidencia* un pago ya hecho y alimenta el cruce de §3.1; el de
+APROBACIÓN *autoriza* un cobro. `CulqiApprovalHint` existe porque el segundo vive en una
+pantalla que el comprador jamás abrió — y se dibuja **contra capturas de la app, nunca de
+memoria**: la primera versión mandaba a un "Menú de Yape" que no existe, y prometía "vence
+en 2 minutos" cuando el contador real va en segundos.
+
+```
+  paso 3 ──registro──▶ register-buyer (payment_provider='CULQI', idempotente)
+     │                       └─ el pedido SALE de la piscina del cruce manual
+     └──cobro────────▶ culqi-charge ──▶ token Yape (secure, pk) ──▶ cargo (api, sk)
+                             │                └─ server-to-server: CERO script de
+                             │                   terceros en la PWA
+                             ├─▶ payment_events (source CULQI, dedupe culqi:chr_…)
+                             ├─▶ pedido MATCHED + confirmado + acuses del chat
+                             └─▶ culqi-webhook = red de seguridad (re-consulta
+                                 GET /charges/{id} con la sk; jamás cree el payload)
+```
+
+**Decisiones que no se negocian:**
+
+- **El monto lo deriva el servidor, dos veces.** `_shared/advance.ts` (espejo de
+  `advanceFor`, con test de paridad) lo fija en `register-buyer` y `culqi-charge` lo
+  re-deriva del destino. El body del cliente es solo telemetría.
+- **Registrar primero, cobrar después.** Si el pago falla, el pedido YA existe en
+  `validando` y la pantalla lo dice así: "Tu pedido está guardado — falta el pago". El
+  retry SOLO cobra; jamás re-registra. Cerrar el modal deja `advancePending` en el
+  navegador y la landing ofrece "Termina el pago de tu pedido".
+- **Un pedido Culqi no cruza con yapes manuales** (`payment_provider` separa las dos
+  piscinas): sin eso, un yape ajeno del mismo monto lo daría por pagado y `culqi-charge`
+  respondería "ya pagado" sin haber cobrado.
+- **Claim-lock contra el doble cargo**: `dedupe_key='culqi:lock:<session>'` sobre el
+  índice único de `payment_events`. Dos toques concurrentes = un solo cargo.
+- **`network_after` no reintenta.** Si la respuesta del cargo se pierde, el dinero pudo
+  salir: la UI consulta el estado real (~1 min) y el webhook repara. Un doble cargo
+  residual se devuelve desde el panel de Culqi (refunds automatizados: 🔮).
+- **Llaves en `store_secrets`, las DOS** (la tokenización es server-side, el navegador no
+  necesita ni la pública). Write-only desde `manage-store`, que para campos de cobro exige
+  el **JWT verificado** — el camino legacy `admin_auth_id` sigue vivo para branding y es
+  deuda por retirar.
+- **Las tiendas sin Culqi no notan nada**: `culqi_enabled=false` → paso 3 manual bit a
+  bit, §3.1 y §3.2 intactos. `culqi_scope='PROVINCIA'` deja Lima en manual como retirada
+  operativa sin deploy.
+
+> ### 🚧 La API directa exige acreditar PCI DSS — hoy el cobro no pasa del token
+>
+> `POST secure/tokens/yape` responde `400` **antes de mirar el celular o el código**, con
+> llaves live correctas:
+>
+> ```json
+> {"object":"error","type":"authentication_error",
+>  "merchant_message":"Tu código de comercio no está autorizado para realizar este tipo
+>   de peticiones. Contáctate con culqi.com/soporte para obtener mas información."}
+> ```
+>
+> **La causa está documentada por Culqi**, en la página de Yape (Pagos Online → Cargo único
+> → Yape), sección *Usando APIs*:
+>
+> > *"Recuerda que cuando interactúas directamente con el API necesitas cumplir la normativa
+> > de **PCI DSS 3.2**. Por ello, te pedimos que llenes el formulario **SAQ-D** y lo envíes al
+> > buzón de riesgos Culqi."*
+>
+> O sea: **la implementación de abajo es correcta** —llave pública para el token, secreta
+> para el cargo, tal como documentan— y lo que falta es el **permiso** para usar la API
+> directa. De ahí la literalidad del error: "este *tipo* de peticiones". Y de ahí también que
+> soporte responda que no hay nada que activar: por **Culqi Checkout** funciona hoy sin
+> papeleo, porque el comprador teclea dentro del popup de Culqi y el comercio nunca toca el
+> código.
+>
+> **Las dos salidas, y no son equivalentes:**
+>
+> | | Qué cuesta | Qué conserva |
+> |---|---|---|
+> | **A · Acreditar PCI DSS** (SAQ-D al buzón de riesgos) | Papeleo de cumplimiento y la obligación que conlleva | Todo lo de abajo intacto: nuestro campo, nuestra estética, cero script ajeno |
+> | **B · Culqi Checkout** (popup) | Cae el "CERO script de terceros"; el comprador teclea en el popup de Culqi; hay que replantear el submit en dos fases y su recuperación | Funciona sin acreditación |
+>
+> **Decidido (13-ago-2026): camino A.** El trámite entero —qué pedir, el expediente que lo
+> sustenta, el correo y el checklist del día que aprueben— vive en
+> **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)**. El argumento en una línea: por el riel Yape no
+> pasa una tarjeta (celular + código de aprobación → token `ype_`), así que no hay entorno
+> de datos de tarjeta que acreditar; lo que se pide es la autorización con **alcance Yape**.
+>
+> **Soporte contestó el 14-ago-2026 culpando al entorno de las llaves** —"peticiones de prueba
+> con llaves live"— y quedó **descartado**: la misma petición **sin `number_phone` ni `otp`**,
+> sin un solo dato de prueba, devuelve el error idéntico. No viene de los datos. La evidencia y
+> la respuesta lista para enviar están en
+> [`05-PCI-SAQ-D.md` §1.1 y §6.1](./05-PCI-SAQ-D.md).
+>
+> Hasta que respondan, la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
+
+**Límites de Yape que impone Culqi** (misma página): monto máximo **S/ 2000** por pago y
+**solo soles**. Los adelantos de Kross (S/5–S/30) caben de sobra, pero el techo importa si
+alguna vez se cobra el pedido entero.
+
+> ✅ **Saldado — el próximo fallo dirá por qué.** Esa respuesta **no trae `code`**: el motivo
+> viaja en `type` y `merchant_message`, así que loguear `{status, code}` imprimía
+> `{400, null}` y costó una tarde de diagnóstico a ciegas. `errorForLog` (`_shared/culqi.ts`)
+> arma la línea con el diagnóstico **propio de Culqi** —lista de campos cerrada y fijada por
+> test, porque por esa función pasan la llave, el celular y el OTP— y va a los logs de la
+> función y **solo ahí**: nunca a `payment_reason` ni a un mensaje `sellers`, que pueden
+> acabar frente al comprador vía `get-session?viewer=seller`. `culqi-webhook` usa la misma
+> línea, donde además separa el 401 (llave de la tienda mal cargada o rotada) del 404 (cargo
+> ajeno o forjado — la red de seguridad haciendo su trabajo).
+
+**Sandbox**: llaves `pk_test_/sk_test_` del panel de integración; Yape de prueba
+`900000001` / OTP `425251`. El webhook se registra en CulqiPanel → Desarrollo → Webhooks
+(`charge.creation.succeeded` y `failed`).
+
+> **El Basic es opcional y hoy está apagado.** `culqi-webhook` solo lo exige si existe el
+> secret `CULQI_WEBHOOK_BASIC`, y **no está definido** (comprobado el 14-ago-2026). Ponerlo
+> sin cargar el mismo `usuario:clave` en el panel hace que toda entrega rebote con 401, y
+> siendo una red de seguridad no se nota hasta el día que hace falta. Cómo comprobar el
+> endpoint en un minuto, sin curl y sin escribir en la BD:
+> [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md) § Bloqueo 2.
+
 ## Métricas del módulo
 - Tiempo landing→pedido, % de campos autocompletados por DNI, tasa de cierre por canal
   (`closedBy`), pedidos por vendedor (carga round-robin).
@@ -503,16 +625,16 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 2. 🟡 **Lead parcial (`DRAFT`)**: `save-checkout-draft` + tabla `checkout_drafts` ya
    existen y el checkout los llama. Falta **desplegar la función** y correr el SQL, y
    construir la vista de recuperación de abandonos para Ventas.
-3. 🟡 **Verificación del yape**: el cruce está construido y el parser fijado contra el
-   texto REAL de la notificación (§3.1). Falta **montar la fuente que lee la
-   notificación** en el Android del dueño (MacroDroid hoy / APK propio después) y
-   configurar `payment_ingest_token` de la tienda.
-   La costura está en `services/PaymentVerificationService.ts` — el mock deja todo en
-   `PENDING` a propósito: hasta que exista el real, todo adelanto va a revisión humana,
-   que es lo que pasa hoy en producción.
+3. 🟡 **Verificación del yape (SOLO tiendas sin Culqi)**: el cruce está construido y el
+   parser fijado contra el texto REAL de la notificación (§3.1). Falta **montar la fuente
+   que lee la notificación** en el Android del dueño (MacroDroid hoy / APK propio después)
+   y configurar `payment_ingest_token` de la tienda. Para las tiendas con Culqi este
+   pendiente NO aplica: el cobro es directo y determinista (§3.3).
 4. 🔮 `createElevenLabsTransport()` (implementar `VoiceTransport` con `@elevenlabs/react`)
    + crear el agente en ElevenLabs → activar la voz.
-5. 🔮 Cobro Yape/Plin integrado (QR dinámico / confirmación de operación).
+5. ✅ **Cobro Yape integrado — construido con Culqi (§3.3).** Cada marca conecta su
+   cuenta; el cargo entra por el monto exacto con confirmación instantánea. Queda 🔮 el
+   QR dinámico como medio adicional.
 
 ### Pantalla final: por qué el chat va ahí
 
@@ -582,8 +704,8 @@ se compara y listo. El rótulo del campo también dejó de usar el término téc
 
 ### Por qué el código NO puede volverse opcional
 
-`ADVANCE_PROVINCIA_PEN = 10` y Olva `= 20`: **todos** los pedidos de Shalom
-piden exactamente S/10 y todos los de Olva S/20. El monto no distingue nada en
+`ADVANCE_PROVINCIA_PEN = 20` y Olva `= 25`: **todos** los pedidos de Shalom
+piden exactamente S/20 y todos los de Olva S/25. El monto no distingue nada en
 cuanto hay más de un pedido esperando — el código es lo único que decide. Hoy
 funciona sin él por volumen bajo, no por diseño; a volumen, sin código todo
 caería a revisión humana.
@@ -795,9 +917,41 @@ El pedido guarda `order_sessions.checkout_variant`. Sin esa columna se sabría
 cuánta gente vio cada versión pero **no cuál vendió**, que es la única pregunta
 que importa.
 
+### El mando y el contador ✅
+
+Bloque 19 del esquema. Vendedor → **Productos** trae el panel del experimento
+(`src/pages/vendedor/AbTestPanel.tsx`), y cada producto ofrece sus enlaces
+`?checkout=A` y `?checkout=B` para repartir tráfico de anuncios a mano.
+
+**`stores.checkout_ab_mode`** (`SPLIT` · `A` · `B`) decide el reparto sin deploy:
+`SPLIT` es el sorteo, y `A`/`B` mandan todo a esa versión cuando el experimento
+terminó. Vive en `stores` porque la landing lo necesita antes de que el comprador
+toque nada, y esa tabla ya tiene SELECT público.
+
+**Forzar nunca persiste** — ni por URL ni por `checkout_ab_mode`. Si el modo
+forzado se guardara en `localStorage`, al devolver el switch a 50/50 cada
+dispositivo que pasó por ahí seguiría clavado en esa versión y el experimento
+siguiente nacería sesgado sin que nadie lo note. Hay un test que protege la regla.
+
+**El denominador es `checkout_drafts.checkout_variant`** (19.b): el lead parcial
+ya se guarda apenas el WhatsApp es válido, así que marcarlo con su versión da la
+tasa *empezó a llenar → compró* sin pedirle un dato más al comprador. La analítica
+de front no sirve para esto: `setAnalyticsSink` no se llama en ningún sitio, así
+que en producción los `trackEvent` caen en un sink vacío.
+
+`manage-store` acción **`ab_stats`** hace las cuentas con dos precauciones:
+
+- **`since`** = el primer lead marcado con versión, y los pedidos se cuentan desde
+  ahí. Sin eso, los pedidos viejos (que sí traen variante) se dividirían entre
+  leads que nunca la tuvieron y la tasa saldría inflada.
+- **El corte de PROVINCIA es el que vale.** La variante solo cambia el flujo en
+  provincia con cobertura; en Lima A y B son idénticas y su tráfico solo diluye la
+  señal. El panel pinta ese número en grande y el global en gris, rotulado.
+
 > ⚠️ **Volumen.** Un A/B necesita cientos de pedidos por rama para separar señal
-> de ruido. Con el volumen actual los números no deciden nada todavía: sirven para
-> ver que el flujo B no rompe nada, no para elegir ganador.
+> de ruido. El panel no pinta ganador por debajo de 30 leads por versión y lo dice
+> en pantalla; aun así, con el volumen actual los números sirven para ver que el
+> flujo B no rompe nada, no para elegir ganador.
 
 ### Pendiente
 

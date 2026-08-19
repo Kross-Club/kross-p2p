@@ -378,7 +378,10 @@ Deno.serve(async (req) => {
   // ─── ADVANCE STAGE ──────────────────────────────────────────────────────────
   const idx = STAGES.indexOf(session.stage)
   const next = body.stage ?? STAGES[idx + 1]
-  if (!next || !STAGES.includes(next)) {
+  // `no_entregado` es TERMINAL y solo EXPLÍCITO: jamás es el "siguiente" de
+  // nada (no vive en STAGES) — lo pide una persona desde el selector, con
+  // confirmación. Es lo que vuelve computable la tasa de entrega.
+  if (!next || (!STAGES.includes(next) && next !== 'no_entregado')) {
     return new Response('Invalid stage', { status: 400, headers: corsHeaders })
   }
 
@@ -427,6 +430,20 @@ Deno.serve(async (req) => {
   }
 
   await broadcast(session.id, 'stage_update', { stage: next })
+
+  // El cierre en fracaso queda escrito para el equipo (jamás para el
+  // comprador: su tracker ya muestra el cierre neutro, y restregárselo por
+  // chat no recupera nada). El motivo fino vive en la conversación.
+  if (next === 'no_entregado') {
+    await supabase.from('chat_messages').insert({
+      session_id: session.id,
+      sender_role: 'system',
+      sender_name: 'Kross',
+      type: 'text',
+      visibility: 'sellers',
+      body: '❌ Pedido marcado como NO ENTREGADO. Cuenta en la tasa de entrega de la marca.',
+    })
+  }
 
   if (newAssignment) {
     const { data: msg } = await supabase.from('chat_messages').insert({

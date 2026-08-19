@@ -7,3 +7,17 @@
   --brand: #55C8F5;
   --brand-dark: #060C1A;
 }
+
+/* Impresión. La Hoja de Reclamación es una constancia legal y el consumidor
+   tiene derecho a quedarse con ella: al imprimir (o "guardar como PDF") queda
+   solo el documento, sin menú, sin pie ni botones. */
+@media print {
+  header,
+  footer,
+  [data-no-print] {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}

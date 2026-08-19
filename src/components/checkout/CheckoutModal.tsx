@@ -6,20 +6,25 @@
 // Accesibilidad: role="dialog", trap de foco, Esc cierra (pidiendo confirmación
 // si hay data ingresada) y el CTA es sticky dentro del safe area de iOS.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, X } from 'lucide-react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { ArrowLeft, Loader2, X } from 'lucide-react'
 import { useCheckout } from '../../lib/checkout/useCheckout'
-import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN } from '../../lib/checkout/checkout.config'
+import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN, culqiActiveFor } from '../../lib/checkout/checkout.config'
 import { trackEvent } from '../../lib/checkout/analytics'
-import type { CheckoutState } from '../../lib/checkout/types'
+import type { CheckoutState, StoreCulqi } from '../../lib/checkout/types'
+import type { CheckoutAbMode } from '../../lib/checkout/variant'
 import { effectivePrice } from '../../lib/checkout/product-packs'
-import { submitOrder, uploadVoucher } from '../../lib/checkout/services/OrderService'
-import { saveLastOrder } from '../../lib/checkout/persistence'
+import { fetchPaymentVerification, submitOrder, uploadVoucher } from '../../lib/checkout/services/OrderService'
+import { chargeAdvance } from '../../lib/checkout/services/CulqiService'
+import { clearAdvancePending, saveLastOrder } from '../../lib/checkout/persistence'
+import { orderRegistered, payPhaseReducer } from '../../lib/checkout/pay-phase'
+import { canRetry, culqiFailureCopy, needsNewOtp } from '../../lib/checkout/culqi-errors'
 import type { SubmitContext } from '../../lib/checkout/services/OrderService'
 import Step1Pack from './steps/Step1Pack'
 import type { PackOption } from './steps/Step1Pack'
 import Step2Delivery from './steps/Step2Delivery'
 import Step3Confirm from './steps/Step3Confirm'
+import CulqiYapeBox from './payment/CulqiYapeBox'
 import OrderDone from './steps/OrderDone'
 import ExitOffer from './ExitOffer'
 
@@ -46,29 +51,53 @@ interface CheckoutModalProps {
   /** `stores.home_delivery_enabled`. Si es false la marca solo ofrece recojo en
    *  agencia y el checkout no muestra nunca la opción de entrega a domicilio. */
   homeDeliveryEnabled?: boolean
+  /** Config Culqi de la tienda (columnas públicas). Puede llegar asíncrona. */
+  culqi?: StoreCulqi | null
+  /** Cómo reparte la tienda el A/B (`stores.checkout_ab_mode`). Asíncrona igual
+   *  que `culqi`: hasta que llegue vale el sorteo 50/50 de siempre. */
+  abMode?: CheckoutAbMode
 }
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, yape = null, homeDeliveryEnabled = true,
+  submitContext, yape = null, homeDeliveryEnabled = true, culqi = null, abMode = 'SPLIT',
 }: CheckoutModalProps) {
   const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled })
   const { state, dispatch, errors, touch } = co
   const [confirmingClose, setConfirmingClose] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [orderCode, setOrderCode] = useState<string | null>(null)
-  // Token del pedido: con él la pantalla final abre el chat y consulta el cruce.
-  const [orderToken, setOrderToken] = useState<string | null>(null)
+  // La máquina del PAGO, aparte de la del checkout: registro y cobro son dos
+  // operaciones que fallan por separado. Los guards del doble tap, el pie
+  // sticky y el retry se gobiernan por esta fase, no por `state.status` — que
+  // ya está en SUBMITTED mientras el cargo sigue en vuelo.
+  const [phase, phaseDispatch] = useReducer(payPhaseReducer, { k: 'IDLE' })
   const panelRef = useRef<HTMLDivElement>(null)
   const restoreFocus = useRef<HTMLElement | null>(null)
   // Qué mostrar en el diálogo se decide AL ABRIRLO, no en cada render.
   const [offerDiscount, setOfferDiscount] = useState(false)
+
+  // La config de la tienda entra por dispatch y NO solo al montar: llega
+  // asíncrona (la landing la consulta aparte), y un comprador rápido abre el
+  // modal antes de que resuelva. Con deps reales, el estado se corrige solo.
+  useEffect(() => {
+    dispatch({ type: 'SET_CULQI_CONFIG', culqi: culqi ?? null })
+  }, [culqi, dispatch])
+
+  // Igual que la de Culqi: llega asíncrona y con deps reales se corrige sola.
+  useEffect(() => {
+    dispatch({ type: 'SET_AB_MODE', mode: abMode })
+  }, [abMode, dispatch])
 
   const requestClose = useCallback(() => {
     // Con el diálogo de salida ya abierto, cualquier nuevo intento de cerrar
     // (Esc, clic en el fondo) significa "quedarme": nunca se pierde la venta por
     // una tecla repetida. Salir de verdad es un botón explícito del diálogo.
     if (confirmingClose) { setConfirmingClose(false); return }
+
+    // Pedido ya registrado (todo lo que no es IDLE): cerrar es salir de una
+    // compra hecha. Sale directo — sin retenerlo con un descuento por algo que
+    // ya compró y sin contarlo como abandono. Ver `orderRegistered`.
+    if (orderRegistered(phase)) { onClose(); return }
 
     // Con data ingresada se pide confirmación: cerrar por error tras llenar
     // cuatro campos es perder la venta. Nada de confirm() nativo.
@@ -90,7 +119,7 @@ export default function CheckoutModal({
     }
     co.abandon()
     onClose()
-  }, [co, confirmingClose, onClose, state.exitOfferShown, state.discountPen, state.step, dispatch])
+  }, [co, confirmingClose, onClose, phase, state.exitOfferShown, state.discountPen, state.step, dispatch])
 
   // El handler vive en un ref para que el efecto de abajo se monte UNA sola vez.
   // Si dependiera de `requestClose` —que cambia de identidad en cada render— su
@@ -136,25 +165,66 @@ export default function CheckoutModal({
   const pack = packs.find(p => p.id === state.selectedPack) ?? null
   const price = pack ? effectivePrice(pack.precio, state.discountPen) : 0
 
+  // ─── Fase 2 · el cobro. Solo existe con Culqi activo. ─────────────────────
+  // Toma el teléfono y el OTP del estado EN el momento de cobrar, y el pedido
+  // de la referencia explícita — jamás de un closure viejo.
+  const charge = useCallback(async (ref: { token: string; orderCode: string; sessionId: string }) => {
+    const res = await chargeAdvance({
+      orderToken: ref.token, phone: state.culqiPhone, otp: state.culqiOtp,
+    })
+    if (res.ok) {
+      trackEvent({ name: 'culqi_charge_ok', orderId: state.orderId, alreadyPaid: !!res.alreadyPaid })
+      clearAdvancePending()
+      phaseDispatch({ type: 'CHARGE_OK' })
+      return
+    }
+    trackEvent({ name: 'culqi_charge_failed', orderId: state.orderId, stage: res.stage, code: res.code })
+    // El OTP quemado no se re-muestra: single-use, y verlo lleno invita a
+    // reenviar el mismo. El pedido pendiente queda en localStorage para que la
+    // landing ofrezca terminar el pago si el comprador cierra el modal aquí.
+    dispatch({ type: 'SET_CULQI_OTP', otp: '' })
+    saveLastOrder(ref.token, ref.orderCode, submitContext?.productId ?? null, {
+      advancePending: true, culqiPhone: state.culqiPhone,
+    })
+    phaseDispatch({ type: 'CHARGE_FAILED', fail: { stage: res.stage, code: res.code, userMessage: res.userMessage } })
+  }, [state.culqiPhone, state.culqiOtp, state.orderId, submitContext, dispatch])
+
   const submit = useCallback(async () => {
     if (!submitContext) {
       setSubmitError('Falta la configuración de la tienda (modo demo).')
       return
     }
+    // Guard duro del doble tap: con un pago ya en marcha, este botón no existe
+    // (el pie se desmonta), pero el guard queda por si algo lo re-monta.
+    if (phase.k !== 'IDLE') return
+    const culqiActive = culqiActiveFor(state)
     setSubmitError(null)
     dispatch({ type: 'SUBMITTING' })
     try {
+      // ─── Fase 1 · el registro. Idempotente por checkout_id. ──────────────
+      // SIEMPRE primero: si el pago falla, el pedido ya existe y Ventas tiene
+      // el lead con todo — el comprador reintenta sin volver a llenar nada.
       const res = await submitOrder(state, {
         ...submitContext, price, packName: pack?.nombre ?? null,
       })
-      setOrderCode(res.order_id)
-      setOrderToken(res.token)
+      const ref = {
+        token: res.token, orderCode: res.order_id,
+        sessionId: res.session_id ?? res.id ?? '',
+      }
       // Sobrevive al cierre del modal: la landing ofrece volver al pedido.
       saveLastOrder(res.token, res.order_id, submitContext.productId ?? null)
       dispatch({ type: 'SUBMITTED' })
       trackEvent({ name: 'order_submitted', orderId: state.orderId })
       // El borrador deja de existir: un pedido enviado no se reabre.
       co.clear()
+
+      if (!culqiActive) {
+        // Flujo manual: directo a la pantalla final, como siempre.
+        phaseDispatch({ type: 'REGISTERED_MANUAL', ...ref })
+        return
+      }
+      phaseDispatch({ type: 'REGISTERED_CULQI', ...ref })
+      await charge(ref)
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'error desconocido'
       dispatch({ type: 'ERROR' })
@@ -162,7 +232,39 @@ export default function CheckoutModal({
       setSubmitError(COPY.submitError)
       trackEvent({ name: 'order_failed', orderId: state.orderId, reason })
     }
-  }, [state, submitContext, price, pack, dispatch, co])
+  }, [state, submitContext, price, pack, dispatch, co, phase.k, charge])
+
+  // Retry del cobro: SOLO desde CHARGE_FAILED, y jamás re-registra.
+  const retryCharge = useCallback(async () => {
+    if (phase.k !== 'CHARGE_FAILED') return
+    const ref = { token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+    phaseDispatch({ type: 'RETRY' })
+    await charge(ref)
+  }, [phase, charge])
+
+  // "Prefiero que me escriban": pedido registrado, pago para el asesor.
+  const giveUp = useCallback(() => phaseDispatch({ type: 'GIVE_UP' }), [])
+
+  // ─── CONFIRMING · red caída DESPUÉS de enviar el cargo ────────────────────
+  // El dinero pudo salir: aquí NO hay botón de reintento. Se consulta el
+  // estado real cada 4 s por ~1 min; si el webhook cuadró el pedido, esta
+  // pantalla se vuelve la de éxito sola.
+  useEffect(() => {
+    if (phase.k !== 'CONFIRMING') return
+    const token = phase.token
+    let tries = 0
+    let cancelled = false
+    const id = setInterval(async () => {
+      if (cancelled || ++tries > 15) { clearInterval(id); return }
+      const v = await fetchPaymentVerification(token)
+      if (!cancelled && v === 'MATCHED') {
+        clearAdvancePending()
+        phaseDispatch({ type: 'CONFIRMED' })
+        clearInterval(id)
+      }
+    }, 4000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [phase])
 
   const onVoucher = useCallback(async (file: File) => {
     const path = await uploadVoucher(file, state.orderId)
@@ -171,7 +273,8 @@ export default function CheckoutModal({
   }, [state.orderId, dispatch])
 
   const submitting = state.status === 'SUBMITTING'
-  const done = state.status === 'SUBMITTED' && orderCode !== null
+  const culqiActive = culqiActiveFor(state)
+  const done = phase.k === 'DONE'
 
   return (
     <>
@@ -239,35 +342,118 @@ export default function CheckoutModal({
             <Step2Delivery state={state} dispatch={dispatch} errors={errors} touch={touch} />
           )}
 
-          {state.step === 3 && !done && (
+          {state.step === 3 && phase.k === 'IDLE' && (
             <Step3Confirm
               state={state}
               packName={pack?.nombre ?? null}
               price={price}
               yape={yape}
+              culqi={culqiActive}
               errors={errors}
               touch={touch}
               onYapeCode={code => dispatch({ type: 'SET_YAPE_CODE', code })}
+              onCulqiPhone={phone => dispatch({ type: 'SET_CULQI_PHONE', phone })}
+              onCulqiOtp={otp => dispatch({ type: 'SET_CULQI_OTP', otp })}
               onVoucher={onVoucher}
               submitError={submitError}
             />
           )}
 
+          {/* ── Cobro en vuelo ── */}
+          {phase.k === 'CHARGING' && (
+            <div className="py-10 text-center">
+              <Loader2 size={34} className="animate-spin mx-auto mb-4 text-green-600" />
+              <p className="text-base font-black text-gray-900">{COPY.culqiCharging}</p>
+              <p className="text-xs text-gray-400 mt-1">{COPY.culqiChargingHint}</p>
+            </div>
+          )}
+
+          {/* ── Pedido creado + pago fallido: la pantalla que NO dice "error"
+                a secas. Primero lo que SÍ pasó, después lo que falta. ── */}
+          {phase.k === 'CHARGE_FAILED' && (
+            <div className="py-2">
+              <h2 className="text-xl font-black text-gray-900 mb-0.5">{COPY.culqiRetryTitle}</h2>
+              <p className="text-sm text-gray-500 mb-1">{COPY.culqiRetryBody}</p>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">
+                Tu pedido · <span className="text-gray-700">{phase.orderCode}</span>
+              </p>
+
+              <p role="alert" className="text-xs font-bold text-red-600 bg-red-50 rounded-xl px-3 py-2 mb-4">
+                {culqiFailureCopy(phase.fail)}
+              </p>
+
+              {canRetry(phase.fail) && (
+                <CulqiYapeBox
+                  state={state}
+                  amount={state.advanceAmount}
+                  errors={errors}
+                  touch={touch}
+                  onPhone={phone => dispatch({ type: 'SET_CULQI_PHONE', phone })}
+                  onOtp={otp => dispatch({ type: 'SET_CULQI_OTP', otp })}
+                  askNewOtp={needsNewOtp(phase.fail)}
+                />
+              )}
+
+              {canRetry(phase.fail) && (
+                <button
+                  onClick={retryCharge}
+                  disabled={!co.canAdvance}
+                  className={`w-full mt-4 py-4 rounded-2xl font-black text-base text-white shadow-lg transition-transform active:scale-95
+                    focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500
+                    ${co.canAdvance ? 'bg-green-500 shadow-green-200' : 'bg-green-300 cursor-not-allowed'}`}
+                >
+                  {COPY.culqiRetryCta}
+                </button>
+              )}
+
+              {/* La salida sin pagar SIEMPRE existe: el pedido ya está
+                  registrado y un asesor puede cobrar por el chat. */}
+              <button
+                onClick={giveUp}
+                className="w-full mt-2.5 py-4 rounded-2xl bg-gray-100 text-gray-600 font-black text-sm
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+              >
+                {COPY.culqiContactMe}
+              </button>
+            </div>
+          )}
+
+          {/* ── network_after: el dinero pudo salir. Sin botón de reintento —
+                se consulta el estado real y esta pantalla se resuelve sola. ── */}
+          {phase.k === 'CONFIRMING' && (
+            <div className="py-10 text-center">
+              <Loader2 size={34} className="animate-spin mx-auto mb-4 text-amber-500" />
+              <p className="text-base font-black text-gray-900">{COPY.culqiConfirming}</p>
+              <p className="text-xs text-gray-500 mt-2 px-6">{COPY.culqiConfirmingHint}</p>
+              <button
+                onClick={giveUp}
+                className="mt-6 px-5 py-3 rounded-2xl bg-gray-100 text-gray-600 font-black text-sm
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+              >
+                {COPY.culqiContactMe}
+              </button>
+            </div>
+          )}
+
           {done && (
             <OrderDone
-              orderCode={orderCode}
+              orderCode={phase.orderCode}
               advance={state.advanceAmount}
-              verification={state.payment.verification}
-              token={orderToken}
-              onClose={onClose}
+              // El cargo Culqi exitoso llega ya verificado: la caja nace verde
+              // y el polling ni se monta. Sin Culqi, el estado real de siempre.
+              verification={phase.paid ? 'MATCHED' : state.payment.verification}
+              token={phase.token}
+              unpaid={phase.unpaid}
             />
           )}
         </div>
 
         {/* ── CTA sticky, dentro del safe area de iOS ── */}
-        {/* En la pantalla de confirmación el pie desaparece: su único botón ya
-            está dentro, y dejar un "Continuar" ahí invitaría a comprar dos veces. */}
-        {!done && (
+        {/* El pie SOLO existe en fase IDLE: durante el cobro (CHARGING), el
+            retry (CHARGE_FAILED), la confirmación (CONFIRMING) y la pantalla
+            final, dejarlo montado es dejar armado el botón del doble cargo —
+            cada una de esas pantallas ya trae sus propias acciones. */}
+        {phase.k === 'IDLE' && (
           <div
             className="px-5 pt-3 border-t border-gray-100 flex-shrink-0 bg-white sm:rounded-b-3xl"
             style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
@@ -292,7 +478,9 @@ export default function CheckoutModal({
                   focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500
                   ${co.canAdvance && !submitting ? 'bg-green-500 text-white shadow-green-200' : 'bg-green-300 text-white cursor-not-allowed'}`}
               >
-                {submitting ? COPY.submitting : state.step === 3 ? COPY.submit : 'Continuar →'}
+                {submitting ? COPY.submitting
+                  : state.step === 3 ? (culqiActive ? COPY.culqiSubmit : COPY.submit)
+                    : 'Continuar →'}
               </button>
             </div>
 

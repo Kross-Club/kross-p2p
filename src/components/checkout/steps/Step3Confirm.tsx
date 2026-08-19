@@ -1,10 +1,11 @@
 // ─── PASO 3 · Resumen y adelanto ─────────────────────────────────────────────
-// Dos flujos muy distintos según el destino:
+// Dos formas de cobrar el adelanto, según la tienda (prop `culqi`):
 //
-//   Lima      → no hay nada que pagar ahora. Solo el resumen y el botón. Es el
-//               segmento de mayor volumen y tiene que cerrarse de un toque.
-//   Provincia → caja de Yape con el número de la marca + el código de seguridad
-//               (obligatorio) + la captura (opcional, ver VOUCHER_REQUIRED).
+//   Manual → caja de Yape con el número de la marca + el código de seguridad
+//            (obligatorio) + la captura (opcional, ver VOUCHER_REQUIRED). El
+//            cruce corre en background contra la notificación.
+//   Culqi  → celular + código de aprobación, y el CTA COBRA: monto exacto,
+//            confirmación al toque, sin captura ni cruce. Ver §3.3 del doc.
 //
 // El resumen va PRIMERO en los dos casos: antes de pedirle plata hay que
 // recordarle qué lleva y a dónde llega.
@@ -15,6 +16,7 @@ import type { FieldErrors } from '../../../lib/checkout/validation'
 import type { StoreYape } from '../CheckoutModal'
 import YapeCodeHint from '../YapeCodeHint'
 import YapeBox from '../payment/YapeBox'
+import CulqiYapeBox from '../payment/CulqiYapeBox'
 import VoucherField from '../payment/VoucherField'
 import Field from '../fields/Field'
 
@@ -25,15 +27,20 @@ interface Step3Props {
   price: number
   /** Datos de cobro de la tienda. `null` si la marca aún no los configuró. */
   yape: StoreYape | null
+  /** true = este pedido se cobra en línea (culqiActiveFor, lo decide el modal). */
+  culqi: boolean
   errors: FieldErrors
-  touch: (field: 'yapeCode') => void
+  touch: (field: 'yapeCode' | 'culqiPhone' | 'culqiOtp') => void
   onYapeCode: (code: string) => void
+  onCulqiPhone: (phone: string) => void
+  onCulqiOtp: (otp: string) => void
   onVoucher: (file: File) => Promise<void>
   submitError: string | null
 }
 
 export default function Step3Confirm({
-  state, packName, price, yape, errors, touch, onYapeCode, onVoucher, submitError,
+  state, packName, price, yape, culqi, errors, touch, onYapeCode,
+  onCulqiPhone, onCulqiOtp, onVoucher, submitError,
 }: Step3Props) {
   const advance = state.advanceAmount
   const isProvincia = state.locationType === 'PROVINCIA'
@@ -76,33 +83,47 @@ export default function Step3Confirm({
         </p>
       )}
 
-      {advance > 0 && (
-        <>
-          <YapeBox yape={yape} amount={advance} />
+      {advance > 0 && (culqi
+        ? (
+          <CulqiYapeBox
+            state={state}
+            amount={advance}
+            errors={errors}
+            touch={touch}
+            onPhone={onCulqiPhone}
+            onOtp={onCulqiOtp}
+          />
+        )
+        : (
+          /* Rama manual, BIT a BIT como siempre: es lo que sostiene la
+             convivencia — una tienda sin Culqi no nota este archivo. */
+          <>
+            <YapeBox yape={yape} amount={advance} />
 
-          <div className="mt-3">
-            {/* La ayuda va ARRIBA del campo: quien ya sabe la ignora en medio
-                segundo, y quien no, la ve antes de quedarse mirando un input
-                vacío sin saber qué escribir. */}
-            <YapeCodeHint />
-            <Field
-              label={COPY.yapeCodeLabel}
-              required
-              value={state.advanceYapeCode}
-              onChange={e => onYapeCode(e.target.value)}
-              onBlur={() => touch('yapeCode')}
-              error={errors.yapeCode}
-              hint={COPY.yapeCodeHint}
-              placeholder={COPY.yapeCodePlaceholder}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={YAPE_CODE_LENGTH}
-              className="tracking-[0.5em] text-center text-lg font-black"
-            />
-          </div>
+            <div className="mt-3">
+              {/* La ayuda va ARRIBA del campo: quien ya sabe la ignora en medio
+                  segundo, y quien no, la ve antes de quedarse mirando un input
+                  vacío sin saber qué escribir. */}
+              <YapeCodeHint />
+              <Field
+                label={COPY.yapeCodeLabel}
+                required
+                value={state.advanceYapeCode}
+                onChange={e => onYapeCode(e.target.value)}
+                onBlur={() => touch('yapeCode')}
+                error={errors.yapeCode}
+                hint={COPY.yapeCodeHint}
+                placeholder={COPY.yapeCodePlaceholder}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={YAPE_CODE_LENGTH}
+                className="tracking-[0.5em] text-center text-lg font-black"
+              />
+            </div>
 
-          <VoucherField voucher={state.paymentVoucher} onSelect={onVoucher} error={errors.voucher} />
-        </>
+            <VoucherField voucher={state.paymentVoucher} onSelect={onVoucher} error={errors.voucher} />
+          </>
+        )
       )}
 
       {submitError && (

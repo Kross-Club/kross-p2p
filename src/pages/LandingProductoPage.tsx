@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
+import { COPY } from '../lib/checkout/checkout.config'
+import type { StoreCulqi } from '../lib/checkout/types'
+import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
 import type { CheckoutState } from '../lib/checkout/types'
@@ -41,6 +44,10 @@ export default function LandingProductoPage() {
   // perder la opción por un instante de carga. Si no reparte, el switch llega
   // en el mismo fetch que el Yape y la opción desaparece antes del paso 2.
   const [homeDelivery, setHomeDelivery] = useState(true)
+  // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
+  const [culqi, setCulqi] = useState<StoreCulqi | null>(null)
+  // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
+  const [abMode, setAbMode] = useState<CheckoutAbMode>('SPLIT')
 
   // El `setLoading(false)` vivía DENTRO del `.then`, sin `catch`: una caída de
   // red —el escenario normal del comprador en 4G— dejaba la landing girando
@@ -77,14 +84,23 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     supabase.from('stores')
-      .select('yape_number, yape_holder, yape_qr_url, home_delivery_enabled')
+      .select('yape_number, yape_holder, yape_qr_url, home_delivery_enabled, culqi_enabled, culqi_scope, checkout_ab_mode')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
+        // Degradación POR CAMPO: si el select entero falla (p. ej. columnas
+        // culqi aún sin migrar), el checkout cae al flujo manual — jamás se
+        // pierde la caja de Yape por una columna nueva ausente.
         if (!data) return
         setYape({ number: data.yape_number, holder: data.yape_holder, qrUrl: data.yape_qr_url })
         // `?? true` y no `!!`: una tienda de antes de la columna llega con el
         // campo ausente, y apagarle el domicilio por eso rompería su operación.
         setHomeDelivery(data.home_delivery_enabled ?? true)
+        setCulqi(data.culqi_enabled
+          ? { enabled: true, scope: data.culqi_scope === 'ALL' ? 'ALL' : 'PROVINCIA' }
+          : null)
+        // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
+        // reparto por defecto nunca puede depender de un dato mal escrito.
+        setAbMode(abModeOf(data.checkout_ab_mode))
       })
   }, [product?.store_id])
 
@@ -137,7 +153,10 @@ export default function LandingProductoPage() {
         {lastOrder && (
           <a href={`/p/${lastOrder.token}`}
             className="font-black px-4 py-3.5 rounded-2xl text-sm flex-shrink-0 border-2 border-green-500 text-green-700 bg-white active:scale-95 transition-transform">
-            Ver mi pedido
+            {/* Un pago en línea que quedó a medias cambia el rótulo: el pedido
+                existe y el chat es donde el asesor lo cobra. El comprador que
+                cerró el modal en el error necesita saber que no perdió nada. */}
+            {lastOrder.advancePending ? COPY.finishPaymentCta : 'Ver mi pedido'}
           </a>
         )}
         <button onClick={() => setShowQuiz(true)}
@@ -156,6 +175,8 @@ export default function LandingProductoPage() {
           onPartialLead={state => saveCheckoutDraft(state, product)}
           yape={yape}
           homeDeliveryEnabled={homeDelivery}
+          culqi={culqi}
+          abMode={abMode}
           submitContext={{
             storeId: product.store_id ?? '',
             productId: product.id,
@@ -188,6 +209,9 @@ async function saveCheckoutDraft(state: CheckoutState, product: Product) {
         location_type: state.locationType,
         district: state.limaAddress?.district ?? state.provinciaConfig?.district ?? null,
         step: state.step,
+        // El denominador del experimento: sin esto solo se sabe cuántos pedidos
+        // hizo cada variante, no sobre cuánta gente. Ver bloque 19.b.
+        checkout_variant: state.variant,
       }),
     })
   } catch {

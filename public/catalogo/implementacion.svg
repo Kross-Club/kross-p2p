@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Implementación y puesta en marcha">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0C1108"/><stop offset="1" stop-color="#243B0B"/>
+    </linearGradient>
+    <linearGradient id="ac" x1="260" y1="140" x2="540" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A3E635"/><stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <circle cx="150" cy="140" r="150" fill="#A3E635" opacity=".12"/>
+  <circle cx="680" cy="450" r="140" fill="#38BDF8" opacity=".10"/>
+  <!-- Lista de puesta en marcha, con los pasos marcados -->
+  <rect x="240" y="130" width="320" height="330" rx="28" fill="#ffffff" opacity=".10"/>
+  <g fill="url(#ac)">
+    <circle cx="296" cy="200" r="18"/><circle cx="296" cy="268" r="18"/><circle cx="296" cy="336" r="18"/>
+  </g>
+  <g stroke="#0C1108" stroke-width="5" stroke-linecap="round" fill="none">
+    <path d="M288 200 L294 207 L305 194"/><path d="M288 268 L294 275 L305 262"/><path d="M288 336 L294 343 L305 330"/>
+  </g>
+  <circle cx="296" cy="404" r="18" fill="#ffffff" opacity=".22"/>
+  <g fill="#ffffff">
+    <rect x="332" y="192" width="180" height="16" rx="8" opacity=".55"/>
+    <rect x="332" y="260" width="150" height="16" rx="8" opacity=".45"/>
+    <rect x="332" y="328" width="168" height="16" rx="8" opacity=".35"/>
+    <rect x="332" y="396" width="120" height="16" rx="8" opacity=".2"/>
+  </g>
+  <text x="400" y="518" font-family="Nunito, Verdana, sans-serif" font-size="42" font-weight="800" fill="#ffffff" text-anchor="middle">Implementación</text>
+  <text x="400" y="556" font-family="Nunito, Verdana, sans-serif" font-size="24" font-weight="600" fill="#BEF264" text-anchor="middle">Puesta en marcha · pago único</text>
+</svg>
