@@ -19,8 +19,7 @@
 
 import { useEffect, useState } from 'react'
 import { Check, MapPin, Store } from 'lucide-react'
-import { AgencyService, pointKey } from '../../../lib/checkout/services/AgencyService'
-import { formatDistance } from '../../../lib/geo/haversine'
+import { AgencyService, describePickupDistance, pointKey } from '../../../lib/checkout/services/AgencyService'
 import { advanceFor } from '../../../lib/checkout/checkout.config'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { AgencyBranch, AgencyName, NearbyBranch } from '../../../lib/checkout/types'
@@ -292,8 +291,8 @@ function PointCard({ branch, selected, nearest, distanceKm, onSelect }: {
       </span>
       <span className="flex flex-col items-end gap-1 flex-shrink-0">
         {distanceKm !== undefined && (
-          <span className="flex items-center gap-0.5 text-[10px] font-black text-gray-400">
-            <MapPin size={9} />{formatDistance(distanceKm)}
+          <span className="flex items-center gap-0.5 text-[10px] font-black text-gray-400 whitespace-nowrap">
+            <MapPin size={9} className="flex-shrink-0" />{describePickupDistance(distanceKm)}
           </span>
         )}
         {selected && <Check size={14} className="text-green-600" />}

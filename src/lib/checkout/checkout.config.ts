@@ -111,6 +111,23 @@ export const AGENCY_ONLY_CITIES: string[] = []
  */
 export const BORDERLINE_THRESHOLD_M = 500
 
+/**
+ * Por debajo de esta distancia, el número deja de informar y la tarjeta dice
+ * "En tu distrito" en vez de una cifra.
+ *
+ * El motivo es cómo se construye el punto de referencia: `build-centroids.mjs`
+ * promedia **las sedes mismas** para obtener el centroide del distrito. En los
+ * **183 distritos que tienen una sola sede**, ese centroide ES la sede, y la
+ * distancia sale 0. Medido sobre los 378 distritos con centroide: **198 caen por
+ * debajo de 50 m**. O sea que en más de la mitad del país la primera tarjeta
+ * mostraba "a 0 m", que no significa nada y se lee como un sistema roto.
+ *
+ * El ORDEN sí es correcto —comparar distancias desde el centroide ordena bien
+ * las sedes entre sí—, lo que no se sostiene es presentar ese número como "qué
+ * tan lejos te queda a ti". Por eso se cambia la presentación, no el ranking.
+ */
+export const NEARBY_LABEL_THRESHOLD_KM = 0.5
+
 // ─── Packs ───────────────────────────────────────────────────────────────────
 
 /**
@@ -240,6 +257,9 @@ export const COPY = {
   outOfZoneChosen: 'Con gusto, te lo dejamos en la agencia que prefieras.',
   outOfZoneBenefit: 'Recoges cuando quieras, y pagas el resto ahí.',
   agencyNeutral: 'Elige tu agencia de recojo',
+  /** Reemplaza a la cifra cuando el centroide no da para afirmar una distancia
+   *  real. Ver `NEARBY_LABEL_THRESHOLD_KM`. */
+  pickupInDistrict: 'En tu distrito',
   retryDomicilio: 'Prefiero intentar entrega a domicilio',
 
   advanceHeadsUp: `Se paga un adelanto del envío por Yape y el resto al recibir.`,

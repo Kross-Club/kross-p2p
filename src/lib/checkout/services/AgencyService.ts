@@ -9,8 +9,9 @@
 // Cada JSON pesa ~130 KB y se carga con import() dinámico: no entran al bundle
 // inicial, solo se descargan al abrir la rama de agencia. Por eso todo es async.
 
-import { haversineKm } from '../../geo/haversine'
+import { formatDistance, haversineKm } from '../../geo/haversine'
 import type { LatLng } from '../../geo/haversine'
+import { COPY, NEARBY_LABEL_THRESHOLD_KM } from '../checkout.config'
 import type { AgencyBranch, AgencyName, NearbyBranch, RawAgencyBranch } from '../types'
 
 type Loader = () => Promise<AgencyBranch[]>
@@ -75,6 +76,19 @@ const byDistance = (point: LatLng) => (b: AgencyBranch & { lat: number; lng: num
  * seleccionaría dos tarjetas a la vez.
  */
 export const pointKey = (b: { agency: AgencyName; id: string }): string => `${b.agency}:${b.id}`
+
+/**
+ * Cómo se le cuenta la cercanía al comprador.
+ *
+ * La distancia se mide contra el centroide del distrito, que sale de promediar
+ * las sedes mismas: en la mitad del país eso da cifras de 0 a 50 m, que no
+ * informan nada. Por debajo del umbral se dice "En tu distrito" —que es lo que
+ * el número realmente significa— y por encima sí va la cifra, que ahí ya
+ * distingue entre recoger a la vuelta y viajar 30 km.
+ */
+export function describePickupDistance(km: number): string {
+  return km < NEARBY_LABEL_THRESHOLD_KM ? COPY.pickupInDistrict : `a ${formatDistance(km)}`
+}
 
 /** ¿Esta agencia tiene listado estructurado, o hay que pedir texto libre? */
 export function hasBranchList(agency: AgencyName): boolean {

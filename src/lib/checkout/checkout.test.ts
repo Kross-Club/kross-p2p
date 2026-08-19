@@ -10,7 +10,7 @@ import { clearDraft, loadActiveDraft, loadLastOrder, saveDraft, saveLastOrder } 
 import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN } from './checkout.config'
 import { effectivePrice } from './product-packs'
 import { CoverageService, coveredCities } from './services/CoverageService'
-import { AgencyService, LISTED_AGENCIES, pointKey, suggestFreeText } from './services/AgencyService'
+import { AgencyService, LISTED_AGENCIES, describePickupDistance, pointKey, suggestFreeText } from './services/AgencyService'
 import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
 import type { CheckoutState } from './types'
 import { stagesFor, stageIndex, toStage } from '../order-stages'
@@ -495,6 +495,29 @@ describe('AgencyService · puntos de recojo de todas las agencias', () => {
 
   it('OTRO queda fuera de los listados: es la salida a texto libre', () => {
     expect(LISTED_AGENCIES).toEqual(['SHALOM', 'OLVA'])
+  })
+
+  it('no afirma una distancia que el centroide no puede sostener', () => {
+    // El centroide del distrito se calcula promediando LAS SEDES MISMAS, así que
+    // en los 183 distritos con una sola sede la distancia sale 0. Mostrar "a 0 m"
+    // no informa nada y se lee como un sistema roto.
+    expect(describePickupDistance(0)).toBe('En tu distrito')
+    expect(describePickupDistance(0.02)).toBe('En tu distrito')
+    expect(describePickupDistance(0.49)).toBe('En tu distrito')
+    // Pasado el umbral la cifra SÍ distingue recoger a la vuelta de viajar.
+    expect(describePickupDistance(0.5)).toBe('a 500 m')
+    expect(describePickupDistance(34.6)).toBe('a 34.6 km')
+  })
+
+  it('el umbral cambia la presentación, nunca el orden', async () => {
+    // Ordenar por distancia desde el centroide sí es correcto: es lo que hace
+    // emerger la agencia que conviene en cada zona. Lo que no se sostiene es
+    // presentar el número como "qué tan lejos te queda a ti".
+    const pts = await AgencyService.getNearestPoints(HUANCAVELICA, 4)
+    for (let i = 1; i < pts.length; i++) {
+      expect(pts[i - 1].distanceKm).toBeLessThanOrEqual(pts[i].distanceKm)
+    }
+    expect(pts[0].agency).toBe('OLVA')
   })
 })
 
