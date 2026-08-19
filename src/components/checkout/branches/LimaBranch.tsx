@@ -4,8 +4,10 @@
 // Lima y Olva 128, así que el mostrador es una opción real y no un parche.
 //
 // A diferencia de provincia, aquí NO hay veredicto de cobertura que consultar:
-// el motorizado propio llega a todo Lima metropolitana. Por eso las dos tarjetas
-// se muestran siempre y la elección es del comprador, sin esperar a nada.
+// el motorizado propio llega a todo Lima metropolitana. Por eso la elección es
+// del comprador desde el primer instante, sin esperar a nada — mientras la marca
+// ofrezca domicilio. Si `homeDeliveryEnabled` está apagado no hay dos opciones
+// que comparar y el reducer ya fijó AGENCIA al elegir el distrito.
 //
 // El distrito ya viene elegido del paso 2 — es lo que determinó que esta rama se
 // montara.
