@@ -76,10 +76,14 @@ export interface ProvinciaConfig {
   lng: number | null
   coverageResult: CoverageResult | null
   deliveryMethod: DeliveryMethod | null
+  /** Courier del punto elegido. Se deriva del punto, no se elige por separado. */
   selectedAgency: AgencyName | null
-  /** Solo Shalom: id de sede del listado oficial. */
+  /** Id de sede dentro del listado de `selectedAgency`. Los ids solo son únicos
+   *  por agencia, así que este campo NO identifica un punto sin el de arriba. */
   selectedAgencyBranchId: string | null
-  /** Solo Olva: texto libre, marca el pedido para verificación manual. */
+  /** Texto libre para las agencias sin listado (`OTRO`). Marca el pedido para
+   *  verificación manual de Logística. El nombre es histórico: cuando se creó,
+   *  Olva era la única sin listado; hoy tiene sus 424 sedes. */
   olvaBranchText: string | null
   address?: { addressText: string; reference: string }
 }
@@ -202,6 +206,13 @@ export interface CityCoverage {
 // ─── Agencias ────────────────────────────────────────────────────────────────
 
 export interface AgencyBranch {
+  /**
+   * Courier al que pertenece la sede. Lo pone `AgencyService` al cargar, porque
+   * el JSON es por agencia y no lo trae dentro. Es obligatorio para que una
+   * lista que MEZCLA couriers pueda decir de quién es cada punto — y para
+   * desambiguar los ids, que solo son únicos dentro de cada agencia.
+   */
+  agency: AgencyName
   id: string
   name: string
   district: string | null
@@ -215,8 +226,11 @@ export interface AgencyBranch {
   lng: number | null
 }
 
-/** Sede con distancia calculada. Solo la produce `getNearest`, así que aquí las
- *  coordenadas sí están garantizadas. */
+/** Sede tal como vive en el JSON, antes de que el servicio le ponga su agencia. */
+export type RawAgencyBranch = Omit<AgencyBranch, 'agency'>
+
+/** Sede con distancia calculada. Solo la producen los rankings de cercanía, así
+ *  que aquí las coordenadas sí están garantizadas. */
 export interface NearbyBranch extends AgencyBranch {
   lat: number
   lng: number

@@ -42,6 +42,17 @@ export const ADVANCE_BY_AGENCY: Partial<Record<AgencyName, number>> = {
 }
 
 /**
+ * El adelanto más barato disponible en la rama de agencia. Es el "desde" que se
+ * muestra ANTES de elegir punto, cuando todavía no se sabe qué courier va a
+ * tocar. Se calcula, no se escribe: escrito, sumar una agencia más barata
+ * dejaría la tarjeta mintiendo un piso que ya no es el piso.
+ */
+export const ADVANCE_AGENCY_FROM_PEN: number = Math.min(
+  ADVANCE_PROVINCIA_PEN,
+  ...Object.values(ADVANCE_BY_AGENCY).filter((v): v is number => typeof v === 'number'),
+)
+
+/**
  * Adelanto que le toca a este pedido. Única fuente de verdad del monto.
  *
  * `method` importa: a domicilio en provincia no hay agencia que consultar, y
@@ -303,6 +314,9 @@ export const COPY = {
   exitConfirmStay: 'Seguir comprando',
   exitConfirmLeave: 'Salir',
 
-  olvaQuestion: '¿En qué agencia Olva vas a recoger?',
-  olvaFinderUrl: 'https://www.olvacourier.com/agencias/',
+  // Aquí vivían `olvaQuestion` y `olvaFinderUrl`, de cuando Olva era la agencia
+  // sin listado y había que mandar al comprador a buscar su sede al sitio del
+  // courier. Olva tiene sus 424 sedes desde hace rato, y con la lista unificada
+  // el texto libre ya no es de nadie en particular: es la salida de `OTRO`, y su
+  // etiqueta vive en el propio campo.
 } as const

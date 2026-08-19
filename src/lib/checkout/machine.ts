@@ -68,6 +68,8 @@ export type CheckoutAction =
   | { type: 'RETRY_DOMICILIO' }
   | { type: 'SET_AGENCY'; agency: AgencyName }
   | { type: 'SET_AGENCY_BRANCH'; branchId: string }
+  | { type: 'SET_PICKUP_POINT'; agency: AgencyName; branchId: string }
+  | { type: 'CLEAR_PICKUP_POINT' }
   | { type: 'SET_OLVA_TEXT'; text: string }
   | { type: 'SET_PROVINCIA_ADDRESS'; addressText?: string; reference?: string }
   | { type: 'SET_DELIVERY_METHOD'; method: 'DOMICILIO' | 'AGENCIA' }
@@ -264,6 +266,28 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
 
     case 'SET_AGENCY_BRANCH':
       return derive({ ...state, provinciaConfig: { ...prov(), selectedAgencyBranchId: action.branchId } })
+
+    // El comprador elige un PUNTO, no un courier: la agencia viene con el punto.
+    // Va en una sola acción a propósito — despachar SET_AGENCY y después
+    // SET_AGENCY_BRANCH deja un estado intermedio con agencia y sin sede, y como
+    // SET_AGENCY limpia la sede, invertir el orden por descuido borraría la
+    // elección recién hecha.
+    case 'SET_PICKUP_POINT':
+      return derive({ ...state, provinciaConfig: {
+        ...prov(),
+        selectedAgency: action.agency,
+        selectedAgencyBranchId: action.branchId,
+        // Elegir un punto del listado descarta el texto libre de `OTRO`.
+        olvaBranchText: null,
+      } })
+
+    // Vuelta al listado desde el texto libre de `OTRO`. Deja la elección en
+    // blanco en vez de apuntar a un courier concreto: cuál corresponde lo dice
+    // la distancia, y el picker lo resuelve al montar.
+    case 'CLEAR_PICKUP_POINT':
+      return derive({ ...state, provinciaConfig: {
+        ...prov(), selectedAgency: null, selectedAgencyBranchId: null, olvaBranchText: null,
+      } })
 
     case 'SET_OLVA_TEXT':
       return derive({ ...state, provinciaConfig: { ...prov(), olvaBranchText: action.text } })

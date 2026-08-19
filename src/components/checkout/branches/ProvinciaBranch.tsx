@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Home, PackageCheck, Store } from 'lucide-react'
-import { ADVANCE_BY_AGENCY, ADVANCE_PROVINCIA_DOMICILIO_PEN, COPY } from '../../../lib/checkout/checkout.config'
+import { ADVANCE_AGENCY_FROM_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN, COPY } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
@@ -191,12 +191,16 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
             near={center}
             agency={p?.selectedAgency ?? null}
             branchId={p?.selectedAgencyBranchId ?? null}
-            olvaText={p?.olvaBranchText ?? null}
+            freeText={p?.olvaBranchText ?? null}
             errorAgency={errors.agency}
             errorBranch={errors.agencyBranch}
-            onSelectAgency={agency => { dispatch({ type: 'SET_AGENCY', agency }); touch('agency') }}
-            onSelectBranch={branchId => { dispatch({ type: 'SET_AGENCY_BRANCH', branchId }); touch('agencyBranch') }}
-            onOlvaText={text => dispatch({ type: 'SET_OLVA_TEXT', text })}
+            onSelectPoint={(agency, branchId) => {
+              dispatch({ type: 'SET_PICKUP_POINT', agency, branchId })
+              touch('agency'); touch('agencyBranch')
+            }}
+            onChooseOther={() => { dispatch({ type: 'SET_AGENCY', agency: 'OTRO' }); touch('agency') }}
+            onBackToList={() => dispatch({ type: 'CLEAR_PICKUP_POINT' })}
+            onFreeText={text => dispatch({ type: 'SET_OLVA_TEXT', text })}
             onBlur={() => touch('agencyBranch')}
           />
 
@@ -269,9 +273,12 @@ function MethodPicker({ onPick }: { onPick: (m: 'DOMICILIO' | 'AGENCIA') => void
         >
           <Store size={18} style={{ color: 'var(--brand)' }} />
           <p className="text-sm font-black text-gray-900 mt-1.5">Recojo en agencia</p>
-          <p className="text-[11px] text-gray-500">Shalom u Olva</p>
+          {/* Nombrar los couriers aquí obliga a editar este texto cada vez que
+              se suma uno, y no le dice nada al comprador: lo que le importa es
+              que el punto le quede cerca, no de quién es. */}
+          <p className="text-[11px] text-gray-500">En un punto cerca de ti</p>
           <p className="text-[11px] font-black mt-1" style={{ color: 'var(--brand)' }}>
-            Desde S/{ADVANCE_BY_AGENCY.SHALOM}
+            Desde S/{ADVANCE_AGENCY_FROM_PEN}
           </p>
         </button>
       </div>

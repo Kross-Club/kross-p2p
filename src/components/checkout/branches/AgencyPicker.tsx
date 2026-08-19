@@ -1,124 +1,113 @@
-// ─── Rama agencia · Shalom y Olva ────────────────────────────────────────────
-// Las dos tienen listado con coordenadas (487 y 424 sedes), así que las resuelve
-// el MISMO componente: se muestran las 3 más cercanas con su distancia real y se
-// preselecciona la primera. Quién tiene listado y quién no lo decide
-// `AgencyService.hasBranchList`, nunca un `if (agency === 'OLVA')` aquí.
+// ─── Rama agencia · un LUGAR, no un courier ──────────────────────────────────
+// El comprador elige dónde recoge. Qué empresa opera ese punto es un atributo de
+// la tarjeta, no una pregunta previa.
 //
-// Las agencias sin listado (hoy solo `OTRO`) caen a texto libre y el pedido
-// queda marcado para verificación manual de Logística.
+// Antes eran dos decisiones —agencia y después sede— y la primera se tomaba sin
+// el dato que decide: la distancia. Peor, la agencia por defecto era una
+// constante global (`RECOMMENDED_AGENCY = 'SHALOM'`) apoyada en un adelanto que
+// ya no es el que dice el comentario. Con las 911 sedes cargadas, cuál conviene
+// depende de la zona: Shalom domina la costa (Ica 18-5, Lambayeque 21-9) y Olva
+// la sierra centro (Huancavelica 9-1, Ayacucho 13-5). Esa constante recomendaba
+// la agencia equivocada en 11 de los 25 departamentos.
 //
-// Shalom va primero y marcada como recomendada: su adelanto es la mitad, y la
-// ruta más barata para el comprador debe ser también la ruta por defecto.
+// Ordenar por distancia real cruzando las dos hace emerger la recomendación
+// regional sola, y se mantiene sola cuando un courier abre o cierra un local.
+//
+// El adelanto va DENTRO de cada tarjeta porque cambia según el courier (Shalom
+// S/20, Olva S/25): que el monto suba después de haber elegido se lee como
+// cambio de precio a mitad de compra.
 
 import { useEffect, useState } from 'react'
-import { ExternalLink, Store, Check } from 'lucide-react'
-import { AgencyService, RECOMMENDED_AGENCY } from '../../../lib/checkout/services/AgencyService'
+import { Check, MapPin, Store } from 'lucide-react'
+import { AgencyService, pointKey } from '../../../lib/checkout/services/AgencyService'
 import { formatDistance } from '../../../lib/geo/haversine'
-import { COPY, advanceFor } from '../../../lib/checkout/checkout.config'
+import { advanceFor } from '../../../lib/checkout/checkout.config'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { AgencyBranch, AgencyName, NearbyBranch } from '../../../lib/checkout/types'
 import Field from '../fields/Field'
 
-// El adelanto se muestra en cada tarjeta ANTES de elegir: Olva cobra más flete
-// que Shalom, y que el monto cambie después de haber elegido se lee como que le
-// subieron el precio a mitad de compra.
-const AGENCIES: { id: AgencyName; label: string }[] = [
-  { id: 'SHALOM', label: 'Shalom' },
-  { id: 'OLVA', label: 'Olva' },
-]
+/** Cuántos puntos se muestran antes de mandar al buscador. Cuatro y no tres:
+ *  mezclando dos couriers, tres tarjetas pueden salir todas del mismo y la
+ *  pantalla deja de comunicar que había alternativas. */
+const NEAREST_COUNT = 4
+
+const AGENCY_LABEL: Record<AgencyName, string> = {
+  SHALOM: 'Shalom',
+  OLVA: 'Olva',
+  OTRO: 'Otra agencia',
+}
 
 interface AgencyPickerProps {
   /** Punto de referencia para ordenar sedes: centroide del distrito elegido. */
   near: { lat: number; lng: number } | null
   agency: AgencyName | null
   branchId: string | null
-  olvaText: string | null
+  /** Texto libre para agencias sin listado. */
+  freeText: string | null
   errorAgency?: string
   errorBranch?: string
-  onSelectAgency: (agency: AgencyName) => void
-  onSelectBranch: (branchId: string) => void
-  onOlvaText: (text: string) => void
+  /** El punto trae su courier: agencia y sede se fijan de una sola vez. */
+  onSelectPoint: (agency: AgencyName, branchId: string) => void
+  /** Salida a texto libre cuando su agencia no está en el listado. */
+  onChooseOther: () => void
+  /** Vuelta al listado desde el texto libre. */
+  onBackToList: () => void
+  onFreeText: (text: string) => void
   onBlur: () => void
 }
 
 export default function AgencyPicker({
-  near, agency, branchId, olvaText, errorAgency, errorBranch,
-  onSelectAgency, onSelectBranch, onOlvaText, onBlur,
+  near, agency, branchId, freeText, errorAgency, errorBranch,
+  onSelectPoint, onChooseOther, onBackToList, onFreeText, onBlur,
 }: AgencyPickerProps) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <span className="text-xs font-bold text-gray-600 mb-1.5 block">Elige tu agencia de recojo *</span>
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Agencia de recojo">
-          {AGENCIES.map(a => (
-            <button
-              key={a.id}
-              type="button"
-              role="radio"
-              aria-checked={agency === a.id}
-              onClick={() => { onSelectAgency(a.id); trackEvent({ name: 'agency_selected', agency: a.id }) }}
-              className={`relative flex flex-col items-center gap-1 py-3 rounded-2xl border-2 transition-all
-                focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500
-                ${agency === a.id ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}
-            >
-              {a.id === RECOMMENDED_AGENCY && (
-                <span className="absolute -top-2 text-[8px] font-black px-1.5 py-0.5 rounded-full bg-green-600 text-white">
-                  RECOMENDADA
-                </span>
-              )}
-              <Store size={18} className={agency === a.id ? 'text-green-600' : 'text-gray-400'} />
-              <span className={`text-sm font-black ${agency === a.id ? 'text-green-800' : 'text-gray-700'}`}>
-                {a.label}
-              </span>
-              <span className="text-[10px] text-gray-400">
-                Adelanto S/{advanceFor(true, a.id)}
-              </span>
-            </button>
-          ))}
-        </div>
-        {errorAgency && <p role="alert" className="text-[11px] font-semibold mt-1.5 text-red-600">{errorAgency}</p>}
+  // `OTRO` es la única agencia sin listado: ahí no hay punto que ordenar y la
+  // pantalla entera cambia a texto libre.
+  if (agency === 'OTRO') {
+    return (
+      <div className="space-y-2">
+        <Field
+          label="¿En qué agencia vas a recoger?"
+          required
+          value={freeText ?? ''}
+          onChange={e => onFreeText(e.target.value)}
+          onBlur={() => { onBlur(); trackEvent({ name: 'olva_branch_typed', length: (freeText ?? '').length }) }}
+          placeholder="Ej. Marvisur Av. España 1234, Trujillo"
+          error={errorBranch}
+          autoComplete="off"
+          hint="Escribe el nombre y la dirección. Un asesor confirma la sede contigo."
+        />
+        <button
+          type="button"
+          onClick={onBackToList}
+          className="text-[11px] font-bold text-blue-600 underline"
+        >
+          ← Ver los puntos de recojo cerca de mí
+        </button>
       </div>
+    )
+  }
 
-      {agency && AgencyService.hasBranchList(agency) && (
-        <BranchPicker agency={agency} near={near} selected={branchId} onSelect={onSelectBranch} error={errorBranch} />
-      )}
-
-      {agency && !AgencyService.hasBranchList(agency) && (
-        <div>
-          <Field
-            label={COPY.olvaQuestion}
-            required
-            value={olvaText ?? ''}
-            onChange={e => onOlvaText(e.target.value)}
-            onBlur={() => { onBlur(); trackEvent({ name: 'olva_branch_typed', length: (olvaText ?? '').length }) }}
-            placeholder="Ej. Olva Av. España 1234"
-            error={errorBranch}
-            autoComplete="off"
-            hint={
-              <a
-                href={COPY.olvaFinderUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 font-bold text-blue-600"
-              >
-                Buscar agencias Olva <ExternalLink size={11} />
-              </a>
-            }
-          />
-        </div>
-      )}
-    </div>
+  return (
+    <PointPicker
+      near={near}
+      agency={agency}
+      branchId={branchId}
+      error={errorBranch ?? errorAgency}
+      onSelectPoint={onSelectPoint}
+      onChooseOther={onChooseOther}
+    />
   )
 }
 
-// ─── Sedes más cercanas (sirve para cualquier agencia con listado) ───────────
+// ─── Puntos de recojo de TODAS las agencias, ordenados por cercanía ──────────
 
-function BranchPicker({ agency, near, selected, onSelect, error }: {
-  agency: AgencyName
+function PointPicker({ near, agency, branchId, error, onSelectPoint, onChooseOther }: {
   near: { lat: number; lng: number } | null
-  selected: string | null
-  onSelect: (id: string) => void
+  agency: AgencyName | null
+  branchId: string | null
   error?: string
+  onSelectPoint: (agency: AgencyName, branchId: string) => void
+  onChooseOther: () => void
 }) {
   // El resultado se guarda junto a la llave del punto que lo produjo, así el
   // estado de carga se DERIVA en vez de setearse dentro del efecto.
@@ -131,12 +120,12 @@ function BranchPicker({ agency, near, selected, onSelect, error }: {
   useEffect(() => {
     if (!nearKey || !near) return
     let alive = true
-    AgencyService.getNearest(agency, near, 3)
-      .then(list => { if (alive) setData({ key: nearKey, list: list ?? [] }) })
+    AgencyService.getNearestPoints(near, NEAREST_COUNT)
+      .then(list => { if (alive) setData({ key: nearKey, list }) })
       // Si falla, se cae al listado buscable: nunca se deja al comprador sin salida.
       .catch(() => { if (alive) setData({ key: nearKey, list: [] }) })
     return () => { alive = false }
-  }, [agency, nearKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nearKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fresh = data?.key === nearKey ? data.list : null
   const loading = Boolean(nearKey) && fresh === null
@@ -144,36 +133,51 @@ function BranchPicker({ agency, near, selected, onSelect, error }: {
   // búsqueda no devolvió nada: en ambos casos va el listado completo.
   const showAll = showAllRequested || !nearKey || (fresh !== null && fresh.length === 0)
 
-  // Preselecciona la más cercana: un tap menos para el caso más común.
+  // Preselecciona el más cercano: un tap menos para el caso más común.
   useEffect(() => {
-    if (!selected && fresh?.length) onSelect(fresh[0].id)
+    if (!branchId && fresh?.length) onSelectPoint(fresh[0].agency, fresh[0].id)
   }, [fresh]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!showAll) return
     let alive = true
-    AgencyService.search(agency, query, 30)
+    AgencyService.searchPoints(query, 30)
       .then(list => { if (alive) setResults(list) })
       .catch(() => { if (alive) setResults([]) })
     return () => { alive = false }
-  }, [agency, showAll, query])
+  }, [showAll, query])
+
+  const selectedKey = agency && branchId ? pointKey({ agency, id: branchId }) : null
+
+  const pick = (b: AgencyBranch, rank?: number, distanceKm?: number) => {
+    onSelectPoint(b.agency, b.id)
+    trackEvent({ name: 'agency_selected', agency: b.agency, rank, distanceKm })
+  }
 
   if (loading) {
-    return <p className="text-[11px] text-gray-400 py-2">Buscando las sedes más cercanas…</p>
+    return <p className="text-[11px] text-gray-400 py-2">Buscando los puntos de recojo más cercanos…</p>
   }
 
   return (
     <div>
       <span className="text-xs font-bold text-gray-600 mb-1.5 block">
-        {showAll ? 'Busca tu sede *' : 'Sedes más cercanas a ti *'}
+        {showAll ? 'Busca tu punto de recojo *' : '¿Dónde recoges tu pedido? *'}
       </span>
 
       {!showAll && fresh && (
         <>
           <ul className="space-y-2">
-            {fresh.map(b => (
-              <li key={b.id}>
-                <BranchCard branch={b} selected={selected === b.id} onSelect={onSelect} distanceKm={b.distanceKm} />
+            {fresh.map((b, i) => (
+              <li key={pointKey(b)}>
+                <PointCard
+                  branch={b}
+                  selected={selectedKey === pointKey(b)}
+                  /* El badge sale del ORDEN, no de una constante: quien queda
+                     primero es quien está más cerca, y eso cambia por zona. */
+                  nearest={i === 0}
+                  distanceKm={b.distanceKm}
+                  onSelect={() => pick(b, i, b.distanceKm)}
+                />
               </li>
             ))}
           </ul>
@@ -182,7 +186,7 @@ function BranchPicker({ agency, near, selected, onSelect, error }: {
             onClick={() => setShowAllRequested(true)}
             className="mt-2 text-[11px] font-bold text-blue-600 underline"
           >
-            Ver todas las sedes
+            Ver todos los puntos de mi zona
           </button>
         </>
       )}
@@ -192,13 +196,13 @@ function BranchPicker({ agency, near, selected, onSelect, error }: {
           <input
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Escribe tu distrito o dirección"
+            placeholder="Escribe tu distrito, dirección o agencia"
             autoComplete="off"
-            aria-label="Buscar sede"
+            aria-label="Buscar punto de recojo"
             className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-2 focus:ring-2 focus:ring-green-500 focus:bg-white"
           />
           {/* Vuelta al ranking de cercanía. El buscador es un callejón sin salida
-              sin esto: quien entra a "ver todas" para curiosear se queda con 400
+              sin esto: quien entra a "ver todos" para curiosear se queda con 900
               sedes ordenadas por nada y ya no encuentra la que tenía al lado.
               Solo aparece si HAY ranking al que volver — sin distrito ubicado no
               existe, y un botón que no lleva a ningún lado es peor que ninguno. */}
@@ -208,19 +212,23 @@ function BranchPicker({ agency, near, selected, onSelect, error }: {
               onClick={() => { setShowAllRequested(false); setQuery('') }}
               className="mb-2 text-[11px] font-bold text-blue-600 underline"
             >
-              ← Ver las sedes más cercanas a mí
+              ← Ver los puntos más cercanos a mí
             </button>
           )}
 
           {results === null
-            ? <p className="text-[11px] text-gray-400 py-2">Cargando sedes…</p>
+            ? <p className="text-[11px] text-gray-400 py-2">Cargando puntos…</p>
             : results.length === 0
-              ? <p className="text-[11px] text-gray-400 py-2">No encontramos sedes con "{query}".</p>
+              ? <p className="text-[11px] text-gray-400 py-2">No encontramos puntos con "{query}".</p>
               : (
                 <ul className="space-y-2 max-h-64 overflow-y-auto">
                   {results.map(b => (
-                    <li key={b.id}>
-                      <BranchCard branch={b} selected={selected === b.id} onSelect={onSelect} />
+                    <li key={pointKey(b)}>
+                      <PointCard
+                        branch={b}
+                        selected={selectedKey === pointKey(b)}
+                        onSelect={() => pick(b)}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -229,35 +237,64 @@ function BranchPicker({ agency, near, selected, onSelect, error }: {
       )}
 
       {error && <p role="alert" className="text-[11px] font-semibold mt-1.5 text-red-600">{error}</p>}
+
+      {/* Salida siempre abierta: 911 sedes cubren los 25 departamentos, pero si
+          su agencia de confianza no es ninguna de las dos, el pedido se cierra
+          igual y Logística confirma la sede después. */}
+      <button
+        type="button"
+        onClick={onChooseOther}
+        className="mt-2 text-[11px] font-bold text-gray-500 underline"
+      >
+        Mi agencia no está en la lista
+      </button>
     </div>
   )
 }
 
-function BranchCard({ branch, selected, onSelect, distanceKm }: {
+function PointCard({ branch, selected, nearest, distanceKm, onSelect }: {
   branch: AgencyBranch
   selected: boolean
-  onSelect: (id: string) => void
-  /** Solo lo traen las sedes del ranking de cercanía. */
+  /** El más cercano del ranking. No lo trae el buscador, que no ordena por distancia. */
+  nearest?: boolean
+  /** Solo lo traen los puntos del ranking de cercanía. */
   distanceKm?: number
+  onSelect: () => void
 }) {
   return (
     <button
       type="button"
-      onClick={() => onSelect(branch.id)}
+      onClick={onSelect}
       aria-pressed={selected}
       className={`w-full flex items-start gap-2 text-left px-3.5 py-2.5 rounded-2xl border-2 transition-all
         focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500
         ${selected ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}
     >
       <span className="flex-1 min-w-0">
-        <span className={`block text-sm font-black truncate ${selected ? 'text-green-800' : 'text-gray-800'}`}>
+        <span className="flex items-center gap-1.5 flex-wrap">
+          <Store size={12} className={selected ? 'text-green-600' : 'text-gray-400'} />
+          <span className="text-[10px] font-black uppercase tracking-wide text-gray-500">
+            {AGENCY_LABEL[branch.agency]}
+          </span>
+          {nearest && (
+            <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-green-600 text-white">
+              MÁS CERCANA
+            </span>
+          )}
+        </span>
+        <span className={`block text-sm font-black truncate mt-0.5 ${selected ? 'text-green-800' : 'text-gray-800'}`}>
           {branch.name}
         </span>
         <span className="block text-[11px] text-gray-500 line-clamp-2">{branch.address}</span>
+        <span className="block text-[10px] font-black text-gray-400 mt-1">
+          Adelanto S/{advanceFor(true, branch.agency)}
+        </span>
       </span>
       <span className="flex flex-col items-end gap-1 flex-shrink-0">
         {distanceKm !== undefined && (
-          <span className="text-[10px] font-black text-gray-400">{formatDistance(distanceKm)}</span>
+          <span className="flex items-center gap-0.5 text-[10px] font-black text-gray-400">
+            <MapPin size={9} />{formatDistance(distanceKm)}
+          </span>
         )}
         {selected && <Check size={14} className="text-green-600" />}
       </span>

@@ -10,7 +10,7 @@ import { clearDraft, loadActiveDraft, loadLastOrder, saveDraft, saveLastOrder } 
 import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN } from './checkout.config'
 import { effectivePrice } from './product-packs'
 import { CoverageService, coveredCities } from './services/CoverageService'
-import { AgencyService, suggestFreeText } from './services/AgencyService'
+import { AgencyService, LISTED_AGENCIES, pointKey, suggestFreeText } from './services/AgencyService'
 import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
 import type { CheckoutState } from './types'
 import { stagesFor, stageIndex, toStage } from '../order-stages'
@@ -370,6 +370,76 @@ describe('CoverageService · data real del courier', () => {
     expect(outlines.length).toBeGreaterThan(0)
     const check = await CoverageService.checkPoint('CUSCO', -13.52837, -71.95066)
     expect(['IN_ZONE', 'BORDERLINE']).toContain(check.result)
+  })
+})
+
+// ─── Lista unificada de puntos de recojo ─────────────────────────────────────
+// El checkout dejó de preguntar "¿qué courier?" para preguntar "¿dónde recoges?".
+// Estos tests blindan las dos razones del cambio: que cuál agencia conviene
+// depende de la ZONA (y por eso murió `RECOMMENDED_AGENCY`), y que los ids se
+// repiten entre couriers.
+
+describe('AgencyService · puntos de recojo de todas las agencias', () => {
+  const HUANCAVELICA = { lat: -12.7869, lng: -74.9731 }
+  const TRUJILLO = { lat: -8.1116, lng: -79.0288 }
+  const CUSCO = { lat: -13.5319, lng: -71.9675 }
+  const CHICLAYO = { lat: -6.7714, lng: -79.8409 }
+
+  it('mezcla las agencias y ordena por distancia real', async () => {
+    const pts = await AgencyService.getNearestPoints(TRUJILLO, 6)
+    expect(pts).toHaveLength(6)
+    for (let i = 1; i < pts.length; i++) {
+      expect(pts[i - 1].distanceKm).toBeLessThanOrEqual(pts[i].distanceKm)
+    }
+    // Si saliera un solo courier, el merge no está ocurriendo.
+    expect(new Set(pts.map(p => p.agency)).size).toBe(2)
+  })
+
+  it('cada punto sabe de qué courier es', async () => {
+    const pts = await AgencyService.getNearestPoints(TRUJILLO, 10)
+    expect(pts.every(p => p.agency === 'SHALOM' || p.agency === 'OLVA')).toBe(true)
+  })
+
+  it('en Huancavelica evita el salto de 80 km que causaba recomendar Shalom', async () => {
+    // EL caso que motivó borrar `RECOMMENDED_AGENCY`: Shalom tiene UNA sede en
+    // todo el departamento, así que su segunda opción está a 80 km. La constante
+    // global mandaba ahí a todo el que vive en la zona.
+    const soloShalom = await AgencyService.getNearest('SHALOM', HUANCAVELICA, 4)
+    expect(soloShalom![1].distanceKm).toBeGreaterThan(70)
+
+    const unificada = await AgencyService.getNearestPoints(HUANCAVELICA, 4)
+    expect(unificada[0].agency).toBe('OLVA')
+    expect(unificada.every(p => p.distanceKm < 40)).toBe(true)
+  })
+
+  it('quién queda primero depende de la zona, no de una constante', async () => {
+    // La prueba de que ordenar por distancia SÍ regionaliza: la misma función
+    // devuelve couriers distintos en ciudades distintas.
+    const cusco = await AgencyService.getNearestPoints(CUSCO, 1)
+    const chiclayo = await AgencyService.getNearestPoints(CHICLAYO, 1)
+    expect(cusco[0].agency).toBe('SHALOM')
+    expect(chiclayo[0].agency).toBe('OLVA')
+  })
+
+  it('los ids se repiten entre couriers, así que la llave lleva la agencia', async () => {
+    const todos = await AgencyService.searchPoints('', 2000)
+    // Sin la agencia, cientos de puntos colisionan y seleccionar uno marcaría
+    // dos tarjetas a la vez en la lista mezclada.
+    expect(new Set(todos.map(b => b.id)).size).toBeLessThan(todos.length)
+    expect(new Set(todos.map(pointKey)).size).toBe(todos.length)
+  })
+
+  it('la búsqueda cruza las dos agencias y acepta el nombre del courier', async () => {
+    const todos = await AgencyService.searchPoints('', 2000)
+    expect(todos.length).toBe(487 + 424)
+
+    const olva = await AgencyService.searchPoints('olva', 2000)
+    expect(olva.length).toBeGreaterThan(400)
+    expect(olva.every(b => b.agency === 'OLVA')).toBe(true)
+  })
+
+  it('OTRO queda fuera de los listados: es la salida a texto libre', () => {
+    expect(LISTED_AGENCIES).toEqual(['SHALOM', 'OLVA'])
   })
 })
 
@@ -847,6 +917,56 @@ describe('las dos ramas del checkout cubren TODO el país', () => {
     expect(lima.some(d => d.district === 'Ventanilla')).toBe(true)
     expect(lima.some(d => d.district === 'Miraflores' && d.province === 'Lima')).toBe(true)
     expect(lima.every(d => d.department === 'Lima' || d.department === 'Callao')).toBe(true)
+  })
+})
+
+describe('elegir un punto de recojo', () => {
+  it('fija agencia y sede en una sola acción, y recalcula el adelanto', () => {
+    // Van juntas a propósito: SET_AGENCY limpia la sede, así que despacharlas
+    // por separado en el orden equivocado borraría la elección recién hecha.
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
+    )
+    expect(s.provinciaConfig?.selectedAgency).toBe('OLVA')
+    expect(s.provinciaConfig?.selectedAgencyBranchId).toBe('695')
+    // El adelanto sale del courier del punto: Olva cobra más flete que Shalom.
+    expect(s.advanceAmount).toBe(25)
+  })
+
+  it('cambiar de punto a otro courier mueve también el adelanto', () => {
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
+      { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
+    )
+    expect(s.provinciaConfig?.selectedAgency).toBe('SHALOM')
+    expect(s.provinciaConfig?.selectedAgencyBranchId).toBe('4')
+    expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN)
+  })
+
+  it('elegir un punto del listado descarta el texto libre de OTRO', () => {
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_AGENCY', agency: 'OTRO' },
+      { type: 'SET_OLVA_TEXT', text: 'Marvisur Av. España' },
+      { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
+    )
+    expect(s.provinciaConfig?.olvaBranchText).toBeNull()
+  })
+
+  it('volver del texto libre deja la elección en blanco, no en un courier', () => {
+    // Apuntar a uno concreto al volver sería reintroducir por la puerta de atrás
+    // la constante que se borró: cuál corresponde lo dice la distancia.
+    const s = run(base(),
+      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_AGENCY', agency: 'OTRO' },
+      { type: 'SET_OLVA_TEXT', text: 'Marvisur Av. España' },
+      { type: 'CLEAR_PICKUP_POINT' },
+    )
+    expect(s.provinciaConfig?.selectedAgency).toBeNull()
+    expect(s.provinciaConfig?.selectedAgencyBranchId).toBeNull()
+    expect(s.provinciaConfig?.olvaBranchText).toBeNull()
   })
 })
 

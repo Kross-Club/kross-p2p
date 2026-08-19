@@ -111,14 +111,18 @@ function validateStep2(s: CheckoutState): FieldErrors {
   }
 
   // Rama agencia. Es la salida que SIEMPRE está abierta: si el distrito no tiene
-  // cobertura a domicilio, o el comprador la prefiere, aquí elige su sede.
+  // cobertura a domicilio, o el comprador la prefiere, aquí elige su punto.
+  //
+  // El comprador elige un PUNTO y la agencia viene con él, así que este error
+  // solo aparece cuando no llegó a elegir ninguno — por eso habla de dónde
+  // recoge, no de qué courier prefiere: esa pregunta ya no se le hace.
   if (!p.selectedAgency) {
-    e.agency = 'Elige tu agencia de recojo'
+    e.agency = 'Elige dónde vas a recoger tu pedido'
     return e
   }
   // Shalom y Olva tienen listado; las demás caen a texto libre.
   if (hasBranchList(p.selectedAgency)) {
-    if (!p.selectedAgencyBranchId) e.agencyBranch = 'Elige la sede donde vas a recoger'
+    if (!p.selectedAgencyBranchId) e.agencyBranch = 'Elige el punto donde vas a recoger'
   } else if (!p.olvaBranchText?.trim()) {
     e.agencyBranch = 'Escribe en qué agencia vas a recoger'
   }
