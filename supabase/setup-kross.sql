@@ -373,6 +373,21 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_qr_url  text;   -- QR en bucket
 -- persona? Arranca en false a propósito: primero se mide cuánto acierta.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_autoconfirm boolean DEFAULT false;
 
+-- 13.a-ter ¿Esta marca ofrece entrega a DOMICILIO, o solo recojo en agencia?
+--
+-- El recojo en agencia SIEMPRE está disponible: es la salida que nunca se cierra.
+-- Lo que esta columna prende o apaga es la otra rama —el motorizado en Lima, el
+-- courier a domicilio en provincia—, que es la que depende de tener operación de
+-- última milla contratada.
+--
+-- OJO con el default: es `true` para que al correr este script las marcas que HOY
+-- reparten a domicilio no se queden sin esa opción de un día para otro. Las marcas
+-- NUEVAS nacen en `false` porque `manage-store` (acción `create`) lo escribe
+-- explícito. Un default `false` aquí habría apagado el domicilio de todos, y
+-- backfillear con un UPDATE rompería la idempotencia del script: al re-correrlo
+-- volvería a prender lo que el admin apagó a mano.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS home_delivery_enabled boolean DEFAULT true;
+
 -- ⚠️ Estas tres columnas son PÚBLICAS a propósito: el checkout se las muestra al
 -- comprador para que yapee. `stores` tiene SELECT público (política
 -- `stores_read`), y RLS es por FILA, no por columna: cualquier cosa que se

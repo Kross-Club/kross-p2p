@@ -18,6 +18,9 @@ export interface UseCheckoutOptions {
   /** Guarda el lead parcial apenas el WhatsApp es válido. Se inyecta desde la
    *  landing para no acoplar el hook a Supabase. */
   onPartialLead?: (state: CheckoutState) => void
+  /** `stores.home_delivery_enabled`. Por defecto `true` para que la demo y
+   *  cualquier montaje sin tienda se comporten como antes de existir el switch. */
+  homeDeliveryEnabled?: boolean
 }
 
 export interface UseCheckout {
@@ -46,8 +49,11 @@ export function hasProgress(state: CheckoutState): boolean {
   return Boolean(whatsapp || dni || receiverName || state.locationType || state.step > 1)
 }
 
-export function useCheckout({ initialPack, onPartialLead }: UseCheckoutOptions): UseCheckout {
-  const [state, dispatch] = useReducer(checkoutReducer, null, () => initialCheckoutState(initialPack, resolveVariant()))
+export function useCheckout({
+  initialPack, onPartialLead, homeDeliveryEnabled = true,
+}: UseCheckoutOptions): UseCheckout {
+  const [state, dispatch] = useReducer(checkoutReducer, null,
+    () => initialCheckoutState(initialPack, resolveVariant(), homeDeliveryEnabled))
   const [touched, setTouched] = useState<Set<FieldName>>(new Set())
   const timer = useRef(createStepTimer())
 
@@ -56,9 +62,18 @@ export function useCheckout({ initialPack, onPartialLead }: UseCheckoutOptions):
   useEffect(() => {
     purgeExpiredDrafts()
     const draft = loadActiveDraft()
-    if (draft) dispatch({ type: 'RESTORE', state: draft })
+    // El flag de la TIENDA gana sobre el del borrador, igual que la variante: si
+    // el admin apagó el domicilio ayer, un borrador de ayer no puede seguir
+    // ofreciéndolo. Se pisa aquí porque `persistence` no conoce la tienda.
+    if (draft) dispatch({ type: 'RESTORE', state: { ...draft, homeDeliveryEnabled } })
     trackEvent({ name: 'checkout_opened' })
     // Solo al montar: retomar un borrador después sería pisar lo que escribe.
+    // `homeDeliveryEnabled` queda fuera de las deps a propósito — si entrara,
+    // que la tienda resuelva su config un tick después re-restauraría el
+    // borrador encima de lo que el comprador ya está escribiendo. El valor del
+    // montaje es el correcto: `derive()` normaliza el método igual en cada
+    // acción, así que no hace falta volver a restaurar para que se aplique.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ─── Persistir ─────────────────────────────────────────────────────────────

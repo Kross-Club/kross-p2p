@@ -43,13 +43,16 @@ interface CheckoutModalProps {
   /** Contexto del pedido. Sin él el checkout es solo demo y no puede cerrar. */
   submitContext?: Omit<SubmitContext, 'price' | 'packName'>
   yape?: StoreYape | null
+  /** `stores.home_delivery_enabled`. Si es false la marca solo ofrece recojo en
+   *  agencia y el checkout no muestra nunca la opción de entrega a domicilio. */
+  homeDeliveryEnabled?: boolean
 }
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, yape = null,
+  submitContext, yape = null, homeDeliveryEnabled = true,
 }: CheckoutModalProps) {
-  const co = useCheckout({ initialPack, onPartialLead })
+  const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled })
   const { state, dispatch, errors, touch } = co
   const [confirmingClose, setConfirmingClose] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)

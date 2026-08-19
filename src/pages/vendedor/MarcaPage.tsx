@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn } from 'lucide-react'
+import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
 
@@ -20,6 +20,7 @@ interface StoreRow {
   active: boolean
   created_at?: string
   wa_enabled?: boolean
+  home_delivery_enabled?: boolean
   wa_phone_number_id?: string | null
   wa_display_phone?: string | null
   wa_business_account_id?: string | null
@@ -195,6 +196,10 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [cd, setCd] = useState(store.color_dark || '#060C1A')
   const [active, setActive] = useState(store.active)
   const [waEnabled, setWaEnabled] = useState(!!store.wa_enabled)
+  // `?? true` y no `!!`: una marca cargada antes de que existiera la columna
+  // llega con el campo ausente, y un `false` accidental le apagaría el
+  // domicilio al guardar cualquier otro cambio.
+  const [homeDelivery, setHomeDelivery] = useState(store.home_delivery_enabled ?? true)
   const [waPhoneId, setWaPhoneId] = useState(store.wa_phone_number_id ?? '')
   const [waDisplay, setWaDisplay] = useState(store.wa_display_phone ?? '')
   const [waBiz, setWaBiz] = useState(store.wa_business_account_id ?? '')
@@ -216,6 +221,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
     if (isSuper) {
       payload.slug = slug; payload.active = active
       payload.wa_enabled = waEnabled
+      payload.home_delivery_enabled = homeDelivery
       payload.wa_phone_number_id = waPhoneId.trim()
       payload.wa_display_phone = waDisplay.trim()
       payload.wa_business_account_id = waBiz.trim()
@@ -273,6 +279,30 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             </span>
             <Power size={16} style={{ color: active ? '#16A34A' : '#DC2626' }} />
           </button>
+        )}
+
+        {/* Cómo entrega esta marca. El recojo en agencia SIEMPRE está disponible
+            —es la salida que nunca se cierra—, así que el switch solo prende o
+            apaga el domicilio. Solo super admin: depende de si la marca tiene
+            operación de última milla contratada. */}
+        {isSuper && (
+          <div className="rounded-2xl p-3 mb-4" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+            <button onClick={() => setHomeDelivery(v => !v)}
+              className="w-full flex items-center justify-between mb-2">
+              <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#1E40AF' }}>
+                <Truck size={14} /> Entrega a domicilio
+              </span>
+              <span className="text-[10px] font-black px-2 py-1 rounded-full"
+                style={{ background: homeDelivery ? '#2563EB' : '#E5E7EB', color: homeDelivery ? '#fff' : '#6B7280' }}>
+                {homeDelivery ? 'ACTIVA' : 'APAGADA'}
+              </span>
+            </button>
+            <p className="text-[10px] text-gray-500">
+              {homeDelivery
+                ? 'El comprador elige entre recibirlo en su casa o recoger en agencia.'
+                : 'Solo recojo en agencia. Apágala si la marca no tiene motorizado ni courier a domicilio: prometer entrega a la puerta y no cumplirla cuesta más que no ofrecerla.'}
+            </p>
+          </div>
         )}
 
         {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca

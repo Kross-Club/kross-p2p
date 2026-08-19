@@ -151,6 +151,37 @@ mi casa» y «Recojo en agencia»— y monta el mismo `AgencyPicker`.
 supabase functions deploy register-buyer --project-ref ofdjghntvmrdfjhazfvz
 ```
 
+#### Entrega a domicilio prendida o apagada POR MARCA ✅
+
+`stores.home_delivery_enabled` decide si la marca ofrece entrega a la puerta. **El recojo
+en agencia nunca se apaga** — es la salida que siempre está abierta—, así que el switch
+solo gobierna la otra rama: el motorizado en Lima y el courier a domicilio en provincia,
+que son las que dependen de tener operación de última milla contratada.
+
+- **Se prende desde el panel**, en *Marcas → editar* (`MarcaPage`), y es **solo super
+  admin**: depende de un hecho comercial que conoce la plataforma. Que un admin de marca
+  lo prendiera sin tener con quién repartir prometería entregas que después no ocurren.
+- **El flag viaja en `CheckoutState`**, no solo en la UI, porque el reducer AUTO-DECIDE el
+  método desde la cobertura. Sin él, una marca sin última milla cerraba pedidos con
+  `deliveryMethod: 'DOMICILIO'` en cuanto el distrito tenía cobertura del courier.
+- `derive()` normaliza el método en CADA acción. Es lo que tapa la puerta de atrás:
+  `RESTORE` metía un borrador guardado cuando la marca sí repartía y el pedido salía
+  prometiendo domicilio después de que el admin lo apagara. Lo encontró un test.
+- Como `variant`, se re-resuelve desde la tienda en cada montaje y **no se restaura del
+  borrador**.
+- ⚠️ **Default de la columna: `true`.** Es a propósito — al correr el script, las marcas
+  que HOY reparten a domicilio no pueden quedarse sin esa opción. Las marcas nuevas nacen
+  en `false` porque `manage-store` (acción `create`) lo escribe explícito. Un default
+  `false` habría apagado el domicilio de todas, y backfillear con un `UPDATE` rompería la
+  idempotencia del script: al re-correrlo volvería a prender lo que el admin apagó a mano.
+- `/checkout-demo` tiene el mismo switch, para revisar los dos modos sin tocar Supabase.
+
+**Deploy:**
+```
+supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
+```
+> Correr también `supabase/setup-kross.sql` (agrega `stores.home_delivery_enabled`).
+
 **c) Copy del DNI ✅.** El anterior —*"Para crear tu cuenta y que puedas seguir tu
 pedido"*— planteaba un beneficio nuestro como si fuera suyo. Ahora dice **"La agencia te
 lo pedirá para entregarte el paquete"**: un hecho de su mundo, verificable, no un trámite

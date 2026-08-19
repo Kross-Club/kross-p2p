@@ -37,6 +37,10 @@ export default function LandingProductoPage() {
   // Datos de cobro de la MARCA. Cada tienda yapea a su propio número, así que
   // salen de `stores`, nunca de config.
   const [yape, setYape] = useState<StoreYape | null>(null)
+  // `true` mientras no se sepa: la marca que sí reparte a domicilio no debe
+  // perder la opción por un instante de carga. Si no reparte, el switch llega
+  // en el mismo fetch que el Yape y la opción desaparece antes del paso 2.
+  const [homeDelivery, setHomeDelivery] = useState(true)
 
   // El `setLoading(false)` vivía DENTRO del `.then`, sin `catch`: una caída de
   // red —el escenario normal del comprador en 4G— dejaba la landing girando
@@ -72,10 +76,15 @@ export default function LandingProductoPage() {
   useEffect(() => {
     const storeId = product?.store_id
     if (!storeId) return
-    supabase.from('stores').select('yape_number, yape_holder, yape_qr_url').eq('id', storeId).maybeSingle()
+    supabase.from('stores')
+      .select('yape_number, yape_holder, yape_qr_url, home_delivery_enabled')
+      .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         if (!data) return
         setYape({ number: data.yape_number, holder: data.yape_holder, qrUrl: data.yape_qr_url })
+        // `?? true` y no `!!`: una tienda de antes de la columna llega con el
+        // campo ausente, y apagarle el domicilio por eso rompería su operación.
+        setHomeDelivery(data.home_delivery_enabled ?? true)
       })
   }, [product?.store_id])
 
@@ -146,6 +155,7 @@ export default function LandingProductoPage() {
           onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
           onPartialLead={state => saveCheckoutDraft(state, product)}
           yape={yape}
+          homeDeliveryEnabled={homeDelivery}
           submitContext={{
             storeId: product.store_id ?? '',
             productId: product.id,

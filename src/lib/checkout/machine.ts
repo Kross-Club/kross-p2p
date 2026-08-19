@@ -28,12 +28,14 @@ function newOrderId(): string {
 export function initialCheckoutState(
   selectedPack: PackId | null = null,
   variant: CheckoutVariant = 'A',
+  homeDeliveryEnabled = true,
 ): CheckoutState {
   return {
     orderId: newOrderId(),
     step: 1,
     selectedPack,
     variant,
+    homeDeliveryEnabled,
     customerInfo: { dni: '', whatsapp: '', receiverName: '' },
     locationType: null,
     limaAddress: null,
@@ -106,7 +108,16 @@ const EMPTY_PICKUP: PickupPoint = { agency: null, branchId: null, freeText: null
  * Recalcula todo lo derivado. Se llama después de CADA acción, así que el estado
  * nunca puede quedar internamente inconsistente.
  */
-function derive(s: CheckoutState): CheckoutState {
+function derive(state: CheckoutState): CheckoutState {
+  // Una marca sin entrega a domicilio no puede quedar con `DOMICILIO`, venga de
+  // donde venga. Se normaliza AQUÍ y no solo en las acciones porque `RESTORE`
+  // entra por la puerta de atrás: un borrador guardado cuando la marca sí
+  // repartía conservaba el método y cerraba el pedido prometiendo una entrega a
+  // la puerta que el admin ya había apagado.
+  const s: CheckoutState = !state.homeDeliveryEnabled && state.deliveryMethod === 'DOMICILIO'
+    ? { ...state, deliveryMethod: 'AGENCIA' }
+    : state
+
   const isProvincia = s.locationType === 'PROVINCIA'
   // El adelanto sale del destino Y de la agencia: Olva cobra más flete que
   // Shalom. A domicilio (sin agencia) va el base.
@@ -161,6 +172,10 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
 
       // Cambiar de región invalida lo capturado de la otra: no se arrastra un
       // distrito de Lima a un pedido de provincia.
+      // Sin domicilio no hay nada que elegir: el método queda fijado en AGENCIA
+      // desde que se sabe la región, y la UI ni siquiera muestra las tarjetas.
+      const forced = state.homeDeliveryEnabled ? null : 'AGENCIA' as const
+
       if (!sameRegion) {
         return derive({
           ...state,
@@ -169,7 +184,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           provinciaConfig: next === 'PROVINCIA'
             ? { ...EMPTY_PROVINCIA, department, province, district, coverageResult: 'NOT_CHECKED' }
             : null,
-          deliveryMethod: null,
+          deliveryMethod: forced,
           pickup: { ...EMPTY_PICKUP },
           courierSurcharge: null,
           deliveryNote: null,
@@ -184,7 +199,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           ...state,
           limaAddress: { ...lima(), department, province, district, lat: null, lng: null },
           // Si había elegido recoger, la sede era la de su distrito anterior.
-          deliveryMethod: null,
+          deliveryMethod: forced,
           pickup: { ...EMPTY_PICKUP },
         })
       }
@@ -212,7 +227,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         // Y de paso arregla el precio que se adelantaba: con una agencia pegada
         // de antes, la nota mostraba "Adelanto de S/20" antes de que el
         // comprador eligiera nada.
-        deliveryMethod: null,
+        deliveryMethod: forced,
         pickup: { ...EMPTY_PICKUP },
         courierSurcharge: null,
         deliveryNote: null,
@@ -262,9 +277,14 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           // enseñarle una sola tarjeta y cobrarle un clic para llegar al mismo
           // sitio: las agencias. BORDERLINE también va directo — el courier no
           // garantiza esa zona y ofrecer domicilio ahí es prometer de más.
-        deliveryMethod: state.variant === 'B' && check.result === 'IN_ZONE'
-          ? null
-          : methodForCoverage(check.result),
+        // Sin domicilio da igual lo que diga la cobertura del courier: la marca
+        // no tiene con quién repartir, y proponerlo cerraría pedidos con una
+        // entrega a la puerta que nadie va a hacer.
+        deliveryMethod: !state.homeDeliveryEnabled
+          ? 'AGENCIA'
+          : state.variant === 'B' && check.result === 'IN_ZONE'
+            ? null
+            : methodForCoverage(check.result),
         // Tarifa del courier: costo de la marca, jamás se le traslada al comprador.
         courierSurcharge: check.tariff,
         deliveryNote: note,
@@ -277,6 +297,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       return derive({ ...state, deliveryMethod: 'AGENCIA' })
 
     case 'RETRY_DOMICILIO':
+      if (!state.homeDeliveryEnabled) return state
       return derive({
         ...state,
         deliveryMethod: null,
@@ -318,6 +339,10 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       return derive({ ...state, pickup: { ...state.pickup, freeText: action.text } })
 
     case 'SET_DELIVERY_METHOD':
+      // Red de seguridad: si la marca no reparte a domicilio, la acción se
+      // ignora. La UI no ofrece la opción, pero el reducer es el contrato y no
+      // debe poder quedar en un estado que la tienda no puede cumplir.
+      if (action.method === 'DOMICILIO' && !state.homeDeliveryEnabled) return state
       // Cambiar de método invalida el punto ya elegido: si vuelve a "en casa"
       // después de haber marcado Shalom, el pedido saldría con agencia Y
       // domicilio, y el adelanto cobrado no calzaría con ninguno de los dos.

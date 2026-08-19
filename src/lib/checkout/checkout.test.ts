@@ -166,6 +166,75 @@ describe('recojo en agencia · las dos regiones', () => {
   })
 })
 
+// ─── Tienda sin entrega a domicilio ──────────────────────────────────────────
+// `stores.home_delivery_enabled` apagado = la marca solo ofrece recojo en
+// agencia. El recojo NUNCA se apaga: es la salida que siempre está abierta.
+
+describe('tienda solo con recojo en agencia', () => {
+  const soloAgencia = () => initialCheckoutState('pack-2', 'A', false)
+
+  it('el método queda fijado en AGENCIA desde que hay distrito', () => {
+    expect(run(soloAgencia(), LIMA_D).deliveryMethod).toBe('AGENCIA')
+    expect(run(soloAgencia(), PROV_D).deliveryMethod).toBe('AGENCIA')
+  })
+
+  it('la cobertura del courier no puede proponer domicilio', () => {
+    // Es el caso que motivó meter el flag en el estado: sin él, `SET_COVERAGE`
+    // veía IN_ZONE y cerraba el pedido con DOMICILIO — prometiendo una entrega a
+    // la puerta que la marca no tiene con quién hacer.
+    const s = run(soloAgencia(), PROV_D, { type: 'SET_COVERAGE', check: {
+      result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 15.5,
+      weekly: false, weekdaysOnly: false, zoned: false, reason: '',
+    } })
+    expect(s.deliveryMethod).toBe('AGENCIA')
+    expect(dispatchTypeFor(s)).toBe('AGENCIA_PROVINCIA')
+  })
+
+  it('la variante B tampoco abre la elección: no hay dos opciones', () => {
+    const s = run(initialCheckoutState('pack-2', 'B', false), PROV_D, {
+      type: 'SET_COVERAGE', check: {
+        result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 15.5,
+        weekly: false, weekdaysOnly: false, zoned: false, reason: '',
+      },
+    })
+    expect(s.deliveryMethod).toBe('AGENCIA')
+  })
+
+  it('pedir domicilio a mano no lo cambia: el reducer es el contrato', () => {
+    // La UI no ofrece la opción, pero el estado no debe poder quedar en algo
+    // que la tienda no puede cumplir aunque llegue la acción por otro lado.
+    const s = run(soloAgencia(), PROV_D, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' })
+    expect(s.deliveryMethod).toBe('AGENCIA')
+    expect(run(s, { type: 'RETRY_DOMICILIO' }).deliveryMethod).toBe('AGENCIA')
+  })
+
+  it('con el domicilio prendido todo sigue igual que antes', () => {
+    const s = run(initialCheckoutState('pack-2', 'A', true), PROV_D, {
+      type: 'SET_COVERAGE', check: {
+        result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 15.5,
+        weekly: false, weekdaysOnly: false, zoned: false, reason: '',
+      },
+    })
+    expect(s.deliveryMethod).toBe('DOMICILIO')
+  })
+
+  it('el borrador no puede resucitar el domicilio que el admin apagó', () => {
+    // El flag se re-resuelve desde la tienda en cada montaje, igual que la
+    // variante. Un borrador guardado cuando la marca sí repartía no puede
+    // seguir prometiéndolo al día siguiente.
+    const conDomicilio = run(initialCheckoutState('pack-2', 'A', true),
+      PROV_D, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' })
+    expect(conDomicilio.deliveryMethod).toBe('DOMICILIO')
+
+    const reabierto = checkoutReducer(conDomicilio, {
+      type: 'RESTORE', state: { ...conDomicilio, homeDeliveryEnabled: false },
+    })
+    // Ya no puede volver a pedirlo, y cualquier cambio de distrito lo fija.
+    expect(run(reabierto, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' }).deliveryMethod)
+      .not.toBe('DOMICILIO')
+  })
+})
+
 describe('máquina · derivados', () => {
   it('Lima no cobra adelanto y provincia sí', () => {
     expect(run(base(), LIMA_D).advanceAmount).toBe(ADVANCE_LIMA_PEN)

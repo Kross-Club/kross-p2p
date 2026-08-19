@@ -55,13 +55,18 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
 
   return (
     <div className="space-y-3.5">
-      <MethodPicker
-        value={method}
-        onPick={m => {
-          dispatch({ type: 'SET_DELIVERY_METHOD', method: m })
-          trackEvent({ name: 'delivery_method_selected', method: m })
-        }}
-      />
+      {/* Sin domicilio no hay dos opciones que ofrecer: el reducer ya fijó
+          AGENCIA al elegir el distrito, y mostrar un selector de una sola
+          tarjeta cobra un tap para llegar al mismo sitio. */}
+      {state.homeDeliveryEnabled && (
+        <MethodPicker
+          value={method}
+          onPick={m => {
+            dispatch({ type: 'SET_DELIVERY_METHOD', method: m })
+            trackEvent({ name: 'delivery_method_selected', method: m })
+          }}
+        />
+      )}
 
       {method === 'DOMICILIO' && (
         <>

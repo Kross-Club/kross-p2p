@@ -137,6 +137,21 @@ export interface CheckoutState {
    *  para que el pedido guarde con cuál se cerró y las métricas se puedan
    *  partir después. */
   variant: CheckoutVariant
+  /**
+   * ¿Esta marca reparte a domicilio, o solo ofrece recojo en agencia?
+   * (`stores.home_delivery_enabled`).
+   *
+   * Vive en el estado y no solo en la UI porque el reducer AUTO-DECIDE el método
+   * a partir de la cobertura: sin este dato, una marca sin operación de última
+   * milla cerraba pedidos con `deliveryMethod: 'DOMICILIO'` en cuanto el distrito
+   * tenía cobertura del courier — prometiendo una entrega a la puerta que nadie
+   * iba a hacer.
+   *
+   * Como `variant`, se resuelve desde la tienda en cada montaje y NO se restaura
+   * del borrador: si el admin apaga el domicilio, un borrador de ayer no puede
+   * seguir ofreciéndolo.
+   */
+  homeDeliveryEnabled: boolean
   limaAddress: LimaAddress | null
   provinciaConfig: ProvinciaConfig | null
   /**

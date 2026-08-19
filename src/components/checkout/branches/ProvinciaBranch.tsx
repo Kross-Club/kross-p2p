@@ -82,7 +82,9 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
           paso — preguntándole cómo quiere recibir algo que todavía no sabe si
           le llega. Y solo con cobertura hay dos opciones reales: sin courier la
           máquina ya mandó el pedido a agencia y no queda nada que preguntar. */}
-      {!checking && state.variant === 'B'
+      {/* `homeDeliveryEnabled` primero: sin domicilio la variante B no tiene dos
+          opciones que comparar, y el reducer ya fijó AGENCIA. */}
+      {!checking && state.homeDeliveryEnabled && state.variant === 'B'
         && p?.coverageResult === 'IN_ZONE' && !method && (
         <MethodPicker
           onPick={m => {
@@ -164,8 +166,9 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
             onBlur={() => touch('agencyBranch')}
           />
 
-          {/* Si llegó aquí desde una cobertura válida, puede volver a domicilio. */}
-          {p?.coverageResult === 'IN_ZONE' && (
+          {/* Si llegó aquí desde una cobertura válida, puede volver a domicilio
+              — salvo que la marca no reparta, donde no hay a dónde volver. */}
+          {state.homeDeliveryEnabled && p?.coverageResult === 'IN_ZONE' && (
             <button
               type="button"
               onClick={() => dispatch({ type: 'RETRY_DOMICILIO' })}
