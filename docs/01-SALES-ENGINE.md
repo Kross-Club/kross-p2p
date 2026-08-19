@@ -57,14 +57,14 @@
 | `CheckoutModal.tsx` | Shell: progreso, trap de foco, Esc con confirmación, CTA sticky en el safe area |
 | `ExitOffer.tsx` | Diálogo centrado de retención al intentar salir (oferta o confirmación seca) |
 | `steps/Step1Pack.tsx` | Packs con precio por unidad, ahorro explícito y badge `×N` de cantidad |
-| `steps/Step2Delivery.tsx` | WhatsApp → nombre → Lima/Provincia → DNI (orden de compromiso creciente) |
+| `steps/Step2Delivery.tsx` | WhatsApp → DNI → nombre → **distrito** (orden de compromiso creciente). El selector de distrito es UNO solo, con los 483 del país |
 | `steps/Step3Confirm.tsx` | Resumen + caja Yape + código de seguridad + captura opcional |
 | `steps/OrderDone.tsx` | Pedido confirmado. Llegar aquí ES el KPI del refactor |
 | `payment/YapeBox.tsx` | Número/titular de la tienda, copiar, deep link (móvil) y QR (desktop) |
 | `payment/VoucherField.tsx` | Captura opcional, comprimida antes de subir |
 | `services/OrderService.ts` | `submitOrder` (idempotente) + `uploadVoucher` al bucket privado |
-| `branches/LimaBranch.tsx` | Distrito + dirección + referencia. COD, sin adelanto |
-| `branches/ProvinciaBranch.tsx` | Distrito → veredicto → domicilio o agencia |
+| `branches/LimaBranch.tsx` | Dirección + referencia. El distrito ya viene del paso 2 |
+| `branches/ProvinciaBranch.tsx` | Veredicto de cobertura (efecto sobre el distrito) → domicilio o agencia |
 | `branches/AgencyPicker.tsx` | Shalom y Olva: 3 sedes más cercanas con distancia real |
 | `fields/` | `Field`, `PhoneField`, `SearchSelect` (483 distritos, navegable con teclado) |
 | `useCheckout.ts` | Cose reducer + persistencia + validación al blur + instrumentación |
@@ -99,7 +99,29 @@ la mamá, el vecino, el portero. Pero el orden actual (nombre → DNI) hace que 
 autocompletado casi nunca se aprovechara. Al quedar el DNI solo en provincia, ahí se
 **invirtió**: DNI primero → Decolecta rellena el nombre → el microcopy
 *"¿Lo recibe otra persona?"* cubre la minoría. Un campo menos de tipeo en el flujo más
-largo. Orden final: WhatsApp → Lima/Provincia → [DNI si provincia] → nombre → distrito.
+largo. Orden final: **WhatsApp → DNI → nombre → distrito**.
+
+#### La región se deriva del distrito ✅ (se eliminó el toggle Lima/Provincia)
+
+El paso 2 preguntaba «¿Dónde lo recibes? Lima y Callao / Provincia» antes del DNI. Ya no:
+`isLimaMetro()` deduce la región del distrito elegido, así que el toggle pedía un dato que
+el sistema ya tenía y cobraba un tap para llegar al mismo sitio.
+
+- `locationType` sigue en el estado —el pedido, las métricas y `advanceFor()` lo leen—
+  pero pasó a ser **derivado**, como `advanceAmount` y `deliveryMethod`. La UI no lo setea.
+- **Un solo selector de distrito**, con los 483 del país, montado en `Step2Delivery`. Antes
+  había uno por rama, cada uno con su filtro: entre los dos se habían perdido los 128
+  distritos del departamento de Lima que no son Lima metropolitana. Con una sola lista ese
+  agujero no puede volver.
+- `SET_DISTRICT` reemplaza a `SET_LOCATION_TYPE` + `SET_LIMA_DISTRICT` +
+  `SET_PROVINCIA_DISTRICT`. Cambiar de región descarta lo capturado de la otra; cambiar de
+  distrito dentro de Lima descarta el pin, que apuntaba a la zona vieja.
+- `LimaAddress` guarda ahora `department` y `province`: sin la llave completa el selector
+  no puede reconocer lo ya elegido, y hay homónimos (5 Miraflores, 12 Acobamba).
+- El veredicto de cobertura pasó de un handler a un **efecto sobre el distrito** en
+  `ProvinciaBranch`, así se recalcula también cuando el comprador vuelve atrás y lo cambia.
+- ⚠️ `DistrictCoverageService.districtsFor()` ya no alimenta la UI. Se mantiene porque los
+  tests la usan para verificar que las dos ramas siguen siendo complementarias.
 
 **c) Copy del DNI ✅.** El anterior —*"Para crear tu cuenta y que puedas seguir tu
 pedido"*— planteaba un beneficio nuestro como si fuera suyo. Ahora dice **"La agencia te

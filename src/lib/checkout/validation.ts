@@ -10,8 +10,10 @@ import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_REQUIRED, YAPE_CODE
 import { hasBranchList } from './services/AgencyService'
 import type { CheckoutState, CheckoutStepId } from './types'
 
+// `locationType` era un campo del formulario y ya no existe: la región se deriva
+// del distrito, así que sus errores se reportan en `district`.
 export type FieldName =
-  | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName' | 'locationType'
+  | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName'
   | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch' | 'voucher' | 'yapeCode'
 
 export type FieldErrors = Partial<Record<FieldName, string>>
@@ -71,8 +73,10 @@ function validateStep2(s: CheckoutState): FieldErrors {
   const name = validateReceiverName(s.customerInfo.receiverName)
   if (name) e.receiverName = name
 
+  // Sin distrito no hay región: `locationType` se deriva de él, así que su
+  // ausencia se le reporta al comprador en el campo que sí tocó.
   if (!s.locationType) {
-    e.locationType = 'Elige dónde recibes tu pedido'
+    e.district = 'Elige tu distrito'
     return e
   }
 

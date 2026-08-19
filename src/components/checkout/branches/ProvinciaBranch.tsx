@@ -6,18 +6,16 @@
 // domicilio, el comprador puede preferir recoger — y si no la tiene, no hay
 // callejón sin salida.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Home, PackageCheck, Store } from 'lucide-react'
 import { ADVANCE_AGENCY_FROM_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN, COPY } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
-import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
+import type { CheckoutState } from '../../../lib/checkout/types'
 import type { LatLng } from '../../../lib/geo/haversine'
 import type { CheckoutAction } from '../../../lib/checkout/machine'
 import type { FieldErrors, FieldName } from '../../../lib/checkout/validation'
 import Field from '../fields/Field'
-import SearchSelect from '../fields/SearchSelect'
-import type { SelectOption } from '../fields/SearchSelect'
 import AgencyPicker from './AgencyPicker'
 
 interface ProvinciaBranchProps {
@@ -27,88 +25,49 @@ interface ProvinciaBranchProps {
   touch: (field: FieldName) => void
 }
 
-/** Llave estable de una opción: desambigua los homónimos (dos Miraflores). */
-const optionKey = (d: { department: string; province: string; district: string }): string =>
-  `${d.department}|${d.province}|${d.district}`
-
 export default function ProvinciaBranch({ state, dispatch, errors, touch }: ProvinciaBranchProps) {
-  const [all, setAll] = useState<DistrictOption[] | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [checking, setChecking] = useState(false)
+  // El distrito ya resuelto se guarda como llave, así `checking` se DERIVA en
+  // vez de setearse dentro del efecto — mismo patrón que `AgencyPicker`.
+  const [checked, setChecked] = useState<string | null>(null)
   const [center, setCenter] = useState<LatLng | null>(null)
   const p = state.provinciaConfig
 
-  useEffect(() => {
-    let alive = true
-    // Todo lo que NO es Lima metropolitana — incluidas las otras provincias del
-    // departamento de Lima (Barranca, Huaral, Cañete…), que antes se perdían.
-    DistrictCoverageService.districtsFor('PROVINCIA')
-      .then(list => { if (alive) setAll(list) })
-      .catch(() => { if (alive) setFailed(true) })
-    return () => { alive = false }
-  }, [])
-
-  const options: SelectOption[] = useMemo(() => (all ?? []).map(d => ({
-    value: optionKey(d),
-    label: d.district,
-    detail: `${d.province}, ${d.department}`,
-    // En B el domicilio es una OPCIÓN que el comprador todavía va a elegir, así
-    // que el badge promete de menos a propósito: "a tu puerta" se lee como que
-    // ya está decidido, y quien pensaba recoger en agencia siente que le
-    // cambiaron el trato dos pantallas después. En A sí está decidido.
-    badge: d.covered && !d.weekly
-      ? (state.variant === 'B' ? 'Podemos ir a tu casa' : 'Entregamos a tu casa')
-      : undefined,
-  })), [all, state.variant])
-
-  const selectedKey = p?.district && p.province && p.department
-    ? optionKey({ department: p.department, province: p.province, district: p.district })
+  // El distrito ya viene elegido del paso 2. Consultar la cobertura es una
+  // REACCIÓN a ese distrito, no algo que dispare un handler de esta pantalla:
+  // así el veredicto también se recalcula cuando el comprador vuelve atrás y
+  // cambia de distrito, sin que este componente tenga que enterarse de cómo.
+  const districtKey = p?.district && p.province && p.department
+    ? `${p.department}|${p.province}|${p.district}`
     : null
 
-  const pickDistrict = async (key: string) => {
-    const [department, province, district] = key.split('|')
-    dispatch({ type: 'SET_PROVINCIA_DISTRICT', department, province, district })
-    touch('district')
+  useEffect(() => {
+    if (!districtKey) return
+    const [department, province, district] = districtKey.split('|')
+    let alive = true
+    void (async () => {
+      try {
+        const check = await DistrictCoverageService.checkDistrict(department, province, district)
+        if (!alive) return
+        dispatch({ type: 'SET_COVERAGE', check })
+        trackEvent({ name: 'coverage_checked', place: `${district}, ${province}`, result: check.result })
+        if (check.zoned) trackEvent({ name: 'coverage_zoned_district', place: `${district}, ${province}` })
+        const c = await DistrictCoverageService.getDistrictCenter(department, province, district)
+        if (alive) setCenter(c)
+      } catch {
+        // Si la cobertura falla NO se bloquea: se cae a agencia, que siempre entrega.
+        if (alive) dispatch({ type: 'CHOOSE_AGENCY_BRANCH_FLOW' })
+      } finally {
+        if (alive) setChecked(districtKey)
+      }
+    })()
+    return () => { alive = false }
+  }, [districtKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    setChecking(true)
-    try {
-      const check = await DistrictCoverageService.checkDistrict(department, province, district)
-      dispatch({ type: 'SET_COVERAGE', check })
-      trackEvent({ name: 'coverage_checked', place: `${district}, ${province}`, result: check.result })
-      if (check.zoned) trackEvent({ name: 'coverage_zoned_district', place: `${district}, ${province}` })
-      setCenter(await DistrictCoverageService.getDistrictCenter(department, province, district))
-    } catch {
-      // Si la cobertura falla NO se bloquea: se cae a agencia, que siempre entrega.
-      dispatch({ type: 'CHOOSE_AGENCY_BRANCH_FLOW' })
-    } finally {
-      setChecking(false)
-    }
-  }
-
-  if (failed) {
-    return (
-      <p className="text-[11px] text-amber-700 bg-amber-50 rounded-xl px-3 py-2.5">
-        No pudimos cargar los distritos. Recarga la página e inténtalo de nuevo.
-      </p>
-    )
-  }
-
+  const checking = Boolean(districtKey) && checked !== districtKey
   const method = p?.deliveryMethod
 
   return (
     <div className="space-y-3.5">
-      <SearchSelect
-        label="Tu distrito"
-        required
-        placeholder="Escribe tu distrito o ciudad"
-        options={options}
-        loading={all === null}
-        value={selectedKey}
-        error={errors.district}
-        onBlur={() => touch('district')}
-        onChange={pickDistrict}
-      />
-
       {checking && <p className="text-[11px] text-gray-400">Viendo si llegamos a tu zona…</p>}
 
       {/* Variante B: el método lo elige el comprador, y aparece SOLO después de

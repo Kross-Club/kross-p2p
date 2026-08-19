@@ -55,6 +55,12 @@ export interface CustomerInfo {
 }
 
 export interface LimaAddress {
+  /** Departamento y provincia del distrito elegido. Se guardan aunque en Lima
+   *  metropolitana solo puedan ser dos combinaciones: dejan el estado
+   *  autodescriptivo, y son lo que permite recalcular `locationType` desde el
+   *  distrito en vez de preguntarlo. */
+  department: string | null
+  province: string | null
   district: string | null
   /** null permitido: en modo DISTRICT el pedido se cierra sin pin. */
   lat: number | null
@@ -111,6 +117,14 @@ export interface CheckoutState {
   step: CheckoutStepId
   selectedPack: PackId | null
   customerInfo: CustomerInfo
+  /**
+   * DERIVADO del distrito, no elegido por el comprador. `isLimaMetro()` lo
+   * resuelve en cuanto hay distrito: preguntarlo era pedirle un dato que el
+   * sistema ya tenía, y un tap para llegar al mismo sitio.
+   *
+   * Sigue en el estado porque el pedido, las métricas y `advanceFor()` lo leen.
+   * Lo que cambió es quién lo pone.
+   */
   locationType: LocationType | null
   /** Qué versión del checkout le tocó a este comprador. Viaja en el estado
    *  para que el pedido guarde con cuál se cerró y las métricas se puedan

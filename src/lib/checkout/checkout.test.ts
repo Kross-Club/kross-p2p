@@ -21,21 +21,87 @@ const run = (state: CheckoutState, ...actions: CheckoutAction[]): CheckoutState 
 
 const base = () => initialCheckoutState('pack-2')
 
+// Elegir distrito es lo ÚNICO que fija la región: `locationType` se deriva de él
+// vía `isLimaMetro()`. Antes había un toggle Lima/Provincia y estas dos
+// constantes eran una acción propia.
+const LIMA_D: CheckoutAction = { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' }
+const PROV_D: CheckoutAction = { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' }
+
+// ─── La región sale del distrito ─────────────────────────────────────────────
+// Se eliminó el toggle "Lima y Callao / Provincia". `isLimaMetro()` ya sabía la
+// respuesta, así que preguntarla era cobrar un tap por un dato que el sistema
+// tenía — y obligaba a mantener dos selectores de distrito, uno por rama, que
+// entre los dos ya habían dejado 128 distritos afuera una vez.
+
+describe('máquina · la región se deriva del distrito', () => {
+  it('un distrito de Lima metropolitana da LIMA', () => {
+    expect(run(base(), LIMA_D).locationType).toBe('LIMA')
+  })
+
+  it('el Callao es Lima metropolitana, aunque sea su propio departamento', () => {
+    const s = run(base(), { type: 'SET_DISTRICT', department: 'Callao', province: 'Callao', district: 'Bellavista' })
+    expect(s.locationType).toBe('LIMA')
+    expect(s.provinciaConfig).toBeNull()
+  })
+
+  it('las provincias del departamento de Lima son PROVINCIA, no Lima', () => {
+    // Los 128 distritos que se perdían entre las dos ramas viejas: Barranca,
+    // Huaral, Cañete… Para esa gente su distrito no existía en ningún selector.
+    for (const [province, district] of [['Barranca', 'Barranca'], ['Huaral', 'Huaral'], ['Cañete', 'San Vicente de Cañete']]) {
+      const s = run(base(), { type: 'SET_DISTRICT', department: 'Lima', province, district })
+      expect(s.locationType).toBe('PROVINCIA')
+      expect(s.limaAddress).toBeNull()
+    }
+  })
+
+  it('el distrito queda guardado con su departamento y provincia', () => {
+    // Sin la llave completa el selector no puede reconocer lo ya elegido, y hay
+    // homónimos: un Miraflores en Lima y otro en Arequipa.
+    const lima = run(base(), LIMA_D).limaAddress
+    expect(lima?.department).toBe('Lima')
+    expect(lima?.province).toBe('Lima')
+    expect(lima?.district).toBe('Miraflores')
+  })
+
+  it('cambiar de distrito dentro de Lima descarta el pin del anterior', () => {
+    const s = run(base(),
+      LIMA_D,
+      { type: 'SET_LIMA_PIN', lat: -12.12, lng: -77.03 },
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Surquillo' },
+    )
+    expect(s.limaAddress?.district).toBe('Surquillo')
+    // El pin apuntaba a Miraflores: conservarlo mandaría al motorizado a la
+    // zona vieja con la dirección nueva.
+    expect(s.limaAddress?.lat).toBeNull()
+  })
+
+  it('sin distrito el error se reporta en el campo que el comprador sí ve', () => {
+    const s = run(base(),
+      { type: 'SET_WHATSAPP', whatsapp: '987654321' },
+      { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
+      { type: 'SET_DNI', dni: '12345678' },
+      { type: 'GOTO', step: 2 },
+    )
+    expect(validateStep(s).district).toBeTruthy()
+    expect(canAdvance(s)).toBe(false)
+  })
+})
+
 describe('máquina · derivados', () => {
   it('Lima no cobra adelanto y provincia sí', () => {
-    expect(run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' }).advanceAmount).toBe(ADVANCE_LIMA_PEN)
-    expect(run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' }).advanceAmount).toBe(ADVANCE_PROVINCIA_PEN)
+    expect(run(base(), LIMA_D).advanceAmount).toBe(ADVANCE_LIMA_PEN)
+    expect(run(base(), PROV_D).advanceAmount).toBe(ADVANCE_PROVINCIA_PEN)
   })
 
   it('el adelanto sale de la config, no de un número suelto en el reducer', () => {
     // Si esto falla es que alguien hardcodeó el monto: cambiar S/10 a S/15 debe
     // ser editar UNA línea de checkout.config.ts.
-    const s = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' })
+    const s = run(base(), PROV_D)
     expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN)
   })
 
   it('marca needsLocationConfirmation en Lima mientras no haya pin', () => {
-    const s = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' })
+    const s = run(base(), LIMA_D)
     expect(s.needsLocationConfirmation).toBe(true)
     const withPin = run(s, { type: 'SET_LIMA_PIN', lat: -12.05, lng: -77.04 })
     expect(withPin.needsLocationConfirmation).toBe(false)
@@ -43,8 +109,7 @@ describe('máquina · derivados', () => {
 
   it('una zona de visita semanal manda a agencia y avisa al comprador', () => {
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'Cusco', province: 'Cusco', district: 'Poroy' },
+      { type: 'SET_DISTRICT', department: 'Cusco', province: 'Cusco', district: 'Poroy' },
       { type: 'SET_COVERAGE', check: {
         result: 'BORDERLINE', city: 'CUSCO', eta: '72h (entrega 1 vez por semana)',
         tariff: 21.5, weekly: true, weekdaysOnly: false, zoned: false, reason: 'semanal',
@@ -60,8 +125,7 @@ describe('máquina · derivados', () => {
 
   it('domicilio prometido sin coordenada queda marcado para Logística', () => {
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'SET_COVERAGE', check: {
         result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 15.5,
         weekly: false, weekdaysOnly: false, zoned: false, reason: '',
@@ -74,8 +138,7 @@ describe('máquina · derivados', () => {
 
   it('IN_ZONE ofrece domicilio y OUT_OF_ZONE ofrece agencia', () => {
     const withCity = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
     )
     const cov = { city: 'TRUJILLO', eta: '48h', tariff: 15.5, weekly: false, weekdaysOnly: false, zoned: false, reason: '' }
     const inZone = run(withCity, { type: 'SET_COVERAGE', check: { ...cov, result: 'IN_ZONE' } })
@@ -86,8 +149,7 @@ describe('máquina · derivados', () => {
 
   it('guarda el recargo del courier sin tocar el adelanto del comprador', () => {
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'SET_COVERAGE', check: {
         result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 15.5,
         weekly: false, weekdaysOnly: false, zoned: true, reason: '',
@@ -101,9 +163,8 @@ describe('máquina · derivados', () => {
 
   it('cambiar de región descarta la data de la otra', () => {
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
-      { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' },
+      PROV_D,
     )
     expect(s.limaAddress).toBeNull()
     expect(s.provinciaConfig).not.toBeNull()
@@ -136,8 +197,7 @@ describe('validación', () => {
       { type: 'SET_WHATSAPP', whatsapp: '987654321' },
       { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
       { type: 'SET_DNI', dni: '12345678' },
-      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
-      { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' },
       { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
       { type: 'GOTO', step: 2 },
     )
@@ -150,8 +210,7 @@ describe('validación', () => {
       { type: 'SET_WHATSAPP', whatsapp: '987654321' },
       { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
       { type: 'SET_DNI', dni: '12345678' },
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'CHOOSE_AGENCY_BRANCH_FLOW' },
       { type: 'SET_AGENCY', agency: 'SHALOM' },
       { type: 'SET_AGENCY_BRANCH', branchId: '4' },
@@ -165,8 +224,7 @@ describe('validación', () => {
     // Antes caía a texto libre porque no había listado. Desde que se obtuvo su
     // buscador, las dos agencias se validan igual.
     const conOlva = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'SET_AGENCY', agency: 'OLVA' },
       { type: 'GOTO', step: 2 },
     )
@@ -177,8 +235,7 @@ describe('validación', () => {
 
   it('"OTRO" sigue aceptando texto libre: es la única sin listado', () => {
     const conOtro = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'SET_AGENCY', agency: 'OTRO' },
       { type: 'GOTO', step: 2 },
     )
@@ -191,7 +248,7 @@ describe('validación', () => {
   // cuadra el pago con la notificación que le llega a la marca, y la imagen no la
   // lee ninguna máquina. Ver VOUCHER_REQUIRED en checkout.config.ts.
   it('el paso 3 con adelanto exige el código de Yape, no la captura', () => {
-    const s = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' }, { type: 'GOTO', step: 3 })
+    const s = run(base(), PROV_D, { type: 'GOTO', step: 3 })
     expect(validateStep(s).yapeCode).toBeTruthy()
     expect(validateStep(s).voucher).toBeUndefined()
 
@@ -212,7 +269,7 @@ describe('validación', () => {
   it('Lima también adelanta, así que el paso 3 sí pide el código de Yape', () => {
     // Cuando Lima era contraentrega puro este paso no validaba nada. Ahora que
     // adelanta S/5 tiene que exigir lo mismo que provincia.
-    const s = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' }, { type: 'GOTO', step: 3 })
+    const s = run(base(), LIMA_D, { type: 'GOTO', step: 3 })
     expect(validateStep(s)).not.toEqual({})
   })
 
@@ -221,8 +278,7 @@ describe('validación', () => {
       { type: 'SET_WHATSAPP', whatsapp: '987654321' },
       { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
       { type: 'SET_DNI', dni: '12345678' },
-      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
-      { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' },
       { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
       // Lima ya no cierra sin adelanto: hace falta el código del Yape.
       { type: 'SET_YAPE_CODE', code: '195' },
@@ -240,8 +296,7 @@ describe('persistencia', () => {
     const s = run(base(),
       { type: 'SET_WHATSAPP', whatsapp: '987654321' },
       { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
-      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
-      { type: 'SET_LIMA_DISTRICT', district: 'Surquillo' },
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Surquillo' },
       { type: 'GOTO', step: 2 },
     )
     saveDraft(s)
@@ -608,7 +663,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
   const conDatos = (loc: 'LIMA' | 'PROVINCIA') => run(base(),
     { type: 'SET_WHATSAPP', whatsapp: '987654321' },
     { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Torres' },
-    { type: 'SET_LOCATION_TYPE', locationType: loc },
+    loc === 'LIMA' ? LIMA_D : PROV_D,
     { type: 'GOTO', step: 2 },
   )
 
@@ -617,7 +672,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
     // fricción. Ese argumento se cayó cuando Lima pasó a adelantar S/5: sin DNI
     // no hay con qué cuadrar el Yape ni con qué reconocer al cliente después.
     const s = run(conDatos('LIMA'),
-      { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' },
       { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
     )
     expect(validateStep(s).dni).toBeTruthy()
@@ -627,7 +682,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
 
   it('provincia SÍ pide DNI: la agencia lo exige para entregar', () => {
     const s = run(conDatos('PROVINCIA'),
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'CHOOSE_AGENCY_BRANCH_FLOW' },
       { type: 'SET_AGENCY', agency: 'SHALOM' },
       { type: 'SET_AGENCY_BRANCH', branchId: '4' },
@@ -641,8 +696,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
   it('cambiar de región no borra el DNI ya escrito', () => {
     const s = run(conDatos('PROVINCIA'),
       { type: 'SET_DNI', dni: '12345678' },
-      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
-      { type: 'SET_LIMA_DISTRICT', district: 'Miraflores' },
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' },
       { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
     )
     expect(s.customerInfo.dni).toBe('12345678')
@@ -650,14 +704,14 @@ describe('ajustes tras la revisión de Fase 2', () => {
   })
 
   it('el adelanto depende de la agencia: Olva cobra más flete que Shalom', () => {
-    const prov = run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' })
+    const prov = run(base(), PROV_D)
     expect(run(prov, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(20)
     expect(run(prov, { type: 'SET_AGENCY', agency: 'OLVA' }).advanceAmount).toBe(25)
   })
 
   it('cambiar de agencia recalcula el adelanto en ambos sentidos', () => {
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_AGENCY', agency: 'OLVA' },
     )
     expect(s.advanceAmount).toBe(25)
@@ -667,14 +721,14 @@ describe('ajustes tras la revisión de Fase 2', () => {
   it('Lima también adelanta: S/5 fijo', () => {
     // Era 0. El pedido falso no costaba nada de hacer y sí costaba el viaje del
     // motorizado; S/5 no espanta a quien va a comprar y sí a quien jugaba.
-    expect(run(base(), { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' }).advanceAmount).toBe(5)
+    expect(run(base(), LIMA_D).advanceAmount).toBe(5)
   })
 
   it('a domicilio en provincia cuesta más que recoger en agencia', () => {
     // El courier cobra bastante más que dejar el paquete en el mostrador, y sin
     // el método el cálculo caería al base de agencia regalando el diferencial.
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' },
     )
     expect(s.advanceAmount).toBe(30)
@@ -684,7 +738,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
     // Si no, el pedido saldría con agencia Y domicilio, y el adelanto cobrado
     // no calzaría con ninguno de los dos.
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_AGENCY', agency: 'OLVA' },
       { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' },
     )
@@ -707,7 +761,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
     // garantiza y ofrecer domicilio ahí es prometer de más.
     for (const result of ['OUT_OF_ZONE', 'BORDERLINE'] as const) {
       const s = run(initialCheckoutState('pack-2', 'B'),
-        { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+        PROV_D,
         { type: 'SET_COVERAGE', check: {
           result, city: 'PIURA', eta: '5 días', tariff: 0,
           weekly: false, weekdaysOnly: false, zoned: true, reason: '',
@@ -719,7 +773,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
 
   it('la variante B no autodecide el método: lo elige el comprador', () => {
     const b = run(initialCheckoutState('pack-2', 'B'),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_COVERAGE', check: {
         result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 0,
         weekly: false, weekdaysOnly: false, zoned: true, reason: '',
@@ -729,7 +783,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
 
     // La A sigue decidiendo sola: es justo lo que las separa.
     const a = run(initialCheckoutState('pack-2', 'A'),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_COVERAGE', check: {
         result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 0,
         weekly: false, weekdaysOnly: false, zoned: true, reason: '',
@@ -925,7 +979,7 @@ describe('elegir un punto de recojo', () => {
     // Van juntas a propósito: SET_AGENCY limpia la sede, así que despacharlas
     // por separado en el orden equivocado borraría la elección recién hecha.
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
     )
     expect(s.provinciaConfig?.selectedAgency).toBe('OLVA')
@@ -936,7 +990,7 @@ describe('elegir un punto de recojo', () => {
 
   it('cambiar de punto a otro courier mueve también el adelanto', () => {
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
       { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
     )
@@ -947,7 +1001,7 @@ describe('elegir un punto de recojo', () => {
 
   it('elegir un punto del listado descarta el texto libre de OTRO', () => {
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_AGENCY', agency: 'OTRO' },
       { type: 'SET_OLVA_TEXT', text: 'Marvisur Av. España' },
       { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
@@ -959,7 +1013,7 @@ describe('elegir un punto de recojo', () => {
     // Apuntar a uno concreto al volver sería reintroducir por la puerta de atrás
     // la constante que se borró: cuál corresponde lo dice la distancia.
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
+      PROV_D,
       { type: 'SET_AGENCY', agency: 'OTRO' },
       { type: 'SET_OLVA_TEXT', text: 'Marvisur Av. España' },
       { type: 'CLEAR_PICKUP_POINT' },
@@ -977,11 +1031,10 @@ describe('cambiar de distrito no deja rastros del anterior', () => {
     // salía a 500 km de donde vive. Y la nota del adelanto mostraba S/20 antes
     // de que el comprador eligiera nada.
     const s = run(base(),
-      { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+      { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
       { type: 'SET_AGENCY', agency: 'SHALOM' },
       { type: 'SET_AGENCY_BRANCH', branchId: '4' },
-      { type: 'SET_PROVINCIA_DISTRICT', department: 'Áncash', province: 'Carhuaz', district: 'Carhuaz' },
+      { type: 'SET_DISTRICT', department: 'Áncash', province: 'Carhuaz', district: 'Carhuaz' },
     )
     expect(s.provinciaConfig?.selectedAgency).toBeNull()
     expect(s.provinciaConfig?.selectedAgencyBranchId).toBeNull()
@@ -995,7 +1048,7 @@ describe('el paso 2 se revela de a poco', () => {
   it('el DNI incompleto no deja avanzar', () => {
     const s = run(base(),
       { type: 'SET_WHATSAPP', whatsapp: '987654321' },
-      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
+      LIMA_D,
       { type: 'SET_DNI', dni: '1234' },
     )
     expect(validateStep(s, 2).dni).toBeTruthy()
@@ -1004,7 +1057,7 @@ describe('el paso 2 se revela de a poco', () => {
   it('con el DNI completo, lo que falta es lo que sigue', () => {
     const s = run(base(),
       { type: 'SET_WHATSAPP', whatsapp: '987654321' },
-      { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
+      LIMA_D,
       { type: 'SET_DNI', dni: '12345678' },
     )
     const e = validateStep(s, 2)

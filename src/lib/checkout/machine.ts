@@ -7,7 +7,7 @@
 // directamente — se recalculan en `derive()` después de cada cambio.
 
 import { EXIT_DISCOUNT_PEN, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
-import { methodForCoverage } from './services/DistrictCoverageService'
+import { isLimaMetro, methodForCoverage } from './services/DistrictCoverageService'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
   LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig,
@@ -56,11 +56,14 @@ export type CheckoutAction =
   | { type: 'SET_DNI'; dni: string }
   | { type: 'SET_WHATSAPP'; whatsapp: string }
   | { type: 'SET_RECEIVER_NAME'; receiverName: string }
-  | { type: 'SET_LOCATION_TYPE'; locationType: LocationType }
-  | { type: 'SET_LIMA_DISTRICT'; district: string }
+  /**
+   * El distrito, y con él la región. Reemplaza a `SET_LOCATION_TYPE` +
+   * `SET_LIMA_DISTRICT` + `SET_PROVINCIA_DISTRICT`: el comprador elige UNA vez
+   * de entre los 483 distritos del país y `isLimaMetro()` decide la rama.
+   */
+  | { type: 'SET_DISTRICT'; department: string; province: string; district: string }
   | { type: 'SET_LIMA_ADDRESS'; addressText?: string; reference?: string }
   | { type: 'SET_LIMA_PIN'; lat: number; lng: number; addressText?: string }
-  | { type: 'SET_PROVINCIA_DISTRICT'; department: string; province: string; district: string }
   | { type: 'SET_PROVINCIA_PIN'; lat: number; lng: number }
   | { type: 'SET_COVERAGE'; check: DistrictCoverage }
   /** El comprador ignora el mapa o insiste en domicilio: manda su elección. */
@@ -87,7 +90,10 @@ export type CheckoutAction =
   | { type: 'ERROR' }
   | { type: 'RESTORE'; state: CheckoutState }
 
-const EMPTY_LIMA: LimaAddress = { district: null, lat: null, lng: null, addressText: '', reference: '' }
+const EMPTY_LIMA: LimaAddress = {
+  department: null, province: null, district: null,
+  lat: null, lng: null, addressText: '', reference: '',
+}
 const EMPTY_PROVINCIA: ProvinciaConfig = {
   department: null, province: null, district: null, city: null, eta: null,
   lat: null, lng: null, coverageResult: null, deliveryMethod: null,
@@ -145,50 +151,45 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     case 'SET_RECEIVER_NAME':
       return derive({ ...state, customerInfo: { ...state.customerInfo, receiverName: action.receiverName } })
 
-    case 'SET_LOCATION_TYPE': {
-      if (state.locationType === action.locationType) return state
+    // El distrito determina la región: `isLimaMetro()` ya sabía la respuesta que
+    // antes se le preguntaba al comprador con el toggle Lima/Provincia.
+    case 'SET_DISTRICT': {
+      const { department, province, district } = action
+      const next: LocationType = isLimaMetro({ department, province }) ? 'LIMA' : 'PROVINCIA'
+      const sameRegion = state.locationType === next
+
       // Cambiar de región invalida lo capturado de la otra: no se arrastra un
       // distrito de Lima a un pedido de provincia.
-      return derive({
-        ...state,
-        locationType: action.locationType,
-        limaAddress: action.locationType === 'LIMA' ? { ...EMPTY_LIMA } : null,
-        provinciaConfig: action.locationType === 'PROVINCIA' ? { ...EMPTY_PROVINCIA } : null,
-        courierSurcharge: null,
-        deliveryNote: null,
-      })
-    }
+      if (!sameRegion) {
+        return derive({
+          ...state,
+          locationType: next,
+          limaAddress: next === 'LIMA' ? { ...EMPTY_LIMA, department, province, district } : null,
+          provinciaConfig: next === 'PROVINCIA'
+            ? { ...EMPTY_PROVINCIA, department, province, district, coverageResult: 'NOT_CHECKED' }
+            : null,
+          courierSurcharge: null,
+          deliveryNote: null,
+        })
+      }
 
-    case 'SET_LIMA_DISTRICT':
-      return derive({ ...state, limaAddress: { ...lima(), district: action.district } })
+      if (next === 'LIMA') {
+        if (lima().district === district && lima().province === province) return state
+        // Otro distrito de Lima: la dirección escrita para el anterior ya no
+        // corresponde, pero el pin sí se descarta — apunta a la zona vieja.
+        return derive({ ...state, limaAddress: { ...lima(), department, province, district, lat: null, lng: null } })
+      }
 
-    case 'SET_LIMA_ADDRESS':
-      return derive({ ...state, limaAddress: {
-        ...lima(),
-        addressText: action.addressText ?? lima().addressText,
-        reference: action.reference ?? lima().reference,
-      } })
-
-    case 'SET_LIMA_PIN':
-      return derive({ ...state, limaAddress: {
-        ...lima(),
-        lat: action.lat,
-        lng: action.lng,
-        // El reverse geocoding NO pisa lo que el comprador ya escribió.
-        addressText: lima().addressText || action.addressText || '',
-      } })
-
-    case 'SET_PROVINCIA_DISTRICT': {
       const p = prov()
-      if (p.district === action.district && p.province === action.province && p.department === action.department) return state
+      if (p.district === district && p.province === province && p.department === department) return state
       // Otro distrito → el veredicto anterior ya no aplica.
       return derive({
         ...state,
         provinciaConfig: {
           ...p,
-          department: action.department,
-          province: action.province,
-          district: action.district,
+          department,
+          province,
+          district,
           city: null,
           eta: null,
           lat: null, lng: null,
@@ -210,6 +211,22 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         deliveryNote: null,
       })
     }
+
+    case 'SET_LIMA_ADDRESS':
+      return derive({ ...state, limaAddress: {
+        ...lima(),
+        addressText: action.addressText ?? lima().addressText,
+        reference: action.reference ?? lima().reference,
+      } })
+
+    case 'SET_LIMA_PIN':
+      return derive({ ...state, limaAddress: {
+        ...lima(),
+        lat: action.lat,
+        lng: action.lng,
+        // El reverse geocoding NO pisa lo que el comprador ya escribió.
+        addressText: lima().addressText || action.addressText || '',
+      } })
 
     case 'SET_PROVINCIA_PIN':
       return derive({ ...state, provinciaConfig: { ...prov(), lat: action.lat, lng: action.lng } })
