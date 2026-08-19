@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react'
 import { Home, PackageCheck, Store } from 'lucide-react'
-import { ADVANCE_AGENCY_FROM_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN, COPY } from '../../../lib/checkout/checkout.config'
+import { COPY } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState } from '../../../lib/checkout/types'
@@ -150,20 +150,14 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
 
           <AgencyPicker
             near={center}
-          isProvincia={true}
             agency={state.pickup.agency}
             branchId={state.pickup.branchId}
-            freeText={state.pickup.freeText}
             errorAgency={errors.agency}
             errorBranch={errors.agencyBranch}
             onSelectPoint={(agency, branchId) => {
               dispatch({ type: 'SET_PICKUP_POINT', agency, branchId })
               touch('agency'); touch('agencyBranch')
             }}
-            onChooseOther={() => { dispatch({ type: 'SET_AGENCY', agency: 'OTRO' }); touch('agency') }}
-            onBackToList={() => dispatch({ type: 'CLEAR_PICKUP_POINT' })}
-            onFreeText={text => dispatch({ type: 'SET_OLVA_TEXT', text })}
-            onBlur={() => touch('agencyBranch')}
           />
 
           {/* Si llegó aquí desde una cobertura válida, puede volver a domicilio
@@ -205,10 +199,10 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
 }
 
 // ─── Casa o agencia (variante B) ─────────────────────────────────────────────
-// Dos tarjetas con el precio DENTRO. El adelanto es la única diferencia real
-// entre las dos opciones, así que esconderlo hasta el paso del pago convertiría
-// la elección en una sorpresa: el comprador elige "en casa" pensando que es
-// gratis y descubre S/30 dos pantallas después.
+// Las tarjetas llevaban su adelanto dentro porque el monto era la diferencia
+// real entre las dos (S/30 contra S/20). Desde que el adelanto es un porcentaje
+// del pedido, las dos cobran lo mismo: mostrar la cifra dos veces sugería una
+// diferencia de precio que ya no existe.
 function MethodPicker({ onPick }: { onPick: (m: 'DOMICILIO' | 'AGENCIA') => void }) {
   return (
     <div>
@@ -225,9 +219,6 @@ function MethodPicker({ onPick }: { onPick: (m: 'DOMICILIO' | 'AGENCIA') => void
             <Home size={18} style={{ color: 'var(--brand)' }} />
             <p className="text-sm font-black text-gray-900 mt-1.5">En mi casa</p>
             <p className="text-[11px] text-gray-500">Te lo llevan a la puerta</p>
-            <p className="text-[11px] font-black mt-1" style={{ color: 'var(--brand)' }}>
-              Adelanto S/{ADVANCE_PROVINCIA_DOMICILIO_PEN}
-          </p>
         </button>
         <button
           type="button"
@@ -240,9 +231,6 @@ function MethodPicker({ onPick }: { onPick: (m: 'DOMICILIO' | 'AGENCIA') => void
               se suma uno, y no le dice nada al comprador: lo que le importa es
               que el punto le quede cerca, no de quién es. */}
           <p className="text-[11px] text-gray-500">En un punto cerca de ti</p>
-          <p className="text-[11px] font-black mt-1" style={{ color: 'var(--brand)' }}>
-            Desde S/{ADVANCE_AGENCY_FROM_PEN}
-          </p>
         </button>
       </div>
     </div>

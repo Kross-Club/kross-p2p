@@ -7,12 +7,13 @@
 // directamente — se recalculan en `derive()` después de cada cambio.
 
 import { CULQI_OTP_LENGTH, EXIT_DISCOUNT_PEN, PHONE_LENGTH_PE, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
+import { effectivePrice } from './product-packs'
 import { isLimaMetro, methodForCoverage } from './services/DistrictCoverageService'
 import { resolveVariant } from './variant'
 import type { CheckoutAbMode } from './variant'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
-  LimaAddress, LocationType, PackId, PaymentVerification, PickupPoint, ProvinciaConfig, StoreCulqi,
+  AdvanceChoice, LimaAddress, LocationType, PackId, PaymentVerification, PickupPoint, ProvinciaConfig, StoreCulqi,
 } from './types'
 
 /** uuid v4. `randomUUID` exige contexto seguro; el fallback cubre dev por http. */
@@ -36,6 +37,8 @@ export function initialCheckoutState(
     orderId: newOrderId(),
     step: 1,
     selectedPack,
+    packPrice: 0,
+    advanceChoice: 'HALF',
     variant,
     homeDeliveryEnabled,
     customerInfo: { dni: '', whatsapp: '', receiverName: '' },
@@ -61,7 +64,10 @@ export function initialCheckoutState(
 }
 
 export type CheckoutAction =
-  | { type: 'SET_PACK'; packId: PackId }
+  /** El precio viaja con el pack porque el adelanto es un porcentaje del
+   *  pedido: sin él, `derive()` no puede calcular el monto. */
+  | { type: 'SET_PACK'; packId: PackId; price: number }
+  | { type: 'SET_ADVANCE_CHOICE'; choice: AdvanceChoice }
   | { type: 'SET_DNI'; dni: string }
   | { type: 'SET_WHATSAPP'; whatsapp: string }
   | { type: 'SET_RECEIVER_NAME'; receiverName: string }
@@ -131,9 +137,10 @@ function derive(state: CheckoutState): CheckoutState {
     : state
 
   const isProvincia = s.locationType === 'PROVINCIA'
-  // El adelanto sale del destino Y de la agencia: Olva cobra más flete que
-  // Shalom. A domicilio (sin agencia) va el base.
-  const advanceAmount = advanceFor(isProvincia, s.pickup.agency, s.deliveryMethod)
+  // El adelanto es un porcentaje del pedido, no una tabla por destino: la mitad
+  // como mínimo, o el total si el comprador lo elige. Sobre el precio EFECTIVO,
+  // para no adelantar sobre plata que el descuento ya le quitó.
+  const advanceAmount = advanceFor(effectivePrice(s.packPrice, s.discountPen), s.advanceChoice)
 
   // El pedido se cierra SIN coordenada: la cobertura se decide por distrito. La
   // marca queda para que Logística afine la dirección después (AddressBar en el
@@ -164,7 +171,10 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       return derive(action.state)
 
     case 'SET_PACK':
-      return derive({ ...state, selectedPack: action.packId })
+      return derive({ ...state, selectedPack: action.packId, packPrice: action.price })
+
+    case 'SET_ADVANCE_CHOICE':
+      return derive({ ...state, advanceChoice: action.choice })
 
     case 'SET_DNI':
       return derive({ ...state, customerInfo: { ...state.customerInfo, dni: action.dni.replace(/\D/g, '') } })

@@ -10,8 +10,8 @@
 // El resumen va PRIMERO en los dos casos: antes de pedirle plata hay que
 // recordarle qué lleva y a dónde llega.
 
-import { COPY, YAPE_CODE_LENGTH } from '../../../lib/checkout/checkout.config'
-import type { CheckoutState } from '../../../lib/checkout/types'
+import { COPY, YAPE_CODE_LENGTH, advanceFor } from '../../../lib/checkout/checkout.config'
+import type { AdvanceChoice, CheckoutState } from '../../../lib/checkout/types'
 import type { FieldErrors } from '../../../lib/checkout/validation'
 import type { StoreYape } from '../CheckoutModal'
 import YapeCodeHint from '../YapeCodeHint'
@@ -35,12 +35,13 @@ interface Step3Props {
   onCulqiPhone: (phone: string) => void
   onCulqiOtp: (otp: string) => void
   onVoucher: (file: File) => Promise<void>
+  onAdvanceChoice: (choice: AdvanceChoice) => void
   submitError: string | null
 }
 
 export default function Step3Confirm({
   state, packName, price, yape, culqi, errors, touch, onYapeCode,
-  onCulqiPhone, onCulqiOtp, onVoucher, submitError,
+  onCulqiPhone, onCulqiOtp, onVoucher, onAdvanceChoice, submitError,
 }: Step3Props) {
   const advance = state.advanceAmount
   const isProvincia = state.locationType === 'PROVINCIA'
@@ -72,10 +73,17 @@ export default function Step3Confirm({
             <Row label="Adelantas ahora" value={`S/${advance}`} strong accent />
             {/* El saldo explícito evita el reclamo de "pensé que ya había pagado
                 todo". Es la cifra que el comprador va a recordar. */}
-            <Row label="Pagas al recoger" value={`S/${Math.max(0, price - advance)}`} />
+            <Row
+              label={state.deliveryMethod === 'AGENCIA' ? 'Pagas al recoger' : 'Pagas al recibir'}
+              value={`S/${Math.max(0, price - advance)}`}
+            />
           </>
         )}
       </dl>
+
+      {price > 0 && (
+        <AdvancePicker price={price} choice={state.advanceChoice} onPick={onAdvanceChoice} />
+      )}
 
       {state.deliveryNote && (
         <p className="text-[11px] text-amber-700 bg-amber-50 rounded-xl px-3 py-2 mb-4">
@@ -132,6 +140,59 @@ export default function Step3Confirm({
         </p>
       )}
     </>
+  )
+}
+
+// ─── Cuánto adelanta ─────────────────────────────────────────────────────────
+// La mitad es el mínimo; el total es opcional. Se pregunta ACÁ y no en el paso 2
+// porque es lo último antes de yapear: preguntarlo antes obligaba al comprador a
+// decidir sobre un monto que todavía podía cambiar de pack.
+//
+// Las dos tarjetas muestran el reparto completo —lo de ahora Y lo que queda—
+// porque la duda real no es "cuánto pago" sino "cuánto me falta después".
+
+function AdvancePicker({ price, choice, onPick }: {
+  price: number
+  choice: AdvanceChoice
+  onPick: (c: AdvanceChoice) => void
+}) {
+  const options: { id: AdvanceChoice; title: string; now: number }[] = [
+    { id: 'HALF', title: 'Pago la mitad ahora', now: advanceFor(price, 'HALF') },
+    { id: 'FULL', title: 'Pago todo ahora', now: advanceFor(price, 'FULL') },
+  ]
+
+  return (
+    <div className="mb-4">
+      <p className="text-xs font-black text-gray-700 mb-2">¿Cuánto quieres adelantar? *</p>
+      <div className="space-y-2" role="radiogroup" aria-label="¿Cuánto quieres adelantar?">
+        {options.map(({ id, title, now }) => {
+          const active = choice === id
+          const rest = Math.max(0, price - now)
+          return (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onPick(id)}
+              className={`w-full text-left rounded-2xl px-4 py-3 border-2 transition-all
+                focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500
+                ${active ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className={`text-sm font-black ${active ? 'text-green-800' : 'text-gray-900'}`}>
+                  {title}
+                </span>
+                <span className="text-sm font-black" style={{ color: 'var(--brand)' }}>S/{now}</span>
+              </span>
+              <span className="block text-[11px] text-gray-500 mt-0.5">
+                {rest > 0 ? `Te quedan S/${rest} por pagar al recibirlo.` : 'Ya no pagas nada al recibirlo.'}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

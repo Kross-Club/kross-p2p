@@ -411,6 +411,10 @@ REVOKE ALL ON store_secrets FROM anon, authenticated;
 -- Sin esto, un doble tap en "Terminar pedido" con 4G lenta crea dos pedidos.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS checkout_id          uuid;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_amount       numeric DEFAULT 0;
+-- Mitad (mínimo) o total. El adelanto dejó de ser una tabla por destino y pasó a
+-- ser un porcentaje del pedido, así que `culqi-charge` necesita saber cuál de
+-- las dos eligió el comprador para volver a derivar el mismo monto y cobrarlo.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_choice       text DEFAULT 'HALF'; -- HALF | FULL
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_voucher_url  text;
 -- Código de seguridad que TECLEA el comprador. Es la llave fuerte del cruce.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_yape_code    text;

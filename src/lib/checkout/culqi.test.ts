@@ -9,8 +9,7 @@ import type { CheckoutAction } from './machine'
 import { validateStep } from './validation'
 import { loadActiveDraft, loadLastOrder, saveDraft, saveLastOrder, clearAdvancePending } from './persistence'
 import {
-  ADVANCE_BY_AGENCY, ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN,
-  ADVANCE_PROVINCIA_PEN, culqiActiveFor,
+  advanceFor, culqiActiveFor,
 } from './checkout.config'
 import { advanceForServer } from '../../../supabase/functions/_shared/advance.ts'
 import { errorForLog, extractWebhookChargeId, extractWebhookStoreId } from '../../../supabase/functions/_shared/culqi.ts'
@@ -28,7 +27,11 @@ const CULQI_ALL: StoreCulqi = { enabled: true, scope: 'ALL' }
 const CULQI_PROV: StoreCulqi = { enabled: true, scope: 'PROVINCIA' }
 
 /** Pedido de provincia por agencia, con los datos del paso 2 completos. */
+/** Precio del pack de prueba. El adelanto es un porcentaje de él. */
+const PRECIO = 140
+
 const provincia = (culqi: StoreCulqi | null) => run(base(),
+  { type: 'SET_PACK', packId: 'pack-2', price: PRECIO },
   { type: 'SET_CULQI_CONFIG', culqi },
   { type: 'SET_WHATSAPP', whatsapp: '987654321' },
   { type: 'SET_DNI', dni: '12345678' },
@@ -38,6 +41,7 @@ const provincia = (culqi: StoreCulqi | null) => run(base(),
 )
 
 const lima = (culqi: StoreCulqi | null) => run(base(),
+  { type: 'SET_PACK', packId: 'pack-2', price: PRECIO },
   { type: 'SET_CULQI_CONFIG', culqi },
   { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' },
 )
@@ -111,7 +115,7 @@ describe('máquina · acciones Culqi', () => {
       { type: 'SET_CULQI_CONFIG', culqi: CULQI_PROV },
     )
     expect(after.advanceAmount).toBe(before.advanceAmount)
-    expect(after.advanceAmount).toBe(ADVANCE_BY_AGENCY.SHALOM)
+    expect(after.advanceAmount).toBe(PRECIO / 2)
   })
 })
 
@@ -164,20 +168,37 @@ describe('persistencia · los campos Culqi y el borrador', () => {
   })
 })
 
-describe('paridad front ↔ server de la tabla de adelantos', () => {
+describe('paridad front ↔ server del adelanto', () => {
   // Si esto falla, register-buyer y el checkout derivan montos DISTINTOS y el
-  // server va a pisar (con warning) lo que el comprador vio. Las dos tablas
+  // server va a pisar (con warning) lo que el comprador vio. Las dos reglas
   // tienen que moverse juntas: checkout.config.ts y _shared/advance.ts.
-  it('Lima', () => {
-    expect(advanceForServer('MOTORIZADO_LIMA', null)).toBe(ADVANCE_LIMA_PEN)
+  //
+  // Ya no es una tabla por destino: es un porcentaje del pedido, así que la
+  // paridad se prueba sobre precios y no sobre combinaciones de despacho.
+  it('la mitad, con el mismo redondeo en los dos lados', () => {
+    for (const price of [35, 60, 110, 139, 189, 259, 270]) {
+      expect(advanceForServer(price, 'HALF')).toBe(advanceFor(price, 'HALF'))
+    }
   })
-  it('domicilio en provincia', () => {
-    expect(advanceForServer('MOTORIZADO_PROVINCIA', null)).toBe(ADVANCE_PROVINCIA_DOMICILIO_PEN)
+
+  it('el total, idéntico en los dos lados', () => {
+    for (const price of [35, 139, 270]) {
+      expect(advanceForServer(price, 'FULL')).toBe(advanceFor(price, 'FULL'))
+    }
   })
-  it('agencias', () => {
-    expect(advanceForServer('AGENCIA_PROVINCIA', 'SHALOM')).toBe(ADVANCE_BY_AGENCY.SHALOM)
-    expect(advanceForServer('AGENCIA_PROVINCIA', 'OLVA')).toBe(ADVANCE_BY_AGENCY.OLVA)
-    expect(advanceForServer('AGENCIA_PROVINCIA', 'OTRO')).toBe(ADVANCE_PROVINCIA_PEN)
+
+  it('un precio imposible no cobra nada, en ninguno de los dos', () => {
+    for (const bad of [0, -10, Number.NaN]) {
+      expect(advanceForServer(bad, 'HALF')).toBe(0)
+      expect(advanceFor(bad, 'HALF')).toBe(0)
+    }
+  })
+
+  it('el server trata cualquier choice desconocida como la mitad', () => {
+    // Llega del body: lo que no sea 'FULL' tiene que caer en el mínimo, nunca
+    // en cobrar de más ni en cobrar cero.
+    expect(advanceForServer(140, null)).toBe(70)
+    expect(advanceForServer(140, 'lo-que-sea')).toBe(70)
   })
 })
 
