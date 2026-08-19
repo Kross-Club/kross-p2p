@@ -165,6 +165,16 @@ export default function CheckoutModal({
   const pack = packs.find(p => p.id === state.selectedPack) ?? null
   const price = pack ? effectivePrice(pack.precio, state.discountPen) : 0
 
+  // El pack PRESELECCIONADO entra al estado sin pasar por `onSelect`, así que su
+  // precio no llegaría solo — y el adelanto, que ahora es un porcentaje del
+  // pedido, saldría 0 hasta que el comprador tocara otro pack. Se sincroniza
+  // aquí, que es el único lugar que conoce los precios.
+  useEffect(() => {
+    if (pack && state.packPrice !== pack.precio) {
+      dispatch({ type: 'SET_PACK', packId: pack.id, price: pack.precio })
+    }
+  }, [pack?.id, pack?.precio]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Fase 2 · el cobro. Solo existe con Culqi activo. ─────────────────────
   // Toma el teléfono y el OTP del estado EN el momento de cobrar, y el pedido
   // de la referencia explícita — jamás de un closure viejo.
@@ -334,7 +344,10 @@ export default function CheckoutModal({
               selected={state.selectedPack}
               bestPackId={bestPackId}
               discountPen={state.discountPen}
-              onSelect={packId => dispatch({ type: 'SET_PACK', packId })}
+              onSelect={packId => dispatch({
+                type: 'SET_PACK', packId,
+                price: packs.find(p => p.id === packId)?.precio ?? 0,
+              })}
             />
           )}
 
@@ -354,6 +367,7 @@ export default function CheckoutModal({
               onYapeCode={code => dispatch({ type: 'SET_YAPE_CODE', code })}
               onCulqiPhone={phone => dispatch({ type: 'SET_CULQI_PHONE', phone })}
               onCulqiOtp={otp => dispatch({ type: 'SET_CULQI_OTP', otp })}
+              onAdvanceChoice={choice => dispatch({ type: 'SET_ADVANCE_CHOICE', choice })}
               onVoucher={onVoucher}
               submitError={submitError}
             />

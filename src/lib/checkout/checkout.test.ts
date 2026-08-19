@@ -7,7 +7,7 @@ import { checkoutReducer, initialCheckoutState } from './machine'
 import type { CheckoutAction } from './machine'
 import { canAdvance, canSubmit, validateStep, validateWhatsapp } from './validation'
 import { clearDraft, loadActiveDraft, loadLastOrder, saveDraft, saveLastOrder } from './persistence'
-import { ADVANCE_LIMA_PEN, ADVANCE_PROVINCIA_DOMICILIO_PEN, ADVANCE_PROVINCIA_PEN, BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN } from './checkout.config'
+import { BORDERLINE_THRESHOLD_M, EXIT_DISCOUNT_PEN, advanceFor } from './checkout.config'
 import { effectivePrice } from './product-packs'
 import { dispatchTypeFor } from './services/OrderService'
 import { isPickupDispatch } from '../session'
@@ -23,6 +23,12 @@ const run = (state: CheckoutState, ...actions: CheckoutAction[]): CheckoutState 
   actions.reduce(checkoutReducer, state)
 
 const base = () => initialCheckoutState('pack-2')
+
+/** El adelanto es un porcentaje del pedido, así que sin precio en el estado sale
+ *  0 y no hay nada que verificar. 140 parte limpio en dos. */
+const PRECIO = 140
+const PACK: CheckoutAction = { type: 'SET_PACK', packId: 'pack-2', price: PRECIO }
+const conPack = () => run(base(), PACK)
 
 // Elegir distrito es lo ÚNICO que fija la región: `locationType` se deriva de él
 // vía `isLimaMetro()`. Antes había un toggle Lima/Provincia y estas dos
@@ -163,7 +169,6 @@ describe('recojo en agencia · las dos regiones', () => {
   it('volver a "en casa" descarta el punto, para que no salgan los dos', () => {
     const s = run(conPunto(PROV_D), { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' })
     expect(s.pickup.agency).toBeNull()
-    expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_DOMICILIO_PEN)
   })
 })
 
@@ -237,16 +242,31 @@ describe('tienda solo con recojo en agencia', () => {
 })
 
 describe('máquina · derivados', () => {
-  it('Lima no cobra adelanto y provincia sí', () => {
-    expect(run(base(), LIMA_D).advanceAmount).toBe(ADVANCE_LIMA_PEN)
-    expect(run(base(), PROV_D).advanceAmount).toBe(ADVANCE_PROVINCIA_PEN)
+  it('el adelanto es la mitad del pedido, en las dos regiones', () => {
+    expect(run(conPack(), LIMA_D).advanceAmount).toBe(PRECIO / 2)
+    expect(run(conPack(), PROV_D).advanceAmount).toBe(PRECIO / 2)
+  })
+
+  it('sin pack elegido no hay adelanto que cobrar', () => {
+    expect(run(base(), PROV_D).advanceAmount).toBe(0)
   })
 
   it('el adelanto sale de la config, no de un número suelto en el reducer', () => {
-    // Si esto falla es que alguien hardcodeó el monto: cambiar S/10 a S/15 debe
-    // ser editar UNA línea de checkout.config.ts.
-    const s = run(base(), PROV_D)
-    expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN)
+    // Si esto falla es que alguien hardcodeó la proporción: cambiar la mitad por
+    // otra parte debe ser editar UNA línea de checkout.config.ts.
+    expect(run(conPack(), PROV_D).advanceAmount).toBe(advanceFor(PRECIO, 'HALF'))
+  })
+
+  it('pagar todo deja el saldo en cero', () => {
+    const s = run(conPack(), PROV_D, { type: 'SET_ADVANCE_CHOICE', choice: 'FULL' })
+    expect(s.advanceAmount).toBe(PRECIO)
+  })
+
+  it('el descuento de retención baja también el adelanto', () => {
+    // Adelantar sobre un precio que el comprador ya no va a pagar le cobra de
+    // más justo después de haberle prometido un descuento.
+    const s = run(conPack(), PROV_D, { type: 'APPLY_EXIT_DISCOUNT' })
+    expect(s.advanceAmount).toBe(advanceFor(PRECIO - EXIT_DISCOUNT_PEN, 'HALF'))
   })
 
   it('marca needsLocationConfirmation en Lima mientras no haya pin', () => {
@@ -305,9 +325,8 @@ describe('máquina · derivados', () => {
       } },
     )
     expect(s.courierSurcharge).toBe(15.5)
-    // El recargo del courier (15.5) NO se le traslada: el comprador paga el
-    // adelanto de domicilio (30), que la cobertura IN_ZONE eligió sola.
-    expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_DOMICILIO_PEN)
+    // El recargo del courier (15.5) sigue sin trasladarse al comprador: lo que
+    // él adelanta sale de SU pedido, no del costo del flete.
   })
 
   it('cambiar de región descarta la data de la otra', () => {
@@ -397,7 +416,7 @@ describe('validación', () => {
   // cuadra el pago con la notificación que le llega a la marca, y la imagen no la
   // lee ninguna máquina. Ver VOUCHER_REQUIRED en checkout.config.ts.
   it('el paso 3 con adelanto exige el código de Yape, no la captura', () => {
-    const s = run(base(), PROV_D, { type: 'GOTO', step: 3 })
+    const s = run(conPack(), PROV_D, { type: 'GOTO', step: 3 })
     expect(validateStep(s).yapeCode).toBeTruthy()
     expect(validateStep(s).voucher).toBeUndefined()
 
@@ -417,8 +436,8 @@ describe('validación', () => {
 
   it('Lima también adelanta, así que el paso 3 sí pide el código de Yape', () => {
     // Cuando Lima era contraentrega puro este paso no validaba nada. Ahora que
-    // adelanta S/5 tiene que exigir lo mismo que provincia.
-    const s = run(base(), LIMA_D, { type: 'GOTO', step: 3 })
+    // adelanta la mitad tiene que exigir lo mismo que provincia.
+    const s = run(conPack(), LIMA_D, { type: 'GOTO', step: 3 })
     expect(validateStep(s)).not.toEqual({})
   })
 
@@ -466,9 +485,8 @@ describe('persistencia', () => {
   it('sube a la raíz el punto de recojo de un borrador de la versión anterior', () => {
     // El método y la sede vivían dentro de `provinciaConfig` hasta que recoger
     // en agencia dejó de ser cosa de provincia. Sin migrarlos, quien tenía su
-    // Shalom ya elegido volvía a un checkout sin método ni sede — y como el
-    // adelanto se DERIVA de ellos, además veía el monto equivocado.
-    const s = run(base(), PROV_D, { type: 'GOTO', step: 2 })
+    // Shalom ya elegido volvía a un checkout sin método ni sede.
+    const s = run(conPack(), PROV_D, { type: 'GOTO', step: 2 })
     saveDraft(s)
 
     const key = `kross_checkout:${s.orderId}`
@@ -488,8 +506,10 @@ describe('persistencia', () => {
     expect(restored?.deliveryMethod).toBe('AGENCIA')
     expect(restored?.pickup.agency).toBe('OLVA')
     expect(restored?.pickup.branchId).toBe('695')
-    // Y el adelanto vuelve a calzar con el courier recuperado.
-    expect(checkoutReducer(restored!, { type: 'RESTORE', state: restored! }).advanceAmount).toBe(25)
+    // Y el adelanto sobrevive al viaje: sale del precio del pack, que el
+    // borrador también guarda.
+    expect(checkoutReducer(restored!, { type: 'RESTORE', state: restored! }).advanceAmount)
+      .toBe(advanceFor(PRECIO, 'HALF'))
   })
 
   it('descarta borradores vencidos', () => {
@@ -904,47 +924,28 @@ describe('ajustes tras la revisión de Fase 2', () => {
     expect(canAdvance(s)).toBe(true)
   })
 
-  it('el adelanto depende de la agencia: Olva cobra más flete que Shalom', () => {
-    const prov = run(base(), PROV_D)
-    expect(run(prov, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(20)
-    expect(run(prov, { type: 'SET_AGENCY', agency: 'OLVA' }).advanceAmount).toBe(25)
-  })
+  // Aquí vivían cuatro tests de la tabla vieja —Olva S/25 contra Shalom S/20,
+  // Lima S/5 fijo, domicilio en provincia S/30—. Esa tabla ya no existe: el
+  // adelanto es un porcentaje del pedido y el destino no lo mueve.
 
-  it('cambiar de agencia recalcula el adelanto en ambos sentidos', () => {
-    const s = run(base(),
-      PROV_D,
-      { type: 'SET_AGENCY', agency: 'OLVA' },
-    )
-    expect(s.advanceAmount).toBe(25)
-    expect(run(s, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(20)
-  })
-
-  it('Lima también adelanta: S/5 fijo', () => {
-    // Era 0. El pedido falso no costaba nada de hacer y sí costaba el viaje del
-    // motorizado; S/5 no espanta a quien va a comprar y sí a quien jugaba.
-    expect(run(base(), LIMA_D).advanceAmount).toBe(5)
-  })
-
-  it('a domicilio en provincia cuesta más que recoger en agencia', () => {
-    // El courier cobra bastante más que dejar el paquete en el mostrador, y sin
-    // el método el cálculo caería al base de agencia regalando el diferencial.
-    const s = run(base(),
-      PROV_D,
-      { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' },
-    )
-    expect(s.advanceAmount).toBe(30)
+  it('ni la agencia ni el método mueven el adelanto', () => {
+    const prov = run(conPack(), PROV_D)
+    const mitad = advanceFor(PRECIO, 'HALF')
+    expect(run(prov, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(mitad)
+    expect(run(prov, { type: 'SET_AGENCY', agency: 'OLVA' }).advanceAmount).toBe(mitad)
+    expect(run(prov, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' }).advanceAmount).toBe(mitad)
+    expect(run(conPack(), LIMA_D).advanceAmount).toBe(mitad)
   })
 
   it('elegir "en casa" después de una agencia limpia la agencia', () => {
-    // Si no, el pedido saldría con agencia Y domicilio, y el adelanto cobrado
-    // no calzaría con ninguno de los dos.
-    const s = run(base(),
+    // Si no, el pedido saldría con agencia Y domicilio, y Logística lo leería
+    // como los dos a la vez.
+    const s = run(conPack(),
       PROV_D,
       { type: 'SET_AGENCY', agency: 'OLVA' },
       { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' },
     )
     expect(s.pickup.agency).toBeNull()
-    expect(s.advanceAmount).toBe(30)
   })
 
   it('el borrador no congela la variante: la URL sigue mandando', () => {
@@ -1217,28 +1218,32 @@ describe('las dos ramas del checkout cubren TODO el país', () => {
 })
 
 describe('elegir un punto de recojo', () => {
-  it('fija agencia y sede en una sola acción, y recalcula el adelanto', () => {
+  it('fija agencia y sede en una sola acción', () => {
     // Van juntas a propósito: SET_AGENCY limpia la sede, así que despacharlas
     // por separado en el orden equivocado borraría la elección recién hecha.
-    const s = run(base(),
+    const s = run(conPack(),
       PROV_D,
       { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
     )
     expect(s.pickup.agency).toBe('OLVA')
     expect(s.pickup.branchId).toBe('695')
-    // El adelanto sale del courier del punto: Olva cobra más flete que Shalom.
-    expect(s.advanceAmount).toBe(25)
   })
 
-  it('cambiar de punto a otro courier mueve también el adelanto', () => {
-    const s = run(base(),
+  it('cambiar de punto a otro courier NO mueve el adelanto', () => {
+    // Hubo una tabla de adelanto por courier (Olva cobraba más flete que
+    // Shalom). Se borró: el adelanto es la mitad del pedido y punto, así que
+    // cambiar de sede ya no puede reescribir el monto que el comprador vio.
+    const s = run(conPack(),
       PROV_D,
       { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
-      { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
     )
-    expect(s.pickup.agency).toBe('SHALOM')
-    expect(s.pickup.branchId).toBe('4')
-    expect(s.advanceAmount).toBe(ADVANCE_PROVINCIA_PEN)
+    const mitad = advanceFor(PRECIO, 'HALF')
+    expect(s.advanceAmount).toBe(mitad)
+
+    const otro = run(s, { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' })
+    expect(otro.pickup.agency).toBe('SHALOM')
+    expect(otro.pickup.branchId).toBe('4')
+    expect(otro.advanceAmount).toBe(mitad)
   })
 
   it('elegir un punto del listado descarta el texto libre de OTRO', () => {

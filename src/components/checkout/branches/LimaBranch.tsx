@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from 'react'
 import { Home, Store } from 'lucide-react'
-import { ADVANCE_LIMA_AGENCIA_PEN, ADVANCE_LIMA_PEN, COPY } from '../../../lib/checkout/checkout.config'
+import { COPY } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState } from '../../../lib/checkout/types'
@@ -97,20 +97,14 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
       {method === 'AGENCIA' && (
         <AgencyPicker
           near={center}
-          isProvincia={false}
           agency={state.pickup.agency}
           branchId={state.pickup.branchId}
-          freeText={state.pickup.freeText}
           errorAgency={errors.agency}
           errorBranch={errors.agencyBranch}
           onSelectPoint={(agency, branchId) => {
             dispatch({ type: 'SET_PICKUP_POINT', agency, branchId })
             touch('agency'); touch('agencyBranch')
           }}
-          onChooseOther={() => { dispatch({ type: 'SET_AGENCY', agency: 'OTRO' }); touch('agency') }}
-          onBackToList={() => dispatch({ type: 'CLEAR_PICKUP_POINT' })}
-          onFreeText={text => dispatch({ type: 'SET_OLVA_TEXT', text })}
-          onBlur={() => touch('agencyBranch')}
         />
       )}
 
@@ -130,25 +124,26 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
 }
 
 // ─── Casa o agencia ──────────────────────────────────────────────────────────
-// El precio va DENTRO de cada tarjeta: si el adelanto llega a diferenciarse
-// entre las dos, esconderlo hasta el paso del pago convertiría la elección en
-// una sorpresa. Hoy son iguales y se muestra igual, para que el día que cambien
-// no haya que acordarse de agregarlo.
+// Las tarjetas mostraban su adelanto (S/5 y S/5) porque antes el monto dependía
+// del destino. Ya no: es un porcentaje del pedido, idéntico recoja o le lleven.
+// Repetir la misma cifra en las dos no informaba nada y hacía parecer que la
+// elección tenía precio. Lo que sí las distingue —dónde lo recibe— es lo único
+// que queda.
 
 function MethodPicker({ value, onPick }: {
   value: 'DOMICILIO' | 'AGENCIA' | null
   onPick: (m: 'DOMICILIO' | 'AGENCIA') => void
 }) {
   const options = [
-    { id: 'DOMICILIO' as const, icon: Home, title: 'En mi casa', sub: 'Te lo llevan a la puerta', pen: ADVANCE_LIMA_PEN },
-    { id: 'AGENCIA' as const, icon: Store, title: 'Recojo en agencia', sub: 'En un punto cerca de ti', pen: ADVANCE_LIMA_AGENCIA_PEN },
+    { id: 'DOMICILIO' as const, icon: Home, title: 'En mi casa', sub: 'Te lo llevan a la puerta' },
+    { id: 'AGENCIA' as const, icon: Store, title: 'Recojo en agencia', sub: 'En un punto cerca de ti' },
   ]
 
   return (
     <div>
       <p className="text-xs font-black text-gray-700 mb-2">¿Cómo prefieres recibirlo? *</p>
       <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="¿Cómo prefieres recibirlo?">
-        {options.map(({ id, icon: Icon, title, sub, pen }) => {
+        {options.map(({ id, icon: Icon, title, sub }) => {
           const active = value === id
           return (
             <button
@@ -164,7 +159,6 @@ function MethodPicker({ value, onPick }: {
               <Icon size={18} className={active ? 'text-green-600' : 'text-gray-400'} />
               <p className={`text-sm font-black mt-1.5 ${active ? 'text-green-800' : 'text-gray-900'}`}>{title}</p>
               <p className="text-[11px] text-gray-500">{sub}</p>
-              <p className="text-[11px] font-black mt-1" style={{ color: 'var(--brand)' }}>Adelanto S/{pen}</p>
             </button>
           )
         })}

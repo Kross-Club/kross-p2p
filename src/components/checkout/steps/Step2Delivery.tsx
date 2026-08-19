@@ -180,10 +180,17 @@ function DistrictSelect({ state, dispatch, error, touch }: {
     value: optionKey(d),
     label: d.district,
     detail: `${d.province}, ${d.department}`,
-    // El badge promete de menos a propósito: hasta que el veredicto de cobertura
-    // corre, "a tu casa" es una posibilidad, no un compromiso.
-    badge: d.covered && !d.weekly ? 'Podemos ir a tu casa' : undefined,
-  })), [all])
+    // Promete de menos a propósito: hasta que el veredicto de cobertura corre,
+    // "a tu casa" es una posibilidad, no un compromiso.
+    //
+    // Y solo si la marca REPARTE a domicilio. En una tienda solo-agencia no hay
+    // motorizado que mandar, y prometerlo en la lista donde el comprador ELIGE
+    // es la peor sorpresa posible: la descubre dos campos después, cuando solo
+    // le ofrecemos puntos de recojo.
+    badge: state.homeDeliveryEnabled && d.covered && !d.weekly
+      ? 'Podemos ir a tu casa'
+      : undefined,
+  })), [all, state.homeDeliveryEnabled])
 
   const p = state.provinciaConfig
   const l = state.limaAddress

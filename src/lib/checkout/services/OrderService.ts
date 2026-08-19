@@ -113,6 +113,7 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       // puede leer: se sabría cuánta gente vio cada una pero no cuál vendió.
       checkout_variant: s.variant,
       advance_amount: s.advanceAmount,
+      advance_choice: s.advanceChoice,
       advance_yape_code: s.advanceYapeCode || undefined,
       advance_voucher_url: s.paymentVoucher?.url || undefined,
     }),

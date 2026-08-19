@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, order_id, store_id, origin_store_id, buyer_name, advance_amount, payment_verification, payment_event_id, dispatch_type, agency_name, payment_provider')
+    .select('id, order_id, store_id, origin_store_id, buyer_name, advance_amount, payment_verification, payment_event_id, dispatch_type, agency_name, payment_provider, product_price, advance_choice')
     .eq('id', sessionId)
     .maybeSingle()
   if (!session) { console.log('[culqi-webhook] sesión inexistente', sessionId); return ok() }
@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
     return ok()
   }
 
-  const expected = advanceForServer(String(session.dispatch_type ?? ''), session.agency_name ?? null)
+  const expected = advanceForServer(Number(session.product_price ?? 0), String(session.advance_choice ?? 'HALF'))
   if (chr.amount !== Math.round(expected * 100)) {
     // Cargo real pero por un monto que no es el del pedido: se enlaza para que
     // Ventas lo vea junto al pedido, pero NO se da por verificado (patrón

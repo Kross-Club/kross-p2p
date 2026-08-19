@@ -4,8 +4,10 @@
 // que Logistics entrega y Loyalty retiene. Ver docs/00-CORE-ARCHITECTURE.md.
 
 import type { AgencyName, DispatchType, PaymentMethod } from '../session'
+import type { AdvanceChoice } from './checkout.config'
 
 export type { AgencyName, DispatchType, PaymentMethod }
+export type { AdvanceChoice }
 
 /** Identificador de pack. Los precios vienen del producto, no de la config. */
 export type PackId = string
@@ -195,7 +197,20 @@ export interface CheckoutState {
   culqiPhone: string
   /** Código de aprobación de Yape (6 dígitos, vence en 2 min). Jamás persiste. */
   culqiOtp: string
-  /** Derivado del destino Y de la agencia elegida. Nunca editable a mano. */
+  /**
+   * Precio de LISTA del pack elegido, tal como vino del producto. Entra al
+   * estado con `SET_PACK` porque el adelanto pasó a ser un porcentaje del
+   * pedido: sin el precio aquí, `derive()` no podría calcularlo y el monto
+   * tendría que setearlo la UI — justo lo que la regla de oro prohíbe.
+   *
+   * Es el de lista, no el efectivo: el descuento de retención se aplica en
+   * `derive()` con `effectivePrice()`, así que aplicarlo antes lo contaría dos
+   * veces cuando el comprador acepta la oferta de salida.
+   */
+  packPrice: number
+  /** Mitad (mínimo) o todo. Lo elige el comprador en el paso de pago. */
+  advanceChoice: AdvanceChoice
+  /** Derivado del precio y de esa elección. Nunca editable a mano. */
   advanceAmount: number
   /** Descuento de retención aplicado, en soles. Se resta de CADA pack. */
   discountPen: number

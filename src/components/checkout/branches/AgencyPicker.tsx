@@ -13,17 +13,16 @@
 // Ordenar por distancia real cruzando las dos hace emerger la recomendación
 // regional sola, y se mantiene sola cuando un courier abre o cierra un local.
 //
-// El adelanto va DENTRO de cada tarjeta porque cambia según el courier (Shalom
-// S/20, Olva S/25): que el monto suba después de haber elegido se lee como
-// cambio de precio a mitad de compra.
+// La tarjeta mostraba el adelanto de su courier (S/20 Shalom, S/25 Olva). Ya no:
+// el adelanto es un porcentaje del pedido, igual en todas, así que repetir la
+// misma cifra cuatro veces solo gastaba línea y sugería una diferencia que no
+// existe.
 
 import { useEffect, useState } from 'react'
 import { Check, MapPin, Store } from 'lucide-react'
 import { AgencyService, describePickupDistance, pointKey } from '../../../lib/checkout/services/AgencyService'
-import { advanceFor } from '../../../lib/checkout/checkout.config'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { AgencyBranch, AgencyName, NearbyBranch } from '../../../lib/checkout/types'
-import Field from '../fields/Field'
 
 /** Cuántos puntos se muestran antes de mandar al buscador. Cuatro y no tres:
  *  mezclando dos couriers, tres tarjetas pueden salir todas del mismo y la
@@ -39,81 +38,45 @@ const AGENCY_LABEL: Record<AgencyName, string> = {
 interface AgencyPickerProps {
   /** Punto de referencia para ordenar sedes: centroide del distrito elegido. */
   near: { lat: number; lng: number } | null
-  /** El adelanto de recoger cambia por región: en provincia cubre el flete
-   *  interprovincial (S/20–25) y en Lima es el filtro anti-rebote (S/5). Sin
-   *  esto la tarjeta mostraba el monto de provincia a un comprador limeño,
-   *  contradiciendo al selector de método que tiene justo encima. */
-  isProvincia: boolean
   agency: AgencyName | null
   branchId: string | null
-  /** Texto libre para agencias sin listado. */
-  freeText: string | null
   errorAgency?: string
   errorBranch?: string
   /** El punto trae su courier: agencia y sede se fijan de una sola vez. */
   onSelectPoint: (agency: AgencyName, branchId: string) => void
-  /** Salida a texto libre cuando su agencia no está en el listado. */
-  onChooseOther: () => void
-  /** Vuelta al listado desde el texto libre. */
-  onBackToList: () => void
-  onFreeText: (text: string) => void
-  onBlur: () => void
 }
 
 export default function AgencyPicker({
-  near, isProvincia, agency, branchId, freeText, errorAgency, errorBranch,
-  onSelectPoint, onChooseOther, onBackToList, onFreeText, onBlur,
+  near, agency, branchId, errorAgency, errorBranch, onSelectPoint,
 }: AgencyPickerProps) {
-  // `OTRO` es la única agencia sin listado: ahí no hay punto que ordenar y la
-  // pantalla entera cambia a texto libre.
-  if (agency === 'OTRO') {
-    return (
-      <div className="space-y-2">
-        <Field
-          label="¿En qué agencia vas a recoger?"
-          required
-          value={freeText ?? ''}
-          onChange={e => onFreeText(e.target.value)}
-          onBlur={() => { onBlur(); trackEvent({ name: 'olva_branch_typed', length: (freeText ?? '').length }) }}
-          placeholder="Ej. Marvisur Av. España 1234, Trujillo"
-          error={errorBranch}
-          autoComplete="off"
-          hint="Escribe el nombre y la dirección. Un asesor confirma la sede contigo."
-        />
-        <button
-          type="button"
-          onClick={onBackToList}
-          className="text-[11px] font-bold text-blue-600 underline"
-        >
-          ← Ver los puntos de recojo cerca de mí
-        </button>
-      </div>
-    )
-  }
-
+  // Aquí vivía la rama de texto libre para `OTRO`, con su botón "Mi agencia no
+  // está en la lista". Se quitó: las 911 sedes cubren los 25 departamentos, así
+  // que el caso que justificaba la salida —no encontrar la propia agencia— en la
+  // práctica no existe. Lo que sí generaba era pedidos con una sede escrita a
+  // mano que alguien tenía que verificar después. Quien no vea su agencia elige
+  // el punto más cercano, que es lo que el ranking ya le pone primero.
+  //
+  // Un borrador viejo con `OTRO` no se rompe: llega sin `branchId`, así que el
+  // ranking le preselecciona el punto más cercano al montar.
   return (
     <PointPicker
       near={near}
-      isProvincia={isProvincia}
       agency={agency}
       branchId={branchId}
       error={errorBranch ?? errorAgency}
       onSelectPoint={onSelectPoint}
-      onChooseOther={onChooseOther}
     />
   )
 }
 
 // ─── Puntos de recojo de TODAS las agencias, ordenados por cercanía ──────────
 
-function PointPicker({ near, isProvincia, agency, branchId, error, onSelectPoint, onChooseOther }: {
+function PointPicker({ near, agency, branchId, error, onSelectPoint }: {
   near: { lat: number; lng: number } | null
-  isProvincia: boolean
   agency: AgencyName | null
   branchId: string | null
   error?: string
   onSelectPoint: (agency: AgencyName, branchId: string) => void
-  onChooseOther: () => void
 }) {
   // El resultado se guarda junto a la llave del punto que lo produjo, así el
   // estado de carga se DERIVA en vez de setearse dentro del efecto.
@@ -177,7 +140,6 @@ function PointPicker({ near, isProvincia, agency, branchId, error, onSelectPoint
               <li key={pointKey(b)}>
                 <PointCard
                   branch={b}
-                  isProvincia={isProvincia}
                   selected={selectedKey === pointKey(b)}
                   /* El badge sale del ORDEN, no de una constante: quien queda
                      primero es quien está más cerca, y eso cambia por zona. */
@@ -233,7 +195,6 @@ function PointPicker({ near, isProvincia, agency, branchId, error, onSelectPoint
                     <li key={pointKey(b)}>
                       <PointCard
                         branch={b}
-                        isProvincia={isProvincia}
                         selected={selectedKey === pointKey(b)}
                         onSelect={() => pick(b)}
                       />
@@ -246,23 +207,12 @@ function PointPicker({ near, isProvincia, agency, branchId, error, onSelectPoint
 
       {error && <p role="alert" className="text-[11px] font-semibold mt-1.5 text-red-600">{error}</p>}
 
-      {/* Salida siempre abierta: 911 sedes cubren los 25 departamentos, pero si
-          su agencia de confianza no es ninguna de las dos, el pedido se cierra
-          igual y Logística confirma la sede después. */}
-      <button
-        type="button"
-        onClick={onChooseOther}
-        className="mt-2 text-[11px] font-bold text-gray-500 underline"
-      >
-        Mi agencia no está en la lista
-      </button>
     </div>
   )
 }
 
-function PointCard({ branch, isProvincia, selected, nearest, distanceKm, onSelect }: {
+function PointCard({ branch, selected, nearest, distanceKm, onSelect }: {
   branch: AgencyBranch
-  isProvincia: boolean
   selected: boolean
   /** El más cercano del ranking. No lo trae el buscador, que no ordena por distancia. */
   nearest?: boolean
@@ -295,9 +245,6 @@ function PointCard({ branch, isProvincia, selected, nearest, distanceKm, onSelec
           {branch.name}
         </span>
         <span className="block text-[11px] text-gray-500 line-clamp-2">{branch.address}</span>
-        <span className="block text-[10px] font-black text-gray-400 mt-1">
-          Adelanto S/{advanceFor(isProvincia, branch.agency, 'AGENCIA')}
-        </span>
       </span>
       <span className="flex flex-col items-end gap-1 flex-shrink-0">
         {distanceKm !== undefined && (

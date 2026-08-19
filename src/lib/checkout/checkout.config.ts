@@ -8,79 +8,49 @@
 // BD. Aquí solo están las REGLAS sobre esos packs (cuál se preselecciona, qué
 // badge lleva, cómo se calcula el ahorro).
 
-import type { AgencyName, CheckoutState, CoverageMode } from './types'
+import type { CheckoutState, CoverageMode } from './types'
 
 // ─── Adelanto ────────────────────────────────────────────────────────────────
+// El adelanto es un PORCENTAJE del pedido, no un monto fijo por región.
+//
+// Aquí vivían seis constantes —S/5 en Lima, S/20 Shalom, S/25 Olva, S/30 a
+// domicilio en provincia— y la función que elegía entre ellas. Se fueron todas.
+// Dos razones:
+//
+//  · **Compromiso.** S/5 filtra al que estaba jugando, pero no compromete a
+//    nadie. Quien ya puso la mitad del pedido va a recoger.
+//  · **Costo de cobrar.** Con 360pay la comisión es PLANA (~S/3.72), así que
+//    cobrar S/5 se llevaba el 74 % del adelanto. Sobre la mitad de un pedido
+//    típico es ~3 %, que sí se sostiene.
+//
+// Lo que ya NO depende del destino: el adelanto es el mismo recoja o le lleven,
+// en Lima o en provincia. Por eso las tarjetas de método dejaron de mostrar un
+// monto — no había diferencia que enseñar.
+
+/** Elige cuánto adelanta: la mitad (mínimo) o todo. */
+export type AdvanceChoice = 'HALF' | 'FULL'
 
 /**
- * Lima también adelanta. Antes era 0 —100 % contraentrega— y el rebote lo
- * pagaba la marca entera: el pedido falso no cuesta nada de hacer y sí cuesta
- * el viaje del motorizado. S/5 no espanta a quien va a comprar y sí a quien
- * estaba jugando.
+ * La parte mínima del pedido que se adelanta. Cambiar esto a 0,4 o 0,6 es
+ * editar esta línea y nada más — el monto se deriva de aquí en el front y su
+ * espejo en `supabase/functions/_shared/advance.ts`.
  */
-export const ADVANCE_LIMA_PEN = 5
+export const ADVANCE_HALF_SHARE = 0.5
 
 /**
- * Adelanto cuando el comprador de Lima elige **recoger en agencia** (Shalom
- * tiene 163 sedes en el departamento, Olva 128).
+ * Cuánto adelanta este pedido.
  *
- * Igual al de domicilio a propósito, y es una decisión que conviene revisar con
- * números reales, no una equivalencia obvia. El razonamiento de los S/5 en Lima
- * es el filtro anti-rebote —"no espanta a quien va a comprar y sí a quien estaba
- * jugando"—, y ese filtro aplica igual recoja o le lleven. Lo que NO está medido
- * es el flete Lima→mostrador contra el viaje del motorizado; si resulta que uno
- * cuesta bastante más, el monto se separa aquí y en ningún otro lado.
- */
-export const ADVANCE_LIMA_AGENCIA_PEN = 5
-
-/** Base de provincia por agencia (Shalom). El saldo se paga al recoger. */
-export const ADVANCE_PROVINCIA_PEN = 20
-
-/**
- * Entrega EN CASA a provincia: el courier cobra bastante más que dejar el
- * paquete en el mostrador de la agencia, y ese diferencial no lo puede comer
- * la marca en cada pedido.
- */
-export const ADVANCE_PROVINCIA_DOMICILIO_PEN = 30
-
-/**
- * Adelanto por agencia. Olva cobra más flete, así que su adelanto es mayor. Se
- * le muestra al comprador **en la tarjeta de cada agencia**, antes de elegir:
- * que el monto salte después de haber elegido se lee como cambio de precio a
- * mitad de compra.
- */
-export const ADVANCE_BY_AGENCY: Partial<Record<AgencyName, number>> = {
-  SHALOM: 20,
-  OLVA: 25,
-}
-
-/**
- * El adelanto más barato disponible en la rama de agencia. Es el "desde" que se
- * muestra ANTES de elegir punto, cuando todavía no se sabe qué courier va a
- * tocar. Se calcula, no se escribe: escrito, sumar una agencia más barata
- * dejaría la tarjeta mintiendo un piso que ya no es el piso.
- */
-export const ADVANCE_AGENCY_FROM_PEN: number = Math.min(
-  ADVANCE_PROVINCIA_PEN,
-  ...Object.values(ADVANCE_BY_AGENCY).filter((v): v is number => typeof v === 'number'),
-)
-
-/**
- * Adelanto que le toca a este pedido. Única fuente de verdad del monto.
+ * `price` es el precio EFECTIVO —con el descuento de retención y los puntos ya
+ * aplicados—, porque adelantar sobre un precio que el comprador no va a pagar
+ * le cobraría de más.
  *
- * `method` importa: a domicilio en provincia no hay agencia que consultar, y
- * sin él caería al base de mostrador —20 en vez de 30— regalando el
- * diferencial del courier en cada pedido.
+ * Se redondea al sol: el comprador lo yapea a mano y "S/69.50" invita a teclear
+ * mal. El redondeo es hacia arriba en el .5 (`Math.round`), así que la marca
+ * nunca cobra de menos que la mitad exacta.
  */
-export function advanceFor(
-  isProvincia: boolean,
-  agency: AgencyName | null,
-  method?: 'DOMICILIO' | 'AGENCIA' | null,
-): number {
-  // En Lima el método también importa desde que se puede recoger en agencia.
-  if (!isProvincia) return method === 'AGENCIA' ? ADVANCE_LIMA_AGENCIA_PEN : ADVANCE_LIMA_PEN
-  if (method === 'DOMICILIO') return ADVANCE_PROVINCIA_DOMICILIO_PEN
-  return (agency && ADVANCE_BY_AGENCY[agency]) || ADVANCE_PROVINCIA_PEN
+export function advanceFor(price: number, choice: AdvanceChoice = 'HALF'): number {
+  if (!Number.isFinite(price) || price <= 0) return 0
+  return choice === 'FULL' ? Math.round(price) : Math.round(price * ADVANCE_HALF_SHARE)
 }
 
 // ─── Cobertura ───────────────────────────────────────────────────────────────
