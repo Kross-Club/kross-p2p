@@ -1,26 +1,63 @@
 // ─── PASO 2 · Datos de quien recibe ──────────────────────────────────────────
 // El orden de los campos importa: es orden de compromiso creciente.
-//   1. WhatsApp        → apenas es válido se guarda el lead parcial
-//   2. Lima/Provincia  → toggle grande, no un <select>. Va temprano porque
-//                        define qué campos siguen; es un tap, no un compromiso.
-//   3a. LIMA      → solo el nombre. SIN DNI: es contraentrega en la puerta y
-//                   nadie más lo exige. Un campo menos en el mayor volumen.
-//   3b. PROVINCIA → DNI primero y luego el nombre, que Decolecta rellena solo.
-//                   Aquí el DNI no es trámite nuestro: la agencia no entrega el
-//                   paquete sin él. Ver docs/00-CORE-ARCHITECTURE.md.
+//   1. WhatsApp  → apenas es válido se guarda el lead parcial
+//   2. DNI       → trae el nombre de RENIEC, así que el campo siguiente suele
+//                  aparecer ya lleno
+//   3. Nombre
+//   4. Distrito  → UNO solo, con los 483 del país
+//
+// Aquí vivía un toggle "Lima y Callao / Provincia" antes del DNI. Se eliminó:
+// `isLimaMetro()` deduce la región del distrito, así que el toggle pedía un dato
+// que el sistema ya tenía y cobraba un tap para llegar al mismo sitio. Peor,
+// obligaba a mantener DOS selectores de distrito —uno por rama— que entre los
+// dos ya se habían dejado 128 distritos afuera una vez.
+//
+// Lo que la región sigue decidiendo es lo que va DESPUÉS del distrito: en Lima
+// la dirección de entrega, en provincia el veredicto de cobertura y el punto de
+// recojo. Eso no es una pregunta, es una consecuencia.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ShieldCheck, Store, Truck } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 import { COPY, DNI_LENGTH } from '../../../lib/checkout/checkout.config'
+import { DistrictCoverageService, isLimaMetro } from '../../../lib/checkout/services/DistrictCoverageService'
 import { trackEvent } from '../../../lib/checkout/analytics'
-import type { CheckoutState, LocationType } from '../../../lib/checkout/types'
+import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
 import type { CheckoutAction } from '../../../lib/checkout/machine'
 import type { FieldErrors, FieldName } from '../../../lib/checkout/validation'
 import Field from '../fields/Field'
 import PhoneField from '../fields/PhoneField'
+import SearchSelect from '../fields/SearchSelect'
+import type { SelectOption } from '../fields/SearchSelect'
 import LimaBranch from '../branches/LimaBranch'
 import ProvinciaBranch from '../branches/ProvinciaBranch'
+
+/** Llave estable de una opción: desambigua los homónimos (dos Miraflores). */
+const optionKey = (d: { department: string; province: string; district: string }): string =>
+  `${d.department}|${d.province}|${d.district}`
+
+/**
+ * Qué opción aparece marcada en el selector.
+ *
+ * El camino normal es interpolar la llave. El `find` existe para los borradores
+ * guardados ANTES de que la dirección de Lima llevara departamento y provincia:
+ * tienen distrito pero no la llave completa, y mostrar el campo vacío le pediría
+ * al comprador repetir algo que ya eligió. Se ubica por nombre dentro de su
+ * región, que es lo que hace segura la búsqueda pese a los homónimos.
+ */
+function selectedKey(
+  chosen: { department: string | null; province: string | null; district: string | null } | null,
+  all: DistrictOption[] | null,
+  locationType: CheckoutState['locationType'],
+): string | null {
+  if (!chosen?.district) return null
+  if (chosen.department && chosen.province) {
+    return optionKey({ department: chosen.department, province: chosen.province, district: chosen.district })
+  }
+  const hit = (all ?? []).find(o =>
+    o.district === chosen.district && isLimaMetro(o) === (locationType === 'LIMA'))
+  return hit ? optionKey(hit) : null
+}
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -50,9 +87,10 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
   return (
     <>
       <h2 className="text-xl font-black text-gray-900 mb-0.5">{COPY.step2Title}</h2>
-      <p className="text-sm text-gray-500 mb-4">
-        {locationType === 'PROVINCIA' ? 'Son 4 datos y listo.' : 'Son 3 datos y listo.'}
-      </p>
+      {/* Cuatro en las dos regiones: al derivarse del distrito, la región dejó
+          de sumar un campo. Antes decía "3" en Lima porque el toggle no contaba
+          como dato, cosa que el comprador no tenía por qué adivinar. */}
+      <p className="text-sm text-gray-500 mb-4">Son 4 datos y listo.</p>
 
       <div className="space-y-3.5">
         <div ref={phoneRef}>
@@ -64,33 +102,21 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
           />
         </div>
 
-        <LocationToggle
-          value={locationType}
-          error={errors.locationType}
-          onChange={type => {
-            dispatch({ type: 'SET_LOCATION_TYPE', locationType: type })
-            touch('locationType')
-            trackEvent({ name: 'location_selected', locationType: type })
+        {/* El DNI va ANTES del nombre para que Decolecta lo rellene y el
+            comprador escriba un campo menos. */}
+        <DniField
+          value={customerInfo.dni}
+          error={errors.dni}
+          onChange={dni => dispatch({ type: 'SET_DNI', dni })}
+          onBlur={() => touch('dni')}
+          // El nombre de RENIEC solo rellena si el campo está vacío: nunca
+          // pisa lo que el comprador ya escribió.
+          onResolvedName={name => {
+            if (!customerInfo.receiverName.trim()) {
+              dispatch({ type: 'SET_RECEIVER_NAME', receiverName: name })
+            }
           }}
         />
-
-        {/* Provincia: el DNI va ANTES del nombre para que Decolecta lo rellene
-            y el comprador escriba un campo menos. */}
-        {locationType && (
-          <DniField
-            value={customerInfo.dni}
-            error={errors.dni}
-            onChange={dni => dispatch({ type: 'SET_DNI', dni })}
-            onBlur={() => touch('dni')}
-            // El nombre de RENIEC solo rellena si el campo está vacío: nunca
-            // pisa lo que el comprador ya escribió.
-            onResolvedName={name => {
-              if (!customerInfo.receiverName.trim()) {
-                dispatch({ type: 'SET_RECEIVER_NAME', receiverName: name })
-              }
-            }}
-          />
-        )}
 
         {/* Nombre y distrito aparecen recién con el DNI completo. El paso 2 pide
             cuatro cosas y mostrarlas todas de golpe se lee como un formulario
@@ -115,10 +141,12 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
           />
         )}
 
-        {dniReady && locationType === 'LIMA' && (
+        {dniReady && <DistrictSelect state={state} dispatch={dispatch} error={errors.district} touch={touch} />}
+
+        {locationType === 'LIMA' && (
           <LimaBranch state={state} dispatch={dispatch} errors={errors} touch={touch} />
         )}
-        {dniReady && locationType === 'PROVINCIA' && (
+        {locationType === 'PROVINCIA' && (
           <ProvinciaBranch state={state} dispatch={dispatch} errors={errors} touch={touch} />
         )}
       </div>
@@ -126,44 +154,72 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
   )
 }
 
-// ─── Lima vs Provincia ───────────────────────────────────────────────────────
+// ─── Distrito · uno solo, los 483 del país ───────────────────────────────────
+// Antes había dos selectores, uno por rama, cada uno con su propio filtro. Entre
+// los dos se perdieron los 128 distritos del departamento de Lima que no son
+// Lima metropolitana. Con una sola lista ese agujero no puede volver a existir.
 
-function LocationToggle({ value, error, onChange }: {
-  value: LocationType | null
+function DistrictSelect({ state, dispatch, error, touch }: {
+  state: CheckoutState
+  dispatch: React.Dispatch<CheckoutAction>
   error?: string
-  onChange: (type: LocationType) => void
+  touch: (field: FieldName) => void
 }) {
-  const options: { id: LocationType; icon: typeof Truck; title: string; sub: string }[] = [
-    { id: 'LIMA', icon: Truck, title: 'Lima y Callao', sub: 'Llega a tu puerta' },
-    { id: 'PROVINCIA', icon: Store, title: 'Provincia', sub: 'Envío a todo el Perú' },
-  ]
+  const [all, setAll] = useState<DistrictOption[] | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    DistrictCoverageService.listDistricts()
+      .then(list => { if (alive) setAll(list) })
+      .catch(() => { if (alive) setFailed(true) })
+    return () => { alive = false }
+  }, [])
+
+  const options: SelectOption[] = useMemo(() => (all ?? []).map(d => ({
+    value: optionKey(d),
+    label: d.district,
+    detail: `${d.province}, ${d.department}`,
+    // El badge promete de menos a propósito: hasta que el veredicto de cobertura
+    // corre, "a tu casa" es una posibilidad, no un compromiso.
+    badge: d.covered && !d.weekly ? 'Podemos ir a tu casa' : undefined,
+  })), [all])
+
+  const p = state.provinciaConfig
+  const l = state.limaAddress
+  const chosen = p?.district ? p : l?.district ? l : null
+  const current = selectedKey(chosen, all, state.locationType)
+
+  if (failed) {
+    return (
+      <p className="text-[11px] text-amber-700 bg-amber-50 rounded-xl px-3 py-2.5">
+        No pudimos cargar los distritos. Recarga la página e inténtalo de nuevo.
+      </p>
+    )
+  }
 
   return (
-    <div>
-      <span className="text-xs font-bold text-gray-600 mb-1.5 block">¿Dónde lo recibes? *</span>
-      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="¿Dónde lo recibes?">
-        {options.map(({ id, icon: Icon, title, sub }) => {
-          const active = value === id
-          return (
-            <button
-              key={id}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => onChange(id)}
-              className={`flex flex-col items-center gap-1 px-3 py-4 rounded-2xl border-2 transition-all
-                focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500
-                ${active ? 'border-green-500 bg-green-50' : 'border-gray-200'}`}
-            >
-              <Icon size={22} className={active ? 'text-green-600' : 'text-gray-400'} />
-              <span className={`text-sm font-black ${active ? 'text-green-800' : 'text-gray-700'}`}>{title}</span>
-              <span className="text-[10px] text-gray-400 text-center">{sub}</span>
-            </button>
-          )
-        })}
-      </div>
-      {error && <p role="alert" className="text-[11px] font-semibold mt-1.5 text-red-600">{error}</p>}
-    </div>
+    <SearchSelect
+      label="¿A qué distrito enviamos?"
+      required
+      placeholder="Escribe tu distrito o ciudad"
+      options={options}
+      loading={all === null}
+      value={current}
+      error={error}
+      onBlur={() => touch('district')}
+      onChange={key => {
+        const [department, province, district] = key.split('|')
+        dispatch({ type: 'SET_DISTRICT', department, province, district })
+        touch('district')
+        // La región sale de la MISMA función que usa el reducer. Reescribirla
+        // aquí es cómo se abren los agujeros que este refactor vino a cerrar.
+        trackEvent({
+          name: 'location_selected',
+          locationType: isLimaMetro({ department, province }) ? 'LIMA' : 'PROVINCIA',
+        })
+      }}
+    />
   )
 }
 

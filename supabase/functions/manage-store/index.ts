@@ -34,6 +34,7 @@ Deno.serve(async (req) => {
 
   const body = await req.json() as {
     action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats' | 'ab_stats'
+    home_delivery_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
     welcome_msg?: string
@@ -106,7 +107,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope, checkout_ab_mode')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope, checkout_ab_mode, home_delivery_enabled')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -229,6 +230,14 @@ Deno.serve(async (req) => {
     if (typeof body.color_primary === 'string') patch.color_primary = body.color_primary
     if (typeof body.color_dark === 'string') patch.color_dark = body.color_dark
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active
+    // ¿Reparte a domicilio, o solo recojo en agencia? Es super-admin only a
+    // propósito: depende de si la marca tiene operación de última milla
+    // contratada, un hecho comercial que conoce la plataforma. Que un admin de
+    // marca lo prendiera sin tener con quién repartir prometería entregas a la
+    // puerta que después no ocurren.
+    if (isSuper && typeof body.home_delivery_enabled === 'boolean') {
+      patch.home_delivery_enabled = body.home_delivery_enabled
+    }
     // WhatsApp fallback config (infra) — super admin only
     if (isSuper && typeof body.wa_enabled === 'boolean') patch.wa_enabled = body.wa_enabled
     if (isSuper && typeof body.wa_phone_number_id === 'string') patch.wa_phone_number_id = body.wa_phone_number_id.trim()
@@ -339,6 +348,12 @@ Deno.serve(async (req) => {
       color_primary: body.color_primary || '#55C8F5',
       color_dark: body.color_dark || '#060C1A',
       active: true,
+      // Las marcas nuevas nacen SOLO con recojo en agencia. El domicilio se
+      // prende cuando la marca tenga con quién repartir, y lo prende la
+      // plataforma. La columna tiene default `true` para no apagarle el
+      // domicilio a las marcas que ya existían; el valor explícito de aquí es lo
+      // que hace que eso no aplique a las nuevas.
+      home_delivery_enabled: false,
     })
     if (sErr) return json({ error: sErr.message }, 400)
 

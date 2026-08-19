@@ -24,7 +24,15 @@ export type CheckoutEvent =
   /** Se le prometió domicilio y el distrito tiene zonas de distinto costo: es
    *  donde el distrito puede quedarse corto frente al polígono. */
   | { name: 'coverage_zoned_district'; place: string }
-  | { name: 'agency_selected'; agency: AgencyName }
+  /**
+   * Qué punto de recojo eligió, y en qué posición del ranking de cercanía
+   * estaba. `rank` y `distanceKm` son la métrica que valida haber borrado
+   * `RECOMMENDED_AGENCY`: si el comprador casi siempre toma el primero, ordenar
+   * por distancia está recomendando bien; si baja a buscar, no. Y el reparto de
+   * `agency` por zona es la primera versión de la tasa de aceptación por
+   * courier, sin tener que esperar al dato de recojo efectivo.
+   */
+  | { name: 'agency_selected'; agency: AgencyName; rank?: number; distanceKm?: number }
   // Variante B: qué eligió el comprador cuando SE LE PREGUNTÓ. Es la única
   // métrica que dice si valía la pena preguntarle — si casi todos eligen lo
   // mismo que la cobertura habría decidido sola, la variante no aporta.

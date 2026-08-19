@@ -66,6 +66,12 @@ export interface CustomerInfo {
 }
 
 export interface LimaAddress {
+  /** Departamento y provincia del distrito elegido. Se guardan aunque en Lima
+   *  metropolitana solo puedan ser dos combinaciones: dejan el estado
+   *  autodescriptivo, y son lo que permite recalcular `locationType` desde el
+   *  distrito en vez de preguntarlo. */
+  department: string | null
+  province: string | null
   district: string | null
   /** null permitido: en modo DISTRICT el pedido se cierra sin pin. */
   lat: number | null
@@ -86,13 +92,24 @@ export interface ProvinciaConfig {
   lat: number | null
   lng: number | null
   coverageResult: CoverageResult | null
-  deliveryMethod: DeliveryMethod | null
-  selectedAgency: AgencyName | null
-  /** Solo Shalom: id de sede del listado oficial. */
-  selectedAgencyBranchId: string | null
-  /** Solo Olva: texto libre, marca el pedido para verificación manual. */
-  olvaBranchText: string | null
   address?: { addressText: string; reference: string }
+}
+
+/**
+ * El punto de recojo elegido. Vive en la raíz del estado y NO dentro de
+ * `provinciaConfig`, porque recoger en agencia dejó de ser cosa de provincia:
+ * Shalom tiene 163 sedes en el departamento de Lima y Olva 128.
+ */
+export interface PickupPoint {
+  /** Courier del punto. Se deriva del punto, no se elige por separado. */
+  agency: AgencyName | null
+  /** Id de sede dentro del listado de `agency`. Los ids solo son únicos por
+   *  agencia —197 se repiten entre las dos—, así que este campo NO identifica
+   *  un punto sin el de arriba. */
+  branchId: string | null
+  /** Texto libre para las agencias sin listado (`OTRO`). Marca el pedido para
+   *  verificación manual de Logística. */
+  freeText: string | null
 }
 
 export interface PaymentVoucher {
@@ -118,13 +135,45 @@ export interface CheckoutState {
   step: CheckoutStepId
   selectedPack: PackId | null
   customerInfo: CustomerInfo
+  /**
+   * DERIVADO del distrito, no elegido por el comprador. `isLimaMetro()` lo
+   * resuelve en cuanto hay distrito: preguntarlo era pedirle un dato que el
+   * sistema ya tenía, y un tap para llegar al mismo sitio.
+   *
+   * Sigue en el estado porque el pedido, las métricas y `advanceFor()` lo leen.
+   * Lo que cambió es quién lo pone.
+   */
   locationType: LocationType | null
   /** Qué versión del checkout le tocó a este comprador. Viaja en el estado
    *  para que el pedido guarde con cuál se cerró y las métricas se puedan
    *  partir después. */
   variant: CheckoutVariant
+  /**
+   * ¿Esta marca reparte a domicilio, o solo ofrece recojo en agencia?
+   * (`stores.home_delivery_enabled`).
+   *
+   * Vive en el estado y no solo en la UI porque el reducer AUTO-DECIDE el método
+   * a partir de la cobertura: sin este dato, una marca sin operación de última
+   * milla cerraba pedidos con `deliveryMethod: 'DOMICILIO'` en cuanto el distrito
+   * tenía cobertura del courier — prometiendo una entrega a la puerta que nadie
+   * iba a hacer.
+   *
+   * Como `variant`, se resuelve desde la tienda en cada montaje y NO se restaura
+   * del borrador: si el admin apaga el domicilio, un borrador de ayer no puede
+   * seguir ofreciéndolo.
+   */
+  homeDeliveryEnabled: boolean
   limaAddress: LimaAddress | null
   provinciaConfig: ProvinciaConfig | null
+  /**
+   * Cómo recibe el pedido. En la raíz porque aplica a las DOS regiones: en Lima
+   * se puede recoger en agencia igual que en provincia. En provincia lo propone
+   * la cobertura (o lo elige el comprador en la variante B); en Lima siempre lo
+   * elige él, porque el motorizado propio llega a todo Lima metropolitana.
+   */
+  deliveryMethod: DeliveryMethod | null
+  /** Punto elegido cuando `deliveryMethod` es AGENCIA. */
+  pickup: PickupPoint
   /** true si falta lat/lng o el resultado de cobertura es BORDERLINE. */
   needsLocationConfirmation: boolean
   paymentVoucher: PaymentVoucher | null
@@ -224,6 +273,13 @@ export interface CityCoverage {
 // ─── Agencias ────────────────────────────────────────────────────────────────
 
 export interface AgencyBranch {
+  /**
+   * Courier al que pertenece la sede. Lo pone `AgencyService` al cargar, porque
+   * el JSON es por agencia y no lo trae dentro. Es obligatorio para que una
+   * lista que MEZCLA couriers pueda decir de quién es cada punto — y para
+   * desambiguar los ids, que solo son únicos dentro de cada agencia.
+   */
+  agency: AgencyName
   id: string
   name: string
   district: string | null
@@ -237,8 +293,11 @@ export interface AgencyBranch {
   lng: number | null
 }
 
-/** Sede con distancia calculada. Solo la produce `getNearest`, así que aquí las
- *  coordenadas sí están garantizadas. */
+/** Sede tal como vive en el JSON, antes de que el servicio le ponga su agencia. */
+export type RawAgencyBranch = Omit<AgencyBranch, 'agency'>
+
+/** Sede con distancia calculada. Solo la producen los rankings de cercanía, así
+ *  que aquí las coordenadas sí están garantizadas. */
 export interface NearbyBranch extends AgencyBranch {
   lat: number
   lng: number

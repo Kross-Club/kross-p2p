@@ -103,12 +103,40 @@ pedido queda marcado para verificación manual.
 
 | | Sedes | Fuente | Adelanto |
 |---|---|---|---|
-| **Shalom** | 487 | CSV oficial → `scripts/build-agencies.mjs` | S/10 |
-| **Olva** | 424 | su propio buscador → `scripts/build-olva.mjs` | S/20 |
+| **Shalom** | 487 | CSV oficial → `scripts/build-agencies.mjs` | S/20 |
+| **Olva** | 424 | su propio buscador → `scripts/build-olva.mjs` | S/25 |
 
-- Shalom sigue siendo la **recomendada**: no por tener mejor data —ya empatan— sino
-  porque su adelanto es la mitad. La ruta más barata para el comprador es la que se
-  muestra primero.
+#### El comprador elige un LUGAR, no un courier ✅
+
+`AgencyService.getNearestPoints()` devuelve los puntos más cercanos **de todas las
+agencias juntas**, ordenados por distancia real al centroide del distrito. La agencia es
+un atributo de la tarjeta, no una pregunta previa.
+
+Antes eran dos decisiones —agencia y después sede— y la primera se tomaba sin el dato que
+decide. La agencia por defecto era una constante global, `RECOMMENDED_AGENCY = 'SHALOM'`,
+justificada en un adelanto de «S/10 contra S/20» que ya no era el vigente.
+
+**Se borró, y el motivo es data, no estilo.** Contando las 911 sedes por departamento,
+**Olva tiene más presencia que Shalom en 11 de los 25** — Shalom domina la costa (Ica
+18-5, Lambayeque 21-9, Piura 30-14) y Olva la sierra centro (Huancavelica 9-1, Ayacucho
+13-5, Apurímac 7-3). El caso extremo es Huancavelica: Shalom tiene **una sola sede en todo
+el departamento**, así que su segunda opción más cercana está a **80 km**. La lista
+unificada mantiene las cuatro primeras bajo 40 km.
+
+- Ordenar por distancia hace emerger la regionalización **sola**, y se mantiene sola
+  cuando un courier abre o cierra un local. Una tabla por departamento habría que
+  actualizarla a mano con cada cambio del listado.
+- `LISTED_AGENCIES` se deriva de los loaders: **sumar Marvisur o Cruz del Sur es agregar
+  su loader**, y entra solo a los rankings, a la búsqueda y a la UI.
+- ⚠️ **Los ids solo son únicos dentro de cada agencia** — 197 se repiten entre las dos. En
+  una lista mezclada hay que comparar por `pointKey()` (`AGENCIA:id`); comparar por id
+  seleccionaría dos tarjetas a la vez.
+- El adelanto va **dentro de cada tarjeta** porque cambia por courier (S/20 vs S/25). El
+  «desde» previo sale de `ADVANCE_AGENCY_FROM_PEN`, que se calcula: escrito a mano, sumar
+  una agencia más barata dejaría la tarjeta mintiendo un piso que ya no es el piso.
+- `agency_selected` ahora lleva `rank` y `distanceKm`: es la métrica que valida el cambio
+  —si el comprador casi siempre toma el primero, ordenar por distancia recomienda bien— y
+  la primera versión de la tasa de aceptación por courier y zona.
 - ⚠️ **El CSV de Shalom traía las coordenadas corruptas** (locale español: el punto
   decimal leído como separador de miles, 487 de 488 filas). El generador las reconstruye
   y desambigua con el centroide del departamento.

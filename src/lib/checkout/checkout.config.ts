@@ -20,6 +20,19 @@ import type { AgencyName, CheckoutState, CoverageMode } from './types'
  */
 export const ADVANCE_LIMA_PEN = 5
 
+/**
+ * Adelanto cuando el comprador de Lima elige **recoger en agencia** (Shalom
+ * tiene 163 sedes en el departamento, Olva 128).
+ *
+ * Igual al de domicilio a propósito, y es una decisión que conviene revisar con
+ * números reales, no una equivalencia obvia. El razonamiento de los S/5 en Lima
+ * es el filtro anti-rebote —"no espanta a quien va a comprar y sí a quien estaba
+ * jugando"—, y ese filtro aplica igual recoja o le lleven. Lo que NO está medido
+ * es el flete Lima→mostrador contra el viaje del motorizado; si resulta que uno
+ * cuesta bastante más, el monto se separa aquí y en ningún otro lado.
+ */
+export const ADVANCE_LIMA_AGENCIA_PEN = 5
+
 /** Base de provincia por agencia (Shalom). El saldo se paga al recoger. */
 export const ADVANCE_PROVINCIA_PEN = 20
 
@@ -42,6 +55,17 @@ export const ADVANCE_BY_AGENCY: Partial<Record<AgencyName, number>> = {
 }
 
 /**
+ * El adelanto más barato disponible en la rama de agencia. Es el "desde" que se
+ * muestra ANTES de elegir punto, cuando todavía no se sabe qué courier va a
+ * tocar. Se calcula, no se escribe: escrito, sumar una agencia más barata
+ * dejaría la tarjeta mintiendo un piso que ya no es el piso.
+ */
+export const ADVANCE_AGENCY_FROM_PEN: number = Math.min(
+  ADVANCE_PROVINCIA_PEN,
+  ...Object.values(ADVANCE_BY_AGENCY).filter((v): v is number => typeof v === 'number'),
+)
+
+/**
  * Adelanto que le toca a este pedido. Única fuente de verdad del monto.
  *
  * `method` importa: a domicilio en provincia no hay agencia que consultar, y
@@ -53,7 +77,8 @@ export function advanceFor(
   agency: AgencyName | null,
   method?: 'DOMICILIO' | 'AGENCIA' | null,
 ): number {
-  if (!isProvincia) return ADVANCE_LIMA_PEN
+  // En Lima el método también importa desde que se puede recoger en agencia.
+  if (!isProvincia) return method === 'AGENCIA' ? ADVANCE_LIMA_AGENCIA_PEN : ADVANCE_LIMA_PEN
   if (method === 'DOMICILIO') return ADVANCE_PROVINCIA_DOMICILIO_PEN
   return (agency && ADVANCE_BY_AGENCY[agency]) || ADVANCE_PROVINCIA_PEN
 }
@@ -99,6 +124,23 @@ export const AGENCY_ONLY_CITIES: string[] = []
  * BORDERLINE. Solo aplica al análisis por polígono (post-venta), no al checkout.
  */
 export const BORDERLINE_THRESHOLD_M = 500
+
+/**
+ * Por debajo de esta distancia, el número deja de informar y la tarjeta dice
+ * "En tu distrito" en vez de una cifra.
+ *
+ * El motivo es cómo se construye el punto de referencia: `build-centroids.mjs`
+ * promedia **las sedes mismas** para obtener el centroide del distrito. En los
+ * **183 distritos que tienen una sola sede**, ese centroide ES la sede, y la
+ * distancia sale 0. Medido sobre los 378 distritos con centroide: **198 caen por
+ * debajo de 50 m**. O sea que en más de la mitad del país la primera tarjeta
+ * mostraba "a 0 m", que no significa nada y se lee como un sistema roto.
+ *
+ * El ORDEN sí es correcto —comparar distancias desde el centroide ordena bien
+ * las sedes entre sí—, lo que no se sostiene es presentar ese número como "qué
+ * tan lejos te queda a ti". Por eso se cambia la presentación, no el ranking.
+ */
+export const NEARBY_LABEL_THRESHOLD_KM = 0.5
 
 // ─── Packs ───────────────────────────────────────────────────────────────────
 
@@ -256,6 +298,9 @@ export const COPY = {
   outOfZoneChosen: 'Con gusto, te lo dejamos en la agencia que prefieras.',
   outOfZoneBenefit: 'Recoges cuando quieras, y pagas el resto ahí.',
   agencyNeutral: 'Elige tu agencia de recojo',
+  /** Reemplaza a la cifra cuando el centroide no da para afirmar una distancia
+   *  real. Ver `NEARBY_LABEL_THRESHOLD_KM`. */
+  pickupInDistrict: 'En tu distrito',
   retryDomicilio: 'Prefiero intentar entrega a domicilio',
 
   advanceHeadsUp: `Se paga un adelanto del envío por Yape y el resto al recibir.`,
@@ -368,6 +413,9 @@ export const COPY = {
   exitConfirmStay: 'Seguir comprando',
   exitConfirmLeave: 'Salir',
 
-  olvaQuestion: '¿En qué agencia Olva vas a recoger?',
-  olvaFinderUrl: 'https://www.olvacourier.com/agencias/',
+  // Aquí vivían `olvaQuestion` y `olvaFinderUrl`, de cuando Olva era la agencia
+  // sin listado y había que mandar al comprador a buscar su sede al sitio del
+  // courier. Olva tiene sus 424 sedes desde hace rato, y con la lista unificada
+  // el texto libre ya no es de nadie en particular: es la salida de `OTRO`, y su
+  // etiqueta vive en el propio campo.
 } as const

@@ -33,6 +33,11 @@ const PACKS: PackOption[] = [
 
 export default function CheckoutDemoPage() {
   const [open, setOpen] = useState(true)
+  // Espejo del switch `stores.home_delivery_enabled` del panel. Sin él la demo
+  // solo podía revisar el modo con domicilio, que es la mitad de los casos.
+  // Remonta el modal al cambiar: el flag se resuelve al montar, igual que en la
+  // landing real.
+  const [homeDelivery, setHomeDelivery] = useState(true)
 
   return (
     <div className="min-h-dvh bg-gray-100 flex flex-col items-center justify-center gap-4 p-6">
@@ -44,13 +49,30 @@ export default function CheckoutDemoPage() {
         </p>
       </div>
 
+      {/* El toggle vive FUERA del modal: con el checkout abierto queda debajo del
+          overlay y no se puede tocar. El flag se resuelve al montar —igual que en
+          la landing real—, así que de todos modos hay que reabrir para verlo. */}
       {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          className="bg-green-500 text-white font-black px-6 py-3.5 rounded-2xl shadow-lg shadow-green-200"
-        >
-          Abrir checkout
-        </button>
+        <>
+          <button
+            onClick={() => setHomeDelivery(v => !v)}
+            className="text-xs font-black px-4 py-2 rounded-full border-2"
+            style={{
+              borderColor: homeDelivery ? '#2563EB' : '#D1D5DB',
+              color: homeDelivery ? '#2563EB' : '#6B7280',
+              background: homeDelivery ? '#EFF6FF' : '#fff',
+            }}
+          >
+            Entrega a domicilio: {homeDelivery ? 'ACTIVA' : 'APAGADA (solo agencia)'}
+          </button>
+
+          <button
+            onClick={() => setOpen(true)}
+            className="bg-green-500 text-white font-black px-6 py-3.5 rounded-2xl shadow-lg shadow-green-200"
+          >
+            Abrir checkout
+          </button>
+        </>
       )}
 
       {open && (
@@ -65,6 +87,7 @@ export default function CheckoutDemoPage() {
           // Supabase. Sin `submitContext` el paso 3 no registra nada — a
           // propósito: la demo se usa para grabar tutoriales, no para vender.
           yape={{ number: '999 888 777', holder: 'Marca de ejemplo', qrUrl: null }}
+          homeDeliveryEnabled={homeDelivery}
         />
       )}
     </div>

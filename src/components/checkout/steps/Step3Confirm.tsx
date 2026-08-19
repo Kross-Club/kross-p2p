@@ -47,8 +47,8 @@ export default function Step3Confirm({
   const p = state.provinciaConfig
 
   const destino = isProvincia
-    ? p?.deliveryMethod === 'AGENCIA'
-      ? `Recojo en agencia${p.selectedAgency ? ` ${p.selectedAgency}` : ''} · ${p.district}`
+    ? state.deliveryMethod === 'AGENCIA'
+      ? `Recojo en agencia${state.pickup.agency ? ` ${state.pickup.agency}` : ''} · ${p?.district}`
       : `${p?.district ?? ''}, ${p?.province ?? ''}`
     : `${state.limaAddress?.district ?? 'Lima'} · a tu puerta`
 

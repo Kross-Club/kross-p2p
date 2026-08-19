@@ -33,14 +33,13 @@ const provincia = (culqi: StoreCulqi | null) => run(base(),
   { type: 'SET_WHATSAPP', whatsapp: '987654321' },
   { type: 'SET_DNI', dni: '12345678' },
   { type: 'SET_RECEIVER_NAME', receiverName: 'Ana Quispe' },
-  { type: 'SET_LOCATION_TYPE', locationType: 'PROVINCIA' },
-  { type: 'SET_PROVINCIA_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
+  { type: 'SET_DISTRICT', department: 'La Libertad', province: 'Trujillo', district: 'Trujillo' },
   { type: 'SET_AGENCY', agency: 'SHALOM' },
 )
 
 const lima = (culqi: StoreCulqi | null) => run(base(),
   { type: 'SET_CULQI_CONFIG', culqi },
-  { type: 'SET_LOCATION_TYPE', locationType: 'LIMA' },
+  { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' },
 )
 
 describe('culqiActiveFor · dónde cobra Culqi', () => {

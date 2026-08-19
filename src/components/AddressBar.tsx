@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { MapPin, Navigation, Copy } from 'lucide-react'
+import { isPickupDispatch } from '../lib/session'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -84,7 +85,10 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
   //
   // La máquina del checkout ya decide esto mismo (`needsLocationConfirmation`
   // es false en agencia); lo que faltaba era que el chat se enterara.
-  const isPickup = dispatchType === 'AGENCIA_PROVINCIA'
+  // Por helper y no por igualdad: desde que Lima puede recoger en agencia hay
+  // dos valores de recojo, y comparar contra uno solo le pedía el pin de su casa
+  // a quien va a pasar por el mostrador.
+  const isPickup = isPickupDispatch(dispatchType)
   const hasCoords = !isPickup && typeof lat === 'number' && typeof lng === 'number'
 
   return (
