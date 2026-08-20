@@ -456,3 +456,16 @@ describe('llave de partner por ambiente', () => {
     expect(pickPartnerKey('live', 'pt_unica', '')).toBe('pt_unica')
   })
 })
+
+describe('higiene de la llave de partner', () => {
+  it('recorta espacios: un secreto con espacio al final da 401', () => {
+    // Se ve idéntico a "llave inválida" y manda a buscar donde no es.
+    expect(pickPartnerKey('sandbox', '  pt_live_abc \n', '')).toBe('pt_live_abc')
+    expect(pickPartnerKey('live', '', ' pt_prod ')).toBe('pt_prod')
+  })
+
+  it('una llave que es solo espacios cuenta como ausente', () => {
+    expect(pickPartnerKey('live', 'pt_sandbox', '   ')).toBe('pt_sandbox')
+    expect(pickPartnerKey('sandbox', '   ', '')).toBe('')
+  })
+})

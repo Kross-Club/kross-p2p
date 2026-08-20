@@ -318,8 +318,18 @@ Deno.serve(async (req) => {
         }],
       })
       if (!created.ok) {
+        // Se loguea la FORMA de la llave, nunca la llave: con un 401 lo que hay
+        // que distinguir es "no está cargada", "vino con basura alrededor" y
+        // "es válida pero rechazada", y sin esto las tres se ven igual.
+        const rawKey = Deno.env.get('PAY360_PARTNER_KEY') ?? ''
         console.error('[manage-store] pay360 alta falló', JSON.stringify({
-          status: created.status, scopes: created.requiredScopes ?? null,
+          status: created.status,
+          scopes: created.requiredScopes ?? null,
+          error: created.error ?? null,
+          env,
+          key_len: partnerKey.length,
+          key_prefijo_ok: partnerKey.startsWith('pt_'),
+          key_tenia_espacios: rawKey !== rawKey.trim(),
         }))
         return json({ error: 'pay360_alta_fallo', detalle: created.error ?? null }, 502)
       }

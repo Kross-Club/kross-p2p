@@ -50,7 +50,13 @@ export function pay360BaseUrl(env: Pay360Env, api: Pay360Api): string {
  * que no puede tocar `Deno.env`. Cada Edge Function le pasa lo que leyó.
  */
 export function pickPartnerKey(env: Pay360Env, sandboxKey: string, liveKey: string): string {
-  return env === 'live' ? (liveKey || sandboxKey) : sandboxKey
+  // `trim()` no es cosmético: un espacio al final del secreto viaja dentro del
+  // header y 360pay responde 401 — un fallo que se ve idéntico a "llave mala" y
+  // manda a buscar donde no es. Pegar la llave con un espacio de más es lo más
+  // fácil del mundo, y una API key nunca lleva espacios con significado.
+  const sandbox = sandboxKey.trim()
+  const live = liveKey.trim()
+  return env === 'live' ? (live || sandbox) : sandbox
 }
 
 /** Deno no pone timeout al fetch: sin esto una caída de 360pay deja al
