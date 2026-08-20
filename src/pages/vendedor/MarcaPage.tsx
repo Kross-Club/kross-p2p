@@ -244,6 +244,15 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [connecting, setConnecting] = useState(false)
   const pay360Connected = !!store.pay360_business_id
 
+  // ¿El usuario TOCÓ los campos de llaves en esta sesión?
+  //
+  // Sin esto, guardar un cambio que no tiene nada que ver —el toggle de envío a
+  // domicilio, por ejemplo— manda igual lo que haya en esos inputs, y el
+  // gestor de contraseñas del navegador los rellena solo: son `type="password"`
+  // y `autoComplete="off"` no los frena (por eso van con `new-password`). El
+  // resultado era un guardado que fallaba con "la llave pública no tiene el
+  // formato pk_test_/pk_live_" sin que nadie hubiera escrito una llave.
+  const [keysTouched, setKeysTouched] = useState(false)
   const [culqiPk, setCulqiPk] = useState('')
   const [culqiSk, setCulqiSk] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -270,9 +279,12 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       culqi_enabled: culqiOn, culqi_scope: culqiScope,
       pay360_enabled: pay360On, pay360_env: pay360Env,
     }
-    // Las llaves SOLO viajan si se escribieron: vacío = conservar la guardada.
-    if (culqiPk.trim()) payload.culqi_public_key = culqiPk.trim()
-    if (culqiSk.trim()) payload.culqi_secret_key = culqiSk.trim()
+    // Las llaves SOLO viajan si se escribieron A MANO en esta sesión: vacío o
+    // autocompletado por el navegador = conservar la guardada.
+    if (keysTouched) {
+      if (culqiPk.trim()) payload.culqi_public_key = culqiPk.trim()
+      if (culqiSk.trim()) payload.culqi_secret_key = culqiSk.trim()
+    }
     if (isSuper) {
       payload.slug = slug; payload.active = active
       payload.wa_enabled = waEnabled
@@ -477,11 +489,11 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               <option value="ALL">Todo el país, incluida Lima</option>
             </select>
 
-            <input value={culqiPk} onChange={e => setCulqiPk(e.target.value)} type="password"
-              autoComplete="off" placeholder="Llave pública · pk_live_…"
+            <input value={culqiPk} onChange={e => { setCulqiPk(e.target.value); setKeysTouched(true) }} type="password"
+              autoComplete="new-password" name="culqi-pk" placeholder="Llave pública · pk_live_…"
               className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
-            <input value={culqiSk} onChange={e => setCulqiSk(e.target.value)} type="password"
-              autoComplete="off"
+            <input value={culqiSk} onChange={e => { setCulqiSk(e.target.value); setKeysTouched(true) }} type="password"
+              autoComplete="new-password" name="culqi-sk"
               placeholder={store.culqi_secret_configured
                 ? 'Llave secreta ✓ configurada — pega una nueva para rotarla'
                 : 'Llave secreta · sk_live_…'}
