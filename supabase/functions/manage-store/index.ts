@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     pay360_enabled?: boolean
     pay360_env?: string                // 'sandbox' | 'live'
     /** Da de alta la marca como negocio en 360pay. Ver `connectPay360`. */
-    pay360_connect?: { payment_prefix?: string }
+    pay360_connect?: { payment_prefix?: string; name?: string }
     // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
     // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
     checkout_ab_mode?: string
@@ -295,8 +295,14 @@ Deno.serve(async (req) => {
       if (!/^[A-Z0-9]{3}$/.test(prefix)) return json({ error: 'pay360_prefijo_invalido' }, 400)
 
       const env: Pay360Env = (patch.pay360_env ?? existing?.pay360_env) === 'live' ? 'live' : 'sandbox'
+      // El nombre del comercio en 360pay puede no ser el de la marca en Kross:
+      // allá es una razón comercial frente al banco, acá es el rótulo de la
+      // tienda. Por defecto se hereda, pero se puede fijar.
+      const bizName = String(body.pay360_connect.name ?? existing?.nombre ?? targetId).trim().slice(0, 80)
+      if (!bizName) return json({ error: 'pay360_nombre_invalido' }, 400)
+
       const created = await createBusiness(pay360BaseUrl(env, 'partner'), partnerKey, {
-        business: { name: String(existing?.nombre ?? targetId).slice(0, 80), payment_prefix: prefix },
+        business: { name: bizName, payment_prefix: prefix },
         config: {},
         hooks: [{
           type: 'PAYMENT_PAID',

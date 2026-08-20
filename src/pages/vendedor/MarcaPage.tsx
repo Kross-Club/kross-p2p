@@ -54,6 +54,7 @@ const ERR: Record<string, string> = {
   pay360_prefijo_invalido: 'El prefijo son 3 caracteres: letras y números.',
   pay360_alta_fallo: 'No pudimos crear la cuenta en 360pay. Revisa e inténtalo de nuevo.',
   pay360_sin_conectar: 'Conecta la marca con 360pay antes de encender el cobro.',
+  pay360_nombre_invalido: 'Escribe el nombre del comercio para 360pay.',
 }
 
 async function call(payload: Record<string, unknown>) {
@@ -237,6 +238,9 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [pay360On, setPay360On] = useState(!!store.pay360_enabled)
   const [pay360Env, setPay360Env] = useState(store.pay360_env === 'live' ? 'live' : 'sandbox')
   const [pay360Prefix, setPay360Prefix] = useState('')
+  // El nombre del comercio en 360pay: por defecto el de la marca, editable
+  // porque allá es la razón comercial frente al banco y acá el rótulo.
+  const [pay360Name, setPay360Name] = useState(store.nombre ?? '')
   const [connecting, setConnecting] = useState(false)
   const pay360Connected = !!store.pay360_business_id
 
@@ -291,7 +295,10 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
     const { ok, data } = await call({
       action: 'update', admin_auth_id: adminId, store_id: store.id,
       pay360_env: pay360Env,
-      pay360_connect: { payment_prefix: pay360Prefix.trim().toUpperCase() },
+      pay360_connect: {
+        payment_prefix: pay360Prefix.trim().toUpperCase(),
+        name: pay360Name.trim(),
+      },
     })
     setConnecting(false)
     if (!ok) {
@@ -406,6 +413,12 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             ) : (
               <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: '#FFF8E1' }}>
                 <label className="text-[10px] font-bold text-gray-600 mb-1 block">
+                  Nombre del comercio en 360pay
+                </label>
+                <input value={pay360Name} onChange={e => setPay360Name(e.target.value)}
+                  placeholder="Kross Shop"
+                  className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
+                <label className="text-[10px] font-bold text-gray-600 mb-1 block">
                   Prefijo de los códigos de pago (3 caracteres)
                 </label>
                 <div className="flex gap-2">
@@ -414,7 +427,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
                     placeholder="KRS" maxLength={3}
                     className="w-20 bg-white border rounded-xl px-3 py-2 text-sm font-mono font-bold outline-none" />
                   <button onClick={connectPay360}
-                    disabled={connecting || pay360Prefix.length !== 3}
+                    disabled={connecting || pay360Prefix.length !== 3 || !pay360Name.trim()}
                     className="flex-1 rounded-xl px-3 py-2 text-xs font-black text-white disabled:opacity-40"
                     style={{ background: '#742284' }}>
                     {connecting ? 'Conectando…' : 'Conectar con 360pay'}
