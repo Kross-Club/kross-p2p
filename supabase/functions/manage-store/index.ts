@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { createBusiness, pay360BaseUrl, type Pay360Env } from '../_shared/pay360.ts'
+import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -281,9 +281,6 @@ Deno.serve(async (req) => {
     // instante la única salida es rotarlos. Un flujo manual pierde ese secreto
     // en cuanto alguien cierra la terminal.
     if (body.pay360_connect) {
-      const partnerKey = Deno.env.get('PAY360_PARTNER_KEY') ?? ''
-      if (!partnerKey) return json({ error: 'pay360_sin_llave_partner' }, 400)
-
       const { data: existing } = await supabase.from('stores')
         .select('nombre, pay360_business_id, pay360_env').eq('id', targetId).maybeSingle()
       // Re-dar de alta crearía un SEGUNDO negocio en 360pay para la misma marca,
@@ -295,6 +292,16 @@ Deno.serve(async (req) => {
       if (!/^[A-Z0-9]{3}$/.test(prefix)) return json({ error: 'pay360_prefijo_invalido' }, 400)
 
       const env: Pay360Env = (patch.pay360_env ?? existing?.pay360_env) === 'live' ? 'live' : 'sandbox'
+      // El negocio se crea CONTRA UN AMBIENTE, y el de sandbox no existe en
+      // producción: darlo de alta con la llave equivocada deja un business_id
+      // que apunta a la nada el día que se cobre de verdad.
+      const partnerKey = pickPartnerKey(
+        env,
+        Deno.env.get('PAY360_PARTNER_KEY') ?? '',
+        Deno.env.get('PAY360_PARTNER_KEY_LIVE') ?? '',
+      )
+      if (!partnerKey) return json({ error: 'pay360_sin_llave_partner' }, 400)
+
       // El nombre del comercio en 360pay puede no ser el de la marca en Kross:
       // allá es una razón comercial frente al banco, acá es el rótulo de la
       // tienda. Por defecto se hereda, pero se puede fijar.

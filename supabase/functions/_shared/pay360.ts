@@ -35,6 +35,24 @@ export function pay360BaseUrl(env: Pay360Env, api: Pay360Api): string {
   return `${PAY360_HOSTS[env]}${api === 'partner' ? '/partners/v1' : '/v1'}`
 }
 
+
+/**
+ * Elige la llave de partner del ambiente que toca.
+ *
+ * Son DOS llaves distintas —pruebas y producción— y usar una sola las
+ * confundiría en silencio: una tienda marcada `live` cobrando con la llave de
+ * sandbox no falla de forma visible, simplemente nunca recibe el dinero.
+ *
+ * `live` cae a la de sandbox si no hay una propia, porque 360pay podría usar la
+ * misma para ambos — el `pt_live_` de partner ya funcionó contra sandbox.
+ *
+ * Pura a propósito: este módulo lo typechequea también el build del front, así
+ * que no puede tocar `Deno.env`. Cada Edge Function le pasa lo que leyó.
+ */
+export function pickPartnerKey(env: Pay360Env, sandboxKey: string, liveKey: string): string {
+  return env === 'live' ? (liveKey || sandboxKey) : sandboxKey
+}
+
 /** Deno no pone timeout al fetch: sin esto una caída de 360pay deja al
  *  comprador mirando el spinner, y vuelve a tocar mucho antes. */
 const TIMEOUT_MS = 30_000

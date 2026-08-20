@@ -23,15 +23,13 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
-  PAY360_HEADERS, getCoupon, isPaid, pay360BaseUrl, verifySignature, type Pay360Env,
+  PAY360_HEADERS, getCoupon, isPaid, pay360BaseUrl, pickPartnerKey, verifySignature, type Pay360Env,
 } from '../_shared/pay360.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 )
-
-const PARTNER_KEY = Deno.env.get('PAY360_PARTNER_KEY') ?? ''
 
 /** 200 salvo que queramos el reintento. Un 4xx por evento inválido evita que
  *  360pay reintente algo que nunca va a mejorar. */
@@ -141,7 +139,8 @@ Deno.serve(async (req) => {
     .select('pay360_env').eq('id', String(session.origin_store_id ?? session.store_id)).maybeSingle()
   const env = (store?.pay360_env === 'live' ? 'live' : 'sandbox') as Pay360Env
 
-  const coupon = await getCoupon(pay360BaseUrl(env, 'partner'), PARTNER_KEY, id)
+  const coupon = await getCoupon(pay360BaseUrl(env, 'partner'),
+    pickPartnerKey(env, Deno.env.get('PAY360_PARTNER_KEY') ?? '', Deno.env.get('PAY360_PARTNER_KEY_LIVE') ?? ''), id)
   if (!coupon.ok) {
     // No se pudo confirmar: se suelta el dedupe para que el reintento de 360pay
     // pueda volver a intentarlo, y se pide el reintento con un 5xx.

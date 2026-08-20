@@ -26,16 +26,13 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import {
   annulCoupon, consumerCodeFor, createCoupon, getCoupon, isPaid,
-  pay360BaseUrl, paymentUrlOf, yapeDeeplink, type Pay360Env,
+  pay360BaseUrl, paymentUrlOf, pickPartnerKey, yapeDeeplink, type Pay360Env,
 } from '../_shared/pay360.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 )
-
-/** Llave de PARTNER: es de la plataforma, no de una tienda. */
-const PARTNER_KEY = Deno.env.get('PAY360_PARTNER_KEY') ?? ''
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -116,6 +113,11 @@ Deno.serve(async (req) => {
   const companyId = Deno.env.get('PAY360_YAPE_COMPANY_ID') ?? ''
   const serviceId = Deno.env.get('PAY360_YAPE_SERVICE_ID') ?? ''
 
+  const env = (store?.pay360_env === 'live' ? 'live' : 'sandbox') as Pay360Env
+  // La llave de PARTNER es de la plataforma, no de la tienda — pero SÍ depende
+  // del ambiente de la tienda: ver `partnerKeyFor`.
+  const PARTNER_KEY = pickPartnerKey(env, Deno.env.get('PAY360_PARTNER_KEY') ?? '', Deno.env.get('PAY360_PARTNER_KEY_LIVE') ?? '')
+
   const ready = store?.pay360_enabled && store.pay360_business_id && store.pay360_payment_prefix
     && PARTNER_KEY
   if (!ready) {
@@ -123,7 +125,6 @@ Deno.serve(async (req) => {
     return json({ ok: false, stage: 'config', code: 'store_not_configured', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 409)
   }
 
-  const env = (store.pay360_env === 'live' ? 'live' : 'sandbox') as Pay360Env
   const base = pay360BaseUrl(env, 'partner')
 
   // ─── Código de pago del COMPRADOR ──────────────────────────────────────────

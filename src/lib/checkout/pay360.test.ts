@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CONSUMER_CODE_MAX, PAY360_HEADERS, SIGNATURE_TOLERANCE_MS, consumerCodeFor, hmacHex,
-  isPaid, isValidConsumerCode, pay360BaseUrl, paymentUrlOf, signedPayload, timingSafeEqual, unwrap,
+  isPaid, isValidConsumerCode, pay360BaseUrl, paymentUrlOf, pickPartnerKey, signedPayload, timingSafeEqual, unwrap,
   verifySignature, yapeDeeplink, YAPE_SERVICES_PAY_URL,
 } from '../../../supabase/functions/_shared/pay360.ts'
 
@@ -438,5 +438,21 @@ describe('¿aplica 360pay a este pedido?', () => {
   it('apagado o sin config, no cobra', () => {
     expect(pay360ActiveFor({ pay360: null, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
     expect(pay360ActiveFor({ pay360: { enabled: false, scope: 'ALL' }, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
+  })
+})
+
+describe('llave de partner por ambiente', () => {
+  it('sandbox usa la de sandbox aunque exista la de producción', () => {
+    expect(pickPartnerKey('sandbox', 'pt_sandbox', 'pt_prod')).toBe('pt_sandbox')
+  })
+
+  it('live usa la de producción', () => {
+    expect(pickPartnerKey('live', 'pt_sandbox', 'pt_prod')).toBe('pt_prod')
+  })
+
+  it('live cae a la de sandbox solo si no hay una propia', () => {
+    // 360pay podría usar la misma para ambos: el pt_live_ de partner ya
+    // funcionó contra sandbox.
+    expect(pickPartnerKey('live', 'pt_unica', '')).toBe('pt_unica')
   })
 })
