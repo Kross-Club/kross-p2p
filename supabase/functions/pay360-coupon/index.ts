@@ -26,7 +26,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import {
   annulCoupon, consumerCodeFor, createCoupon, getCoupon, isPaid,
-  couponExpiryFrom, pay360BaseUrl, paymentUrlOf, pickPartnerKey, yapeDeeplink, type Pay360Env,
+  couponExpiryFrom, createCustomer, pay360BaseUrl, paymentUrlOf, pickPartnerKey, yapeDeeplink,
+  type Pay360Env,
 } from '../_shared/pay360.ts'
 
 const supabase = createClient(
@@ -57,7 +58,7 @@ Deno.serve(async (req) => {
   const { data: session } = await supabase
     .from('order_sessions')
     .select(`
-      id, order_id, store_id, origin_store_id, status, buyer_name, buyer_phone,
+      id, order_id, store_id, origin_store_id, status, buyer_id, buyer_name, buyer_phone,
       advance_amount, payment_verification, payment_provider,
       product_price, advance_choice, advance_charge_attempts,
       pay360_coupon_id, pay360_consumer_code
@@ -154,6 +155,44 @@ Deno.serve(async (req) => {
       return json({ ok: true, already_paid: true, amount_pen: rowAmount })
     }
     if (prev.ok) await annulCoupon(base, PARTNER_KEY, session.pay360_coupon_id)
+  }
+
+  // ─── El CLIENTE, con sus datos reales ──────────────────────────────────────
+  // `POST /coupons` con solo el `code` crea un cliente llamado **`Internal
+  // Customer`**, sin documento ni teléfono: el `customer` anidado que documenta
+  // el spec se ignora entero (verificado contra el cupón real `6a87c28e…`). Con
+  // veinte pedidos el comercio ve veinte clientes idénticos en su panel y no
+  // puede conciliar a quién le cobró. Por eso el cliente se crea ANTES, por su
+  // propio endpoint, donde los campos sí se respetan.
+  //
+  // Solo la PRIMERA vez de cada comprador: el código de pago es estable por
+  // comprador, así que si ya hubo una emisión con este código el cliente ya
+  // existe en 360pay y volver a crearlo solo puede duplicarlo.
+  //
+  // Y **best-effort a propósito**: que el panel muestre bien el nombre no vale
+  // un pedido sin cobrar. Si esto falla se sigue igual — 360pay creará su
+  // cliente genérico, que es exactamente lo que pasa hoy.
+  const { data: yaVisto } = await supabase.from('order_sessions')
+    .select('id').eq('pay360_consumer_code', consumerCode).limit(1).maybeSingle()
+
+  if (!yaVisto) {
+    const { data: buyer } = session.buyer_id
+      ? await supabase.from('buyers')
+          .select('document_type, document_number').eq('id', session.buyer_id).maybeSingle()
+      : { data: null }
+    const cliente = await createCustomer(base, PARTNER_KEY, {
+      name: session.buyer_name ?? 'Cliente',
+      coupon_code: consumerCode,
+      phone: session.buyer_phone ? `+51${String(session.buyer_phone).slice(-9)}` : undefined,
+      document_type: buyer?.document_type ?? undefined,
+      document_number: buyer?.document_number ?? undefined,
+    })
+    // Se anota, no se corta: el cupón de abajo no depende de esto.
+    if (!cliente.ok) {
+      console.warn('[pay360-coupon] cliente no creado, sigue con el genérico', JSON.stringify({
+        status: cliente.status, error: cliente.error ?? null,
+      }))
+    }
   }
 
   // ─── Emitir ────────────────────────────────────────────────────────────────
