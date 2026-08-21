@@ -49,8 +49,6 @@ export type CheckoutEvent =
   | { name: 'order_failed'; orderId: string; reason: string }
   /** El cobro en línea, por separado del registro: son dos embudos. `stage`
    *  dice DÓNDE murió el que falló — token vencido ≠ sin saldo ≠ red. */
-  | { name: 'culqi_charge_ok'; orderId: string; alreadyPaid: boolean }
-  | { name: 'culqi_charge_failed'; orderId: string; stage: string; code?: string }
   // 360pay: emitir el cupón no es cobrar. `issued` mide que el comprador llegó
   // a tener CÓMO pagar; el pago en sí lo confirma el webhook, así que la tasa
   // que importa —cuántos de los emitidos terminan pagados— se calcula contra

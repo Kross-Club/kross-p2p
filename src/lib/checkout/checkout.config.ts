@@ -162,50 +162,21 @@ export const YAPE = {
 /** Dígitos del código de seguridad de Yape. Confirmado contra la app real. */
 export const YAPE_CODE_LENGTH = 3
 
-// ─── Cobro en línea con Culqi ────────────────────────────────────────────────
-
-/** El "código de aprobación" de la app Yape: 6 dígitos, en Aprobar compras →
- *  Código de aprobación. No confundir con el código de SEGURIDAD (3 dígitos)
- *  del flujo manual: aquel evidencia un pago ya hecho; este AUTORIZA un cobro. */
-export const CULQI_OTP_LENGTH = 6
-
-/** Lo que la app de Yape le da de vida al código. El token de Culqi vive 5;
- *  manda el más corto, y es lo que la UI le advierte al comprador. */
-export const CULQI_OTP_TTL_MIN = 2
-
-/**
- * ¿Este pedido se cobra con Culqi? Decide la bifurcación del paso 3 y la del
- * submit. Es una LECTURA pura, no un derivado persistido: no va en `derive()`
- * porque no forma parte del estado — `culqi` lo inyecta el modal y puede llegar
- * asíncrono, después de que el comprador ya esté en el paso 3.
- *
- * `locationType === null` (aún no eligió destino) da false: sin destino no hay
- * monto, y la rama Culqi sin monto no existe.
- */
-export function culqiActiveFor(
-  s: Pick<CheckoutState, 'culqi' | 'locationType' | 'advanceAmount'>,
-): boolean {
-  if (!s.culqi?.enabled || s.advanceAmount <= 0 || !s.locationType) return false
-  return s.culqi.scope === 'ALL' || s.locationType === 'PROVINCIA'
-}
-
 // ─── Cobro con 360pay (cupón + deep link de Yape) ────────────────────────────
 
 /**
- * ¿Este pedido se cobra con 360pay? Misma forma que `culqiActiveFor`, y misma
- * razón para no ser un derivado: la config la inyecta el modal y puede llegar
- * asíncrona, después de que el comprador ya esté en el paso 3.
+ * ¿Este pedido se cobra con 360pay? Es una LECTURA pura, no un derivado
+ * persistido: no va en `derive()` porque no forma parte del estado — la config
+ * la inyecta el modal y puede llegar asíncrona, después de que el comprador ya
+ * esté en el paso 3.
  *
- * **360pay gana sobre Culqi si los dos están activos.** No es arbitrario: es el
- * único de los dos que hoy puede cobrar de verdad — Culqi está bloqueado a la
- * espera de la acreditación PCI (ver `05-PCI-SAQ-D.md`). Si esa acreditación
- * llega, esta precedencia es la línea que se cambia.
+ * `locationType === null` (aún no eligió destino) da false: sin destino no hay
+ * monto, y la rama de cobro sin monto no existe.
  *
- * A diferencia de Culqi, NO tiene `scope` por región. El de Culqi existe como
- * repliegue operativo: su cobro es un salto de fe que puede costar conversión
- * limeña, y se acota sin deploy. 360pay no tiene ese riesgo —el comprador toca
- * un botón y Yape abre— así que aplica donde la tienda lo encendió. Copiarle el
- * scope habría sido calcar una defensa sin la amenaza que la justifica.
+ * **No tiene `scope` por región**, a diferencia del motor que vivió antes aquí:
+ * aquel acotaba el cobro a provincia porque era un salto de fe que podía costar
+ * conversión limeña. 360pay no tiene ese riesgo —el comprador toca un botón y
+ * Yape abre con el monto puesto— así que aplica donde la tienda lo encendió.
  */
 export function pay360ActiveFor(
   s: Pick<CheckoutState, 'pay360' | 'locationType' | 'advanceAmount'>,
@@ -332,32 +303,6 @@ export const COPY = {
   yapeCodeHint: 'Aparecen en tu pantalla de Yape como “Código de seguridad”.',
   yapeCodePlaceholder: '000',
 
-  // ─── Cobro en línea (Culqi) ────────────────────────────────────────────────
-  // Nada aquí nombra a Culqi: el comprador paga "con Yape" — el motor es
-  // cocina nuestra. Nombrar al procesador solo agrega una marca desconocida
-  // justo en la pantalla donde la confianza decide.
-  culqiTitle: 'Aprueba tu pago con Yape',
-  culqiIntro: 'Genera tu código de aprobación en Yape, pégalo aquí y el cobro entra al toque — sin capturas ni esperas.',
-  culqiPhoneLabel: 'Tu número de Yape',
-  culqiPhoneHint: 'Lo tomamos de tu WhatsApp. Cámbialo si tu Yape es otro.',
-  culqiOtpLabel: 'Código de aprobación de Yape',
-  culqiOtpHint: 'En Yape: Aprobar compras → Código de aprobación. Vence en 2 minutos.',
-  culqiOtpPlaceholder: '000000',
-  culqiOtpNew: 'Genera un código NUEVO en Yape: el anterior ya venció o ya se usó.',
-  /** CTA del paso 3 cuando el botón COBRA, no solo registra. */
-  culqiSubmit: 'Pagar y terminar mi pedido',
-  culqiCharging: 'Cobrando tu adelanto…',
-  culqiChargingHint: 'No cierres esta ventana.',
-  // Pedido creado + pago fallido: la pantalla que no puede decir "error" a
-  // secas. Primero lo que SÍ pasó (tu pedido existe), después lo que falta.
-  culqiRetryTitle: 'Tu pedido está guardado — falta el pago',
-  culqiRetryBody: 'No perdiste nada de lo que llenaste. Solo falta cobrar tu adelanto.',
-  culqiRetryCta: 'Reintentar el pago',
-  culqiContactMe: 'Prefiero que me escriban para pagar',
-  // network_after: el dinero PUDO salir. Reintentar aquí es arriesgar un doble
-  // cobro: se espera y se consulta, jamás se re-cobra a ciegas.
-  culqiConfirming: 'Estamos confirmando tu pago…',
-  culqiConfirmingHint: 'No vuelvas a pagar: si tu Yape ya se descontó, tu pedido se confirma solo en unos segundos.',
   doneUnpaid: 'Registramos tu pedido. Un asesor te escribirá por el chat para coordinar el adelanto.',
   /** La landing, cuando quedó un pedido con el pago pendiente. Nombra lo que el
    *  botón HACE —abrir el chat, donde un asesor cobra— y no lo que uno querría
@@ -367,9 +312,16 @@ export const COPY = {
   finishPaymentCta: 'Coordinar el pago de tu pedido',
 
   // ─── Cobro con 360pay ──────────────────────────────────────────────────────
-  // Igual que con Culqi, el comprador paga "con Yape": el recaudador es cocina
-  // nuestra. Nombrar a 360pay solo agrega una marca desconocida justo en la
-  // pantalla donde la confianza decide.
+  // El comprador paga "con Yape": el recaudador es cocina nuestra. Nombrar a
+  // 360pay solo agrega una marca desconocida justo en la pantalla donde la
+  // confianza decide.
+  // Pedido creado + pago no resuelto: la pantalla que no puede decir "error" a
+  // secas. Primero lo que SÍ pasó (tu pedido existe), después lo que falta.
+  paymentPendingTitle: 'Tu pedido está guardado — falta el pago',
+  paymentPendingBody: 'No perdiste nada de lo que llenaste. Solo falta cobrar tu adelanto.',
+  retryPaymentCta: 'Reintentar el pago',
+  contactMeInstead: 'Prefiero que me escriban para pagar',
+
   pay360Title: 'Paga tu adelanto con Yape',
   pay360Intro: 'Toca el botón y Yape se abre con todo listo. No tienes que escribir el monto ni buscar ningún número.',
   pay360AmountLabel: 'Monto a pagar',

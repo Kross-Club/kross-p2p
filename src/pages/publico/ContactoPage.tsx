@@ -5,7 +5,7 @@ import { RedIcon } from '../../components/publico/RedIcon'
 import { EMPRESA, whatsappLink, formatoTelefono, etiquetaTitular } from '../../config/empresa'
 
 // Página de contacto: número, correo y dirección en una URL propia y enlazada
-// desde el menú. Culqi lo pide explícitamente, y es lo primero que busca un
+// desde el menú. La pasarela lo pide explícitamente, y es lo primero que busca un
 // comprador cuando algo salió mal con su pedido.
 export default function ContactoPage() {
   const wa = whatsappLink('Hola, quiero información sobre Kross.')

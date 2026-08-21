@@ -50,21 +50,10 @@ export type PaymentVerification = 'NOT_REQUIRED' | 'PENDING' | 'MATCHED' | 'UNMA
 
 export type CheckoutStatus = 'DRAFT' | 'SUBMITTING' | 'SUBMITTED' | 'ERROR'
 
-/** Dónde cobra Culqi: solo provincia, o todo el país incluida Lima. Es la
- *  retirada operativa — replegarse a 'PROVINCIA' no requiere deploy. */
-export type CulqiScope = 'PROVINCIA' | 'ALL'
-
 /** Config de cobro en línea de la TIENDA (columnas públicas de `stores`).
- *  La inyecta el modal en cada apertura; jamás viene del borrador guardado. */
-export interface StoreCulqi {
-  enabled: boolean
-  scope: CulqiScope
-}
-
-/** Config de cobro con 360pay de la TIENDA (columnas públicas de `stores`).
- *  Misma semántica que `StoreCulqi`: la inyecta el modal en cada apertura y
- *  jamás viene del borrador guardado — un borrador con 360pay activo no puede
- *  forzar el cobro en una tienda que lo apagó. */
+ *  La inyecta el modal en cada apertura y jamás viene del borrador guardado:
+ *  un borrador con 360pay activo no puede forzar el cobro en una tienda que lo
+ *  apagó. */
 export interface StorePay360 {
   enabled: boolean
 }
@@ -195,18 +184,12 @@ export interface CheckoutState {
    */
   advanceYapeCode: string
   /**
-   * Config Culqi de la tienda. `null` = la tienda no cobra en línea (o aún no
-   * cargó). NO es un derivado ni sobrevive al borrador: el modal la reinyecta
-   * en cada apertura, para que un borrador guardado con Culqi activo no pueda
-   * forzar el cobro en una tienda que lo apagó.
+   * Config de 360pay de la tienda. `null` = la tienda no cobra en línea (o aún
+   * no cargó). NO es un derivado ni sobrevive al borrador: el modal la
+   * reinyecta en cada apertura, para que un borrador guardado con el cobro
+   * activo no pueda forzarlo en una tienda que lo apagó.
    */
-  culqi: StoreCulqi | null
-  /** Config de 360pay de la tienda. Mismas reglas que `culqi`. */
   pay360: StorePay360 | null
-  /** Celular que aprueba en Yape. Se prellena del WhatsApp; editable. */
-  culqiPhone: string
-  /** Código de aprobación de Yape (6 dígitos, vence en 2 min). Jamás persiste. */
-  culqiOtp: string
   /**
    * Precio de LISTA del pack elegido, tal como vino del producto. Entra al
    * estado con `SET_PACK` porque el adelanto pasó a ser un porcentaje del

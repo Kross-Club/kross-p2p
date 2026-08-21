@@ -2,9 +2,9 @@
 // Espejo de `advanceFor()` (src/lib/checkout/checkout.config.ts). Existe porque
 // el monto del adelanto NO puede venir del navegador: `register-buyer` lo
 // aceptaba tal cual del body, así que cualquiera podía registrar un pedido
-// declarando un adelanto de S/1 — y con el cobro directo de Culqi ese S/1 se
+// declarando un adelanto de S/1 — y con el cobro en línea ese S/1 se
 // cobraría de verdad y el pedido se auto-confirmaría sin que ninguna persona lo
-// mire. El test de paridad en src/lib/checkout/culqi.test.ts vigila que las dos
+// mire. El test de paridad en src/lib/checkout/pay360.test.ts vigila que las dos
 // implementaciones no se desalineen.
 //
 // Sin APIs de Deno a propósito: el archivo se importa también desde vitest.

@@ -50,9 +50,9 @@ Deno.serve(async (req) => {
     advance_amount?: number       // informativo: el monto REAL se deriva en el server
     advance_voucher_url?: string  // ruta en el bucket privado `vouchers`
     advance_yape_code?: string    // código de seguridad tecleado por el comprador
-    // 'CULQI' = el adelanto se cobra en línea vía `culqi-charge`. Saca al pedido
-    // de la piscina del cruce manual: sin esto, un yape ajeno del mismo monto lo
-    // daría por pagado y el cargo real nunca ocurriría. Ver §16.d del esquema.
+    // '360PAY' = el adelanto se cobra en línea con un cupón. Saca al pedido de
+    // la piscina del cruce manual: sin esto, un yape ajeno del mismo monto lo
+    // daría por pagado y el cobro real nunca ocurriría. Ver §16.d del esquema.
     payment_provider?: string
   }
 
@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
   // El precio venía del body tal cual. Daba igual mientras el adelanto saliera
   // de una tabla fija por destino; desde que es un PORCENTAJE del precio,
   // aceptarlo del navegador es dejar que el comprador fije lo que se le cobra:
-  // declarar un pack de S/2 y que Culqi le cargue S/1.
+  // declarar un pack de S/2 y que el cobro en línea le saque S/1.
   //
   // Se contrasta contra los packs del producto. Si no se puede verificar (sin
   // product_id, producto sin packs) NO se bloquea la venta —el pedido vale más
@@ -293,8 +293,8 @@ Deno.serve(async (req) => {
 
   // ─── Adelanto ──────────────────────────────────────────────────────────────
   // Para el checkout directo el monto se DERIVA AQUÍ, nunca del body: aceptarlo
-  // del navegador permitía declarar S/1 — y con Culqi ese S/1 se cobraría de
-  // verdad y el pedido se auto-confirmaría. El body solo sirve para detectar
+  // del navegador permitía declarar S/1 — y con el cobro en línea ese S/1 se
+  // cobraría de verdad y el pedido se auto-confirmaría. El body solo sirve para detectar
   // front desalineado.
   //
   // Es la mitad del pedido, o el total si el comprador lo eligió. `finalPrice`
@@ -317,9 +317,7 @@ Deno.serve(async (req) => {
   }
   // Lista blanca, no passthrough: este campo decide de qué piscina de cruce
   // sale el pedido, así que un valor inventado lo dejaría fuera de las dos.
-  const paymentProvider = body.payment_provider === 'CULQI' ? 'CULQI'
-    : body.payment_provider === '360PAY' ? '360PAY'
-    : null
+  const paymentProvider = body.payment_provider === '360PAY' ? '360PAY' : null
   const advanceVoucherUrl = body.advance_voucher_url?.trim() || null
   const advanceYapeCode = body.advance_yape_code?.replace(/\D/g, '').slice(0, 6) || null
   const paymentVerification = advanceAmount > 0 ? 'PENDING' : 'NOT_REQUIRED'
@@ -331,8 +329,8 @@ Deno.serve(async (req) => {
       // Align the order to the assigned seller's store so it shows in the team's lists
       store_id: assignedSellerStore ?? body.store_id,
       // La tienda del PRODUCTO, siempre. El pool de vendedores ya está scoped a
-      // la misma tienda, pero las llaves de Culqi se resuelven por esta columna
-      // — cobrar contra la cuenta de otra marca es el peor bug posible, así que
+      // la misma tienda, pero la config de cobro se resuelve por esta columna —
+      // cobrar contra la cuenta de otra marca es el peor bug posible, así que
       // el invariante queda escrito en la fila, no implícito en el round-robin.
       origin_store_id: body.store_id,
       token,
@@ -446,9 +444,9 @@ Deno.serve(async (req) => {
   // ya está guardado y sin consumir. Sin esta pasada, todo pedido de provincia
   // quedaría PENDING esperando un pago que nunca va a volver a llegar.
   //
-  // Un pedido Culqi NO entra aquí: su dinero llega por `culqi-charge`, no por
-  // el Yape de la marca. Dejarlo cruzar haría que un yape ajeno del mismo monto
-  // lo diera por pagado — y el cargo real nunca ocurriría.
+  // Un pedido de 360pay NO entra aquí: su dinero llega por su webhook, contra
+  // el cupón. Dejarlo cruzar haría que un yape ajeno del mismo monto lo diera
+  // por pagado — y el cobro real nunca se registraría.
   if (advanceAmount > 0 && paymentProvider === null) {
     const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
     const { data: pending } = await supabase
@@ -530,7 +528,7 @@ Deno.serve(async (req) => {
       session_id: data.id,
       // La rama idempotente ya lo devolvía; esta no, y el front hace
       // `setOrderCode(res.order_id)` — el código del pedido llegaba undefined
-      // en todo pedido NUEVO. Con Culqi además el retry del cobro lo necesita.
+      // en todo pedido NUEVO. El reintento del cobro también lo necesita.
       order_id: orderId,
       buyer_id: buyer.id,
       score: buyer.score,

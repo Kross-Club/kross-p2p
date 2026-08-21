@@ -1,7 +1,7 @@
 // ─── SALES ENGINE · Webhook de pago de 360pay ────────────────────────────────
-// Aquí se confirma el dinero. A diferencia de `culqi-webhook` —que es una red de
-// seguridad porque el cargo ya se supo en `culqi-charge`— este es el CAMINO
-// PRINCIPAL: con cupones no hay respuesta síncrona que diga "pagado".
+// Aquí se confirma el dinero, y es el CAMINO PRINCIPAL, no una red de
+// seguridad: con cupones no hay ninguna respuesta síncrona que diga "pagado".
+// Si este handler falla, el pedido queda cobrado y sin cruzar.
 //
 // Se despliega con --no-verify-jwt: lo llama 360pay, no un usuario.
 // La autenticidad la da la FIRMA, no un JWT.
