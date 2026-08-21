@@ -109,13 +109,19 @@ real; se recalcula cuando haya pedidos con coordenadas.
 ### 5. Listado de agencias ✅ Shalom · ✅ Olva
 
 `src/lib/checkout/services/AgencyService.ts` — **las dos agencias se resuelven con el
-mismo código**. `OTRO` es la única sin listado: para esa la UI cae a texto libre y el
-pedido queda marcado para verificación manual.
+mismo código**.
 
-| | Sedes | Fuente | Adelanto |
-|---|---|---|---|
-| **Shalom** | 487 | CSV oficial → `scripts/build-agencies.mjs` | S/20 |
-| **Olva** | 424 | su propio buscador → `scripts/build-olva.mjs` | S/25 |
+| | Sedes | Fuente |
+|---|---|---|
+| **Shalom** | 487 | CSV oficial → `scripts/build-agencies.mjs` |
+| **Olva** | 424 | su propio buscador → `scripts/build-olva.mjs` |
+
+⛔ **El texto libre (`OTRO`) se eliminó** (ago-2026). Existía para la sede que no aparecía
+en el listado y abría un campo abierto que dejaba el pedido en verificación manual. Con
+911 puntos ordenados por distancia, quien no encuentra su sede exacta elige **la más
+cercana que reconoce** — y una sede escrita a mano no se puede validar, rankear ni
+rastrear. Con ella se fueron el botón "Mi agencia no está en la lista" y la rama `OTRO`
+del picker.
 
 #### El comprador elige un LUGAR, no un courier ✅
 
@@ -142,9 +148,13 @@ unificada mantiene las cuatro primeras bajo 40 km.
 - ⚠️ **Los ids solo son únicos dentro de cada agencia** — 197 se repiten entre las dos. En
   una lista mezclada hay que comparar por `pointKey()` (`AGENCIA:id`); comparar por id
   seleccionaría dos tarjetas a la vez.
-- El adelanto va **dentro de cada tarjeta** porque cambia por courier (S/20 vs S/25). El
-  «desde» previo sale de `ADVANCE_AGENCY_FROM_PEN`, que se calcula: escrito a mano, sumar
-  una agencia más barata dejaría la tarjeta mintiendo un piso que ya no es el piso.
+- ⛔ **La tarjeta ya no muestra adelanto.** Lo mostraba porque cambiaba por courier (S/20
+  Shalom vs S/25 Olva), y eso es justo lo que la lista unificada volvió absurdo: dos sedes
+  contiguas de couriers distintos pedían montos distintos **por el mismo viaje**, y el
+  número saltaba al cambiar de tarjeta. Desde ago-2026 el adelanto es la mitad del pedido
+  (o el total) y **no depende del punto elegido**, así que cambiar de sede ya no puede
+  reescribir el monto que el comprador vio. Con esto se fue `ADVANCE_AGENCY_FROM_PEN`, el
+  «desde» que se pintaba antes de elegir. Ver `01-SALES-ENGINE.md`.
 - `agency_selected` ahora lleva `rank` y `distanceKm`: es la métrica que valida el cambio
   —si el comprador casi siempre toma el primero, ordenar por distancia recomienda bien— y
   la primera versión de la tasa de aceptación por courier y zona.
@@ -332,22 +342,34 @@ alguien cambia la definición, no puede abrir un agujero sin que falle.
 |---|---|
 | Lima metropolitana (motorizado propio) | 50 |
 | Resto del país (courier o agencia) | 1 824 |
-## Tres formas de entregar, no dos
+## Cuatro formas de entregar: región × método
 
 `dispatch_type` tenía solo `MOTORIZADO_LIMA` y `AGENCIA_PROVINCIA`, y el reparto
 **a domicilio en provincia** no era ninguna de las dos. Caía en la rama de Lima
 por descarte —"no es agencia, entonces es motorizado"— y entraba al tablero como
 pedido limeño: otro courier, otros plazos y otro costo, contados donde no van.
 
-| Valor | Qué es | Adelanto |
-|---|---|---|
-| `MOTORIZADO_LIMA` | Motorizado propio, Lima metropolitana | S/5 |
-| `MOTORIZADO_PROVINCIA` | Courier a la puerta, fuera de Lima | S/30 |
-| `AGENCIA_PROVINCIA` | Mostrador de Shalom u Olva | S/20 · S/25 |
+Después se sumó el cuarto: **recoger en agencia también en Lima**. "No es agencia"
+dejó de significar Lima, y "agencia" dejó de significar provincia.
 
-Antes casi no pasaba: la cobertura rara vez elegía domicilio fuera de Lima. Con
-el **checkout B** es una opción que el comprador marca a propósito, así que pasó
-de rareza a caso frecuente.
+| Valor | Qué es |
+|---|---|
+| `MOTORIZADO_LIMA` | Motorizado propio, Lima metropolitana |
+| `MOTORIZADO_PROVINCIA` | Courier a la puerta, fuera de Lima |
+| `AGENCIA_PROVINCIA` | Mostrador de Shalom u Olva, fuera de Lima |
+| `AGENCIA_LIMA` | Mostrador de Shalom u Olva, en Lima |
+
+> La columna "Adelanto" que tenía esta tabla se eliminó: el monto ya no depende
+> del despacho sino del precio del pack. Ver `01-SALES-ENGINE.md`.
+
+`MOTORIZADO_PROVINCIA` antes casi no pasaba: la cobertura rara vez elegía
+domicilio fuera de Lima. Con el **checkout B** es una opción que el comprador
+marca a propósito, así que pasó de rareza a caso frecuente.
+
+⚠️ **La lista blanca de `register-buyer` es obligatoria.** Aplasta contra
+`MOTORIZADO_LIMA` todo valor que no reconoce, **sin error**: sumar una combinación
+al front sin agregarla ahí manda un motorizado a una casa por un paquete que está
+en el mostrador, y nada avisa.
 
 **Lo que sigue igual:** todo lo que pregunta `=== 'AGENCIA_PROVINCIA'` ("¿es
 recojo?") no cambió — el pin GPS se sigue pidiendo salvo en agencia, y ahora eso
