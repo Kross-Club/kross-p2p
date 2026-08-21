@@ -113,15 +113,22 @@ Deno.serve(async (req) => {
       .select('raw, operation_number').eq('id', session.payment_event_id).maybeSingle()
     if (ev) {
       let op = ev.operation_number ?? null, bank: string | null = null
+      // El código de pago sale de la fila del pedido; el evento del webhook lo
+      // trae también (`code`), y ese es el respaldo para pedidos que pagaron
+      // pese a que la emisión no llegó a guardar la columna — pasó con el
+      // primer cupón real, cuando un fallo posterior a la emisión respondía
+      // antes de escribir la fila.
+      let code: string | null = session.pay360_consumer_code ?? null
       try {
         const raw = JSON.parse(ev.raw ?? '{}')
         op = op ?? (typeof raw.operation_number === 'string' ? raw.operation_number : null)
         bank = typeof raw.bank_tx_id === 'string' ? raw.bank_tx_id : null
+        code = code ?? (typeof raw.code === 'string' ? raw.code : null)
       } catch { /* raw no-JSON (eventos viejos del flujo manual): sin rastro */ }
       paymentTrace = {
         operation_number: op, bank,
         coupon_id: session.pay360_coupon_id ?? null,
-        payment_code: session.pay360_consumer_code ?? null,
+        payment_code: code,
       }
     }
   }
