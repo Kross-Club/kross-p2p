@@ -306,6 +306,30 @@ export function createBusiness(
 export const YAPE_SERVICES_PAY_URL = 'https://www.yape.com.pe/app/services-pay/pickService'
 
 /**
+ * Identidad del servicio **360Pay** dentro del catálogo de Yape.
+ *
+ * Son constantes del RECAUDADOR, no de cada marca — que es justo lo que el
+ * partner quiso decir con *"son internos, no los mapees"* (§15 del doc). Quien
+ * distingue a la marca no es el `serviceId` sino el **prefijo del código de
+ * pago**: `KSH…` es Kross Shop.
+ *
+ * Verificado contra el deeplink que **Cobrana**, otro partner de 360pay,
+ * entrega a sus compradores: mismos dos GUIDs, mismo logo, mismo `name`, y lo
+ * único distinto es el prefijo del código (`LSV…` el suyo). No son secretos:
+ * viajan en una URL que se le da al comprador.
+ *
+ * Van como valor por defecto y no como configuración obligatoria porque una
+ * tienda nueva no debería nacer sin botón de pago. `PAY360_YAPE_COMPANY_ID` y
+ * `PAY360_YAPE_SERVICE_ID` siguen mandando si 360pay algún día los cambia:
+ * se rota por secreto, sin desplegar.
+ */
+export const YAPE_360PAY = {
+  companyId: '1E6B58C0-32C5-4575-B1B4-FA1AAECD5EBB',
+  serviceId: 'A274CCCE-B6ED-48C8-8E61-D1D2D383C87E',
+  logo: 'https://staceu2yapefrntp10.blob.core.windows.net/$web/bill-payment/companies/360pay/360pay.png',
+} as const
+
+/**
  * Arma el enlace que abre Yape con el servicio y el código ya puestos.
  *
  * El monto NO viaja en la URL: lo resuelve Yape leyendo el cupón, del lado del

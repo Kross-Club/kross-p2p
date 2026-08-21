@@ -27,7 +27,7 @@ import { advanceForServer } from '../_shared/advance.ts'
 import {
   annulCoupon, consumerCodeFor, createCoupon, getCoupon, isPaid,
   couponExpiryFrom, createCustomer, pay360BaseUrl, paymentUrlOf, pickPartnerKey, yapeDeeplink,
-  type Pay360Env,
+  YAPE_360PAY, type Pay360Env,
 } from '../_shared/pay360.ts'
 
 const supabase = createClient(
@@ -110,13 +110,14 @@ Deno.serve(async (req) => {
       .select('payment_ingest_token').eq('store_id', originStoreId).maybeSingle(),
   ])
 
-  // Los identificadores de Yape son INTERNOS de 360pay y el partner pidió no
-  // mapearlos: por eso no viven por tienda, sino como secreto de plataforma —
-  // son los mismos para todos sus comercios, y quien distingue a la marca es el
-  // PREFIJO del código de pago. Sirven de respaldo: si el cupón trae su propio
-  // enlace, ese gana (ver `paymentUrlOf`).
-  const companyId = Deno.env.get('PAY360_YAPE_COMPANY_ID') ?? ''
-  const serviceId = Deno.env.get('PAY360_YAPE_SERVICE_ID') ?? ''
+  // Los identificadores del servicio 360Pay en Yape. No viven por tienda: son
+  // del RECAUDADOR, iguales para todos sus comercios, y quien distingue a la
+  // marca es el PREFIJO del código de pago. Traen valor por defecto (ver
+  // `YAPE_360PAY`) para que una tienda nueva nazca con botón; el secreto manda
+  // si 360pay los cambia. `||` y no `??`: un secreto vacío debe caer al
+  // default, no dejar la tienda sin enlace.
+  const companyId = Deno.env.get('PAY360_YAPE_COMPANY_ID') || YAPE_360PAY.companyId
+  const serviceId = Deno.env.get('PAY360_YAPE_SERVICE_ID') || YAPE_360PAY.serviceId
 
   const env = (store?.pay360_env === 'live' ? 'live' : 'sandbox') as Pay360Env
   // La llave de PARTNER es de la plataforma, no de la tienda — pero SÍ depende
@@ -247,7 +248,7 @@ Deno.serve(async (req) => {
   // El enlace: primero el que mande 360pay, y si no viene, el que armamos.
   const deeplink = paymentUrlOf(coupon.data as Record<string, unknown>)
     ?? (companyId && serviceId
-      ? yapeDeeplink({ companyId, serviceId, consumerCode, name: '360Pay' })
+      ? yapeDeeplink({ companyId, serviceId, consumerCode, name: '360Pay', logo: YAPE_360PAY.logo })
       : null)
 
   // Sin enlace NO se cae el pedido. El botón es una comodidad, no el cobro: el
