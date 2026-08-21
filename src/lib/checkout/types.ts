@@ -67,7 +67,6 @@ export interface StoreCulqi {
  *  forzar el cobro en una tienda que lo apagó. */
 export interface StorePay360 {
   enabled: boolean
-  scope: CulqiScope
 }
 
 export interface CustomerInfo {

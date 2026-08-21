@@ -200,12 +200,17 @@ export function culqiActiveFor(
  * único de los dos que hoy puede cobrar de verdad — Culqi está bloqueado a la
  * espera de la acreditación PCI (ver `05-PCI-SAQ-D.md`). Si esa acreditación
  * llega, esta precedencia es la línea que se cambia.
+ *
+ * A diferencia de Culqi, NO tiene `scope` por región. El de Culqi existe como
+ * repliegue operativo: su cobro es un salto de fe que puede costar conversión
+ * limeña, y se acota sin deploy. 360pay no tiene ese riesgo —el comprador toca
+ * un botón y Yape abre— así que aplica donde la tienda lo encendió. Copiarle el
+ * scope habría sido calcar una defensa sin la amenaza que la justifica.
  */
 export function pay360ActiveFor(
   s: Pick<CheckoutState, 'pay360' | 'locationType' | 'advanceAmount'>,
 ): boolean {
-  if (!s.pay360?.enabled || s.advanceAmount <= 0 || !s.locationType) return false
-  return s.pay360.scope === 'ALL' || s.locationType === 'PROVINCIA'
+  return !!s.pay360?.enabled && s.advanceAmount > 0 && !!s.locationType
 }
 
 /**

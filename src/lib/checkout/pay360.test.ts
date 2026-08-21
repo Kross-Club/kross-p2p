@@ -421,25 +421,27 @@ describe('payload real del evento PAYMENT_PAID', () => {
 })
 
 describe('¿aplica 360pay a este pedido?', () => {
-  const ON: StorePay360 = { enabled: true, scope: 'ALL' }
-  const PROV: StorePay360 = { enabled: true, scope: 'PROVINCIA' }
+  const ON: StorePay360 = { enabled: true }
 
   it('sin destino no hay monto, y sin monto no hay cobro', () => {
     expect(pay360ActiveFor({ pay360: ON, locationType: null, advanceAmount: 5 })).toBe(false)
     expect(pay360ActiveFor({ pay360: ON, locationType: 'LIMA', advanceAmount: 0 })).toBe(false)
   })
 
-  it('el scope acota dónde cobra', () => {
-    expect(pay360ActiveFor({ pay360: PROV, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
-    expect(pay360ActiveFor({ pay360: PROV, locationType: 'PROVINCIA', advanceAmount: 20 })).toBe(true)
-    expect(pay360ActiveFor({ pay360: ON, locationType: 'LIMA', advanceAmount: 5 })).toBe(true)
+  it('aplica en Lima y en provincia por igual', () => {
+    // Sin `scope` por región, al revés que Culqi: el de Culqi es un repliegue
+    // ante un cobro que puede costar conversión. Acá el comprador toca un botón
+    // y Yape abre, así que no hay amenaza que acotar.
+    expect(pay360ActiveFor({ pay360: ON, locationType: 'LIMA', advanceAmount: 6 })).toBe(true)
+    expect(pay360ActiveFor({ pay360: ON, locationType: 'PROVINCIA', advanceAmount: 20 })).toBe(true)
   })
 
   it('apagado o sin config, no cobra', () => {
     expect(pay360ActiveFor({ pay360: null, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
-    expect(pay360ActiveFor({ pay360: { enabled: false, scope: 'ALL' }, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
+    expect(pay360ActiveFor({ pay360: { enabled: false }, locationType: 'LIMA', advanceAmount: 5 })).toBe(false)
   })
 })
+
 
 describe('llave de partner por ambiente', () => {
   it('sandbox usa la de sandbox aunque exista la de producción', () => {
