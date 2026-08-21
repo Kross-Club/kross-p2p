@@ -55,12 +55,9 @@ Deno.serve(async (req) => {
     wa_phone_number_id?: string
     wa_display_phone?: string
     wa_business_account_id?: string
-    // Cobros — número de Yape de la marca y cuenta de 360pay. SOLO por JWT
-    // verificado (ver abajo): redirigir el Yape o la sk de una tienda es
+    // Cobros — la cuenta de 360pay de la marca. SOLO por JWT
+    // verificado (ver abajo): redirigir el cobro de una tienda es
     // desviar su dinero, no cambiarle el logo.
-    yape_number?: string
-    yape_holder?: string
-    yape_qr_url?: string | null
     pay360_enabled?: boolean
     pay360_env?: string                // 'sandbox' | 'live'
     /** Da de alta la marca como negocio en 360pay. Ver `connectPay360`. */
@@ -108,7 +105,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -239,18 +236,14 @@ Deno.serve(async (req) => {
       patch.slug = slug
     }
 
-    // ─── Cobros: Yape de la marca + cuenta de 360pay ─────────────────────────
+    // ─── Cobros: la cuenta de 360pay de la marca ─────────────────────────────
     // Cualquier admin gestiona los de SU tienda, pero SOLO con JWT verificado:
     // el camino legacy usa un id que cualquiera lee con la anon key, y estos
     // campos redirigen dinero.
-    const touchesPayments = body.yape_number !== undefined || body.yape_holder !== undefined
-      || body.yape_qr_url !== undefined || body.pay360_enabled !== undefined
+    const touchesPayments = body.pay360_enabled !== undefined
       || body.pay360_env !== undefined || body.pay360_connect !== undefined
     if (touchesPayments && !trusted) return json({ error: 'auth_requerida' }, 403)
 
-    if (typeof body.yape_number === 'string') patch.yape_number = body.yape_number.replace(/\D/g, '').slice(0, 9) || null
-    if (typeof body.yape_holder === 'string') patch.yape_holder = body.yape_holder.trim() || null
-    if (body.yape_qr_url !== undefined) patch.yape_qr_url = body.yape_qr_url
     // Lista blanca: el CHECK de la columna rechaza cualquier otra cosa, y un
     // 500 aquí tumbaría el guardado entero de la marca por un campo opcional.
     if (body.checkout_ab_mode === 'SPLIT' || body.checkout_ab_mode === 'A' || body.checkout_ab_mode === 'B') {

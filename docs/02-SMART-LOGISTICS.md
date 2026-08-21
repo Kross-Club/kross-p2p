@@ -222,14 +222,13 @@ Un pedido de provincia no se despacha por estar "confirmado": se despacha cuando
 adelanto está verificado **y sin advertencias pendientes**.
 
 - `advance.verification = 'MATCHED'` y `reason` vacío → listo.
-- `MATCHED` **con** `reason` (nombre distinto, código que no calza) → lo mira una persona.
-  El pedido avanza igual en la barra del comprador —el pago entró, la duda es nuestra—
-  pero el `AdvancePanel` del chat de Ventas muestra la advertencia y el comprobante.
-- `PENDING` → el pago no ha cruzado. No se despacha.
+- `MATCHED` **con** `reason` → lo mira una persona. El pedido avanza igual en la barra del
+  comprador —el dinero entró, la duda es nuestra— pero el `AdvancePanel` del chat de
+  Ventas muestra la advertencia.
+- `PENDING` → el adelanto no está cobrado. No se despacha. Si la marca no tiene 360pay
+  conectado, ese es su estado normal y el cobro lo coordina Ventas por el chat.
 
-El comprobante se abre desde ese panel con URL firmada de 5 minutos (`voucher-url`).
-Nunca se sirve como enlace directo: lleva nombre, teléfono parcial y número de operación
-del comprador. Contrato y reglas completas en `00-CORE-ARCHITECTURE.md`.
+Contrato y reglas completas en `00-CORE-ARCHITECTURE.md`.
 
 ## El catálogo de distritos sale del padrón del INEI ✅
 

@@ -17,7 +17,6 @@ select s.id, s.slug, s.nombre, s.active,
        s.pay360_enabled, s.pay360_env, s.pay360_payment_prefix,
        s.pay360_business_id is not null as conectado,
        s.home_delivery_enabled, s.checkout_ab_mode, s.wa_enabled,
-       s.yape_number is not null as yape_manual,
        (select count(*) from products p where p.store_id = s.id) as productos,
        (select count(*) from order_sessions o where o.origin_store_id = s.id) as pedidos
 from stores s order by s.id;
@@ -50,8 +49,9 @@ fecha de arriba.
 
 - **Sin 360pay conectado**, así que su paso 3 no cobra: el pedido se registra y el adelanto
   lo coordina un asesor por el chat.
-- **Tampoco tiene Yape manual**: `yape_number` está en NULL (solo hay titular). O sea que
-  el flujo manual tampoco le sirve hoy — no hay número que mostrarle al comprador.
+- El flujo manual de Yape se eliminó el 21-ago-2026 y **no le costó nada**: ninguna de
+  las cuatro tiendas tenía `yape_number` configurado, así que no había número que
+  mostrarle a ningún comprador.
 - WhatsApp activo. Entrega a domicilio apagada.
 
 ## Bloqueos abiertos

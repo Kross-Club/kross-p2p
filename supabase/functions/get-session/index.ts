@@ -30,8 +30,8 @@ Deno.serve(async (req) => {
       involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,
       address, address_verified, address_lat, address_lng, nota,
       dispatch_type, agency_name, delivery_reference,
-      payment_verification, payment_reason, advance_voucher_url,
-      advance_yape_code, advance_amount, payment_provider,
+      payment_verification, payment_reason,
+      advance_amount, payment_provider,
       expires_at, created_at
     `)
     .eq('token', token)
@@ -119,15 +119,12 @@ Deno.serve(async (req) => {
   if (!viewerIsSeller) mq = mq.or('visibility.is.null,visibility.eq.all')
   const { data: messages } = await mq
 
-  // Campos SOLO de Ventas. `payment_reason` es el veredicto interno del cruce
-  // ("el nombre no coincide", "el código no calza") y `advance_voucher_url` es
-  // la ruta del comprobante en el bucket privado. Mandárselos al comprador
-  // repetiría la fuga que ya se corrigió en los mensajes del chat: da igual que
-  // la UI no los pinte, viajan en la respuesta y quedan a la vista de cualquiera
-  // que mire la red.
-  const sellerOnly = viewerIsSeller
-    ? {}
-    : { payment_reason: undefined, advance_voucher_url: undefined }
+  // Campo SOLO de Ventas: `payment_reason` es el veredicto interno del cobro
+  // ("no coincide el monto", el error crudo del proveedor). Mandárselo al
+  // comprador repetiría la fuga que ya se corrigió en los mensajes del chat: da
+  // igual que la UI no lo pinte, viaja en la respuesta y queda a la vista de
+  // cualquiera que mire la red.
+  const sellerOnly = viewerIsSeller ? {} : { payment_reason: undefined }
 
   return new Response(
     JSON.stringify({

@@ -6,7 +6,7 @@
 // Los mensajes de error dicen CÓMO arreglarlo, no qué está mal: "Deben ser 9
 // dígitos" convierte mejor que "Teléfono inválido".
 
-import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_REQUIRED, YAPE_CODE_LENGTH, pay360ActiveFor } from './checkout.config'
+import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE } from './checkout.config'
 import { hasBranchList } from './services/AgencyService'
 import type { CheckoutState, CheckoutStepId } from './types'
 
@@ -14,7 +14,7 @@ import type { CheckoutState, CheckoutStepId } from './types'
 // del distrito, así que sus errores se reportan en `district`.
 export type FieldName =
   | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName'
-  | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch' | 'voucher' | 'yapeCode'
+  | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch'
 
 export type FieldErrors = Partial<Record<FieldName, string>>
 
@@ -139,38 +139,16 @@ function validatePickup(s: CheckoutState): FieldErrors {
   return freeText?.trim() ? {} : { agencyBranch: 'Escribe en qué agencia vas a recoger' }
 }
 
-export function validateYapeCode(code: string): string | null {
-  const d = digits(code)
-  if (!d) return 'Copia el código que te dio Yape'
-  if (d.length !== YAPE_CODE_LENGTH) return `Son ${YAPE_CODE_LENGTH} dígitos`
-  return null
-}
-
-function validateStep3(s: CheckoutState): FieldErrors {
-  // Sin adelanto no hay nada que verificar y el CTA queda habilitado de una.
-  if (s.advanceAmount <= 0) return {}
-
-  // Con 360pay no hay NADA que llenar en el paso 3: el comprador toca
-  // "Terminar mi pedido" y recién ahí aparece el botón que abre Yape. Pedirle
-  // el código de seguridad de 3 dígitos sería pedirle la prueba de un pago que
-  // todavía no hizo — y es lo que dejaba el CTA bloqueado con "completa los
-  // datos marcados".
-  if (pay360ActiveFor(s)) return {}
-
-  const e: FieldErrors = {}
-
-  // El CÓDIGO es lo obligatorio, no la imagen. Es la llave que cuadra el pago
-  // con la notificación que le llega a la marca; son 3 dígitos que el comprador
-  // tiene en pantalla. Ver VOUCHER_REQUIRED en checkout.config.ts.
-  const code = validateYapeCode(s.advanceYapeCode)
-  if (code) e.yapeCode = code
-
-  // La captura solo bloquea si la marca lo pide explícitamente. Nunca se espera
-  // al RESULTADO de la verificación: esa corre en background y el comprador no
-  // debe quedarse mirando un spinner.
-  if (VOUCHER_REQUIRED && !s.paymentVoucher) e.voucher = 'Sube tu comprobante para terminar'
-
-  return e
+function validateStep3(_s: CheckoutState): FieldErrors {
+  // **El paso 3 no pide nada, nunca.** Con 360pay el comprador toca "Terminar
+  // mi pedido" y recién ahí aparece el botón que abre Yape; sin 360pay, el
+  // adelanto lo coordina un asesor por el chat.
+  //
+  // Aquí se exigía el código de seguridad de 3 dígitos del flujo manual, que
+  // era pedirle la PRUEBA de un pago que todavía no había hecho — y es lo que
+  // dejaba el CTA bloqueado con "completa los datos marcados" en las tiendas
+  // con cobro en línea.
+  return {}
 }
 
 const VALIDATORS: Record<CheckoutStepId, (s: CheckoutState) => FieldErrors> = {

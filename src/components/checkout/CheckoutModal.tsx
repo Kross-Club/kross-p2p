@@ -14,7 +14,7 @@ import { trackEvent } from '../../lib/checkout/analytics'
 import type { CheckoutState, StorePay360 } from '../../lib/checkout/types'
 import type { CheckoutAbMode } from '../../lib/checkout/variant'
 import { effectivePrice } from '../../lib/checkout/product-packs'
-import { fetchPaymentVerification, submitOrder, uploadVoucher } from '../../lib/checkout/services/OrderService'
+import { fetchPaymentVerification, submitOrder } from '../../lib/checkout/services/OrderService'
 import { issueCoupon } from '../../lib/checkout/services/Pay360Service'
 import Pay360Box from './payment/Pay360Box'
 import { saveLastOrder } from '../../lib/checkout/persistence'
@@ -27,12 +27,6 @@ import Step3Confirm from './steps/Step3Confirm'
 import OrderDone from './steps/OrderDone'
 import ExitOffer from './ExitOffer'
 
-/** Datos de cobro de la tienda. Vienen de `stores.yape_*`, nunca de config. */
-export interface StoreYape {
-  number: string | null
-  holder: string | null
-  qrUrl: string | null
-}
 
 const STEP_LABEL = ['Tu pack', 'Tus datos', 'Confirmar'] as const
 const TOTAL_STEPS = 3
@@ -46,7 +40,6 @@ interface CheckoutModalProps {
   onPartialLead?: (state: CheckoutState) => void
   /** Contexto del pedido. Sin él el checkout es solo demo y no puede cerrar. */
   submitContext?: Omit<SubmitContext, 'price' | 'packName'>
-  yape?: StoreYape | null
   /** `stores.home_delivery_enabled`. Si es false la marca solo ofrece recojo en
    *  agencia y el checkout no muestra nunca la opción de entrega a domicilio. */
   homeDeliveryEnabled?: boolean
@@ -59,7 +52,7 @@ interface CheckoutModalProps {
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, yape = null, homeDeliveryEnabled = true, pay360 = null, abMode = 'SPLIT',
+  submitContext, homeDeliveryEnabled = true, pay360 = null, abMode = 'SPLIT',
 }: CheckoutModalProps) {
   const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled })
   const { state, dispatch, errors, touch } = co
@@ -279,12 +272,6 @@ export default function CheckoutModal({
   }, [phase.k, issue])
 
 
-  const onVoucher = useCallback(async (file: File) => {
-    const path = await uploadVoucher(file, state.orderId)
-    dispatch({ type: 'SET_VOUCHER', url: path, uploadedAt: new Date().toISOString() })
-    trackEvent({ name: 'voucher_uploaded' })
-  }, [state.orderId, dispatch])
-
   const submitting = state.status === 'SUBMITTING'
   // La misma lectura que hace el submit: calcularla distinto aquí pintaría una
   // pantalla que no corresponde al cobro que después se ejecuta.
@@ -365,13 +352,8 @@ export default function CheckoutModal({
               state={state}
               packName={pack?.nombre ?? null}
               price={price}
-              yape={yape}
               pay360={pay360Active}
-              errors={errors}
-              touch={touch}
-              onYapeCode={code => dispatch({ type: 'SET_YAPE_CODE', code })}
               onAdvanceChoice={choice => dispatch({ type: 'SET_ADVANCE_CHOICE', choice })}
-              onVoucher={onVoucher}
               submitError={submitError}
             />
           )}

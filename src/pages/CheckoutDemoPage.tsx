@@ -86,7 +86,6 @@ export default function CheckoutDemoPage() {
           // Datos de cobro de mentira: la demo enseña la caja de Yape sin tocar
           // Supabase. Sin `submitContext` el paso 3 no registra nada — a
           // propósito: la demo se usa para grabar tutoriales, no para vender.
-          yape={{ number: '999 888 777', holder: 'Marca de ejemplo', qrUrl: null }}
           homeDeliveryEnabled={homeDelivery}
         />
       )}

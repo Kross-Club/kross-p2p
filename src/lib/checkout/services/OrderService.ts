@@ -1,15 +1,13 @@
 // ─── SALES ENGINE · Cierre del pedido ────────────────────────────────────────
-// Traduce el `CheckoutState` al contrato de `register-buyer` y sube el
-// comprobante. Es lo único del checkout que habla con Supabase, para que los
-// componentes no conozcan la forma del backend.
+// Traduce el `CheckoutState` al contrato de `register-buyer`. Es lo único del
+// checkout que habla con el backend, para que los componentes no conozcan su
+// forma.
 //
 // Idempotencia: `checkout_id` es el uuid que nació al abrir el modal. Si el
 // comprador toca dos veces con 4G lenta, el backend devuelve el pedido ya
 // creado en vez de crear otro. Ver docs/01-SALES-ENGINE.md §3.1.
 
-import { supabase } from '../../supabase'
-import { IMAGE_PRESETS, downscaleImage } from '../../images/downscale'
-import { VOUCHER, pay360ActiveFor } from '../checkout.config'
+import { pay360ActiveFor } from '../checkout.config'
 import type { CheckoutState, DispatchType } from '../types'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -104,11 +102,8 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       dispatch_type: dispatchTypeFor(s),
       agency_name: usesAgency ? (s.pickup.agency ?? undefined) : undefined,
       payment_method: s.advanceAmount > 0 ? 'YAPE_PLIN' : 'CONTRAENTREGA',
-      // El provider saca al pedido de la piscina del cruce manual desde el
-      // ALTA: su dinero llega por su propio motor, no por el Yape de la marca,
-      // y dejarlo dentro haría que un yape ajeno del mismo monto lo diera por
-      // pagado. Para una tienda sin cobro en línea el campo ni viaja — payload
-      // idéntico al de siempre.
+      // El provider marca de dónde va a llegar el dinero. Para una tienda sin
+      // cobro en línea el campo ni viaja: el adelanto lo coordina un asesor.
       payment_provider: pay360ActiveFor(s) ? '360PAY' : undefined,
       closed_by: 'DIRECT_CHECKOUT',
       // Con cuál de las dos versiones se cerró. Sin esto el experimento no se
@@ -116,8 +111,6 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       checkout_variant: s.variant,
       advance_amount: s.advanceAmount,
       advance_choice: s.advanceChoice,
-      advance_yape_code: s.advanceYapeCode || undefined,
-      advance_voucher_url: s.paymentVoucher?.url || undefined,
     }),
   })
 
@@ -129,31 +122,8 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
 }
 
 /**
- * Sube la captura del comprobante al bucket privado `vouchers` y devuelve su
- * ruta (no una URL pública: el bucket no lo es, y una captura de Yape lleva
- * nombre y teléfono). El equipo la abre con URL firmada desde el backend.
- *
- * Se reduce antes de subirla: el comprador está en 4G y la foto pesa megas.
- */
-export async function uploadVoucher(file: File, orderId: string): Promise<string> {
-  if (file.size > VOUCHER.maxBytes) throw new Error('La imagen pesa demasiado')
-
-  const small = await downscaleImage(file, IMAGE_PRESETS.voucher)
-  const path = `${orderId}/${Date.now()}.jpg`
-  // Sin `upsert`: la ruta ya es única (orderId + timestamp), así que nunca hay
-  // nada que reemplazar. Pedirlo obliga a Storage a resolver el camino de
-  // UPDATE, y el bucket `vouchers` solo tiene política de INSERT — de ahí el
-  // "violates row-level security policy" que veía el comprador al adjuntar. Es
-  // el MISMO fallo que ya se corrigió en las fotos de producto.
-  const { error } = await supabase.storage
-    .from(VOUCHER.bucket).upload(path, small, { contentType: small.type })
-  if (error) throw new Error(error.message)
-  return path
-}
-
-/**
  * Estado del cruce del adelanto, para que la pantalla final deje de decir
- * "estamos verificando" cuando el yape ya cuadró.
+ * "estamos verificando" cuando el pago ya cuadró.
  *
  * Nunca lanza: esto es un adorno sobre un pedido que YA está registrado, así
  * que un error de red se traga en silencio. Alarmar al comprador por una

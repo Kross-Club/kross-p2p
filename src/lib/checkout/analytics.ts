@@ -43,7 +43,6 @@ export type CheckoutEvent =
   /** Aceptó el descuento y se quedó. Contra `exit_offer_shown` da la tasa de
    *  rescate; contra `order_submitted` dice si además terminó comprando. */
   | { name: 'exit_discount_applied'; amount: number }
-  | { name: 'voucher_uploaded' }
   | { name: 'payment_verification_result'; result: 'MATCHED' | 'UNMATCHED' | 'TIMEOUT'; seconds: number }
   | { name: 'order_submitted'; orderId: string }
   | { name: 'order_failed'; orderId: string; reason: string }

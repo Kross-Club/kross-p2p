@@ -152,15 +152,8 @@ export const EXIT_DISCOUNT_ONCE = true
 // ─── Yape ────────────────────────────────────────────────────────────────────
 
 export const YAPE = {
-  // Aquí vivía `deepLink: 'yape://'`, un esquema SUPUESTO que nunca se verificó
-  // contra la app y que en producción no abría nada. Se eliminó junto con su
-  // botón: ver el encabezado de YapeBox.tsx para las tres razones por las que
-  // tampoco vale la pena reintentarlo con `intent://`.
   copiedFeedbackMs: 1500,
 } as const
-
-/** Dígitos del código de seguridad de Yape. Confirmado contra la app real. */
-export const YAPE_CODE_LENGTH = 3
 
 // ─── Cobro con 360pay (cupón + deep link de Yape) ────────────────────────────
 
@@ -184,32 +177,7 @@ export function pay360ActiveFor(
   return !!s.pay360?.enabled && s.advanceAmount > 0 && !!s.locationType
 }
 
-/**
- * ¿La captura del comprobante es obligatoria para terminar el pedido?
- *
- * **No, y es deliberado.** La imagen HOY no la lee ninguna máquina: no hay OCR
- * en el sistema. Lo que cuadra el pago es el **código de seguridad**, que viaja
- * en la notificación que le llega a la marca y que el comprador copia de su
- * propio comprobante. Exigir una foto de 4 MB en 4G cuesta conversión real y no
- * compra nada automático — solo evidencia para un humano, que el `payment_event`
- * ya provee mejor.
- *
- * Es un caso donde la regla de decisión (gana la conversión) y la calidad del
- * dato apuntan al mismo lado: el código es MEJOR dato que la imagen. La captura
- * se ofrece como acción secundaria y se sube si el comprador quiere.
- *
- * Ponerlo en `true` la vuelve obligatoria sin tocar componentes.
- */
-export const VOUCHER_REQUIRED = false
-
 // ─── Verificación del adelanto ───────────────────────────────────────────────
-
-/**
- * Si a los 20 s la verificación sigue PENDING, se deja de bloquear la UI y pasa
- * a validación humana. El comprador no espera más que eso, y el pedido ya está
- * registrado — puede cerrar la ventana sin perderlo.
- */
-export const VERIFICATION_TIMEOUT_MS = 20_000
 
 /**
  * Cada cuánto se consulta el pedido mientras el comprador paga en Yape.
@@ -220,20 +188,6 @@ export const VERIFICATION_TIMEOUT_MS = 20_000
  * mira, y ahí los segundos se notan.
  */
 export const PAY360_POLL_MS = 3000
-
-/** Backoff del polling mientras se espera el match (ms). */
-export const VERIFICATION_POLL_MS = [1000, 2000, 3000, 5000, 5000] as const
-
-// ─── Comprobante ─────────────────────────────────────────────────────────────
-
-export const VOUCHER = {
-  /** El comprador está en 4G y las fotos pesan 4 MB: se comprime en el cliente. */
-  maxWidthPx: 1600,
-  jpegQuality: 0.8,
-  maxBytes: 8 * 1024 * 1024,
-  accept: 'image/jpeg,image/png,image/webp,image/heic,image/heif',
-  bucket: 'vouchers',
-} as const
 
 // ─── Persistencia ────────────────────────────────────────────────────────────
 
@@ -285,23 +239,15 @@ export const COPY = {
   // suba es la sorpresa que el aviso existía para evitar.
   advanceHeadsUpNoAmount:
     'Se adelanta una parte del envío por Yape y se descuenta del total: el resto lo pagas al recibir.',
-  voucherRequired: 'Sube tu comprobante para terminar',
 
   // ─── Paso 3 ────────────────────────────────────────────────────────────────
   step3Title: 'Último paso: confirma tu pedido',
   step3TitleAdvance: 'Último paso: adelanta tu envío',
-  yapeIntro: 'Yapea el adelanto a este número y copia tu código de seguridad.',
-  yapeCopy: 'Copiar número',
   yapeCopied: '¡Copiado!',
-  // Se nombra por lo que el comprador VE, no por el término técnico. El
-  // rótulo de Yape va entre comillas para que lo reconozca sin traducir nada.
-  yapeCodeLabel: 'Los 3 números que te dio Yape',
-  // El "dónde" es lo que evita el abandono: sin esto el comprador no sabe que
-  // el número está en su propia pantalla de confirmación.
-  // La explicación larga ahora la hace el dibujo (YapeCodeHint). Este texto
-  // solo dice DÓNDE mirar, sin repetir lo que ya se ve.
-  yapeCodeHint: 'Aparecen en tu pantalla de Yape como “Código de seguridad”.',
-  yapeCodePlaceholder: '000',
+  // Sin cobro en línea conectado el paso 3 no pide nada, pero tampoco se queda
+  // mudo: quien esperaba pagar ahora tiene que saber qué sigue.
+  advanceByChatTitle: 'Tu adelanto lo coordinamos por el chat',
+  advanceByChatHint: 'Termina tu pedido y un asesor te escribe para acordar el adelanto. No tienes que pagar nada en esta pantalla.',
 
   doneUnpaid: 'Registramos tu pedido. Un asesor te escribirá por el chat para coordinar el adelanto.',
   /** La landing, cuando quedó un pedido con el pago pendiente. Nombra lo que el
@@ -348,9 +294,6 @@ export const COPY = {
   pay360WaitingHint: 'Apenas Yape confirme, esta pantalla cambia sola. Puedes cerrarla: tu pedido ya está registrado.',
   pay360IssueFailed: 'No pudimos generar tu pago. Vuelve a intentarlo.',
 
-  voucherOptional: 'Adjuntar captura (opcional)',
-  voucherAttached: 'Captura adjunta',
-  voucherReplace: 'Cambiar',
   submit: 'Terminar mi pedido',
   submitting: 'Registrando tu pedido…',
   submitError: 'No pudimos registrar tu pedido. Toca para reintentar.',
@@ -377,7 +320,7 @@ export const COPY = {
   // vacuna, y este es el único momento de atención garantizada que queda.
   doneChatHint: 'Por aquí te escribiremos para coordinar tu entrega.',
 
-  verifying: 'Estamos verificando tu pago…',
+  advancePendingByChat: 'Un asesor te escribe por el chat para coordinar tu adelanto.',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',
   verifyMatched: '¡Pago confirmado! Tu pedido está en camino.',
   verifyUnmatched: 'Recibimos tu comprobante, un asesor lo está validando.',
