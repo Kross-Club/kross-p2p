@@ -42,7 +42,8 @@ comando, comparten organización pero **no** comparten esquema ni convenciones.
 | `docs/03-LOYALTY-ENGINE.md` | Recompra, puntos, campañas WhatsApp, LTV |
 | `docs/04-CUMPLIMIENTO-CULQI.md` | Web pública, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
 | `docs/05-PCI-SAQ-D.md` | Autorización de la API directa de Culqi: alcance Yape, expediente técnico, correo al buzón de riesgos |
-| `docs/06-360PAY.md` | 🔮 360pay como pasarela por defecto: seam de proveedor, credenciales de partner, qué falta del spec |
+| `docs/06-360PAY.md` | 360pay como pasarela por defecto: cupón, deeplink de Yape, webhook. **Primer pago real cobrado** |
+| `docs/07-CONTRATO-360PAY.md` | Contrato de recaudación: quién es quién, flujo del dinero, tarifario, plazos y qué nos obliga en el código |
 | `docs/ESTADO-OPERATIVO.md` | **Qué marca está viva, qué la bloquea y qué deuda hay abierta.** Léelo al empezar sesión |
 | `docs/GIT-FLOW.md` | Nomenclatura de ramas/commits y flujo de PR |
 | `docs/ICP Sales/` · `docs/ICP LTV/` | Capa estratégica (por qué / para quién) |
