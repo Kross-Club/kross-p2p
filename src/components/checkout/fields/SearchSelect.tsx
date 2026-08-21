@@ -51,6 +51,20 @@ export default function SearchSelect({
     return pool.slice(0, limit)
   }, [options, query, limit])
 
+  // Al abrir, subir el campo al tope del contenedor scrolleable del modal. La
+  // lista mide hasta 16rem y el campo suele quedar abajo, así que sin esto se
+  // abre fuera de la vista y el comprador tiene que scrollear para encontrarla
+  // (peor aún en móvil, donde el teclado se come media pantalla).
+  useEffect(() => {
+    if (!open) return
+    // rAF: la lista tiene que existir en el DOM antes de scrollear, si no el
+    // navegador calcula el destino sin contar su altura.
+    const raf = requestAnimationFrame(() => {
+      boxRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [open])
+
   // Cerrar al hacer clic fuera. En móvil evita que la lista tape el CTA.
   useEffect(() => {
     if (!open) return
@@ -77,7 +91,7 @@ export default function SearchSelect({
   }
 
   return (
-    <div ref={boxRef} className="relative">
+    <div ref={boxRef} className="relative scroll-mt-3">
       <label htmlFor={id} className="text-xs font-bold text-gray-600 mb-1 block">
         {label} {required && <span aria-hidden="true">*</span>}
       </label>
