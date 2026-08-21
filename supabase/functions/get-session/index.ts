@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
       address, address_verified, address_lat, address_lng, nota,
       dispatch_type, agency_name, delivery_reference,
       payment_verification, payment_reason, payment_event_id,
+      pay360_coupon_id, pay360_consumer_code,
       advance_amount, payment_provider,
       expires_at, created_at
     `)
@@ -98,10 +99,15 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Rastro bancario del pago, si el pedido ya cruzó. Sale del evento que lo
-  // cuadró: `operation_number` y el banco viajan en el `raw` del webhook. Solo
-  // esos dos campos — el raw entero lleva fees y datos del negocio.
-  let paymentTrace: { operation_number: string | null; bank: string | null } | null = null
+  // Rastro del pago, si el pedido ya cruzó: la cadena completa con la que el
+  // comercio COTEJA contra el panel de 360pay y contra el banco. La operación
+  // sola no dice nada — cierra el círculo junto con el cupón y el código de
+  // pago, que son lo que el panel de 360pay lista. Del `raw` del evento se
+  // extraen solo `operation_number` y `bank_tx_id`: el raw entero lleva fees.
+  let paymentTrace: {
+    operation_number: string | null; bank: string | null
+    coupon_id: string | null; payment_code: string | null
+  } | null = null
   if (viewerIsSeller && session.payment_event_id) {
     const { data: ev } = await supabase.from('payment_events')
       .select('raw, operation_number').eq('id', session.payment_event_id).maybeSingle()
@@ -112,7 +118,11 @@ Deno.serve(async (req) => {
         op = op ?? (typeof raw.operation_number === 'string' ? raw.operation_number : null)
         bank = typeof raw.bank_tx_id === 'string' ? raw.bank_tx_id : null
       } catch { /* raw no-JSON (eventos viejos del flujo manual): sin rastro */ }
-      paymentTrace = { operation_number: op, bank }
+      paymentTrace = {
+        operation_number: op, bank,
+        coupon_id: session.pay360_coupon_id ?? null,
+        payment_code: session.pay360_consumer_code ?? null,
+      }
     }
   }
 
@@ -158,7 +168,10 @@ Deno.serve(async (req) => {
   // comprador repetiría la fuga que ya se corrigió en los mensajes del chat: da
   // igual que la UI no lo pinte, viaja en la respuesta y queda a la vista de
   // cualquiera que mire la red.
-  const sellerOnly = viewerIsSeller ? {} : { payment_reason: undefined, payment_event_id: undefined }
+  const sellerOnly = viewerIsSeller ? {} : {
+    payment_reason: undefined, payment_event_id: undefined,
+    pay360_coupon_id: undefined, pay360_consumer_code: undefined,
+  }
 
   return new Response(
     JSON.stringify({
