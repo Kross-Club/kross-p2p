@@ -125,6 +125,27 @@ async function request<T>(
   return unwrap<T>(res.status, body)
 }
 
+// ─── Clientes ────────────────────────────────────────────────────────────────
+// Forma tomada de la respuesta REAL de `GET /customers/{id}`, no del spec.
+// `coupon_code` y `payment_code` traen el mismo valor: el código de pago que
+// definimos nosotros. Eso es lo que confirmó que el `consumerCode` del deeplink
+// es el `coupon_code` y no el `payment_reference` del cupón.
+
+export interface Pay360Customer {
+  _id: string
+  business_id?: string
+  name?: string
+  email?: string
+  phone?: string
+  document_type?: string
+  document_number?: string
+  coupon_code?: string
+  payment_code?: string
+  account_status?: number
+  pending_coupons?: number
+  [k: string]: unknown
+}
+
 // ─── Cupones ─────────────────────────────────────────────────────────────────
 
 export interface Pay360Coupon {
@@ -193,6 +214,32 @@ export function createCoupon(
   },
 ): Promise<Pay360Result<Pay360Coupon>> {
   return request(`${base}/coupons`, apiKey, { method: 'POST', body: input })
+}
+
+/**
+ * Crea el CLIENTE con sus datos reales.
+ *
+ * Existe porque `POST /coupons` con solo el `code` crea un cliente genérico
+ * llamado **`Internal Customer`**, sin documento ni teléfono — el objeto
+ * `customer` anidado que documenta el spec se ignora por completo (verificado
+ * contra el cupón real `6a87c28e…`). Con veinte pedidos, el comercio ve veinte
+ * clientes idénticos en su panel y no puede conciliar nada.
+ *
+ * Los campos son PLANOS y salen de la respuesta real de `GET /customers/{id}`,
+ * no del spec. `coupon_code` es el mismo código de pago del comprador: es lo
+ * que enlaza a este cliente con los cupones que se le emitan después.
+ */
+export function createCustomer(
+  base: string, apiKey: string, input: {
+    name: string
+    coupon_code: string
+    phone?: string
+    email?: string
+    document_type?: string
+    document_number?: string
+  },
+): Promise<Pay360Result<Pay360Customer>> {
+  return request(`${base}/customers`, apiKey, { method: 'POST', body: input })
 }
 
 /** La verdad sobre un cupón. Es lo que se consulta cuando el webhook no llegó,
