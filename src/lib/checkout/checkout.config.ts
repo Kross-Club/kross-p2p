@@ -296,7 +296,7 @@ export const COPY = {
   pay360CodeHint: 'En tu Yape entra a “Pagar servicios”, busca 360Pay y pega este código.',
   // La espera. No dice "verificando" a secas: el comprador acaba de salir de la
   // app y tiene que saber que lo suyo ya está hecho.
-  pay360Waiting: 'Esperando tu pago…',
+  pay360Waiting: 'Esperando tu pago por Yape…',
   pay360WaitingHint: 'Apenas Yape confirme, esta pantalla cambia sola. Puedes cerrarla: tu pedido ya está registrado.',
   pay360IssueFailed: 'No pudimos generar tu pago. Vuelve a intentarlo.',
 
