@@ -7,12 +7,14 @@
 // directamente — se recalculan en `derive()` después de cada cambio.
 
 import { CULQI_OTP_LENGTH, EXIT_DISCOUNT_PEN, PHONE_LENGTH_PE, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
-import { methodForCoverage } from './services/DistrictCoverageService'
+import { effectivePrice } from './product-packs'
+import { isLimaMetro, methodForCoverage } from './services/DistrictCoverageService'
 import { resolveVariant } from './variant'
 import type { CheckoutAbMode } from './variant'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
-  LimaAddress, LocationType, PackId, PaymentVerification, ProvinciaConfig, StoreCulqi, StorePay360,
+  AdvanceChoice, LimaAddress, LocationType, PackId, PaymentVerification, PickupPoint,
+  ProvinciaConfig, StoreCulqi, StorePay360,
 } from './types'
 
 /** uuid v4. `randomUUID` exige contexto seguro; el fallback cubre dev por http. */
@@ -30,16 +32,22 @@ function newOrderId(): string {
 export function initialCheckoutState(
   selectedPack: PackId | null = null,
   variant: CheckoutVariant = 'A',
+  homeDeliveryEnabled = true,
 ): CheckoutState {
   return {
     orderId: newOrderId(),
     step: 1,
     selectedPack,
+    packPrice: 0,
+    advanceChoice: 'HALF',
     variant,
+    homeDeliveryEnabled,
     customerInfo: { dni: '', whatsapp: '', receiverName: '' },
     locationType: null,
     limaAddress: null,
     provinciaConfig: null,
+    deliveryMethod: null,
+    pickup: { ...EMPTY_PICKUP },
     needsLocationConfirmation: false,
     paymentVoucher: null,
     advanceYapeCode: '',
@@ -58,15 +66,21 @@ export function initialCheckoutState(
 }
 
 export type CheckoutAction =
-  | { type: 'SET_PACK'; packId: PackId }
+  /** El precio viaja con el pack porque el adelanto es un porcentaje del
+   *  pedido: sin él, `derive()` no puede calcular el monto. */
+  | { type: 'SET_PACK'; packId: PackId; price: number }
+  | { type: 'SET_ADVANCE_CHOICE'; choice: AdvanceChoice }
   | { type: 'SET_DNI'; dni: string }
   | { type: 'SET_WHATSAPP'; whatsapp: string }
   | { type: 'SET_RECEIVER_NAME'; receiverName: string }
-  | { type: 'SET_LOCATION_TYPE'; locationType: LocationType }
-  | { type: 'SET_LIMA_DISTRICT'; district: string }
+  /**
+   * El distrito, y con él la región. Reemplaza a `SET_LOCATION_TYPE` +
+   * `SET_LIMA_DISTRICT` + `SET_PROVINCIA_DISTRICT`: el comprador elige UNA vez
+   * de entre los 483 distritos del país y `isLimaMetro()` decide la rama.
+   */
+  | { type: 'SET_DISTRICT'; department: string; province: string; district: string }
   | { type: 'SET_LIMA_ADDRESS'; addressText?: string; reference?: string }
   | { type: 'SET_LIMA_PIN'; lat: number; lng: number; addressText?: string }
-  | { type: 'SET_PROVINCIA_DISTRICT'; department: string; province: string; district: string }
   | { type: 'SET_PROVINCIA_PIN'; lat: number; lng: number }
   | { type: 'SET_COVERAGE'; check: DistrictCoverage }
   /** El comprador ignora el mapa o insiste en domicilio: manda su elección. */
@@ -74,6 +88,8 @@ export type CheckoutAction =
   | { type: 'RETRY_DOMICILIO' }
   | { type: 'SET_AGENCY'; agency: AgencyName }
   | { type: 'SET_AGENCY_BRANCH'; branchId: string }
+  | { type: 'SET_PICKUP_POINT'; agency: AgencyName; branchId: string }
+  | { type: 'CLEAR_PICKUP_POINT' }
   | { type: 'SET_OLVA_TEXT'; text: string }
   | { type: 'SET_PROVINCIA_ADDRESS'; addressText?: string; reference?: string }
   | { type: 'SET_DELIVERY_METHOD'; method: 'DOMICILIO' | 'AGENCIA' }
@@ -99,34 +115,46 @@ export type CheckoutAction =
   | { type: 'ERROR' }
   | { type: 'RESTORE'; state: CheckoutState }
 
-const EMPTY_LIMA: LimaAddress = { district: null, lat: null, lng: null, addressText: '', reference: '' }
+const EMPTY_LIMA: LimaAddress = {
+  department: null, province: null, district: null,
+  lat: null, lng: null, addressText: '', reference: '',
+}
 const EMPTY_PROVINCIA: ProvinciaConfig = {
   department: null, province: null, district: null, city: null, eta: null,
-  lat: null, lng: null, coverageResult: null, deliveryMethod: null,
-  selectedAgency: null, selectedAgencyBranchId: null, olvaBranchText: null,
+  lat: null, lng: null, coverageResult: null,
 }
+const EMPTY_PICKUP: PickupPoint = { agency: null, branchId: null, freeText: null }
 
 /**
  * Recalcula todo lo derivado. Se llama después de CADA acción, así que el estado
  * nunca puede quedar internamente inconsistente.
  */
-function derive(s: CheckoutState): CheckoutState {
+function derive(state: CheckoutState): CheckoutState {
+  // Una marca sin entrega a domicilio no puede quedar con `DOMICILIO`, venga de
+  // donde venga. Se normaliza AQUÍ y no solo en las acciones porque `RESTORE`
+  // entra por la puerta de atrás: un borrador guardado cuando la marca sí
+  // repartía conservaba el método y cerraba el pedido prometiendo una entrega a
+  // la puerta que el admin ya había apagado.
+  const s: CheckoutState = !state.homeDeliveryEnabled && state.deliveryMethod === 'DOMICILIO'
+    ? { ...state, deliveryMethod: 'AGENCIA' }
+    : state
+
   const isProvincia = s.locationType === 'PROVINCIA'
-  // El adelanto sale del destino Y de la agencia: Olva cobra más flete que
-  // Shalom. A domicilio (sin agencia) va el base.
-  const advanceAmount = advanceFor(
-    isProvincia,
-    s.provinciaConfig?.selectedAgency ?? null,
-    s.provinciaConfig?.deliveryMethod ?? null,
-  )
+  // El adelanto es un porcentaje del pedido, no una tabla por destino: la mitad
+  // como mínimo, o el total si el comprador lo elige. Sobre el precio EFECTIVO,
+  // para no adelantar sobre plata que el descuento ya le quitó.
+  const advanceAmount = advanceFor(effectivePrice(s.packPrice, s.discountPen), s.advanceChoice)
 
   // El pedido se cierra SIN coordenada: la cobertura se decide por distrito. La
   // marca queda para que Logística afine la dirección después (AddressBar en el
   // chat del pedido), no para bloquear la venta.
+  // Recoger en agencia no tiene puerta que ubicar, en ninguna de las dos
+  // regiones: solo el domicilio deja una coordenada pendiente.
   const needsLocationConfirmation =
-    isProvincia ? s.provinciaConfig?.deliveryMethod === 'DOMICILIO' && s.provinciaConfig?.lat == null
-      : s.locationType === 'LIMA' ? s.limaAddress?.lat == null
-        : false
+    s.deliveryMethod === 'AGENCIA' ? false
+      : isProvincia ? s.deliveryMethod === 'DOMICILIO' && s.provinciaConfig?.lat == null
+        : s.locationType === 'LIMA' ? s.limaAddress?.lat == null
+          : false
 
   // El adelanto solo entra a verificación si realmente hay algo que verificar.
   const verification: PaymentVerification =
@@ -146,7 +174,10 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       return derive(action.state)
 
     case 'SET_PACK':
-      return derive({ ...state, selectedPack: action.packId })
+      return derive({ ...state, selectedPack: action.packId, packPrice: action.price })
+
+    case 'SET_ADVANCE_CHOICE':
+      return derive({ ...state, advanceChoice: action.choice })
 
     case 'SET_DNI':
       return derive({ ...state, customerInfo: { ...state.customerInfo, dni: action.dni.replace(/\D/g, '') } })
@@ -157,22 +188,76 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     case 'SET_RECEIVER_NAME':
       return derive({ ...state, customerInfo: { ...state.customerInfo, receiverName: action.receiverName } })
 
-    case 'SET_LOCATION_TYPE': {
-      if (state.locationType === action.locationType) return state
+    // El distrito determina la región: `isLimaMetro()` ya sabía la respuesta que
+    // antes se le preguntaba al comprador con el toggle Lima/Provincia.
+    case 'SET_DISTRICT': {
+      const { department, province, district } = action
+      const next: LocationType = isLimaMetro({ department, province }) ? 'LIMA' : 'PROVINCIA'
+      const sameRegion = state.locationType === next
+
       // Cambiar de región invalida lo capturado de la otra: no se arrastra un
       // distrito de Lima a un pedido de provincia.
+      // Sin domicilio no hay nada que elegir: el método queda fijado en AGENCIA
+      // desde que se sabe la región, y la UI ni siquiera muestra las tarjetas.
+      const forced = state.homeDeliveryEnabled ? null : 'AGENCIA' as const
+
+      if (!sameRegion) {
+        return derive({
+          ...state,
+          locationType: next,
+          limaAddress: next === 'LIMA' ? { ...EMPTY_LIMA, department, province, district } : null,
+          provinciaConfig: next === 'PROVINCIA'
+            ? { ...EMPTY_PROVINCIA, department, province, district, coverageResult: 'NOT_CHECKED' }
+            : null,
+          deliveryMethod: forced,
+          pickup: { ...EMPTY_PICKUP },
+          courierSurcharge: null,
+          deliveryNote: null,
+        })
+      }
+
+      if (next === 'LIMA') {
+        if (lima().district === district && lima().province === province) return state
+        // Otro distrito de Lima: la dirección escrita para el anterior ya no
+        // corresponde, pero el pin sí se descarta — apunta a la zona vieja.
+        return derive({
+          ...state,
+          limaAddress: { ...lima(), department, province, district, lat: null, lng: null },
+          // Si había elegido recoger, la sede era la de su distrito anterior.
+          deliveryMethod: forced,
+          pickup: { ...EMPTY_PICKUP },
+        })
+      }
+
+      const p = prov()
+      if (p.district === district && p.province === province && p.department === department) return state
+      // Otro distrito → el veredicto anterior ya no aplica.
       return derive({
         ...state,
-        locationType: action.locationType,
-        limaAddress: action.locationType === 'LIMA' ? { ...EMPTY_LIMA } : null,
-        provinciaConfig: action.locationType === 'PROVINCIA' ? { ...EMPTY_PROVINCIA } : null,
+        provinciaConfig: {
+          ...p,
+          department,
+          province,
+          district,
+          city: null,
+          eta: null,
+          lat: null, lng: null,
+          coverageResult: 'NOT_CHECKED',
+        },
+        // Cambiar de distrito limpia también el método y el punto. La sede está
+        // atada a una ciudad: si no se borra, alguien que probó Trujillo y luego
+        // eligió Carhuaz se queda con la sede de Trujillo y el paquete sale a
+        // 500 km de donde vive.
+        //
+        // Y de paso arregla el precio que se adelantaba: con una agencia pegada
+        // de antes, la nota mostraba "Adelanto de S/20" antes de que el
+        // comprador eligiera nada.
+        deliveryMethod: forced,
+        pickup: { ...EMPTY_PICKUP },
         courierSurcharge: null,
         deliveryNote: null,
       })
     }
-
-    case 'SET_LIMA_DISTRICT':
-      return derive({ ...state, limaAddress: { ...lima(), district: action.district } })
 
     case 'SET_LIMA_ADDRESS':
       return derive({ ...state, limaAddress: {
@@ -189,39 +274,6 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         // El reverse geocoding NO pisa lo que el comprador ya escribió.
         addressText: lima().addressText || action.addressText || '',
       } })
-
-    case 'SET_PROVINCIA_DISTRICT': {
-      const p = prov()
-      if (p.district === action.district && p.province === action.province && p.department === action.department) return state
-      // Otro distrito → el veredicto anterior ya no aplica.
-      return derive({
-        ...state,
-        provinciaConfig: {
-          ...p,
-          department: action.department,
-          province: action.province,
-          district: action.district,
-          city: null,
-          eta: null,
-          lat: null, lng: null,
-          coverageResult: 'NOT_CHECKED',
-          deliveryMethod: null,
-          // Cambiar de distrito limpia también la agencia y su sede. La sede
-          // está atada a una ciudad: si no se borra, alguien que probó Trujillo
-          // y luego eligió Carhuaz se queda con la sede de Trujillo y el paquete
-          // sale a 500 km de donde vive.
-          //
-          // Y de paso arregla el precio que se adelantaba: con una agencia
-          // pegada de antes, la nota mostraba "Adelanto de S/20" antes de que el
-          // comprador eligiera nada.
-          selectedAgency: null,
-          selectedAgencyBranchId: null,
-          olvaBranchText: null,
-        },
-        courierSurcharge: null,
-        deliveryNote: null,
-      })
-    }
 
     case 'SET_PROVINCIA_PIN':
       return derive({ ...state, provinciaConfig: { ...prov(), lat: action.lat, lng: action.lng } })
@@ -241,7 +293,8 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           city: check.city,
           eta: check.eta,
           coverageResult: check.result,
-          // En B el método lo elige el comprador: se deja en null a propósito
+        },
+        // En B el método lo elige el comprador: se deja en null a propósito
           // para que la UI muestre las dos tarjetas con su precio. Autodecidir
           // aquí sería exactamente lo que la variante existe para no hacer.
           // ...pero SOLO donde de verdad hay dos opciones. Sin cobertura del
@@ -249,10 +302,14 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
           // enseñarle una sola tarjeta y cobrarle un clic para llegar al mismo
           // sitio: las agencias. BORDERLINE también va directo — el courier no
           // garantiza esa zona y ofrecer domicilio ahí es prometer de más.
-          deliveryMethod: state.variant === 'B' && check.result === 'IN_ZONE'
+        // Sin domicilio da igual lo que diga la cobertura del courier: la marca
+        // no tiene con quién repartir, y proponerlo cerraría pedidos con una
+        // entrega a la puerta que nadie va a hacer.
+        deliveryMethod: !state.homeDeliveryEnabled
+          ? 'AGENCIA'
+          : state.variant === 'B' && check.result === 'IN_ZONE'
             ? null
             : methodForCoverage(check.result),
-        },
         // Tarifa del courier: costo de la marca, jamás se le traslada al comprador.
         courierSurcharge: check.tariff,
         deliveryNote: note,
@@ -262,37 +319,62 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     // El comprador no coloca el pin o el mapa falla: nunca se le bloquea, va a
     // agencia con copy neutro y el pedido se cierra igual.
     case 'CHOOSE_AGENCY_BRANCH_FLOW':
-      return derive({ ...state, provinciaConfig: { ...prov(), deliveryMethod: 'AGENCIA' } })
+      return derive({ ...state, deliveryMethod: 'AGENCIA' })
 
     case 'RETRY_DOMICILIO':
-      return derive({ ...state, provinciaConfig: { ...prov(), deliveryMethod: null, coverageResult: 'NOT_CHECKED' } })
+      if (!state.homeDeliveryEnabled) return state
+      return derive({
+        ...state,
+        deliveryMethod: null,
+        pickup: { ...EMPTY_PICKUP },
+        provinciaConfig: { ...prov(), coverageResult: 'NOT_CHECKED' },
+      })
 
     case 'SET_AGENCY':
-      return derive({ ...state, provinciaConfig: {
-        ...prov(),
-        selectedAgency: action.agency,
+      return derive({ ...state, pickup: {
+        agency: action.agency,
         // Cambiar de agencia limpia la selección de la anterior.
-        selectedAgencyBranchId: null,
-        olvaBranchText: null,
+        branchId: null,
+        freeText: null,
       } })
 
     case 'SET_AGENCY_BRANCH':
-      return derive({ ...state, provinciaConfig: { ...prov(), selectedAgencyBranchId: action.branchId } })
+      return derive({ ...state, pickup: { ...state.pickup, branchId: action.branchId } })
+
+    // El comprador elige un PUNTO, no un courier: la agencia viene con el punto.
+    // Va en una sola acción a propósito — despachar SET_AGENCY y después
+    // SET_AGENCY_BRANCH deja un estado intermedio con agencia y sin sede, y como
+    // SET_AGENCY limpia la sede, invertir el orden por descuido borraría la
+    // elección recién hecha.
+    case 'SET_PICKUP_POINT':
+      return derive({ ...state, pickup: {
+        agency: action.agency,
+        branchId: action.branchId,
+        // Elegir un punto del listado descarta el texto libre de `OTRO`.
+        freeText: null,
+      } })
+
+    // Vuelta al listado desde el texto libre de `OTRO`. Deja la elección en
+    // blanco en vez de apuntar a un courier concreto: cuál corresponde lo dice
+    // la distancia, y el picker lo resuelve al montar.
+    case 'CLEAR_PICKUP_POINT':
+      return derive({ ...state, pickup: { ...EMPTY_PICKUP } })
 
     case 'SET_OLVA_TEXT':
-      return derive({ ...state, provinciaConfig: { ...prov(), olvaBranchText: action.text } })
+      return derive({ ...state, pickup: { ...state.pickup, freeText: action.text } })
 
     case 'SET_DELIVERY_METHOD':
-      // Cambiar de método invalida la agencia ya elegida: si vuelve a "en casa"
+      // Red de seguridad: si la marca no reparte a domicilio, la acción se
+      // ignora. La UI no ofrece la opción, pero el reducer es el contrato y no
+      // debe poder quedar en un estado que la tienda no puede cumplir.
+      if (action.method === 'DOMICILIO' && !state.homeDeliveryEnabled) return state
+      // Cambiar de método invalida el punto ya elegido: si vuelve a "en casa"
       // después de haber marcado Shalom, el pedido saldría con agencia Y
       // domicilio, y el adelanto cobrado no calzaría con ninguno de los dos.
       return derive({
         ...state,
-        provinciaConfig: {
-          ...prov(),
-          deliveryMethod: action.method,
-          selectedAgency: action.method === 'DOMICILIO' ? null : prov().selectedAgency,
-        },
+        deliveryMethod: action.method,
+        pickup: action.method === 'DOMICILIO' ? { ...EMPTY_PICKUP } : state.pickup,
       })
 
     case 'SET_PROVINCIA_ADDRESS':

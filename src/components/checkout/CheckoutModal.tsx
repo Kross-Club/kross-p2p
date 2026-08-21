@@ -50,6 +50,9 @@ interface CheckoutModalProps {
   /** Contexto del pedido. Sin él el checkout es solo demo y no puede cerrar. */
   submitContext?: Omit<SubmitContext, 'price' | 'packName'>
   yape?: StoreYape | null
+  /** `stores.home_delivery_enabled`. Si es false la marca solo ofrece recojo en
+   *  agencia y el checkout no muestra nunca la opción de entrega a domicilio. */
+  homeDeliveryEnabled?: boolean
   /** Config Culqi de la tienda (columnas públicas). Puede llegar asíncrona. */
   culqi?: StoreCulqi | null
   /** Config 360pay de la tienda. Mismas reglas que `culqi`. */
@@ -61,9 +64,9 @@ interface CheckoutModalProps {
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, yape = null, culqi = null, pay360 = null, abMode = 'SPLIT',
+  submitContext, yape = null, homeDeliveryEnabled = true, culqi = null, pay360 = null, abMode = 'SPLIT',
 }: CheckoutModalProps) {
-  const co = useCheckout({ initialPack, onPartialLead })
+  const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled })
   const { state, dispatch, errors, touch } = co
   const [confirmingClose, setConfirmingClose] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -169,6 +172,16 @@ export default function CheckoutModal({
   // discrepar, y cobrarle distinto a lo que vio es el peor error posible.
   const pack = packs.find(p => p.id === state.selectedPack) ?? null
   const price = pack ? effectivePrice(pack.precio, state.discountPen) : 0
+
+  // El pack PRESELECCIONADO entra al estado sin pasar por `onSelect`, así que su
+  // precio no llegaría solo — y el adelanto, que ahora es un porcentaje del
+  // pedido, saldría 0 hasta que el comprador tocara otro pack. Se sincroniza
+  // aquí, que es el único lugar que conoce los precios.
+  useEffect(() => {
+    if (pack && state.packPrice !== pack.precio) {
+      dispatch({ type: 'SET_PACK', packId: pack.id, price: pack.precio })
+    }
+  }, [pack?.id, pack?.precio]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Token del pedido en curso. Un ref y no una dep: el callback de emisión se
   // vuelve a llamar en el retry, y re-crearlo en cada cambio de fase reintroduce
@@ -403,7 +416,10 @@ export default function CheckoutModal({
               selected={state.selectedPack}
               bestPackId={bestPackId}
               discountPen={state.discountPen}
-              onSelect={packId => dispatch({ type: 'SET_PACK', packId })}
+              onSelect={packId => dispatch({
+                type: 'SET_PACK', packId,
+                price: packs.find(p => p.id === packId)?.precio ?? 0,
+              })}
             />
           )}
 
@@ -423,6 +439,7 @@ export default function CheckoutModal({
               onYapeCode={code => dispatch({ type: 'SET_YAPE_CODE', code })}
               onCulqiPhone={phone => dispatch({ type: 'SET_CULQI_PHONE', phone })}
               onCulqiOtp={otp => dispatch({ type: 'SET_CULQI_OTP', otp })}
+              onAdvanceChoice={choice => dispatch({ type: 'SET_ADVANCE_CHOICE', choice })}
               onVoucher={onVoucher}
               submitError={submitError}
             />

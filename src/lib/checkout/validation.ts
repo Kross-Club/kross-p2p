@@ -10,8 +10,10 @@ import { COVERAGE_MODE, CULQI_OTP_LENGTH, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_R
 import { hasBranchList } from './services/AgencyService'
 import type { CheckoutState, CheckoutStepId } from './types'
 
+// `locationType` era un campo del formulario y ya no existe: la región se deriva
+// del distrito, así que sus errores se reportan en `district`.
 export type FieldName =
-  | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName' | 'locationType'
+  | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName'
   | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch' | 'voucher' | 'yapeCode'
   | 'culqiPhone' | 'culqiOtp'
 
@@ -72,8 +74,10 @@ function validateStep2(s: CheckoutState): FieldErrors {
   const name = validateReceiverName(s.customerInfo.receiverName)
   if (name) e.receiverName = name
 
+  // Sin distrito no hay región: `locationType` se deriva de él, así que su
+  // ausencia se le reporta al comprador en el campo que sí tocó.
   if (!s.locationType) {
-    e.locationType = 'Elige dónde recibes tu pedido'
+    e.district = 'Elige tu distrito'
     return e
   }
 
@@ -93,6 +97,8 @@ function validateStep2(s: CheckoutState): FieldErrors {
   if (s.locationType === 'LIMA') {
     const a = s.limaAddress
     if (!a?.district) e.district = 'Elige tu distrito'
+    // Lima también puede recoger en agencia: ahí no hay dirección que pedir.
+    if (s.deliveryMethod === 'AGENCIA') return { ...e, ...validatePickup(s) }
     const addr = validateAddressText(a?.addressText ?? '')
     if (addr) e.addressText = addr
     // El pin NO se valida: en modo DISTRICT el pedido se cierra sin él.
@@ -105,25 +111,33 @@ function validateStep2(s: CheckoutState): FieldErrors {
     return e
   }
 
-  if (p.deliveryMethod === 'DOMICILIO') {
+  if (s.deliveryMethod === 'DOMICILIO') {
     const addr = validateAddressText(p.address?.addressText ?? '')
     if (addr) e.addressText = addr
     return e
   }
 
-  // Rama agencia. Es la salida que SIEMPRE está abierta: si el distrito no tiene
-  // cobertura a domicilio, o el comprador la prefiere, aquí elige su sede.
-  if (!p.selectedAgency) {
-    e.agency = 'Elige tu agencia de recojo'
-    return e
-  }
+  return { ...e, ...validatePickup(s) }
+}
+
+/**
+ * El punto de recojo, igual en las dos regiones.
+ *
+ * Es la salida que SIEMPRE está abierta: si el distrito no tiene cobertura a
+ * domicilio, o el comprador prefiere recoger, aquí elige su punto.
+ *
+ * Elige un PUNTO y la agencia viene con él, así que el primer error solo aparece
+ * cuando no llegó a elegir ninguno — por eso habla de dónde recoge, no de qué
+ * courier prefiere: esa pregunta ya no se le hace.
+ */
+function validatePickup(s: CheckoutState): FieldErrors {
+  const { agency, branchId, freeText } = s.pickup
+  if (!agency) return { agency: 'Elige dónde vas a recoger tu pedido' }
   // Shalom y Olva tienen listado; las demás caen a texto libre.
-  if (hasBranchList(p.selectedAgency)) {
-    if (!p.selectedAgencyBranchId) e.agencyBranch = 'Elige la sede donde vas a recoger'
-  } else if (!p.olvaBranchText?.trim()) {
-    e.agencyBranch = 'Escribe en qué agencia vas a recoger'
+  if (hasBranchList(agency)) {
+    return branchId ? {} : { agencyBranch: 'Elige el punto donde vas a recoger' }
   }
-  return e
+  return freeText?.trim() ? {} : { agencyBranch: 'Escribe en qué agencia vas a recoger' }
 }
 
 export function validateYapeCode(code: string): string | null {

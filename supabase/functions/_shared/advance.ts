@@ -1,93 +1,64 @@
 // ─── Adelanto derivado en el SERVIDOR ────────────────────────────────────────
 // Espejo de `advanceFor()` (src/lib/checkout/checkout.config.ts). Existe porque
 // el monto del adelanto NO puede venir del navegador: `register-buyer` lo
-// aceptaba tal cual del body, así que cualquiera podía registrar un pedido de
-// Olva (S/25) declarando un adelanto de S/1 — y con el cobro directo de Culqi
-// ese S/1 se cobraría de verdad y el pedido se auto-confirmaría sin que ninguna
-// persona lo mire. El monto se deriva del destino, aquí y en el front, de la
-// misma tabla. Si esa tabla cambia en el front, TIENE que cambiar aquí: el test
-// de paridad en src/lib/checkout/culqi.test.ts vigila que no se desalineen.
+// aceptaba tal cual del body, así que cualquiera podía registrar un pedido
+// declarando un adelanto de S/1 — y con el cobro directo de Culqi ese S/1 se
+// cobraría de verdad y el pedido se auto-confirmaría sin que ninguna persona lo
+// mire. El test de paridad en src/lib/checkout/culqi.test.ts vigila que las dos
+// implementaciones no se desalineen.
 //
 // Sin APIs de Deno a propósito: el archivo se importa también desde vitest.
 
-/** Misma tabla que ADVANCE_* en checkout.config.ts. */
-export function advanceForServer(
-  dispatchType: string,
-  agencyName: string | null,
-): number {
-  // Entrega EN CASA a provincia: el courier cobra más que el mostrador.
-  if (dispatchType === 'MOTORIZADO_PROVINCIA') return 30
-  if (dispatchType === 'AGENCIA_PROVINCIA') {
-    if (agencyName === 'OLVA') return 25
-    return 20 // SHALOM y OTRO cobran la base de mostrador
-  }
-  // MOTORIZADO_LIMA (y cualquier valor ya normalizado por la lista blanca del
-  // caller): el adelanto chico que filtra el pedido falso sin espantar la venta.
-  return 5
-}
+/** Misma constante que ADVANCE_HALF_SHARE en checkout.config.ts. */
+export const ADVANCE_HALF_SHARE = 0.5
 
-// ─── Adelanto como PORCENTAJE del pedido ─────────────────────────────────────
-// El modelo nuevo: el comprador adelanta la MITAD de su pedido, o paga el 100 %
-// y gana puntos para su próxima compra. Reemplaza a la tabla de arriba, que
-// cobraba un monto fijo de envío.
-//
-// El cambio de modelo trae un riesgo que el fijo no tenía, y es el que manda en
-// el diseño de estas funciones:
-//
-//   Con monto fijo, manipular el precio del pedido no cambiaba el adelanto.
-//   Con porcentaje, SÍ. Y `order_sessions.product_price` viene del navegador
-//   (`register-buyer` lo toma de `body.product_price`), así que declarar un
-//   pack de S/1 daría un adelanto de S/0.50 sobre una compra de S/98.
-//
-// Por eso el precio NO se lee de la fila del pedido: se resuelve contra
-// `products.packs`, que es de la marca y el comprador no puede tocar. La fila
-// solo sirve para contrastar.
-
-/** Cuánto adelanta quien no paga todo. Cambiarlo es editar esta línea. */
-export const ADVANCE_PERCENT = 50
-
-/** Redondeo a céntimos. 360pay cobra en soles con decimales (150.5), así que
- *  no hay que truncar a entero — y truncar regalaría o cobraría de más. */
-export function toCents(pen: number): number {
-  return Math.round(pen * 100) / 100
+/**
+ * Cuánto adelanta este pedido: la mitad (mínimo) o el total.
+ *
+ * Antes era una tabla por destino —S/5 Lima, S/20 Shalom, S/25 Olva, S/30 a
+ * domicilio— y por eso el monto era inmune a lo que mandara el navegador. Ahora
+ * depende del PRECIO, así que la protección se mueve un paso atrás: quien llama
+ * tiene que pasar un precio que el servidor haya validado contra los packs del
+ * producto, nunca el del body tal cual. Ver `priceFromPacks()`.
+ *
+ * `choice` sí puede venir del cliente sin riesgo: solo elige entre pagar la
+ * mitad o pagar todo, y ninguna de las dos baja del mínimo.
+ */
+export function advanceForServer(price: number, choice: string | null): number {
+  const p = Number(price)
+  if (!Number.isFinite(p) || p <= 0) return 0
+  return choice === 'FULL' ? Math.round(p) : Math.round(p * ADVANCE_HALF_SHARE)
 }
 
 /**
- * El adelanto que le toca a este pedido.
+ * El precio REAL del pack, tomado del producto en la base.
  *
- * `payFull` es la elección del comprador, y es lo ÚNICO que el cliente aporta a
- * este cálculo: no puede mover el precio ni el porcentaje, solo decidir si paga
- * la mitad o el todo. Pagar de más nunca es un ataque.
- */
-export function expectedAdvance(totalPen: number, payFull: boolean): number {
-  const total = toCents(Math.max(0, totalPen))
-  if (!Number.isFinite(total) || total <= 0) return 0
-  return payFull ? total : toCents((total * ADVANCE_PERCENT) / 100)
-}
-
-export interface PackLike {
-  nombre?: unknown
-  precio?: unknown
-}
-
-/**
- * Precio REAL de un pack, tal como lo publicó la marca en `products.packs`.
+ * Es la pieza que sostiene lo de arriba. `register-buyer` venía guardando
+ * `body.product_price` tal cual: daba igual mientras el adelanto saliera de una
+ * tabla fija, pero desde que es un porcentaje del precio, aceptar el precio del
+ * navegador es volver a dejar que el comprador fije lo que se le cobra.
  *
- * Devuelve `null` si el pack no existe o no tiene precio usable, y ese `null`
- * tiene que frenar el cobro: cobrar sobre un precio que no se pudo verificar es
- * exactamente lo que este módulo existe para impedir.
+ * Devuelve `null` si no se puede verificar (producto sin packs, o un precio que
+ * no corresponde a ninguno). Quien llama decide: hoy se cae al precio del body
+ * para no bloquear la venta, pero el ADELANTO se calcula sobre el verificado.
  */
-export function priceOfPack(packs: unknown, packName: string | null): number | null {
+export function priceFromPacks(
+  packs: unknown,
+  claimed: number,
+  packName: string | null,
+): number | null {
   if (!Array.isArray(packs)) return null
-  const target = String(packName ?? '').trim().toLowerCase()
-  for (const p of packs as PackLike[]) {
-    if (!p || typeof p !== 'object') continue
-    const nombre = String(p.nombre ?? '').trim().toLowerCase()
-    // Sin `pack_name` en el pedido no se adivina: un catálogo con varios packs
-    // haría que "el primero" cobrara el precio equivocado.
-    if (!target || nombre !== target) continue
-    const precio = Number(p.precio)
-    return Number.isFinite(precio) && precio > 0 ? toCents(precio) : null
+  const prices = packs
+    .map(p => Number((p as { precio?: unknown })?.precio))
+    .filter(n => Number.isFinite(n) && n > 0)
+  if (prices.length === 0) return null
+
+  // Por nombre cuando viene: es la coincidencia exacta.
+  if (packName) {
+    const hit = packs.find(p => (p as { nombre?: unknown })?.nombre === packName)
+    const precio = Number((hit as { precio?: unknown })?.precio)
+    if (Number.isFinite(precio) && precio > 0) return precio
   }
-  return null
+  // Si no, el precio declarado vale solo si ES uno de los del producto.
+  return prices.includes(Number(claimed)) ? Number(claimed) : null
 }

@@ -58,8 +58,9 @@ Deno.serve(async (req) => {
     .from('order_sessions')
     .select(`
       id, order_id, store_id, origin_store_id, status, buyer_name, buyer_phone,
-      advance_amount, payment_verification, payment_provider, dispatch_type,
-      agency_name, advance_charge_attempts, pay360_coupon_id, pay360_consumer_code
+      advance_amount, payment_verification, payment_provider,
+      product_price, advance_choice, advance_charge_attempts,
+      pay360_coupon_id, pay360_consumer_code
     `)
     .eq('token', orderToken)
     .maybeSingle()
@@ -83,7 +84,10 @@ Deno.serve(async (req) => {
   }
 
   // ─── El monto lo deriva ESTE servidor, dos veces ───────────────────────────
-  const expected = advanceForServer(String(session.dispatch_type ?? ''), session.agency_name ?? null)
+  // El adelanto sale del PRECIO, no del destino: `advance_choice` dice si es la
+  // mitad o el total. Misma llamada que hace `culqi-charge`, para que los dos
+  // motores cobren exactamente lo mismo que el paso 3 le mostró al comprador.
+  const expected = advanceForServer(Number(session.product_price ?? 0), String(session.advance_choice ?? 'HALF'))
   const rowAmount = Number(session.advance_amount ?? 0)
   if (expected <= 0 || rowAmount <= 0 || session.payment_verification === 'NOT_REQUIRED') {
     return json({ ok: false, stage: 'validation', code: 'no_advance' }, 400)

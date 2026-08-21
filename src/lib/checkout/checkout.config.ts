@@ -8,54 +8,49 @@
 // BD. Aquí solo están las REGLAS sobre esos packs (cuál se preselecciona, qué
 // badge lleva, cómo se calcula el ahorro).
 
-import type { AgencyName, CheckoutState, CoverageMode } from './types'
+import type { CheckoutState, CoverageMode } from './types'
 
 // ─── Adelanto ────────────────────────────────────────────────────────────────
+// El adelanto es un PORCENTAJE del pedido, no un monto fijo por región.
+//
+// Aquí vivían seis constantes —S/5 en Lima, S/20 Shalom, S/25 Olva, S/30 a
+// domicilio en provincia— y la función que elegía entre ellas. Se fueron todas.
+// Dos razones:
+//
+//  · **Compromiso.** S/5 filtra al que estaba jugando, pero no compromete a
+//    nadie. Quien ya puso la mitad del pedido va a recoger.
+//  · **Costo de cobrar.** Con 360pay la comisión es PLANA (~S/3.72), así que
+//    cobrar S/5 se llevaba el 74 % del adelanto. Sobre la mitad de un pedido
+//    típico es ~3 %, que sí se sostiene.
+//
+// Lo que ya NO depende del destino: el adelanto es el mismo recoja o le lleven,
+// en Lima o en provincia. Por eso las tarjetas de método dejaron de mostrar un
+// monto — no había diferencia que enseñar.
+
+/** Elige cuánto adelanta: la mitad (mínimo) o todo. */
+export type AdvanceChoice = 'HALF' | 'FULL'
 
 /**
- * Lima también adelanta. Antes era 0 —100 % contraentrega— y el rebote lo
- * pagaba la marca entera: el pedido falso no cuesta nada de hacer y sí cuesta
- * el viaje del motorizado. S/5 no espanta a quien va a comprar y sí a quien
- * estaba jugando.
+ * La parte mínima del pedido que se adelanta. Cambiar esto a 0,4 o 0,6 es
+ * editar esta línea y nada más — el monto se deriva de aquí en el front y su
+ * espejo en `supabase/functions/_shared/advance.ts`.
  */
-export const ADVANCE_LIMA_PEN = 5
-
-/** Base de provincia por agencia (Shalom). El saldo se paga al recoger. */
-export const ADVANCE_PROVINCIA_PEN = 20
+export const ADVANCE_HALF_SHARE = 0.5
 
 /**
- * Entrega EN CASA a provincia: el courier cobra bastante más que dejar el
- * paquete en el mostrador de la agencia, y ese diferencial no lo puede comer
- * la marca en cada pedido.
- */
-export const ADVANCE_PROVINCIA_DOMICILIO_PEN = 30
-
-/**
- * Adelanto por agencia. Olva cobra más flete, así que su adelanto es mayor. Se
- * le muestra al comprador **en la tarjeta de cada agencia**, antes de elegir:
- * que el monto salte después de haber elegido se lee como cambio de precio a
- * mitad de compra.
- */
-export const ADVANCE_BY_AGENCY: Partial<Record<AgencyName, number>> = {
-  SHALOM: 20,
-  OLVA: 25,
-}
-
-/**
- * Adelanto que le toca a este pedido. Única fuente de verdad del monto.
+ * Cuánto adelanta este pedido.
  *
- * `method` importa: a domicilio en provincia no hay agencia que consultar, y
- * sin él caería al base de mostrador —20 en vez de 30— regalando el
- * diferencial del courier en cada pedido.
+ * `price` es el precio EFECTIVO —con el descuento de retención y los puntos ya
+ * aplicados—, porque adelantar sobre un precio que el comprador no va a pagar
+ * le cobraría de más.
+ *
+ * Se redondea al sol: el comprador lo yapea a mano y "S/69.50" invita a teclear
+ * mal. El redondeo es hacia arriba en el .5 (`Math.round`), así que la marca
+ * nunca cobra de menos que la mitad exacta.
  */
-export function advanceFor(
-  isProvincia: boolean,
-  agency: AgencyName | null,
-  method?: 'DOMICILIO' | 'AGENCIA' | null,
-): number {
-  if (!isProvincia) return ADVANCE_LIMA_PEN
-  if (method === 'DOMICILIO') return ADVANCE_PROVINCIA_DOMICILIO_PEN
-  return (agency && ADVANCE_BY_AGENCY[agency]) || ADVANCE_PROVINCIA_PEN
+export function advanceFor(price: number, choice: AdvanceChoice = 'HALF'): number {
+  if (!Number.isFinite(price) || price <= 0) return 0
+  return choice === 'FULL' ? Math.round(price) : Math.round(price * ADVANCE_HALF_SHARE)
 }
 
 // ─── Cobertura ───────────────────────────────────────────────────────────────
@@ -99,6 +94,23 @@ export const AGENCY_ONLY_CITIES: string[] = []
  * BORDERLINE. Solo aplica al análisis por polígono (post-venta), no al checkout.
  */
 export const BORDERLINE_THRESHOLD_M = 500
+
+/**
+ * Por debajo de esta distancia, el número deja de informar y la tarjeta dice
+ * "En tu distrito" en vez de una cifra.
+ *
+ * El motivo es cómo se construye el punto de referencia: `build-centroids.mjs`
+ * promedia **las sedes mismas** para obtener el centroide del distrito. En los
+ * **183 distritos que tienen una sola sede**, ese centroide ES la sede, y la
+ * distancia sale 0. Medido sobre los 378 distritos con centroide: **198 caen por
+ * debajo de 50 m**. O sea que en más de la mitad del país la primera tarjeta
+ * mostraba "a 0 m", que no significa nada y se lee como un sistema roto.
+ *
+ * El ORDEN sí es correcto —comparar distancias desde el centroide ordena bien
+ * las sedes entre sí—, lo que no se sostiene es presentar ese número como "qué
+ * tan lejos te queda a ti". Por eso se cambia la presentación, no el ranking.
+ */
+export const NEARBY_LABEL_THRESHOLD_KM = 0.5
 
 // ─── Packs ───────────────────────────────────────────────────────────────────
 
@@ -285,6 +297,9 @@ export const COPY = {
   outOfZoneChosen: 'Con gusto, te lo dejamos en la agencia que prefieras.',
   outOfZoneBenefit: 'Recoges cuando quieras, y pagas el resto ahí.',
   agencyNeutral: 'Elige tu agencia de recojo',
+  /** Reemplaza a la cifra cuando el centroide no da para afirmar una distancia
+   *  real. Ver `NEARBY_LABEL_THRESHOLD_KM`. */
+  pickupInDistrict: 'En tu distrito',
   retryDomicilio: 'Prefiero intentar entrega a domicilio',
 
   advanceHeadsUp: `Se paga un adelanto del envío por Yape y el resto al recibir.`,
@@ -419,6 +434,9 @@ export const COPY = {
   exitConfirmStay: 'Seguir comprando',
   exitConfirmLeave: 'Salir',
 
-  olvaQuestion: '¿En qué agencia Olva vas a recoger?',
-  olvaFinderUrl: 'https://www.olvacourier.com/agencias/',
+  // Aquí vivían `olvaQuestion` y `olvaFinderUrl`, de cuando Olva era la agencia
+  // sin listado y había que mandar al comprador a buscar su sede al sitio del
+  // courier. Olva tiene sus 424 sedes desde hace rato, y con la lista unificada
+  // el texto libre ya no es de nadie en particular: es la salida de `OTRO`, y su
+  // etiqueta vive en el propio campo.
 } as const

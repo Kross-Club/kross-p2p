@@ -58,14 +58,14 @@
 | `CheckoutModal.tsx` | Shell: progreso, trap de foco, Esc con confirmación, CTA sticky en el safe area |
 | `ExitOffer.tsx` | Diálogo centrado de retención al intentar salir (oferta o confirmación seca) |
 | `steps/Step1Pack.tsx` | Packs con precio por unidad, ahorro explícito y badge `×N` de cantidad |
-| `steps/Step2Delivery.tsx` | WhatsApp → nombre → Lima/Provincia → DNI (orden de compromiso creciente) |
+| `steps/Step2Delivery.tsx` | WhatsApp → DNI → nombre → **distrito** (orden de compromiso creciente). El selector de distrito es UNO solo, con los 483 del país |
 | `steps/Step3Confirm.tsx` | Resumen + caja Yape + código de seguridad + captura opcional |
 | `steps/OrderDone.tsx` | Pedido confirmado. Llegar aquí ES el KPI del refactor |
 | `payment/YapeBox.tsx` | Número/titular de la tienda, copiar, deep link (móvil) y QR (desktop) |
 | `payment/VoucherField.tsx` | Captura opcional, comprimida antes de subir |
 | `services/OrderService.ts` | `submitOrder` (idempotente) + `uploadVoucher` al bucket privado |
-| `branches/LimaBranch.tsx` | Distrito + dirección + referencia. COD, sin adelanto |
-| `branches/ProvinciaBranch.tsx` | Distrito → veredicto → domicilio o agencia |
+| `branches/LimaBranch.tsx` | Dirección + referencia. El distrito ya viene del paso 2 |
+| `branches/ProvinciaBranch.tsx` | Veredicto de cobertura (efecto sobre el distrito) → domicilio o agencia |
 | `branches/AgencyPicker.tsx` | Shalom y Olva: 3 sedes más cercanas con distancia real |
 | `fields/` | `Field`, `PhoneField`, `SearchSelect` (483 distritos, navegable con teclado) |
 | `useCheckout.ts` | Cose reducer + persistencia + validación al blur + instrumentación |
@@ -100,7 +100,88 @@ la mamá, el vecino, el portero. Pero el orden actual (nombre → DNI) hace que 
 autocompletado casi nunca se aprovechara. Al quedar el DNI solo en provincia, ahí se
 **invirtió**: DNI primero → Decolecta rellena el nombre → el microcopy
 *"¿Lo recibe otra persona?"* cubre la minoría. Un campo menos de tipeo en el flujo más
-largo. Orden final: WhatsApp → Lima/Provincia → [DNI si provincia] → nombre → distrito.
+largo. Orden final: **WhatsApp → DNI → nombre → distrito**.
+
+#### La región se deriva del distrito ✅ (se eliminó el toggle Lima/Provincia)
+
+El paso 2 preguntaba «¿Dónde lo recibes? Lima y Callao / Provincia» antes del DNI. Ya no:
+`isLimaMetro()` deduce la región del distrito elegido, así que el toggle pedía un dato que
+el sistema ya tenía y cobraba un tap para llegar al mismo sitio.
+
+- `locationType` sigue en el estado —el pedido, las métricas y `advanceFor()` lo leen—
+  pero pasó a ser **derivado**, como `advanceAmount` y `deliveryMethod`. La UI no lo setea.
+- **Un solo selector de distrito**, con los 483 del país, montado en `Step2Delivery`. Antes
+  había uno por rama, cada uno con su filtro: entre los dos se habían perdido los 128
+  distritos del departamento de Lima que no son Lima metropolitana. Con una sola lista ese
+  agujero no puede volver.
+- `SET_DISTRICT` reemplaza a `SET_LOCATION_TYPE` + `SET_LIMA_DISTRICT` +
+  `SET_PROVINCIA_DISTRICT`. Cambiar de región descarta lo capturado de la otra; cambiar de
+  distrito dentro de Lima descarta el pin, que apuntaba a la zona vieja.
+- `LimaAddress` guarda ahora `department` y `province`: sin la llave completa el selector
+  no puede reconocer lo ya elegido, y hay homónimos (5 Miraflores, 12 Acobamba).
+- El veredicto de cobertura pasó de un handler a un **efecto sobre el distrito** en
+  `ProvinciaBranch`, así se recalcula también cuando el comprador vuelve atrás y lo cambia.
+- ⚠️ `DistrictCoverageService.districtsFor()` ya no alimenta la UI. Se mantiene porque los
+  tests la usan para verificar que las dos ramas siguen siendo complementarias.
+
+#### Recoger en agencia también en Lima ✅
+
+Shalom tiene **163 sedes en el departamento de Lima** y Olva 128, así que el mostrador es
+una opción real ahí, no un parche de provincia. `LimaBranch` ofrece las dos tarjetas —«En
+mi casa» y «Recojo en agencia»— y monta el mismo `AgencyPicker`.
+
+- A diferencia de provincia, en Lima **no hay veredicto de cobertura que esperar**: el
+  motorizado propio llega a todo Lima metropolitana, así que las dos opciones se muestran
+  siempre y la elección es del comprador.
+- **El método y el punto subieron a la raíz del estado** (`deliveryMethod` y `pickup`).
+  Vivían dentro de `provinciaConfig`, y dejarlos ahí obligaba a que un pedido limeño
+  arrastrara una config de provincia. `persistence.ts` migra los borradores guardados.
+- `ADVANCE_LIMA_AGENCIA_PEN` es su propia constante aunque hoy valga lo mismo que el de
+  domicilio (S/5): el filtro anti-rebote aplica igual, pero el flete Lima→mostrador contra
+  el viaje del motorizado **no está medido**. Cuando se mida, se separa en una línea.
+- ⚠️ **`dispatch_type` pasó de tres valores a cuatro** (región × método) y esto NO es solo
+  frontend: `register-buyer` tiene lista blanca y **aplasta contra `MOTORIZADO_LIMA` todo
+  lo que no reconoce**. Sin `AGENCIA_LIMA` ahí, un recojo en Lima se guardaba como entrega
+  a domicilio y el motorizado salía a una casa por un paquete que estaba en el mostrador.
+- Por lo mismo se agregó `isPickupDispatch()` en `src/lib/session.ts`: comparar contra
+  `=== 'AGENCIA_PROVINCIA'` estaba regado por el código —`AddressBar` entre otros— y con
+  el valor nuevo le pedía el pin de su casa a quien va a pasar por el mostrador.
+
+**Deploy:** este cambio requiere redesplegar la función.
+```
+supabase functions deploy register-buyer --project-ref ofdjghntvmrdfjhazfvz
+```
+
+#### Entrega a domicilio prendida o apagada POR MARCA ✅
+
+`stores.home_delivery_enabled` decide si la marca ofrece entrega a la puerta. **El recojo
+en agencia nunca se apaga** — es la salida que siempre está abierta—, así que el switch
+solo gobierna la otra rama: el motorizado en Lima y el courier a domicilio en provincia,
+que son las que dependen de tener operación de última milla contratada.
+
+- **Se prende desde el panel**, en *Marcas → editar* (`MarcaPage`), y es **solo super
+  admin**: depende de un hecho comercial que conoce la plataforma. Que un admin de marca
+  lo prendiera sin tener con quién repartir prometería entregas que después no ocurren.
+- **El flag viaja en `CheckoutState`**, no solo en la UI, porque el reducer AUTO-DECIDE el
+  método desde la cobertura. Sin él, una marca sin última milla cerraba pedidos con
+  `deliveryMethod: 'DOMICILIO'` en cuanto el distrito tenía cobertura del courier.
+- `derive()` normaliza el método en CADA acción. Es lo que tapa la puerta de atrás:
+  `RESTORE` metía un borrador guardado cuando la marca sí repartía y el pedido salía
+  prometiendo domicilio después de que el admin lo apagara. Lo encontró un test.
+- Como `variant`, se re-resuelve desde la tienda en cada montaje y **no se restaura del
+  borrador**.
+- ⚠️ **Default de la columna: `true`.** Es a propósito — al correr el script, las marcas
+  que HOY reparten a domicilio no pueden quedarse sin esa opción. Las marcas nuevas nacen
+  en `false` porque `manage-store` (acción `create`) lo escribe explícito. Un default
+  `false` habría apagado el domicilio de todas, y backfillear con un `UPDATE` rompería la
+  idempotencia del script: al re-correrlo volvería a prender lo que el admin apagó a mano.
+- `/checkout-demo` tiene el mismo switch, para revisar los dos modos sin tocar Supabase.
+
+**Deploy:**
+```
+supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
+```
+> Correr también `supabase/setup-kross.sql` (agrega `stores.home_delivery_enabled`).
 
 **c) Copy del DNI ✅.** El anterior —*"Para crear tu cuenta y que puedas seguir tu
 pedido"*— planteaba un beneficio nuestro como si fuera suyo. Ahora dice **"La agencia te

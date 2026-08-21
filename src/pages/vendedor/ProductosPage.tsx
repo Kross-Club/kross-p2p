@@ -26,7 +26,9 @@ export default function ProductosPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Product | null>(null)
-  const [slug, setSlug] = useState<string | null>(null)
+  /** `null` mientras carga. Se pide entero y no solo el slug porque el
+   *  experimento A/B también depende de la marca — ver abajo. */
+  const [store, setStore] = useState<{ slug: string | null; home_delivery_enabled: boolean } | null>(null)
   /** Cuál de los enlaces se acaba de copiar. Sin acuse, copiar no se siente:
    *  el portapapeles no da señal y el vendedor toca dos veces por las dudas. */
   const [copiado, setCopiado] = useState<string | null>(null)
@@ -44,10 +46,28 @@ export default function ProductosPage() {
   // (e.g. marca.krossclub.app/landing/…), even when the super admin shares them.
   useEffect(() => {
     if (!effective?.store_id) return
-    supabase.from('stores').select('slug').eq('id', effective.store_id).maybeSingle()
-      .then(({ data }) => setSlug(data?.slug ?? null))
+    supabase.from('stores').select('slug, home_delivery_enabled').eq('id', effective.store_id).maybeSingle()
+      .then(({ data }) => setStore({
+        slug: data?.slug ?? null,
+        // El default de la columna es `true` y las marcas viejas no la tienen
+        // escrita: `undefined` significa "reparte", igual que en el checkout.
+        home_delivery_enabled: data?.home_delivery_enabled ?? true,
+      }))
   }, [effective?.store_id])
-  const landingBase = slug ? `https://${slug}.krossclub.app` : window.location.origin
+  const landingBase = store?.slug ? `https://${store.slug}.krossclub.app` : window.location.origin
+
+  // ─── ¿Tiene sentido el experimento en esta marca? ──────────────────────────
+  // A y B se diferencian SOLO en provincia con cobertura: en A la cobertura
+  // decide el envío, en B lo elige el comprador. Sin entrega a domicilio no hay
+  // qué elegir —el reducer fuerza AGENCIA y el selector de método ni se pinta—,
+  // así que las dos versiones renderizan idéntico.
+  //
+  // Se esconde en vez de dejarlo inerte porque un experimento visible promete
+  // una respuesta: el panel iría acumulando leads en las dos ramas y mostrando
+  // diferencias que son puro azar, y los enlaces `?checkout=A` / `?checkout=B`
+  // mandarían dos anuncios a la MISMA pantalla creyendo que se comparan.
+  // Vuelve solo con prender el switch de domicilio.
+  const abIsLive = store?.home_delivery_enabled === true
 
   const copiar = (url: string, key: string) => {
     navigator.clipboard?.writeText(url)
@@ -72,7 +92,7 @@ export default function ProductosPage() {
         </button>
       </div>
 
-      {effective.store_id && <AbTestPanel storeId={effective.store_id} />}
+      {effective.store_id && abIsLive && <AbTestPanel storeId={effective.store_id} />}
 
       {products.length === 0 ? (
         <div className="text-center py-14">
@@ -97,8 +117,9 @@ export default function ProductosPage() {
                   {/* Los dos enlaces del experimento. `?checkout=` FUERZA la versión
                       y no la guarda, así que sirven para mandar cada anuncio a una
                       —y comparar— pero no sortean: quien entre por el link limpio
-                      sigue cayendo en el reparto de la tienda. */}
-                  {(['A', 'B'] as const).map(v => (
+                      sigue cayendo en el reparto de la tienda.
+                      Solo donde el experimento existe: ver `abIsLive`. */}
+                  {abIsLive && (['A', 'B'] as const).map(v => (
                     <button key={v} onClick={() => copiar(`${landingBase}/landing/${p.id}?checkout=${v}`, `${p.id}-${v}`)}
                       className="text-[11px] font-bold flex items-center gap-1 text-gray-400">
                       <Copy size={10} /> {copiado === `${p.id}-${v}` ? '¡Copiado!' : `Versión ${v}`}

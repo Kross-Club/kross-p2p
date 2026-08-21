@@ -69,7 +69,8 @@ Deno.serve(async (req) => {
     .select(`
       id, order_id, store_id, origin_store_id, status, stage, buyer_name,
       advance_amount, payment_verification, payment_event_id, payment_reason,
-      payment_provider, dispatch_type, agency_name, advance_charge_attempts
+      payment_provider, dispatch_type, agency_name, advance_charge_attempts,
+      product_price, advance_choice
     `)
     .eq('token', orderToken)
     .maybeSingle()
@@ -117,7 +118,7 @@ Deno.serve(async (req) => {
   }
 
   // ─── El monto lo deriva ESTE servidor, dos veces ───────────────────────────
-  const expected = advanceForServer(String(session.dispatch_type ?? ''), session.agency_name ?? null)
+  const expected = advanceForServer(Number(session.product_price ?? 0), String(session.advance_choice ?? 'HALF'))
   const rowAmount = Number(session.advance_amount ?? 0)
   if (expected <= 0 || rowAmount <= 0 || session.payment_verification === 'NOT_REQUIRED') {
     return json({ ok: false, stage: 'validation', code: 'no_advance' }, 400)

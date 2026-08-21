@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { matchOrderToPayments } from '../_shared/yape-match.ts'
-import { advanceForServer } from '../_shared/advance.ts'
+import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -26,6 +26,7 @@ Deno.serve(async (req) => {
     product_id?: string
     product_name: string
     product_price: number
+    advance_choice?: string
     pack_name?: string
     buyer_name: string
     buyer_phone: string
@@ -38,7 +39,7 @@ Deno.serve(async (req) => {
     closed_by?: string       // AI_CLOSER | DIRECT_CHECKOUT (default directo)
     checkout_variant?: string // A | B — qué versión del checkout cerró el pedido
     // Costuras de ENTREGA del checkout guiado (Quiz). Ver docs/01-SALES-ENGINE.md.
-    dispatch_type?: string        // MOTORIZADO_LIMA | MOTORIZADO_PROVINCIA | AGENCIA_PROVINCIA
+    dispatch_type?: string        // MOTORIZADO_LIMA | MOTORIZADO_PROVINCIA | AGENCIA_PROVINCIA | AGENCIA_LIMA
     agency_name?: string          // SHALOM | OLVA | OTRO (solo provincia)
     delivery_reference?: string   // referencia de la dirección / agencia destino
     address_lat?: number          // pin GPS fijado en el checkout
@@ -142,10 +143,13 @@ Deno.serve(async (req) => {
   // El checkout guiado ya trae el tipo de despacho, la agencia (provincia), una
   // referencia y —en Lima— el pin GPS. Un pin fresco actualiza la dirección guardada
   // del buyer para que los próximos pedidos la hereden sin re-preguntar.
-  // Lista blanca de los tres valores. El default sigue siendo Lima para no
-  // romper a quien mande el campo vacío, pero PROVINCIA a domicilio ya no se
-  // aplasta contra Lima: se guardaba como pedido limeño y Logistics lo leía así.
-  const DISPATCH = ['MOTORIZADO_LIMA', 'MOTORIZADO_PROVINCIA', 'AGENCIA_PROVINCIA']
+  // Lista blanca de los CUATRO valores: región × método. El default sigue siendo
+  // Lima para no romper a quien mande el campo vacío, pero ojo con esa red de
+  // seguridad — un valor no listado NO falla, se aplasta contra MOTORIZADO_LIMA.
+  // Por eso agregar aquí es obligatorio al sumar una combinación: sin
+  // AGENCIA_LIMA, un recojo en Lima se guardaba como entrega a domicilio y el
+  // motorizado salía a una casa por un paquete que estaba en el mostrador.
+  const DISPATCH = ['MOTORIZADO_LIMA', 'MOTORIZADO_PROVINCIA', 'AGENCIA_PROVINCIA', 'AGENCIA_LIMA']
   const dispatchType = DISPATCH.includes(body.dispatch_type ?? '')
     ? body.dispatch_type!
     : 'MOTORIZADO_LIMA'
@@ -237,19 +241,41 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ─── Precio verificado ─────────────────────────────────────────────────────
+  // El precio venía del body tal cual. Daba igual mientras el adelanto saliera
+  // de una tabla fija por destino; desde que es un PORCENTAJE del precio,
+  // aceptarlo del navegador es dejar que el comprador fije lo que se le cobra:
+  // declarar un pack de S/2 y que Culqi le cargue S/1.
+  //
+  // Se contrasta contra los packs del producto. Si no se puede verificar (sin
+  // product_id, producto sin packs) NO se bloquea la venta —el pedido vale más
+  // que la comprobación— pero queda registrado, y el adelanto se calcula igual
+  // sobre lo verificado cuando existe.
+  let verifiedPrice: number | null = null
+  if (body.product_id) {
+    const { data: prod } = await supabase.from('products').select('packs').eq('id', body.product_id).maybeSingle()
+    verifiedPrice = priceFromPacks(prod?.packs, body.product_price, body.pack_name ?? null)
+    if (verifiedPrice === null) {
+      console.warn('[register-buyer] precio no verificable contra los packs', JSON.stringify({
+        product_id: body.product_id, claimed: body.product_price, pack: body.pack_name ?? null,
+      }))
+    }
+  }
+  const basePrice = verifiedPrice ?? body.product_price
+
   // Points redemption → discount on this order. usedPoints capped by balance AND
   // by the order price, so you can't over-redeem.
-  let finalPrice = body.product_price
+  let finalPrice = basePrice
   let discount = 0
   if (body.redeem_points && body.redeem_points > 0) {
     const { data: st } = await supabase.from('stores').select('points_rate').eq('id', body.store_id).maybeSingle()
     const rate = Number(st?.points_rate ?? 0)
     if (rate > 0) {
-      const maxByPrice = Math.floor(body.product_price / rate)
+      const maxByPrice = Math.floor(basePrice / rate)
       const usedPoints = Math.min(body.redeem_points, buyer.puntos ?? 0, maxByPrice)
       if (usedPoints > 0) {
         discount = usedPoints * rate
-        finalPrice = Math.max(0, body.product_price - discount)
+        finalPrice = Math.max(0, basePrice - discount)
         await supabase.from('buyers').update({ puntos: (buyer.puntos ?? 0) - usedPoints }).eq('id', buyer.id)
       }
     }
@@ -266,21 +292,27 @@ Deno.serve(async (req) => {
   const orderId = `ORD-${Date.now()}`
 
   // ─── Adelanto ──────────────────────────────────────────────────────────────
-  // Para el checkout directo el monto se DERIVA AQUÍ del destino, nunca del
-  // body: aceptarlo del navegador permitía registrar un pedido de Olva (S/25)
-  // declarando S/1 — y con Culqi ese S/1 se cobraría de verdad y el pedido se
-  // auto-confirmaría. El body solo sirve para detectar front desalineado.
-  // El AI closer conserva su monto negociado: su flujo no pasa por esta tabla.
+  // Para el checkout directo el monto se DERIVA AQUÍ, nunca del body: aceptarlo
+  // del navegador permitía declarar S/1 — y con Culqi ese S/1 se cobraría de
+  // verdad y el pedido se auto-confirmaría. El body solo sirve para detectar
+  // front desalineado.
+  //
+  // Es la mitad del pedido, o el total si el comprador lo eligió. `finalPrice`
+  // ya trae el precio verificado contra los packs y el descuento de puntos
+  // aplicado, que es exactamente lo que va a pagar.
+  //
+  // El AI closer conserva su monto negociado: su flujo no pasa por esta regla.
   const closedBy = body.closed_by === 'AI_CLOSER' ? 'AI_CLOSER' : 'DIRECT_CHECKOUT'
   const bodyAdvance = typeof body.advance_amount === 'number' && body.advance_amount > 0 ? body.advance_amount : 0
+  const advanceChoice = body.advance_choice === 'FULL' ? 'FULL' : 'HALF'
   const advanceAmount = closedBy === 'DIRECT_CHECKOUT'
-    ? advanceForServer(dispatchType, agencyName)
+    ? advanceForServer(finalPrice, advanceChoice)
     : bodyAdvance
   if (closedBy === 'DIRECT_CHECKOUT' && bodyAdvance !== advanceAmount) {
     // Front y server derivando distinto es un bug de despliegue, no un ataque
     // necesariamente — pero en ambos casos manda el server y hay que enterarse.
     console.warn('[register-buyer] advance_amount del body difiere del derivado', JSON.stringify({
-      body_advance: bodyAdvance, derived: advanceAmount, dispatch: dispatchType, agency: agencyName,
+      body_advance: bodyAdvance, derived: advanceAmount, price: finalPrice, choice: advanceChoice,
     }))
   }
   // Lista blanca, no passthrough: este campo decide de qué piscina de cruce
@@ -318,6 +350,7 @@ Deno.serve(async (req) => {
       product_id: body.product_id ?? null,
       product_name: body.product_name,
       product_price: finalPrice,
+      advance_choice: advanceChoice,
       pack_name: body.pack_name ?? null,
       items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: finalPrice, unit_price: finalPrice, qty: 1, pack_name: body.pack_name ?? null, image: firstImage }],
       status: 'active',
@@ -356,9 +389,10 @@ Deno.serve(async (req) => {
 
   const firstName = body.buyer_name ? ' ' + body.buyer_name.split(' ')[0] : ''
   const priceLine = `S/${finalPrice}${discount > 0 ? ` · usaste puntos: −S/${discount}` : ''}`
-  // Cómo llega, según los TRES destinos. "Sin adelanto" quedó mintiendo cuando
+  // Cómo llega, según los CUATRO destinos. "Sin adelanto" quedó mintiendo cuando
   // Lima pasó a cobrar S/5, y provincia-a-domicilio caía en esa misma rama.
-  const entrega = dispatchType === 'AGENCIA_PROVINCIA'
+  const esRecojo = dispatchType === 'AGENCIA_PROVINCIA' || dispatchType === 'AGENCIA_LIMA'
+  const entrega = esRecojo
     ? `se enviará por agencia${agencyName ? ' ' + agencyName : ''} y el saldo lo pagas al recoger`
     : dispatchType === 'MOTORIZADO_PROVINCIA'
       ? 'te llegará a tu casa y el saldo lo pagas al recibirlo'

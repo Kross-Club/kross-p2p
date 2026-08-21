@@ -40,6 +40,10 @@ export default function LandingProductoPage() {
   // Datos de cobro de la MARCA. Cada tienda yapea a su propio número, así que
   // salen de `stores`, nunca de config.
   const [yape, setYape] = useState<StoreYape | null>(null)
+  // `true` mientras no se sepa: la marca que sí reparte a domicilio no debe
+  // perder la opción por un instante de carga. Si no reparte, el switch llega
+  // en el mismo fetch que el Yape y la opción desaparece antes del paso 2.
+  const [homeDelivery, setHomeDelivery] = useState(true)
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
   const [culqi, setCulqi] = useState<StoreCulqi | null>(null)
   // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
@@ -80,7 +84,7 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     supabase.from('stores')
-      .select('yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope, checkout_ab_mode')
+      .select('yape_number, yape_holder, yape_qr_url, home_delivery_enabled, culqi_enabled, culqi_scope, checkout_ab_mode')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         // Degradación POR CAMPO: si el select entero falla (p. ej. columnas
@@ -88,6 +92,9 @@ export default function LandingProductoPage() {
         // pierde la caja de Yape por una columna nueva ausente.
         if (!data) return
         setYape({ number: data.yape_number, holder: data.yape_holder, qrUrl: data.yape_qr_url })
+        // `?? true` y no `!!`: una tienda de antes de la columna llega con el
+        // campo ausente, y apagarle el domicilio por eso rompería su operación.
+        setHomeDelivery(data.home_delivery_enabled ?? true)
         setCulqi(data.culqi_enabled
           ? { enabled: true, scope: data.culqi_scope === 'ALL' ? 'ALL' : 'PROVINCIA' }
           : null)
@@ -167,6 +174,7 @@ export default function LandingProductoPage() {
           onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
           onPartialLead={state => saveCheckoutDraft(state, product)}
           yape={yape}
+          homeDeliveryEnabled={homeDelivery}
           culqi={culqi}
           abMode={abMode}
           submitContext={{
