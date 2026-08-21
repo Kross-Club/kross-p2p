@@ -140,11 +140,55 @@ justificada en un adelanto de «S/10 contra S/20» que ya no era el vigente.
 el departamento**, así que su segunda opción más cercana está a **80 km**. La lista
 unificada mantiene las cuatro primeras bajo 40 km.
 
+El conteo completo, departamento por departamento (**Olva** marca dónde tiene más sedes):
+
+| Departamento | Shalom | Olva | Total |
+|---|---:|---:|---:|
+| Lima | 154 | 128 | 282 |
+| Arequipa **Olva** | 31 | 36 | 67 |
+| La Libertad | 29 | 27 | 56 |
+| San Martín **Olva** | 23 | 27 | 50 |
+| Cajamarca **Olva** | 19 | 25 | 44 |
+| Junín | 24 | 20 | 44 |
+| Piura | 30 | 14 | 44 |
+| Cusco | 25 | 12 | 37 |
+| Áncash **Olva** | 14 | 20 | 34 |
+| Lambayeque | 21 | 9 | 30 |
+| Puno | 16 | 8 | 24 |
+| Ica | 18 | 5 | 23 |
+| Loreto **Olva** | 8 | 11 | 19 |
+| Ayacucho **Olva** | 5 | 13 | 18 |
+| Callao | 11 | 6 | 17 |
+| Amazonas **Olva** | 6 | 10 | 16 |
+| Huánuco **Olva** | 6 | 9 | 15 |
+| Ucayali | 8 | 7 | 15 |
+| Tacna | 9 | 4 | 13 |
+| Tumbes | 9 | 4 | 13 |
+| Pasco **Olva** | 4 | 7 | 11 |
+| Apurímac **Olva** | 3 | 7 | 10 |
+| Huancavelica **Olva** | 1 | 9 | 10 |
+| Moquegua | 7 | 3 | 10 |
+| Madre de Dios | 6 | 3 | 9 |
+| **Total** | **487** | **424** | **911** |
+
+> Tabla contada sobre `src/data/agencies/shalom.json` y `olva.json` (campo `department`
+> de cada sede). Es una **foto, no una regla**: la recomendación no la lee — sale del
+> orden por distancia. Se recalcula con los JSON regenerados
+> (`node -e` sobre `branches` agrupando por departamento, o `npm run build:data` primero
+> si cambió la fuente).
+
 - Ordenar por distancia hace emerger la regionalización **sola**, y se mantiene sola
   cuando un courier abre o cierra un local. Una tabla por departamento habría que
   actualizarla a mano con cada cambio del listado.
 - `LISTED_AGENCIES` se deriva de los loaders: **sumar Marvisur o Cruz del Sur es agregar
   su loader**, y entra solo a los rankings, a la búsqueda y a la UI.
+- **Cuándo sumar una agencia más: cuando la tasa de recojo lo pida, no antes.** Con ambas
+  agencias en los 25 departamentos no hay hueco geográfico que llenar: una agencia nueva
+  agrega densidad donde ya hay cobertura, y cuesta un JSON que mantener y una fila más en
+  una pantalla que vive de tener pocas opciones. La señal para sumarla es que la tasa de
+  recojo caiga en una zona (y el courier local aparezca en los reclamos) — y esa métrica
+  ya está en camino: `agency_selected` con `rank`/`distanceKm` hoy, tracking por API (§3)
+  después.
 - ⚠️ **Los ids solo son únicos dentro de cada agencia** — 197 se repiten entre las dos. En
   una lista mezclada hay que comparar por `pointKey()` (`AGENCIA:id`); comparar por id
   seleccionaría dos tarjetas a la vez.
