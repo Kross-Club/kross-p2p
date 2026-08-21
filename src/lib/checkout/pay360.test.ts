@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CONSUMER_CODE_MAX, PAY360_HEADERS, SIGNATURE_TOLERANCE_MS, consumerCodeFor, hmacHex,
   COUPON_TTL_DAYS, couponExpiryFrom, isPaid, isValidConsumerCode, pay360BaseUrl, paymentUrlOf, pickPartnerKey, signedPayload, timingSafeEqual, unwrap,
-  verifySignature, yapeDeeplink, YAPE_SERVICES_PAY_URL,
+  verifySignature, yapeDeeplink, YAPE_360PAY, YAPE_SERVICES_PAY_URL,
 } from '../../../supabase/functions/_shared/pay360.ts'
 
 describe('bases por ambiente', () => {
@@ -108,6 +108,41 @@ describe('estado del pago', () => {
 })
 
 describe('deep link de Yape', () => {
+  // Este enlace es real: es el que Cobrana —otro partner de 360pay— entrega a
+  // sus compradores. Fijar los GUIDs contra él es lo que prueba que son del
+  // RECAUDADOR y no de cada marca: lo único que cambia entre Cobrana y
+  // nosotros es el prefijo del código (`LSV…` vs `KSH…`).
+  const COBRANA = 'https://www.yape.com.pe/app/services-pay/pickService'
+    + '?logo=https://staceu2yapefrntp10.blob.core.windows.net/$web/bill-payment/companies/360pay/360pay.png'
+    + '&companyId=1E6B58C0-32C5-4575-B1B4-FA1AAECD5EBB&name=360Pay'
+    + '&serviceId=A274CCCE-B6ED-48C8-8E61-D1D2D383C87E&consumerCode=LSV55555555'
+    + '&origin=deeplink-externo&origin_detail=tercero-web'
+
+  it('los identificadores por defecto son los del enlace real de 360Pay', () => {
+    const q = new URL(COBRANA).searchParams
+    expect(YAPE_360PAY.companyId).toBe(q.get('companyId'))
+    expect(YAPE_360PAY.serviceId).toBe(q.get('serviceId'))
+    expect(YAPE_360PAY.logo).toBe(q.get('logo'))
+  })
+
+  it('nuestro enlace es el mismo salvo el código del comprador', () => {
+    // Lo que hace que el pago caiga en NUESTRO cupón y no en el de otro
+    // comercio es solo el `consumerCode`. Si algún día divergiera otro
+    // parámetro, este test lo detiene antes de que un pago se vaya a otro lado.
+    const nuestro = new URL(yapeDeeplink({
+      companyId: YAPE_360PAY.companyId,
+      serviceId: YAPE_360PAY.serviceId,
+      consumerCode: 'KSH57402425042',
+      name: '360Pay',
+      logo: YAPE_360PAY.logo,
+    })).searchParams
+    const suyo = new URL(COBRANA).searchParams
+    for (const k of ['companyId', 'serviceId', 'name', 'logo', 'origin', 'origin_detail']) {
+      expect([k, nuestro.get(k)]).toEqual([k, suyo.get(k)])
+    }
+    expect(nuestro.get('consumerCode')).toBe('KSH57402425042')
+  })
+
   const link = yapeDeeplink({
     companyId: '1E6B58C0-32C5-4575-B1B4-FA1AAECD5EBB',
     serviceId: 'A274CCCE-B6ED-48C8-8E61-D1D2D383C87E',
