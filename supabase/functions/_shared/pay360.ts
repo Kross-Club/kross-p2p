@@ -147,10 +147,31 @@ export interface Pay360Coupon {
 }
 
 /**
+ * Cuánto vive un cupón antes de vencer.
+ *
+ * El OpenAPI declara `expiry_date` como OPCIONAL, pero el API real la exige
+ * ("Missing required fields: expiry_date"). Es la clase de diferencia que solo
+ * aparece contra el servicio de verdad, no leyendo el spec.
+ *
+ * 7 días y no 24 horas: el riesgo no es simétrico. Si vence muy pronto, quien
+ * paga tarde se encuentra con un cupón muerto en Yape y un pedido a medias. Si
+ * vence tarde no pasa nada, porque antes de emitir uno nuevo se anulan los
+ * pendientes de ese comprador — o sea, nunca hay dos vivos compitiendo.
+ */
+export const COUPON_TTL_DAYS = 7
+
+/** Fecha de vencimiento de un cupón emitido ahora. */
+export function couponExpiryFrom(nowMs: number): string {
+  return new Date(nowMs + COUPON_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
+}
+
+/**
  * `amount` en SOLES (no céntimos) y `external_ref` es NUESTRA llave: ahí va el
  * id de la sesión del pedido, y es por donde el webhook vuelve a encontrarlo.
  * Es lo que hace el cruce determinístico, a diferencia del flujo manual, que
  * adivina por monto + código de 3 dígitos.
+ *
+ * `expiry_date` es OBLIGATORIO pese a lo que dice el spec — ver COUPON_TTL_DAYS.
  */
 export function createCoupon(
   base: string, apiKey: string,

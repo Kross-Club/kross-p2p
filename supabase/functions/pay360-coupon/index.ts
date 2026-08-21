@@ -26,7 +26,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import {
   annulCoupon, consumerCodeFor, createCoupon, getCoupon, isPaid,
-  pay360BaseUrl, paymentUrlOf, pickPartnerKey, yapeDeeplink, type Pay360Env,
+  couponExpiryFrom, pay360BaseUrl, paymentUrlOf, pickPartnerKey, yapeDeeplink, type Pay360Env,
 } from '../_shared/pay360.ts'
 
 const supabase = createClient(
@@ -162,6 +162,8 @@ Deno.serve(async (req) => {
   const coupon = await createCoupon(base, PARTNER_KEY, {
     amount: rowAmount,                      // SOLES con decimales, no céntimos
     external_ref: String(session.id),
+    // Obligatorio en el API real aunque el OpenAPI lo liste opcional.
+    expiry_date: couponExpiryFrom(Date.now()),
     description: `Adelanto ${session.order_id ?? session.id}`.slice(0, 80),
     customer: {
       name: session.buyer_name ?? 'Cliente',
