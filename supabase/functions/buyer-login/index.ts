@@ -29,6 +29,19 @@ Deno.serve(async (req) => {
 
   let buyer: Record<string, unknown> | null = null
 
+  // La búsqueda por DNI o teléfono EXIGE tienda. Los compradores son por
+  // tienda (unicidad store_id+document / store_id+phone), así que sin tienda
+  // la consulta es global entre marcas: con el mismo DNI en dos tiendas el
+  // maybeSingle recibe dos filas y responde "no existe" — y con el DNI en una
+  // sola, permitiría entrar a la cuenta de otra marca desde cualquier host.
+  // `buyer_id` queda exento: es un uuid inadivinable que llega del propio
+  // pedido (auto-login del chat), no algo que se teclea.
+  if (!body.buyer_id && !body.store_id) {
+    return new Response(JSON.stringify({ error: 'store_required' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   // 0. Direct by buyer_id (used to auto-login a buyer who opened an order chat
   //    from a link/push without having entered their DNI).
   if (body.buyer_id) {
@@ -46,7 +59,7 @@ Deno.serve(async (req) => {
       .from('buyers')
       .select('id, nombre, phone, document_type, document_number, score, puntos, address')
       .eq('document_number', body.document_number)
-    if (body.store_id) q = q.eq('store_id', body.store_id)
+      .eq('store_id', body.store_id!)
     const { data } = await q.maybeSingle()
     buyer = data
   }
@@ -60,15 +73,19 @@ Deno.serve(async (req) => {
     const { data } = await supabase
       .from('buyers')
       .select('id, nombre, phone, document_type, document_number, score, puntos, address')
+      .eq('store_id', body.store_id!)
       .or(`phone.eq.${withPrefix},phone.eq.${withoutPrefix},phone.eq.${digits}`)
       .maybeSingle()
     buyer = data
 
     // 3. Fallback: buyer exists only in order_sessions (pre-migration)
     if (!buyer) {
+      // Por la tienda de ORIGEN, con red para filas de antes de esa columna
+      // (los .or encadenados se combinan con AND).
       const { data: session } = await supabase
         .from('order_sessions')
         .select('buyer_name, buyer_phone, store_id')
+        .or(`origin_store_id.eq.${body.store_id},and(origin_store_id.is.null,store_id.eq.${body.store_id})`)
         .or(`buyer_phone.eq.${withPrefix},buyer_phone.eq.${withoutPrefix},buyer_phone.eq.${digits}`)
         .maybeSingle()
 
