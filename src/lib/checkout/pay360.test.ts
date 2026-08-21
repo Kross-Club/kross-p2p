@@ -336,10 +336,10 @@ describe('firma del webhook', () => {
 })
 
 // ─── Máquina de fases del cobro con cupón ────────────────────────────────────
-// La rama de 360pay NO es simétrica a la de Culqi: con Culqi el cobro ocurre
-// dentro de la llamada, con 360pay se emite y se espera. Lo que se prueba aquí
-// es que esa espera no se pueda confundir con un cobro en duda, y que ninguna
-// transición mande al comprador a pagar dos veces.
+// El cobro NO ocurre dentro de la llamada: se emite un cupón y se espera. Lo
+// que se prueba aquí es que ninguna transición mande al comprador a pagar dos
+// veces, y que un cupón vivo no se pueda reemplazar por otro — el banco cobra
+// siempre el pendiente más antiguo.
 
 import { orderRegistered, payPhaseReducer } from './pay-phase'
 import type { CouponRef, PayPhase } from './pay-phase'
@@ -449,10 +449,12 @@ describe('fases del cobro con 360pay', () => {
     expect(payPhaseReducer({ k: 'IDLE' }, { type: 'COUPON_ISSUED', coupon: cupon })).toEqual({ k: 'IDLE' })
   })
 
-  it('la rama de Culqi queda intacta', () => {
-    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_CULQI', ...ref }, { type: 'CHARGE_OK' })
+  it('sin cobro en línea el pedido cierra igual, sin pagar', () => {
+    // Es el camino de las marcas que todavía no tienen 360pay conectado, y el
+    // de los pedidos sin adelanto: registrar YA es cerrar la compra.
+    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_MANUAL', ...ref })
     expect(p.k).toBe('DONE')
-    if (p.k === 'DONE') expect(p.paid).toBe(true)
+    if (p.k === 'DONE') expect(p.paid).toBe(false)
   })
 })
 
@@ -493,9 +495,9 @@ describe('¿aplica 360pay a este pedido?', () => {
   })
 
   it('aplica en Lima y en provincia por igual', () => {
-    // Sin `scope` por región, al revés que Culqi: el de Culqi es un repliegue
-    // ante un cobro que puede costar conversión. Acá el comprador toca un botón
-    // y Yape abre, así que no hay amenaza que acotar.
+    // Sin `scope` por región: acotar el cobro a provincia era el repliegue del
+    // motor anterior, cuyo cobro era un salto de fe que podía costar conversión
+    // limeña. Acá el comprador toca un botón y Yape abre con el monto puesto.
     expect(pay360ActiveFor({ pay360: ON, locationType: 'LIMA', advanceAmount: 6 })).toBe(true)
     expect(pay360ActiveFor({ pay360: ON, locationType: 'PROVINCIA', advanceAmount: 20 })).toBe(true)
   })

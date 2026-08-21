@@ -1,10 +1,9 @@
 // ─── SALES ENGINE · Emisión del cupón de adelanto (360pay) ───────────────────
-// Gemelo de `culqi-charge`, pero el modelo es otro y la diferencia importa:
-// aquí NO se cobra. Se emite una orden de cobro (el "cupón") y se devuelve el
+// Aquí NO se cobra: se emite una orden de cobro (el "cupón") y se devuelve el
 // deep link que abre Yape pre-llenado. El dinero se confirma después, por
 // `pay360-webhook`. Ver docs/06-360PAY.md.
 //
-// Reglas que no se negocian (las mismas de culqi-charge, por las mismas razones):
+// Reglas que no se negocian:
 //   · El MONTO jamás viene del cliente: se re-deriva del destino del pedido
 //     (`_shared/advance.ts`) y se contrasta contra la fila.
 //   · La configuración se resuelve por la tienda de ORIGEN (`origin_store_id`),
@@ -19,7 +18,7 @@
 //     S/25 y vuelve por S/5 pagaría el viejo. En una marca de recompra eso es
 //     rutina, no un borde.
 //
-// Autenticación: el `order_token` ES la credencial, igual que en culqi-charge.
+// Autenticación: el `order_token` ES la credencial.
 // Logging: jamás el body, la llave de partner ni el código de pago completo.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -86,8 +85,8 @@ Deno.serve(async (req) => {
 
   // ─── El monto lo deriva ESTE servidor, dos veces ───────────────────────────
   // El adelanto sale del PRECIO, no del destino: `advance_choice` dice si es la
-  // mitad o el total. Misma llamada que hace `culqi-charge`, para que los dos
-  // motores cobren exactamente lo mismo que el paso 3 le mostró al comprador.
+  // mitad o el total. Misma función que usa el front (`advanceFor`), para que
+  // se cobre exactamente lo que el paso 3 le mostró al comprador.
   const expected = advanceForServer(Number(session.product_price ?? 0), String(session.advance_choice ?? 'HALF'))
   const rowAmount = Number(session.advance_amount ?? 0)
   if (expected <= 0 || rowAmount <= 0 || session.payment_verification === 'NOT_REQUIRED') {

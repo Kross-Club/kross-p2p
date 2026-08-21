@@ -1,10 +1,10 @@
 // ─── SALES ENGINE · Emisión del cupón de adelanto (360pay) ───────────────────
-// Gemelo de CulqiService, con una diferencia que define toda la pantalla: aquí
-// la respuesta NO dice si se pagó. Dice cómo pagar. El "sí, entró" llega
-// después por el webhook, y el front lo ve por el polling del pedido.
+// Lo que define toda la pantalla: la respuesta NO dice si se pagó. Dice cómo
+// pagar. El "sí, entró" llega después por el webhook, y el front lo ve por el
+// polling del pedido.
 //
-// Igual que CulqiService: nunca lanza. Un fallo al emitir y una red caída piden
-// cosas distintas de la UI, y un catch genérico las aplana.
+// Nunca lanza. Un fallo al emitir y una red caída piden cosas distintas de la
+// UI, y un catch genérico las aplana.
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string

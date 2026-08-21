@@ -27,8 +27,9 @@ interface AdvancePanelProps {
    *  verifica a mano en la app de Yape cuando el cruce automático no llega. */
   yapeCode: string | null
   hasVoucher: boolean
-  /** 'CULQI' = el adelanto se cobra en línea. La ayuda del código de 3 dígitos
-   *  y la nota del comprobante no aplican: no hay yape manual que buscar. */
+  /** '360PAY' = el adelanto se cobra en línea con un cupón. La ayuda del código
+   *  de 3 dígitos y la nota del comprobante no aplican: no hay yape manual que
+   *  buscar en la app de la marca. */
   provider?: string | null
 }
 
@@ -99,16 +100,16 @@ export default function AdvancePanel({
         </p>
       )}
 
-      {/* La ayuda accionable depende del MOTOR del cobro. Con Culqi no hay
-          yape que buscar ni captura que esperar: o el cargo entró (verificado)
-          o falló y el cobro se coordina por el chat. Mostrar aquí la ayuda del
-          código de 3 dígitos mandaría al vendedor a revisar su app de Yape
-          buscando un pago que jamás va a llegar por ahí. */}
-      {provider === 'CULQI' ? (
+      {/* La ayuda accionable depende del MOTOR del cobro. Con 360pay no hay
+          yape que buscar ni captura que esperar: el cupón lo cobra el banco y
+          el pago se confirma solo por webhook. Mostrar aquí la ayuda del código
+          de 3 dígitos mandaría al vendedor a revisar su app de Yape buscando un
+          pago que jamás va a llegar por ahí. */}
+      {provider === '360PAY' ? (
         !matched && (
           <p className="text-[11px] text-gray-500 mt-1.5">
-            El cobro en línea aún no entra. Si el cliente no reintenta,
-            coordina el adelanto por el chat.
+            El cupón está emitido y aún sin pagar. El cliente puede pagarlo
+            desde su Yape cuando quiera; si no lo hace, coordina por el chat.
           </p>
         )
       ) : (

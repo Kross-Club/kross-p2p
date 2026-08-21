@@ -6,7 +6,7 @@
 // `courierSurcharge` y `deliveryNote` son DERIVADOS. Ninguna acción los setea
 // directamente — se recalculan en `derive()` después de cada cambio.
 
-import { CULQI_OTP_LENGTH, EXIT_DISCOUNT_PEN, PHONE_LENGTH_PE, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
+import { EXIT_DISCOUNT_PEN, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
 import { effectivePrice } from './product-packs'
 import { isLimaMetro, methodForCoverage } from './services/DistrictCoverageService'
 import { resolveVariant } from './variant'
@@ -14,7 +14,7 @@ import type { CheckoutAbMode } from './variant'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
   AdvanceChoice, LimaAddress, LocationType, PackId, PaymentVerification, PickupPoint,
-  ProvinciaConfig, StoreCulqi, StorePay360,
+  ProvinciaConfig, StorePay360,
 } from './types'
 
 /** uuid v4. `randomUUID` exige contexto seguro; el fallback cubre dev por http. */
@@ -51,10 +51,7 @@ export function initialCheckoutState(
     needsLocationConfirmation: false,
     paymentVoucher: null,
     advanceYapeCode: '',
-    culqi: null,
     pay360: null,
-    culqiPhone: '',
-    culqiOtp: '',
     advanceAmount: 0,
     discountPen: 0,
     exitOfferShown: false,
@@ -96,13 +93,10 @@ export type CheckoutAction =
   | { type: 'SET_VOUCHER'; url: string; uploadedAt: string }
   | { type: 'SET_YAPE_CODE'; code: string }
   /** Config de la tienda, inyectada por el modal (puede llegar asíncrona). */
-  | { type: 'SET_CULQI_CONFIG'; culqi: StoreCulqi | null }
   | { type: 'SET_PAY360_CONFIG'; pay360: StorePay360 | null }
   /** Cómo reparte la tienda el experimento (`stores.checkout_ab_mode`). Llega
-   *  asíncrona, como la config de Culqi, así que re-resuelve la variante. */
+   *  asíncrona, como la config de cobro, así que re-resuelve la variante. */
   | { type: 'SET_AB_MODE'; mode: CheckoutAbMode }
-  | { type: 'SET_CULQI_PHONE'; phone: string }
-  | { type: 'SET_CULQI_OTP'; otp: string }
   | { type: 'SET_VERIFICATION'; verification: PaymentVerification; reason?: string | null; matchedAt?: string | null }
   /** El comprador intentó salir: se le ofreció el descuento (una sola vez). */
   | { type: 'EXIT_OFFER_SHOWN' }
@@ -389,10 +383,8 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     case 'SET_YAPE_CODE':
       return derive({ ...state, advanceYapeCode: action.code.replace(/\D/g, '').slice(0, YAPE_CODE_LENGTH) })
 
-    // Las tres acciones Culqi deciden CÓMO se cobra, jamás CUÁNTO:
-    // `advanceAmount` sigue siendo derivado en derive() y ninguna lo toca.
-    case 'SET_CULQI_CONFIG':
-      return derive({ ...state, culqi: action.culqi })
+    // Decide CÓMO se cobra, jamás CUÁNTO: `advanceAmount` sigue siendo
+    // derivado en derive() y esta acción no lo toca.
     case 'SET_PAY360_CONFIG':
       return derive({ ...state, pay360: action.pay360 })
 
@@ -402,12 +394,6 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     // config de la marca.
     case 'SET_AB_MODE':
       return derive({ ...state, variant: resolveVariant(action.mode) })
-
-    case 'SET_CULQI_PHONE':
-      return derive({ ...state, culqiPhone: action.phone.replace(/\D/g, '').slice(0, PHONE_LENGTH_PE) })
-
-    case 'SET_CULQI_OTP':
-      return derive({ ...state, culqiOtp: action.otp.replace(/\D/g, '').slice(0, CULQI_OTP_LENGTH) })
 
     case 'SET_VERIFICATION':
       return derive({ ...state, payment: {

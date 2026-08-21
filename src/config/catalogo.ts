@@ -1,6 +1,6 @@
 // ─── CATÁLOGO PÚBLICO (krossclub.app) ────────────────────────────────────────
 //
-// Culqi exige que la web muestre **mínimo 5 productos o servicios**, cada uno
+// La pasarela exige que la web muestre **mínimo 5 productos o servicios**, cada uno
 // con foto, descripción clara y precio visible. Kross vende software por
 // suscripción, así que el catálogo son sus planes y módulos.
 //

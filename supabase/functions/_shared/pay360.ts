@@ -3,15 +3,14 @@
 // 18-ago-2026, más las respuestas del partner sobre lo que el spec no documenta.
 // Ver docs/06-360PAY.md.
 //
-// El modelo NO es el de Culqi, y confundirlos cuesta dinero:
-//
-//   · Culqi COBRA: se le manda celular + OTP y la misma llamada dice si entró.
-//   · 360pay EMITE una orden de cobro (el "cupón"). Quien cobra es Yape, vía su
-//     deep link de pago de servicios. La confirmación llega por webhook.
+// El modelo no es el de una pasarela que cobra: **360pay EMITE una orden de
+// cobro** (el "cupón"). Quien cobra es Yape, vía su deep link de pago de
+// servicios, y la confirmación llega por webhook. Ninguna llamada devuelve
+// "pagado".
 //
 // Tres trampas, todas ya pagadas por alguien:
-//   · `amount` va en SOLES con decimales (150.5). Culqi va en céntimos. Un
-//     `Math.round(pen * 100)` heredado cobraría CIEN VECES de más.
+//   · `amount` va en SOLES con decimales (150.5), no en céntimos. Un
+//     `Math.round(pen * 100)` cobraría CIEN VECES de más.
 //   · `success: true` es del TRANSPORTE, no del pago. El estado real vive en
 //     `data.status`. Tratarlos como lo mismo da pedidos por pagados sin un sol.
 //   · El secreto de firma del webhook se muestra UNA sola vez, al crear el

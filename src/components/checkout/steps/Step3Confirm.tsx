@@ -1,11 +1,13 @@
 // ─── PASO 3 · Resumen y adelanto ─────────────────────────────────────────────
-// Dos formas de cobrar el adelanto, según la tienda (prop `culqi`):
+// Dos formas de cobrar el adelanto, según la tienda (prop `pay360`):
 //
+//   360pay → aquí no se pide NADA: solo se anuncia el monto. El botón que abre
+//            Yape aparece DESPUÉS de terminar el pedido, con el monto ya fijado
+//            por el cupón del lado del servidor.
 //   Manual → caja de Yape con el número de la marca + el código de seguridad
 //            (obligatorio) + la captura (opcional, ver VOUCHER_REQUIRED). El
-//            cruce corre en background contra la notificación.
-//   Culqi  → celular + código de aprobación, y el CTA COBRA: monto exacto,
-//            confirmación al toque, sin captura ni cruce. Ver §3.3 del doc.
+//            cruce corre en background contra la notificación. Es el camino de
+//            las marcas que todavía no tienen 360pay conectado.
 //
 // El resumen va PRIMERO en los dos casos: antes de pedirle plata hay que
 // recordarle qué lleva y a dónde llega.
@@ -16,7 +18,6 @@ import type { FieldErrors } from '../../../lib/checkout/validation'
 import type { StoreYape } from '../CheckoutModal'
 import YapeCodeHint from '../YapeCodeHint'
 import YapeBox from '../payment/YapeBox'
-import CulqiYapeBox from '../payment/CulqiYapeBox'
 import VoucherField from '../payment/VoucherField'
 import Field from '../fields/Field'
 
@@ -27,23 +28,20 @@ interface Step3Props {
   price: number
   /** Datos de cobro de la tienda. `null` si la marca aún no los configuró. */
   yape: StoreYape | null
-  /** true = este pedido se cobra en línea (culqiActiveFor, lo decide el modal). */
-  culqi: boolean
-  /** true = se cobra con 360pay. Manda sobre `culqi` (ver checkout.config). */
+  /** true = este pedido se cobra con 360pay (`pay360ActiveFor`, lo decide el
+   *  modal). false = la tienda aún no lo tiene y va por la caja manual. */
   pay360: boolean
   errors: FieldErrors
-  touch: (field: 'yapeCode' | 'culqiPhone' | 'culqiOtp') => void
+  touch: (field: 'yapeCode') => void
   onYapeCode: (code: string) => void
-  onCulqiPhone: (phone: string) => void
-  onCulqiOtp: (otp: string) => void
   onVoucher: (file: File) => Promise<void>
   onAdvanceChoice: (choice: AdvanceChoice) => void
   submitError: string | null
 }
 
 export default function Step3Confirm({
-  state, packName, price, yape, culqi, pay360, errors, touch, onYapeCode,
-  onCulqiPhone, onCulqiOtp, onVoucher, onAdvanceChoice, submitError,
+  state, packName, price, yape, pay360, errors, touch, onYapeCode,
+  onVoucher, onAdvanceChoice, submitError,
 }: Step3Props) {
   const advance = state.advanceAmount
   const isProvincia = state.locationType === 'PROVINCIA'
@@ -108,20 +106,9 @@ export default function Step3Confirm({
             <p className="text-2xl font-black text-gray-900">S/{advance}</p>
           </div>
         </div>
-      ) : advance > 0 && (culqi
-        ? (
-          <CulqiYapeBox
-            state={state}
-            amount={advance}
-            errors={errors}
-            touch={touch}
-            onPhone={onCulqiPhone}
-            onOtp={onCulqiOtp}
-          />
-        )
-        : (
-          /* Rama manual, BIT a BIT como siempre: es lo que sostiene la
-             convivencia — una tienda sin Culqi no nota este archivo. */
+      ) : advance > 0 && (
+        /* Rama manual: la tienda todavía no tiene 360pay conectado. */
+        (
           <>
             <YapeBox yape={yape} amount={advance} />
 

@@ -37,7 +37,7 @@ export default function OrderDone({ orderCode, advance, verification, token, unp
   // comprador se va con la duda —que es exactamente el mensaje de WhatsApp que
   // este checkout existe para evitar.
   //
-  // Con el cobro Culqi exitoso, `verification` YA llega 'MATCHED' por prop: la
+  // Con el pago ya confirmado, `verification` llega 'MATCHED' por prop: la
   // caja nace verde y el polling ni se monta — la espera que este efecto
   // acompaña es exactamente lo que el cobro directo eliminó.
   const [live, setLive] = useState<PaymentVerification>(verification)

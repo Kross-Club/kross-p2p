@@ -14,8 +14,8 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 // un código que el cliente puede citar.
 //
 // NOTA para quien conecte la pasarela: aquí NO se cobra todavía. El pedido se
-// registra y el cobro se coordina con el cliente. Cuando Culqi esté habilitado,
-// el importe a cobrar **debe calcularse en el servidor** (la Edge Function
+// registra y el cobro se coordina con el cliente. Cuando se conecte el cobro,
+// el importe **debe calcularse en el servidor** (la Edge Function
 // `web-order` ya guarda el detalle); lo que manda el navegador sirve para
 // mostrar, nunca para cobrar.
 

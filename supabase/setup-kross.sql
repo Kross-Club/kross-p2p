@@ -418,8 +418,8 @@ REVOKE ALL ON store_secrets FROM anon, authenticated;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS checkout_id          uuid;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_amount       numeric DEFAULT 0;
 -- Mitad (mínimo) o total. El adelanto dejó de ser una tabla por destino y pasó a
--- ser un porcentaje del pedido, así que `culqi-charge` necesita saber cuál de
--- las dos eligió el comprador para volver a derivar el mismo monto y cobrarlo.
+-- ser un porcentaje del pedido, así que el emisor del cobro necesita saber cuál
+-- de las dos eligió el comprador para volver a derivar el mismo monto.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_choice       text DEFAULT 'HALF'; -- HALF | FULL
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_voucher_url  text;
 -- Código de seguridad que TECLEA el comprador. Es la llave fuerte del cruce.
@@ -521,7 +521,7 @@ create index if not exists order_sessions_checkout_variant_idx
 
 -- ─── 15. WEB PÚBLICA (krossclub.app) ─────────────────────────────────────────
 -- Lo que necesita la web pública de la plataforma para cumplir con los
--- requisitos de la pasarela de pago (Culqi) y con INDECOPI:
+-- requisitos de la pasarela de pago y con INDECOPI:
 --   · `web_orders`  → pedidos hechos desde el carrito de krossclub.app
 --   · `complaints`  → Libro de Reclamaciones virtual
 -- Ninguna de las dos se lee desde el navegador: contienen datos personales y
@@ -624,74 +624,66 @@ DROP TRIGGER IF EXISTS trg_complaints_codigo ON complaints;
 CREATE TRIGGER trg_complaints_codigo BEFORE INSERT ON complaints
   FOR EACH ROW EXECUTE FUNCTION set_codigo_correlativo('LR');
 
--- ─── 16. COBRO CON CULQI (Yape con código de aprobación) ─────────────────────
--- La tienda que conecta su cuenta Culqi cobra el adelanto EN el checkout: el
--- comprador genera su código de aprobación en Yape (6 dígitos, vence en 2 min),
--- lo pega, y Kross hace el cargo server-side con las llaves de ESA tienda. El
--- dinero entra directo a la cuenta Culqi de la marca. El flujo manual (caja con
--- número + código de 3 dígitos + cruce por `yape-ingest`) queda intacto para
--- las tiendas sin Culqi. Ver docs/01-SALES-ENGINE.md §3.3.
+-- ─── 16. INFRAESTRUCTURA DEL COBRO EN LÍNEA ──────────────────────────────────
+-- Columnas compartidas por cualquier motor de cobro que emita o cobre el
+-- adelanto DENTRO del checkout, en vez del flujo manual (caja con número de
+-- Yape + código de 3 dígitos + cruce por `yape-ingest`). Hoy el único motor es
+-- 360pay (§20); el flujo manual sigue vivo para las marcas que aún no lo tienen
+-- conectado. Ver docs/06-360PAY.md.
+--
+-- Aquí vivió también el cobro con Culqi, con sus llaves por tienda en
+-- `store_secrets`. Se eliminó entero: nunca llegó a cobrar un sol —seguía
+-- esperando la acreditación PCI— y tener dos motores encendidos a la vez
+-- confundía la configuración de cada marca. Las columnas se DROPEAN abajo para
+-- que no queden llaves guardadas de un motor que ya no existe.
 
--- 16.a Flags PÚBLICOS en stores. Solo lo que el checkout necesita para decidir
--- qué UI pintar — `stores` tiene SELECT público (política `stores_read`), así
--- que aquí no puede vivir ninguna llave. El scope acota DÓNDE cobra Culqi:
--- 'PROVINCIA' deja Lima en manual; 'ALL' cobra en todo el país. Es la retirada
--- operativa: si la conversión limeña sufre, se repliega desde el panel sin
--- tocar código.
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS culqi_enabled boolean DEFAULT false;
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS culqi_scope   text    DEFAULT 'PROVINCIA';
-ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_culqi_scope_check;
-ALTER TABLE stores ADD CONSTRAINT stores_culqi_scope_check
-  CHECK (culqi_scope IN ('PROVINCIA', 'ALL'));
-
--- 16.b Llaves por tienda, en `store_secrets` (service role only, sin políticas
--- — ver 13.a-bis). Van AMBAS aquí, también la pública: la tokenización es
--- server-to-server (secure.culqi.com/v2/tokens/yape acepta la pk desde un
--- backend), el navegador nunca la necesita, y una pk expuesta permite generar
--- tokens contra la cuenta de la marca sin motivo.
-ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS culqi_public_key      text; -- pk_test_/pk_live_
-ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS culqi_secret_key      text; -- sk_test_/sk_live_
-ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS culqi_keys_updated_at timestamptz;
--- Una tienda puede usar Culqi sin haber configurado nunca el lector de Yape:
--- su fila en store_secrets nace sin token de ingesta. `yape-ingest` ya trata
--- el NULL como "ingesta apagada" (responde 401), así que soltar el NOT NULL
--- no abre nada.
+-- 16.a Una tienda puede cobrar en línea sin haber configurado nunca el lector
+-- de Yape: su fila en store_secrets nace sin token de ingesta. `yape-ingest` ya
+-- trata el NULL como "ingesta apagada" (responde 401), así que soltar el
+-- NOT NULL no abre nada.
 ALTER TABLE store_secrets ALTER COLUMN payment_ingest_token DROP NOT NULL;
 
--- 16.c El cargo de Culqi entra a `payment_events` como un pago más: misma
+-- 16.b El cobro en línea entra a `payment_events` como un pago más: misma
 -- trazabilidad, misma tabla que audita cuánto cobró cada marca. `provider`
--- distingue la fuente del dinero; `provider_charge_id` es el chr_... de Culqi
--- y `provider_fee_pen` la comisión en soles (para que la marca vea lo que de
--- verdad recibe). El anti-duplicado NO necesita índice nuevo:
--- dedupe_key = 'culqi:' || charge_id reutiliza el índice único
--- (store_id, dedupe_key) del 13.c — si el webhook y `culqi-charge` graban el
--- mismo cargo, el segundo choca en 23505 y es no-op. El mismo índice sostiene
--- el claim-lock 'culqi:lock:' || session_id con el que `culqi-charge` se
--- asegura de que dos toques concurrentes no generen dos cargos reales.
--- `source` gana el valor 'CULQI' (la columna es texto libre, sin constraint).
+-- distingue la fuente del dinero, `provider_charge_id` el identificador del
+-- cobro en el proveedor, y `provider_fee_pen` la comisión en soles (para que la
+-- marca vea lo que de verdad recibe). El anti-duplicado NO necesita índice
+-- nuevo: el `dedupe_key` prefijado por proveedor reutiliza el índice único
+-- (store_id, dedupe_key) del 13.c, así que un evento repetido choca en 23505 y
+-- es no-op.
 ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider           text;
 ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider_charge_id text;
 ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider_fee_pen   numeric;
 
--- 16.d Marca de procedencia del pedido. NULL = flujo manual; 'CULQI' = el
--- adelanto se cobra en línea. Es la línea que separa las dos piscinas de
--- cruce: un pedido Culqi NO puede ser consumido por el cruce manual (un yape
--- ajeno de igual monto lo daría por pagado y `culqi-charge` respondería
--- "ya pagado" sin haber cobrado un sol). `register-buyer` la escribe al alta
--- y tanto su reverse-match como `yape-ingest` excluyen estos pedidos.
+-- 16.c Marca de procedencia del pedido. NULL = flujo manual; '360PAY' = el
+-- adelanto se cobra en línea. Es la línea que separa las dos piscinas de cruce:
+-- un pedido con cobro en línea NO puede ser consumido por el cruce manual (un
+-- yape ajeno de igual monto lo daría por pagado, y el cobro real nunca se
+-- registraría). `register-buyer` la escribe al alta, y tanto su reverse-match
+-- como `yape-ingest` excluyen estos pedidos.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_provider text;
 
--- 16.e Tienda de ORIGEN del pedido (la del producto). `register-buyer` puede
+-- 16.d Tienda de ORIGEN del pedido (la del producto). `register-buyer` puede
 -- asignar la sesión a la tienda de un vendedor de OTRA marca cuando no hay
--- Ventas disponible en la propia (round-robin cross-store), y las llaves de
--- Culqi se tienen que resolver por la marca que VENDE, jamás por la del
--- vendedor asignado — cobrar a la cuenta de otra marca es el peor bug posible.
+-- Ventas disponible en la propia (round-robin cross-store), y la config de
+-- cobro se tiene que resolver por la marca que VENDE, jamás por la del vendedor
+-- asignado — cobrar a la cuenta de otra marca es el peor bug posible.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS origin_store_id text;
 
--- 16.f Contador de intentos de cobro. Con un order_token válido (el propio) se
--- podrían lanzar intentos ilimitados contra la pk de la marca — quemar su
--- antifraude o probar OTPs de terceros. Corte duro en `culqi-charge`.
+-- 16.e Contador de intentos de cobro. Con un order_token válido (el propio) se
+-- podrían lanzar intentos ilimitados contra la cuenta de la marca. Corte duro
+-- en el emisor.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_charge_attempts int DEFAULT 0;
+
+-- 16.f Baja de Culqi. Las llaves se van PRIMERO: una credencial guardada de un
+-- motor que ya nadie ejecuta es superficie de ataque sin contraparte de valor.
+-- Idempotente y seguro de correr dos veces.
+ALTER TABLE store_secrets DROP COLUMN IF EXISTS culqi_public_key;
+ALTER TABLE store_secrets DROP COLUMN IF EXISTS culqi_secret_key;
+ALTER TABLE store_secrets DROP COLUMN IF EXISTS culqi_keys_updated_at;
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_culqi_scope_check;
+ALTER TABLE stores DROP COLUMN IF EXISTS culqi_enabled;
+ALTER TABLE stores DROP COLUMN IF EXISTS culqi_scope;
 
 -- ─── 17. ETAPA TERMINAL `no_entregado` ───────────────────────────────────────
 -- Hasta aquí la máquina de etapas solo avanzaba: un pedido rechazado en puerta
@@ -733,7 +725,7 @@ DROP INDEX IF EXISTS idx_buyers_doc;
 -- 19.a El mando, en `stores`. Va aquí y no en `store_secrets` porque la landing
 -- necesita leerlo ANTES de que el comprador toque nada, y `stores` ya tiene
 -- SELECT público (política `stores_read`). No es un secreto: es del mismo tipo
--- que `culqi_scope`. 'SPLIT' = el sorteo de siempre; 'A'/'B' = todo el tráfico
+-- que `pay360_enabled`. 'SPLIT' = el sorteo de siempre; 'A'/'B' = todo el tráfico
 -- a esa variante (para cuando ya sabes cuál gana).
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS checkout_ab_mode text DEFAULT 'SPLIT';
 ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_checkout_ab_mode_check;
@@ -765,10 +757,10 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_variant
   WHERE checkout_variant IS NOT NULL;
 
 -- ─── 20. COBRO CON 360PAY (cupón + deep link de Yape) ────────────────────────
--- Segundo motor de cobro en línea, y el primero que NO depende de acreditación
--- PCI: nunca tocamos credenciales de pago. Kross es PARTNER de 360pay y cada
--- marca es un "business" creado bajo esa cuenta — al revés que Culqi, donde
--- cada marca pega SUS llaves. Ver docs/06-360PAY.md.
+-- El motor de cobro en línea, y no depende de acreditación PCI: nunca tocamos
+-- credenciales de pago. Kross es PARTNER de 360pay y cada marca es un
+-- "business" creado bajo esa cuenta, así que ninguna marca pega llaves suyas.
+-- Ver docs/06-360PAY.md y docs/07-CONTRATO-360PAY.md.
 --
 -- El flujo: se emite un CUPÓN por el adelanto → el comprador lo paga con el
 -- deep link de pago de servicios de Yape (que abre pre-llenado) → 360pay avisa
@@ -778,7 +770,7 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_variant
 -- 20.a Identificadores del negocio en 360pay. NO son secretos: `business_id` y
 -- los GUID de Yape solo sirven para armar el enlace, y el enlace es público por
 -- definición (se le da al comprador). Por eso viven en `stores`, que ya tiene
--- SELECT público, igual que `culqi_scope`.
+-- SELECT público.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_enabled        boolean DEFAULT false;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_business_id    text;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS pay360_payment_prefix text;   -- 3 chars, prefijo del código de pago

@@ -1,4 +1,4 @@
-# 04 · Cumplimiento de la web pública (Culqi / INDECOPI)
+# 04 · Cumplimiento de la web pública (pasarela / INDECOPI)
 
 > Qué exige la pasarela de pago para habilitar las API, dónde se cumple cada
 > requisito en este repo y qué falta llenar antes de mandar la web a revisión.
@@ -73,7 +73,7 @@ se le muestra al cliente.
 | Requisito | Estado | Dónde |
 |---|---|---|
 | SSL en **todas** las URLs | ✅ | Vercel emite y renueva el certificado del dominio y sus subdominios; `vercel.json` añade HSTS (`Strict-Transport-Security`) para que ni siquiera se intente http |
-| App publicada en App Store / Google Play | 🔮 | Kross es una PWA instalable; no hay build nativa. Es un requisito "adicional" de Culqi, no bloqueante |
+| App publicada en App Store / Google Play | 🔮 | Kross es una PWA instalable; no hay build nativa. Es un requisito "adicional" de la pasarela, no bloqueante |
 
 ---
 
@@ -143,7 +143,7 @@ supabase secrets set RESEND_API_KEY=… RECLAMOS_FROM="Kross <reclamos@krossclub
    > bloque 14 falla al validar las filas existentes y el editor de Supabase
    > deshace todo. Ninguno de los dos es una sorpresa silenciosa, pero el `sed`
    > de arriba sigue siendo lo barato: imprime la sección 15 y todo lo que le
-   > sigue (16-18 — cobro con Culqi, `no_entregado` y la unicidad de `buyers`),
+   > sigue (16-18 — cobro con la pasarela, `no_entregado` y la unicidad de `buyers`),
    > idempotente y ya aplicado en producción.
 4. **Edge Functions**:
    ```
@@ -151,16 +151,16 @@ supabase secrets set RESEND_API_KEY=… RECLAMOS_FROM="Kross <reclamos@krossclub
    supabase functions deploy libro-reclamaciones  --project-ref ofdjghntvmrdfjhazfvz
    ```
 
-## Ojo: hay dos cobros distintos con Culqi
+## Ojo: hay dos cobros distintos con la pasarela
 
 No confundirlos, porque viven en sitios distintos:
 
 | | Qué cobra | Dónde |
 |---|---|---|
-| **Adelanto COD** | El adelanto del pedido de un comprador, con Yape vía Culqi | `culqi-charge` / `culqi-webhook`, en el checkout de las marcas. Ya desplegado en producción, con su esquema (`stores.culqi_enabled`, `store_secrets.culqi_*`, `order_sessions.payment_provider`…). **Las llaves solas no cobran**: usar la API directa exige que Culqi autorice el código de comercio (acreditación PCI DSS / SAQ-D) — el trámite completo en [`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md) |
+| **Adelanto COD** | El adelanto del pedido de un comprador, con Yape | `pay360-coupon` / `pay360-webhook`, en el checkout de las marcas. En producción y **con pago real cobrado**: se emite un cupón por el adelanto y el comprador lo paga con un botón que abre Yape. No hace falta acreditación PCI — nunca tocamos credenciales de pago. Ver [`06-360PAY.md`](./06-360PAY.md) |
 | **Suscripción de la plataforma** | El plan que una marca le compra a Kross en `krossclub.app` | `/pago` → `web-order`. **Todavía no cobra** |
 
-## Cuando lleguen las llaves de Culqi
+## Cuando lleguen las llaves de la pasarela
 
 `/pago` hoy **registra** el pedido; no cobra. Al conectar la pasarela:
 

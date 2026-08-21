@@ -445,126 +445,61 @@ calidad del dato apuntan al mismo lado:
 ese botón se oculta y manda el QR + el número copiable. Ninguna pantalla dice "ábrelo en
 tu celular": el flujo entero se puede grabar desde una laptop.
 
-#### 3.3 Cobro directo con Culqi ✅ (por tienda · requiere afiliación Yape)
+#### 3.3 Cobro en línea con 360pay ✅ (por tienda · **primer pago real cobrado**)
 
-La alternativa determinista al cruce por notificación: **cada marca conecta su propia
-cuenta Culqi** (llaves en el panel → Cobros) y el adelanto se cobra EN el checkout. El
-comprador genera su **código de aprobación** en Yape (6 dígitos; **Aprobar compras** en la
-pantalla de inicio, con cuenta regresiva de segundos), lo pega, y el cargo entra por el
-**monto exacto** con confirmación instantánea. No confundir los dos códigos: el de
-SEGURIDAD (3 dígitos) *evidencia* un pago ya hecho y alimenta el cruce de §3.1; el de
-APROBACIÓN *autoriza* un cobro. `CulqiApprovalHint` existe porque el segundo vive en una
-pantalla que el comprador jamás abrió — y se dibuja **contra capturas de la app, nunca de
-memoria**: la primera versión mandaba a un "Menú de Yape" que no existe, y prometía "vence
-en 2 minutos" cuando el contador real va en segundos.
+La alternativa determinista al cruce por notificación, y la que hoy cobra de verdad.
+**Kross Club es partner de 360pay** y cada marca es un *business* creado bajo esa cuenta,
+así que ninguna marca pega llaves suyas ni nosotros tocamos credenciales de pago — no hay
+acreditación PCI de por medio.
+
+El detalle completo —las tres APIs, el modelo del cupón, el deep link, la firma del
+webhook y las cinco defensas del handler— vive en [`06-360PAY.md`](./06-360PAY.md), y el
+contrato de recaudación (quién es quién, flujo del dinero, tarifario) en
+[`07-CONTRATO-360PAY.md`](./07-CONTRATO-360PAY.md). Lo que hace falta saber desde Sales:
 
 ```
-  paso 3 ──registro──▶ register-buyer (payment_provider='CULQI', idempotente)
-     │                       └─ el pedido SALE de la piscina del cruce manual
-     └──cobro────────▶ culqi-charge ──▶ token Yape (secure, pk) ──▶ cargo (api, sk)
-                             │                └─ server-to-server: CERO script de
-                             │                   terceros en la PWA
-                             ├─▶ payment_events (source CULQI, dedupe culqi:chr_…)
-                             ├─▶ pedido MATCHED + confirmado + acuses del chat
-                             └─▶ culqi-webhook = red de seguridad (re-consulta
-                                 GET /charges/{id} con la sk; jamás cree el payload)
+  paso 3 ──registro──▶ register-buyer (payment_provider='360PAY', idempotente)
+     │
+     └──emisión──────▶ pay360-coupon ──▶ cliente + CUPÓN por el adelanto
+                             │
+                             └──▶ deep link de Yape (monto fijado por el cupón)
+                                        │
+   comprador paga en Yape ──────────────┘
+                                        │
+                             pay360-webhook (firma HMAC + dedupe + re-consulta)
+                                        │
+                             └──▶ payment_events + order_sessions MATCHED
 ```
 
-**Decisiones que no se negocian:**
+**El paso 3 no pide nada.** Con 360pay activo, la pantalla solo anuncia el monto: el botón
+que abre Yape aparece DESPUÉS de terminar el pedido. Pedirle ahí el código de 3 dígitos
+sería pedirle la prueba de un pago que todavía no hizo.
 
-- **El monto lo deriva el servidor, dos veces.** `_shared/advance.ts` (espejo de
-  `advanceFor`, con test de paridad) lo fija en `register-buyer` y `culqi-charge` lo
-  re-deriva del destino. El body del cliente es solo telemetría.
-- **Registrar primero, cobrar después.** Si el pago falla, el pedido YA existe en
-  `validando` y la pantalla lo dice así: "Tu pedido está guardado — falta el pago". El
-  retry SOLO cobra; jamás re-registra. Cerrar el modal deja `advancePending` en el
-  navegador y la landing ofrece "Termina el pago de tu pedido".
-- **Un pedido Culqi no cruza con yapes manuales** (`payment_provider` separa las dos
-  piscinas): sin eso, un yape ajeno del mismo monto lo daría por pagado y `culqi-charge`
-  respondería "ya pagado" sin haber cobrado.
-- **Claim-lock contra el doble cargo**: `dedupe_key='culqi:lock:<session>'` sobre el
-  índice único de `payment_events`. Dos toques concurrentes = un solo cargo.
-- **`network_after` no reintenta.** Si la respuesta del cargo se pierde, el dinero pudo
-  salir: la UI consulta el estado real (~1 min) y el webhook repara. Un doble cargo
-  residual se devuelve desde el panel de Culqi (refunds automatizados: 🔮).
-- **Llaves en `store_secrets`, las DOS** (la tokenización es server-side, el navegador no
-  necesita ni la pública). Write-only desde `manage-store`, que para campos de cobro exige
-  el **JWT verificado** — el camino legacy `admin_auth_id` sigue vivo para branding y es
-  deuda por retirar.
-- **Las tiendas sin Culqi no notan nada**: `culqi_enabled=false` → paso 3 manual bit a
-  bit, §3.1 y §3.2 intactos. `culqi_scope='PROVINCIA'` deja Lima en manual como retirada
-  operativa sin deploy.
+**Lo que no se negocia:**
 
-> ### 🚧 La API directa exige acreditar PCI DSS — hoy el cobro no pasa del token
->
-> `POST secure/tokens/yape` responde `400` **antes de mirar el celular o el código**, con
-> llaves live correctas:
->
-> ```json
-> {"object":"error","type":"authentication_error",
->  "merchant_message":"Tu código de comercio no está autorizado para realizar este tipo
->   de peticiones. Contáctate con culqi.com/soporte para obtener mas información."}
-> ```
->
-> **La causa está documentada por Culqi**, en la página de Yape (Pagos Online → Cargo único
-> → Yape), sección *Usando APIs*:
->
-> > *"Recuerda que cuando interactúas directamente con el API necesitas cumplir la normativa
-> > de **PCI DSS 3.2**. Por ello, te pedimos que llenes el formulario **SAQ-D** y lo envíes al
-> > buzón de riesgos Culqi."*
->
-> O sea: **la implementación de abajo es correcta** —llave pública para el token, secreta
-> para el cargo, tal como documentan— y lo que falta es el **permiso** para usar la API
-> directa. De ahí la literalidad del error: "este *tipo* de peticiones". Y de ahí también que
-> soporte responda que no hay nada que activar: por **Culqi Checkout** funciona hoy sin
-> papeleo, porque el comprador teclea dentro del popup de Culqi y el comercio nunca toca el
-> código.
->
-> **Las dos salidas, y no son equivalentes:**
->
-> | | Qué cuesta | Qué conserva |
-> |---|---|---|
-> | **A · Acreditar PCI DSS** (SAQ-D al buzón de riesgos) | Papeleo de cumplimiento y la obligación que conlleva | Todo lo de abajo intacto: nuestro campo, nuestra estética, cero script ajeno |
-> | **B · Culqi Checkout** (popup) | Cae el "CERO script de terceros"; el comprador teclea en el popup de Culqi; hay que replantear el submit en dos fases y su recuperación | Funciona sin acreditación |
->
-> **Decidido (13-ago-2026): camino A.** El trámite entero —qué pedir, el expediente que lo
-> sustenta, el correo y el checklist del día que aprueben— vive en
-> **[`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md)**. El argumento en una línea: por el riel Yape no
-> pasa una tarjeta (celular + código de aprobación → token `ype_`), así que no hay entorno
-> de datos de tarjeta que acreditar; lo que se pide es la autorización con **alcance Yape**.
->
-> **Soporte contestó el 14-ago-2026 culpando al entorno de las llaves** —"peticiones de prueba
-> con llaves live"— y quedó **descartado**: la misma petición **sin `number_phone` ni `otp`**,
-> sin un solo dato de prueba, devuelve el error idéntico. No viene de los datos. La evidencia y
-> la respuesta lista para enviar están en
-> [`05-PCI-SAQ-D.md` §1.1 y §6.1](./05-PCI-SAQ-D.md).
->
-> Hasta que respondan, la tienda va con `culqi_enabled=false` y el paso 3 manual, que funciona.
+- **El monto jamás viene del navegador.** Se re-deriva en el servidor (`_shared/advance.ts`,
+  espejo de `advanceFor` con test de paridad) y se contrasta contra la fila antes de emitir.
+- **El monto tampoco viaja en el enlace.** Lo resuelve Yape leyendo el cupón, del lado del
+  servidor. Es la propiedad de seguridad que sostiene todo el flujo: nadie paga S/1 un
+  adelanto de S/25 editando la URL.
+- **Un pedido de 360pay no cruza con yapes manuales** (`payment_provider` separa las dos
+  piscinas): sin eso, un yape ajeno del mismo monto lo daría por pagado.
+- **Antes de emitir se anulan los cupones pendientes del comprador.** El código de pago
+  identifica al CLIENTE y el banco cobra SIEMPRE el más antiguo, así que un cupón viejo
+  vivo secuestra el pago del siguiente pedido. En una marca de recompra eso es rutina.
+- **La confirmación es asíncrona y es el camino normal**, no el excepcional: la fase
+  `AWAITING` existe justo para no confundir "todavía no paga" con "el dinero pudo salir".
+- **Las tiendas sin 360pay no notan nada**: `pay360_enabled=false` → paso 3 manual bit a
+  bit, §3.1 y §3.2 intactos.
 
-**Límites de Yape que impone Culqi** (misma página): monto máximo **S/ 2000** por pago y
-**solo soles**. Los adelantos de Kross (S/5–S/30) caben de sobra, pero el techo importa si
-alguna vez se cobra el pedido entero.
+**Medido en el primer pago real** (21-ago-2026): del `paid_at` en 360pay al pedido cruzado
+pasaron **6.6 segundos**, con el webhook llegando a los 4.7.
 
-> ✅ **Saldado — el próximo fallo dirá por qué.** Esa respuesta **no trae `code`**: el motivo
-> viaja en `type` y `merchant_message`, así que loguear `{status, code}` imprimía
-> `{400, null}` y costó una tarde de diagnóstico a ciegas. `errorForLog` (`_shared/culqi.ts`)
-> arma la línea con el diagnóstico **propio de Culqi** —lista de campos cerrada y fijada por
-> test, porque por esa función pasan la llave, el celular y el OTP— y va a los logs de la
-> función y **solo ahí**: nunca a `payment_reason` ni a un mensaje `sellers`, que pueden
-> acabar frente al comprador vía `get-session?viewer=seller`. `culqi-webhook` usa la misma
-> línea, donde además separa el 401 (llave de la tienda mal cargada o rotada) del 404 (cargo
-> ajeno o forjado — la red de seguridad haciendo su trabajo).
-
-**Sandbox**: llaves `pk_test_/sk_test_` del panel de integración; Yape de prueba
-`900000001` / OTP `425251`. El webhook se registra en CulqiPanel → Desarrollo → Webhooks
-(`charge.creation.succeeded` y `failed`).
-
-> **El Basic es opcional y hoy está apagado.** `culqi-webhook` solo lo exige si existe el
-> secret `CULQI_WEBHOOK_BASIC`, y **no está definido** (comprobado el 14-ago-2026). Ponerlo
-> sin cargar el mismo `usuario:clave` en el panel hace que toda entrega rebote con 401, y
-> siendo una red de seguridad no se nota hasta el día que hace falta. Cómo comprobar el
-> endpoint en un minuto, sin curl y sin escribir en la BD:
-> [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md) § Bloqueo 2.
+> **Aquí vivió el cobro con Culqi**, que nunca llegó a cobrar un sol: la API directa exigía
+> acreditación PCI DSS / SAQ-D y quedó esperando al buzón de riesgos. Se eliminó entero
+> —código, columnas, llaves y su documento de acreditación— cuando 360pay entró en
+> producción: dos motores de cobro encendidos a la vez confundían la configuración de cada
+> marca sin que el segundo aportara nada.
 
 ## Métricas del módulo
 - Tiempo landing→pedido, % de campos autocompletados por DNI, tasa de cierre por canal
@@ -625,16 +560,16 @@ Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS
 2. 🟡 **Lead parcial (`DRAFT`)**: `save-checkout-draft` + tabla `checkout_drafts` ya
    existen y el checkout los llama. Falta **desplegar la función** y correr el SQL, y
    construir la vista de recuperación de abandonos para Ventas.
-3. 🟡 **Verificación del yape (SOLO tiendas sin Culqi)**: el cruce está construido y el
+3. 🟡 **Verificación del yape (SOLO tiendas sin 360pay)**: el cruce está construido y el
    parser fijado contra el texto REAL de la notificación (§3.1). Falta **montar la fuente
    que lee la notificación** en el Android del dueño (MacroDroid hoy / APK propio después)
-   y configurar `payment_ingest_token` de la tienda. Para las tiendas con Culqi este
+   y configurar `payment_ingest_token` de la tienda. Para las tiendas con 360pay este
    pendiente NO aplica: el cobro es directo y determinista (§3.3).
 4. 🔮 `createElevenLabsTransport()` (implementar `VoiceTransport` con `@elevenlabs/react`)
    + crear el agente en ElevenLabs → activar la voz.
-5. ✅ **Cobro Yape integrado — construido con Culqi (§3.3).** Cada marca conecta su
-   cuenta; el cargo entra por el monto exacto con confirmación instantánea. Queda 🔮 el
-   QR dinámico como medio adicional.
+5. ✅ **Cobro Yape integrado — construido con 360pay (§3.3), con pago real cobrado.**
+   Cada marca se conecta desde el panel; el comprador toca un botón, Yape abre con el
+   monto ya fijado por el cupón y el pedido se cruza solo en segundos.
 
 ### Pantalla final: por qué el chat va ahí
 
