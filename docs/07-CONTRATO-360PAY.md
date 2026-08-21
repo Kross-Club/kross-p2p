@@ -39,8 +39,8 @@ comprador**, y el comercio recibe íntegro lo que vendió. Kross Club vive del
 diferencial entre las dos comisiones — o sea, **cada cobro es ingreso, no
 gasto**.
 
-⚠️ **Esto todavía no calza con lo que se observó** en el primer pago real. Ver
-§6.
+**Kross no usa ese split.** El cupón se emite por el adelanto y la comisión sale
+de ahí, así que el comercio recibe el adelanto menos S/5. Ver §6.
 
 **Plazo de liquidación:** 48 horas hábiles desde la confirmación del pago,
 extensible hasta 72 horas adicionales por feriado bancario, caída del sistema o
@@ -112,29 +112,46 @@ gratis de ese riesgo: el ajuste recién aplica desde el tercero.
 - **Los datos de los comerciantes referidos son nuestros** (§8.1), y 360pay solo
   puede usarlos para prestar el servicio, cumplir regulación y prevenir fraude.
 
-## 6. ⚠️ La pregunta abierta: ¿la comisión se suma o se descuenta?
+## 6. Cómo se cobra la comisión en Kross (decidido)
 
-En el primer pago real, el cupón se emitió por **S/10.00**, Yape le mostró al
-comprador **S/10.00**, y el evento reportó **S/5.00** de comisiones. Si el
-comercio recibe el principal íntegro como dice la §4.2, el comprador debió haber
-visto S/15.00.
+El contrato (§4.2) describe un split donde el abonante paga *principal +
+comisión* y el comercio recibe el principal íntegro. **Kross no lo usa así.**
 
-Dos lecturas posibles, y cambian el código:
+**El `amount` del cupón es lo que paga el comprador, y punto.** Si el adelanto
+es S/10, el cupón se emite por S/10 y el comprador ve S/10 en Yape. La comisión
+sale de ahí: 360pay le deposita al comercio la suma de sus transacciones menos
+S/5 por cada una.
 
-1. **El split ya opera y falta un paso nuestro:** el `amount` del cupón es lo que
-   paga el comprador, así que para que el comercio reciba S/10 hay que emitir el
-   cupón por **S/15**. Sería un cambio en `pay360-coupon`.
-2. **El split todavía no está operativo:** encaja con la §4.4, que define la
-   FECHA DE OPERATIVIDAD como el día en que 360pay comunica formalmente que el
-   split payment está en producción. Hasta entonces la comisión saldría del
-   monto y el comercio recibiría S/5.
+O sea, **la comisión la absorbe el comercio**, no el comprador. Es una decisión
+de producto, no una limitación técnica: subirle S/5 al comprador en el momento
+del cobro es fricción justo donde más caro sale perderlo. Para el comercio esos
+S/5 son el costo de no pagar Aliclik y tener encima la PWA, el chat y el resto
+del sistema.
 
-**Cómo se resuelve sin preguntar:** la pestaña *Liquidaciones* del panel dice
-cuánto le toca a Kross Shop por esa transacción. S/10 → lectura 2 pendiente de
-activarse. S/5 → hay que cambiar el `amount`.
+**Consecuencia para el código: ninguna.** `pay360-coupon` ya emite el cupón por
+el adelanto derivado y nada más. No hay que sumarle la comisión.
 
-No tocar el cálculo del monto hasta confirmarlo: emitir por S/15 cuando el split
-ya suma la comisión le cobraría S/20 al comprador.
+### El piso que esto impone al adelanto
+
+Los S/5 son planos, así que muerden distinto según el monto — y sobre el
+adelanto, no sobre el precio del producto:
+
+| Adelanto | Comisión | Le queda al comercio |
+|---|---|---|
+| S/5 | S/5 | **S/0** |
+| S/6 (mitad de un pack de S/12) | S/5 | S/1 |
+| S/10 | S/5 | S/5 |
+| S/25 | S/5 | S/20 |
+| S/50 | S/5 | S/45 |
+
+Debajo de ~S/10 de adelanto, el cobro en línea no le devuelve casi nada al
+comercio. Eso no rompe nada —el pedido igual se cierra y el resto se cobra
+contraentrega— pero conviene tenerlo presente al armar packs baratos: en un pack
+de S/12, cobrar el total por adelantado deja S/7 y cobrar la mitad deja S/1.
+
+**Deuda abierta:** hoy nada impide emitir un cupón por debajo de S/5. Un piso
+configurable por tienda —o caer a contraentrega puro cuando el adelanto no lo
+alcance— evitaría cobros que no le dejan nada al comercio.
 
 ## 7. Vigencia y salida
 
