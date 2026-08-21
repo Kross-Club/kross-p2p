@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -64,6 +65,10 @@ Deno.serve(async (req) => {
     culqi_scope?: string           // 'PROVINCIA' | 'ALL'
     culqi_public_key?: string | null   // WRITE-ONLY; null = borrar llaves
     culqi_secret_key?: string | null   // WRITE-ONLY; null = borrar llaves
+    pay360_enabled?: boolean
+    pay360_env?: string                // 'sandbox' | 'live'
+    /** Da de alta la marca como negocio en 360pay. Ver `connectPay360`. */
+    pay360_connect?: { payment_prefix?: string; name?: string }
     // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
     // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
     checkout_ab_mode?: string
@@ -107,7 +112,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope, checkout_ab_mode, home_delivery_enabled')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, yape_number, yape_holder, yape_qr_url, culqi_enabled, culqi_scope, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -259,7 +264,8 @@ Deno.serve(async (req) => {
     const touchesPayments = body.yape_number !== undefined || body.yape_holder !== undefined
       || body.yape_qr_url !== undefined || body.culqi_enabled !== undefined
       || body.culqi_scope !== undefined || body.culqi_public_key !== undefined
-      || body.culqi_secret_key !== undefined
+      || body.culqi_secret_key !== undefined || body.pay360_enabled !== undefined
+      || body.pay360_env !== undefined || body.pay360_connect !== undefined
     if (touchesPayments && !trusted) return json({ error: 'auth_requerida' }, 403)
 
     if (typeof body.yape_number === 'string') patch.yape_number = body.yape_number.replace(/\D/g, '').slice(0, 9) || null
@@ -271,6 +277,85 @@ Deno.serve(async (req) => {
     // 500 aquí tumbaría el guardado entero de la marca por un campo opcional.
     if (body.checkout_ab_mode === 'SPLIT' || body.checkout_ab_mode === 'A' || body.checkout_ab_mode === 'B') {
       patch.checkout_ab_mode = body.checkout_ab_mode
+    }
+
+    let wroteSecrets = false
+    let wroteSecretsPay360 = false
+    if (typeof body.pay360_enabled === 'boolean') patch.pay360_enabled = body.pay360_enabled
+    if (body.pay360_env === 'sandbox' || body.pay360_env === 'live') patch.pay360_env = body.pay360_env
+
+    // ─── Alta en 360pay ───────────────────────────────────────────────────────
+    // Se hace ACÁ y no con un curl a mano por una razón concreta: la respuesta
+    // trae los `hook_signing_secrets` UNA SOLA VEZ, y si no se capturan en ese
+    // instante la única salida es rotarlos. Un flujo manual pierde ese secreto
+    // en cuanto alguien cierra la terminal.
+    if (body.pay360_connect) {
+      const { data: existing } = await supabase.from('stores')
+        .select('nombre, pay360_business_id, pay360_env').eq('id', targetId).maybeSingle()
+      // Re-dar de alta crearía un SEGUNDO negocio en 360pay para la misma marca,
+      // con su propio prefijo: los cupones viejos quedarían huérfanos y el
+      // dinero llegaría partido entre dos cuentas.
+      if (existing?.pay360_business_id) return json({ error: 'pay360_ya_conectado' }, 409)
+
+      const prefix = String(body.pay360_connect.payment_prefix ?? '').trim().toUpperCase()
+      if (!/^[A-Z0-9]{3}$/.test(prefix)) return json({ error: 'pay360_prefijo_invalido' }, 400)
+
+      const env: Pay360Env = (patch.pay360_env ?? existing?.pay360_env) === 'live' ? 'live' : 'sandbox'
+      // El negocio se crea CONTRA UN AMBIENTE, y el de sandbox no existe en
+      // producción: darlo de alta con la llave equivocada deja un business_id
+      // que apunta a la nada el día que se cobre de verdad.
+      const partnerKey = pickPartnerKey(
+        env,
+        Deno.env.get('PAY360_PARTNER_KEY') ?? '',
+        Deno.env.get('PAY360_PARTNER_KEY_LIVE') ?? '',
+      )
+      if (!partnerKey) return json({ error: 'pay360_sin_llave_partner' }, 400)
+
+      // El nombre del comercio en 360pay puede no ser el de la marca en Kross:
+      // allá es una razón comercial frente al banco, acá es el rótulo de la
+      // tienda. Por defecto se hereda, pero se puede fijar.
+      const bizName = String(body.pay360_connect.name ?? existing?.nombre ?? targetId).trim().slice(0, 80)
+      if (!bizName) return json({ error: 'pay360_nombre_invalido' }, 400)
+
+      const created = await createBusiness(pay360BaseUrl(env, 'partner'), partnerKey, {
+        business: { name: bizName, payment_prefix: prefix },
+        config: {},
+        hooks: [{
+          type: 'PAYMENT_PAID',
+          url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/pay360-webhook`,
+          active: true,
+        }],
+      })
+      if (!created.ok) {
+        // Se loguea la FORMA de la llave, nunca la llave: con un 401 lo que hay
+        // que distinguir es "no está cargada", "vino con basura alrededor" y
+        // "es válida pero rechazada", y sin esto las tres se ven igual.
+        const rawKey = Deno.env.get('PAY360_PARTNER_KEY') ?? ''
+        console.error('[manage-store] pay360 alta falló', JSON.stringify({
+          status: created.status,
+          scopes: created.requiredScopes ?? null,
+          error: created.error ?? null,
+          env,
+          key_len: partnerKey.length,
+          key_prefijo_ok: partnerKey.startsWith('pt_'),
+          key_tenia_espacios: rawKey !== rawKey.trim(),
+        }))
+        return json({ error: 'pay360_alta_fallo', detalle: created.error ?? null }, 502)
+      }
+
+      const hook = created.data.hook_signing_secrets?.[0]
+      const { error: secErr } = await supabase.from('store_secrets').upsert({
+        store_id: targetId,
+        pay360_hook_id: hook?.hook_id ?? created.data.hook_ids?.[0] ?? null,
+        pay360_hook_secret: hook?.signing_secret ?? null,
+        pay360_secrets_updated_at: new Date().toISOString(),
+      }, { onConflict: 'store_id' })
+      if (secErr) return json({ error: secErr.message }, 400)
+
+      patch.pay360_business_id = created.data.business_id
+      patch.pay360_payment_prefix = created.data.payment_prefix ?? prefix
+      patch.pay360_env = env
+      wroteSecretsPay360 = true
     }
 
     // Llaves WRITE-ONLY. '' u omitido = no tocar la guardada; null = borrarlas
@@ -288,7 +373,6 @@ Deno.serve(async (req) => {
       if (env(culqiPk) !== env(culqiSk)) return json({ error: 'culqi_env_mismatch' }, 400)
     }
 
-    let wroteSecrets = false
     if (wipeKeys) {
       const { error } = await supabase.from('store_secrets')
         .update({ culqi_public_key: null, culqi_secret_key: null, culqi_keys_updated_at: new Date().toISOString() })
@@ -317,7 +401,18 @@ Deno.serve(async (req) => {
       if (!sec) return json({ error: 'culqi_sin_llaves' }, 400)
     }
 
-    if (Object.keys(patch).length === 0 && !wroteSecrets) return json({ error: 'nada_que_guardar' }, 400)
+    // Mismo gate que Culqi, por la misma razón: un toggle prendido "para
+    // dejarlo listo" pinta el botón de pago en toda la tienda mientras
+    // `pay360-coupon` rebota cada intento, y cada comprador termina con un
+    // pedido creado y sin cobrar.
+    if (patch.pay360_enabled === true) {
+      const { data: st } = await supabase.from('stores')
+        .select('pay360_business_id').eq('id', targetId).maybeSingle()
+      const connected = patch.pay360_business_id ?? st?.pay360_business_id
+      if (!connected) return json({ error: 'pay360_sin_conectar' }, 400)
+    }
+
+    if (Object.keys(patch).length === 0 && !wroteSecrets && !wroteSecretsPay360) return json({ error: 'nada_que_guardar' }, 400)
     if (Object.keys(patch).length > 0) {
       const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
       if (error) return json({ error: error.message }, 400)

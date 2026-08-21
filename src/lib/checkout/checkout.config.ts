@@ -189,6 +189,30 @@ export function culqiActiveFor(
   return s.culqi.scope === 'ALL' || s.locationType === 'PROVINCIA'
 }
 
+// ─── Cobro con 360pay (cupón + deep link de Yape) ────────────────────────────
+
+/**
+ * ¿Este pedido se cobra con 360pay? Misma forma que `culqiActiveFor`, y misma
+ * razón para no ser un derivado: la config la inyecta el modal y puede llegar
+ * asíncrona, después de que el comprador ya esté en el paso 3.
+ *
+ * **360pay gana sobre Culqi si los dos están activos.** No es arbitrario: es el
+ * único de los dos que hoy puede cobrar de verdad — Culqi está bloqueado a la
+ * espera de la acreditación PCI (ver `05-PCI-SAQ-D.md`). Si esa acreditación
+ * llega, esta precedencia es la línea que se cambia.
+ *
+ * A diferencia de Culqi, NO tiene `scope` por región. El de Culqi existe como
+ * repliegue operativo: su cobro es un salto de fe que puede costar conversión
+ * limeña, y se acota sin deploy. 360pay no tiene ese riesgo —el comprador toca
+ * un botón y Yape abre— así que aplica donde la tienda lo encendió. Copiarle el
+ * scope habría sido calcar una defensa sin la amenaza que la justifica.
+ */
+export function pay360ActiveFor(
+  s: Pick<CheckoutState, 'pay360' | 'locationType' | 'advanceAmount'>,
+): boolean {
+  return !!s.pay360?.enabled && s.advanceAmount > 0 && !!s.locationType
+}
+
 /**
  * ¿La captura del comprobante es obligatoria para terminar el pedido?
  *
@@ -215,6 +239,16 @@ export const VOUCHER_REQUIRED = false
  * registrado — puede cerrar la ventana sin perderlo.
  */
 export const VERIFICATION_TIMEOUT_MS = 20_000
+
+/**
+ * Cada cuánto se consulta el pedido mientras el comprador paga en Yape.
+ *
+ * 3 s y no menos: el comprador está EN OTRA APP, así que una consulta más
+ * rápida no le adelanta nada —no está mirando— y sí multiplica llamadas a
+ * `get-session` por cada pedido en vuelo. Y no más, porque cuando vuelve sí
+ * mira, y ahí los segundos se notan.
+ */
+export const PAY360_POLL_MS = 3000
 
 /** Backoff del polling mientras se espera el match (ms). */
 export const VERIFICATION_POLL_MS = [1000, 2000, 3000, 5000, 5000] as const
@@ -331,6 +365,32 @@ export const COPY = {
    *  cobro que esa pantalla no da. El modal reducido de solo-cobro está
    *  anotado como follow-up; hasta entonces, el rótulo dice la verdad. */
   finishPaymentCta: 'Coordinar el pago de tu pedido',
+
+  // ─── Cobro con 360pay ──────────────────────────────────────────────────────
+  // Igual que con Culqi, el comprador paga "con Yape": el recaudador es cocina
+  // nuestra. Nombrar a 360pay solo agrega una marca desconocida justo en la
+  // pantalla donde la confianza decide.
+  pay360Title: 'Paga tu adelanto con Yape',
+  pay360Intro: 'Toca el botón y Yape se abre con todo listo. No tienes que escribir el monto ni buscar ningún número.',
+  pay360AmountLabel: 'Monto a pagar',
+  // Lo que se ve ANTES de terminar el pedido. Dice qué va a pasar, para que
+  // tocar el botón no sea un salto al vacío — pero no pide nada, porque
+  // todavía no hay nada que el comprador pueda darnos.
+  pay360Step3Hint: 'Al terminar tu pedido te mostramos un botón que abre Yape con el monto ya puesto. No tienes que escribir nada.',
+  pay360Cta: 'Pagar con Yape',
+  // Lo que hay que decir ANTES de que se vaya: Yape no lo devuelve solo, y
+  // volver sin entender qué pasó es donde se pierden los pedidos ya pagados.
+  pay360AfterHint: 'Cuando termines en Yape, vuelve a esta ventana: tu pedido se confirma solo.',
+  pay360CodeLabel: '¿Pagas desde tu computadora?',
+  pay360CodeCopy: 'Copiar',
+  // El nombre del servicio importa tanto como el código: sin él, el comprador
+  // no sabe qué buscar en la lista de pagos de servicios de su app.
+  pay360CodeHint: 'En tu Yape entra a “Pagar servicios”, busca 360Pay y pega este código.',
+  // La espera. No dice "verificando" a secas: el comprador acaba de salir de la
+  // app y tiene que saber que lo suyo ya está hecho.
+  pay360Waiting: 'Esperando tu pago…',
+  pay360WaitingHint: 'Apenas Yape confirme, esta pantalla cambia sola. Puedes cerrarla: tu pedido ya está registrado.',
+  pay360IssueFailed: 'No pudimos generar tu pago. Vuelve a intentarlo.',
 
   voucherOptional: 'Adjuntar captura (opcional)',
   voucherAttached: 'Captura adjunta',

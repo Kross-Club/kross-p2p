@@ -6,7 +6,7 @@
 // Los mensajes de error dicen CÓMO arreglarlo, no qué está mal: "Deben ser 9
 // dígitos" convierte mejor que "Teléfono inválido".
 
-import { COVERAGE_MODE, CULQI_OTP_LENGTH, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_REQUIRED, YAPE_CODE_LENGTH, culqiActiveFor } from './checkout.config'
+import { COVERAGE_MODE, CULQI_OTP_LENGTH, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_REQUIRED, YAPE_CODE_LENGTH, culqiActiveFor, pay360ActiveFor } from './checkout.config'
 import { hasBranchList } from './services/AgencyService'
 import type { CheckoutState, CheckoutStepId } from './types'
 
@@ -166,6 +166,13 @@ export function validateCulqiOtp(otp: string): string | null {
 function validateStep3(s: CheckoutState): FieldErrors {
   // Sin adelanto no hay nada que verificar y el CTA queda habilitado de una.
   if (s.advanceAmount <= 0) return {}
+
+  // Con 360pay no hay NADA que llenar en el paso 3: el comprador toca
+  // "Terminar mi pedido" y recién ahí aparece el botón que abre Yape. Pedirle
+  // el código de seguridad de 3 dígitos sería pedirle la prueba de un pago que
+  // todavía no hizo — y es lo que dejaba el CTA bloqueado con "completa los
+  // datos marcados".
+  if (pay360ActiveFor(s)) return {}
 
   // Cobro en línea: lo obligatorio es el celular + el código de aprobación.
   // Ni el código de seguridad de 3 dígitos ni la captura aplican — no hay

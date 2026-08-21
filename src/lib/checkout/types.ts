@@ -61,6 +61,14 @@ export interface StoreCulqi {
   scope: CulqiScope
 }
 
+/** Config de cobro con 360pay de la TIENDA (columnas públicas de `stores`).
+ *  Misma semántica que `StoreCulqi`: la inyecta el modal en cada apertura y
+ *  jamás viene del borrador guardado — un borrador con 360pay activo no puede
+ *  forzar el cobro en una tienda que lo apagó. */
+export interface StorePay360 {
+  enabled: boolean
+}
+
 export interface CustomerInfo {
   dni: string
   whatsapp: string
@@ -193,6 +201,8 @@ export interface CheckoutState {
    * forzar el cobro en una tienda que lo apagó.
    */
   culqi: StoreCulqi | null
+  /** Config de 360pay de la tienda. Mismas reglas que `culqi`. */
+  pay360: StorePay360 | null
   /** Celular que aprueba en Yape. Se prellena del WhatsApp; editable. */
   culqiPhone: string
   /** Código de aprobación de Yape (6 dígitos, vence en 2 min). Jamás persiste. */

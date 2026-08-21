@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
 import { COPY } from '../lib/checkout/checkout.config'
-import type { StoreCulqi } from '../lib/checkout/types'
+import type { StoreCulqi, StorePay360 } from '../lib/checkout/types'
 import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
@@ -46,6 +46,7 @@ export default function LandingProductoPage() {
   const [homeDelivery, setHomeDelivery] = useState(true)
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
   const [culqi, setCulqi] = useState<StoreCulqi | null>(null)
+  const [pay360, setPay360] = useState<StorePay360 | null>(null)
   // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
   const [abMode, setAbMode] = useState<CheckoutAbMode>('SPLIT')
 
@@ -84,7 +85,7 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     supabase.from('stores')
-      .select('yape_number, yape_holder, yape_qr_url, home_delivery_enabled, culqi_enabled, culqi_scope, checkout_ab_mode')
+      .select('yape_number, yape_holder, yape_qr_url, home_delivery_enabled, culqi_enabled, culqi_scope, pay360_enabled, checkout_ab_mode')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         // Degradación POR CAMPO: si el select entero falla (p. ej. columnas
@@ -98,6 +99,11 @@ export default function LandingProductoPage() {
         setCulqi(data.culqi_enabled
           ? { enabled: true, scope: data.culqi_scope === 'ALL' ? 'ALL' : 'PROVINCIA' }
           : null)
+        // `!!` y no `?? true`: una tienda sin la columna migrada NO debe caer en
+        // el cobro con 360pay. Al revés que el domicilio, acá el default seguro
+        // es apagado — encenderlo sin negocio dado de alta deja al comprador
+        // con un pedido creado y sin forma de pagar.
+        setPay360(data.pay360_enabled ? { enabled: true } : null)
         // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
         // reparto por defecto nunca puede depender de un dato mal escrito.
         setAbMode(abModeOf(data.checkout_ab_mode))
@@ -176,6 +182,7 @@ export default function LandingProductoPage() {
           yape={yape}
           homeDeliveryEnabled={homeDelivery}
           culqi={culqi}
+          pay360={pay360}
           abMode={abMode}
           submitContext={{
             storeId: product.store_id ?? '',

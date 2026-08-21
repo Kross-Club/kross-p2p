@@ -1,11 +1,24 @@
 // ─── SALES ENGINE · Fases del pago del checkout ──────────────────────────────
 // Reducer PURO de la máquina que gobierna el submit en dos fases:
 //
-//   IDLE ─registro ok─▶ (sin Culqi) DONE paid:false      ← flujo actual intacto
-//        └────────────▶ CHARGING ─ok─▶ DONE paid:true
+//   IDLE ─registro ok─▶ (manual) DONE paid:false         ← flujo actual intacto
+//        └────────────▶ CHARGING ─ok─▶ DONE paid:true      ← Culqi (síncrono)
 //                          │ └─fallo─▶ CHARGE_FAILED ─retry─▶ CHARGING
 //                          │                │ └─"que me escriban"─▶ DONE unpaid
 //                          └─network_after─▶ CONFIRMING (sin retry: se consulta)
+//
+// Y la rama de 360pay, que NO es simétrica y por eso vive aparte:
+//
+//   IDLE ─▶ ISSUING ─cupón ok─▶ AWAITING ─pagó─▶ DONE paid:true
+//              └─fallo──────▶ ISSUE_FAILED ─retry─▶ ISSUING
+//
+// Con Culqi el cobro ocurre DENTRO de la llamada: la respuesta ya dice si entró.
+// Con 360pay se emite una orden de cobro y quien cobra es Yape, en otra app; la
+// confirmación llega por webhook. `AWAITING` es esa espera, y es el camino
+// NORMAL, no el excepcional — de ahí que tenga su propio estado en vez de
+// reusar `CONFIRMING`, que significa "el dinero pudo salir y hay que averiguar".
+// Confundirlos haría que un pedido recién emitido se leyera como un cobro en
+// duda.
 //
 // Vive fuera del componente por dos razones: el pie sticky y los guards de
 // doble-tap se deciden por la fase (no por `state.status`), y una máquina que
@@ -23,9 +36,21 @@ interface OrderRef {
   sessionId: string
 }
 
+/** Lo que el comprador necesita para ir a pagar: el botón y el respaldo. */
+export interface CouponRef {
+  /** Enlace que abre Yape pre-llenado. Lo arma el SERVIDOR. */
+  deeplink: string
+  /** Código de pago, para tipearlo a mano si el enlace no abre (desktop). */
+  consumerCode: string
+  amountPen: number
+}
+
 export type PayPhase =
   | { k: 'IDLE' }
   | ({ k: 'CHARGING' } & OrderRef)
+  | ({ k: 'ISSUING' } & OrderRef)
+  | ({ k: 'AWAITING'; coupon: CouponRef } & OrderRef)
+  | ({ k: 'ISSUE_FAILED' } & OrderRef)
   | ({ k: 'CHARGE_FAILED'; fail: CulqiFailure } & OrderRef)
   | ({ k: 'CONFIRMING' } & OrderRef)              // network_after: consultar, no cobrar
   | ({ k: 'DONE'; paid: boolean; unpaid?: boolean } & OrderRef)
@@ -33,6 +58,10 @@ export type PayPhase =
 export type PayPhaseEvent =
   | ({ type: 'REGISTERED_MANUAL' } & OrderRef)     // sin Culqi: directo a DONE
   | ({ type: 'REGISTERED_CULQI' } & OrderRef)      // con Culqi: a cobrar
+  | ({ type: 'REGISTERED_PAY360' } & OrderRef)     // con 360pay: a emitir cupón
+  | { type: 'COUPON_ISSUED'; coupon: CouponRef }
+  | { type: 'ISSUE_FAILED' }
+  | { type: 'PAID' }                               // el polling vio MATCHED
   | { type: 'CHARGE_OK' }
   | { type: 'CHARGE_FAILED'; fail: CulqiFailure }
   | { type: 'RETRY' }                              // solo desde CHARGE_FAILED
@@ -63,6 +92,28 @@ export function payPhaseReducer(phase: PayPhase, ev: PayPhaseEvent): PayPhase {
       return phase.k === 'IDLE'
         ? { k: 'CHARGING', token: ev.token, orderCode: ev.orderCode, sessionId: ev.sessionId }
         : phase
+    case 'REGISTERED_PAY360':
+      return phase.k === 'IDLE'
+        ? { k: 'ISSUING', token: ev.token, orderCode: ev.orderCode, sessionId: ev.sessionId }
+        : phase
+    case 'COUPON_ISSUED':
+      // Solo desde ISSUING: un cupón que llega en cualquier otro estado es una
+      // respuesta atrasada de un intento anterior, y pintar su enlace mandaría
+      // al comprador a pagar un cupón que ya se anuló.
+      return phase.k === 'ISSUING'
+        ? { k: 'AWAITING', coupon: ev.coupon, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+        : phase
+    case 'ISSUE_FAILED':
+      return phase.k === 'ISSUING'
+        ? { k: 'ISSUE_FAILED', token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+        : phase
+    case 'PAID':
+      // Desde AWAITING (el camino normal) y también desde ISSUE_FAILED: el
+      // cupón anterior pudo pagarse mientras se reintentaba, y decirle "falló"
+      // a quien ya pagó es el peor final posible.
+      return (phase.k === 'AWAITING' || phase.k === 'ISSUE_FAILED' || phase.k === 'ISSUING')
+        ? { k: 'DONE', paid: true, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+        : phase
     case 'CHARGE_OK':
       return (phase.k === 'CHARGING' || phase.k === 'CONFIRMING' || phase.k === 'CHARGE_FAILED')
         ? { k: 'DONE', paid: true, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
@@ -75,17 +126,23 @@ export function payPhaseReducer(phase: PayPhase, ev: PayPhaseEvent): PayPhase {
         : { k: 'CHARGE_FAILED', fail: ev.fail, ...ref }
     }
     case 'RETRY':
-      // SOLO desde CHARGE_FAILED: desde CHARGING sería el doble tap, y desde
-      // CONFIRMING sería cobrar a ciegas un dinero que quizá ya salió.
-      return phase.k === 'CHARGE_FAILED'
-        ? { k: 'CHARGING', token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
-        : phase
+      // SOLO desde un estado de fallo: desde CHARGING/ISSUING sería el doble
+      // tap, y desde CONFIRMING sería cobrar a ciegas un dinero que quizá ya
+      // salió. Desde AWAITING tampoco: el cupón está vivo y esperando pago.
+      if (phase.k === 'CHARGE_FAILED') {
+        return { k: 'CHARGING', token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+      }
+      if (phase.k === 'ISSUE_FAILED') {
+        return { k: 'ISSUING', token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+      }
+      return phase
     case 'CONFIRMED':
       return phase.k === 'CONFIRMING'
         ? { k: 'DONE', paid: true, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
         : phase
     case 'GIVE_UP':
-      return (phase.k === 'CHARGE_FAILED' || phase.k === 'CONFIRMING')
+      return (phase.k === 'CHARGE_FAILED' || phase.k === 'CONFIRMING'
+        || phase.k === 'ISSUE_FAILED' || phase.k === 'AWAITING')
         ? { k: 'DONE', paid: false, unpaid: true, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
         : phase
     default:

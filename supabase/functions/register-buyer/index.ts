@@ -315,7 +315,11 @@ Deno.serve(async (req) => {
       body_advance: bodyAdvance, derived: advanceAmount, price: finalPrice, choice: advanceChoice,
     }))
   }
-  const paymentProvider = body.payment_provider === 'CULQI' ? 'CULQI' : null
+  // Lista blanca, no passthrough: este campo decide de qué piscina de cruce
+  // sale el pedido, así que un valor inventado lo dejaría fuera de las dos.
+  const paymentProvider = body.payment_provider === 'CULQI' ? 'CULQI'
+    : body.payment_provider === '360PAY' ? '360PAY'
+    : null
   const advanceVoucherUrl = body.advance_voucher_url?.trim() || null
   const advanceYapeCode = body.advance_yape_code?.replace(/\D/g, '').slice(0, 6) || null
   const paymentVerification = advanceAmount > 0 ? 'PENDING' : 'NOT_REQUIRED'
