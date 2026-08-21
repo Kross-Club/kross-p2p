@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CONSUMER_CODE_MAX, PAY360_HEADERS, SIGNATURE_TOLERANCE_MS, consumerCodeFor, hmacHex,
-  isPaid, isValidConsumerCode, pay360BaseUrl, paymentUrlOf, pickPartnerKey, signedPayload, timingSafeEqual, unwrap,
+  COUPON_TTL_DAYS, couponExpiryFrom, isPaid, isValidConsumerCode, pay360BaseUrl, paymentUrlOf, pickPartnerKey, signedPayload, timingSafeEqual, unwrap,
   verifySignature, yapeDeeplink, YAPE_SERVICES_PAY_URL,
 } from '../../../supabase/functions/_shared/pay360.ts'
 
@@ -499,5 +499,24 @@ describe('el paso 3 con 360pay no pide nada', () => {
   it('sin adelanto no pide nada, con o sin 360pay', () => {
     expect(validateStep({ ...base({ enabled: true }), advanceAmount: 0 }, 3)).toEqual({})
     expect(validateStep({ ...base(null), advanceAmount: 0 }, 3)).toEqual({})
+  })
+})
+
+describe('vencimiento del cupón', () => {
+  const now = Date.parse('2026-08-21T02:00:00.000Z')
+
+  it('vence a los 7 días de emitido', () => {
+    expect(couponExpiryFrom(now)).toBe('2026-08-28T02:00:00.000Z')
+    expect(COUPON_TTL_DAYS).toBe(7)
+  })
+
+  it('va en ISO, que es lo que el API acepta', () => {
+    expect(couponExpiryFrom(now)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+  })
+
+  it('siempre es futuro respecto del momento de emisión', () => {
+    // Un cupón que nace vencido no lo puede pagar nadie, y el fallo sería en
+    // Yape —fuera de nuestros logs— no al emitirlo.
+    expect(Date.parse(couponExpiryFrom(now))).toBeGreaterThan(now)
   })
 })
