@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,
       address, address_verified, address_lat, address_lng, nota,
       dispatch_type, agency_name, delivery_reference,
-      payment_verification, payment_reason,
+      payment_verification, payment_reason, payment_event_id,
       advance_amount, payment_provider,
       expires_at, created_at
     `)
@@ -73,13 +73,47 @@ Deno.serve(async (req) => {
 
   // Whether this buyer may place outbound calls (enabled manually for top clients)
   let buyerCanCall = false
+  // Ficha de contacto del comprador — SOLO para el vendedor (ver `sellerOnly`
+  // abajo: mismas reglas que `payment_reason`, es PII y no debe viajar al
+  // navegador de un comprador que mira la pestaña de red).
+  let buyerContact: Record<string, unknown> | null = null
   if (session.buyer_id) {
     const { data: b } = await supabase
       .from('buyers')
-      .select('can_call')
+      .select('can_call, nombre, document_type, document_number, phone')
       .eq('id', session.buyer_id)
       .maybeSingle()
     buyerCanCall = !!b?.can_call
+    if (viewerIsSeller && b) {
+      buyerContact = {
+        nombre: b.nombre ?? session.buyer_name ?? null,
+        document_type: b.document_type ?? 'DNI',
+        document_number: b.document_number ?? null,
+        // El WhatsApp que llenó en el checkout. Es también el teléfono con el
+        // que se registró su cliente en 360pay. El número desde el que YAPEÓ no
+        // existe en ningún lado: Yape no lo revela — lo que sí llega del pago
+        // es la operación bancaria (abajo).
+        phone: b.phone ?? session.buyer_phone ?? null,
+      }
+    }
+  }
+
+  // Rastro bancario del pago, si el pedido ya cruzó. Sale del evento que lo
+  // cuadró: `operation_number` y el banco viajan en el `raw` del webhook. Solo
+  // esos dos campos — el raw entero lleva fees y datos del negocio.
+  let paymentTrace: { operation_number: string | null; bank: string | null } | null = null
+  if (viewerIsSeller && session.payment_event_id) {
+    const { data: ev } = await supabase.from('payment_events')
+      .select('raw, operation_number').eq('id', session.payment_event_id).maybeSingle()
+    if (ev) {
+      let op = ev.operation_number ?? null, bank: string | null = null
+      try {
+        const raw = JSON.parse(ev.raw ?? '{}')
+        op = op ?? (typeof raw.operation_number === 'string' ? raw.operation_number : null)
+        bank = typeof raw.bank_tx_id === 'string' ? raw.bank_tx_id : null
+      } catch { /* raw no-JSON (eventos viejos del flujo manual): sin rastro */ }
+      paymentTrace = { operation_number: op, bank }
+    }
   }
 
   // Header participants = current OWNER + people EXPLICITLY invited (not the
@@ -124,7 +158,7 @@ Deno.serve(async (req) => {
   // comprador repetiría la fuga que ya se corrigió en los mensajes del chat: da
   // igual que la UI no lo pinte, viaja en la respuesta y queda a la vista de
   // cualquiera que mire la red.
-  const sellerOnly = viewerIsSeller ? {} : { payment_reason: undefined }
+  const sellerOnly = viewerIsSeller ? {} : { payment_reason: undefined, payment_event_id: undefined }
 
   return new Response(
     JSON.stringify({
@@ -132,6 +166,7 @@ Deno.serve(async (req) => {
         ...session, ...sellerOnly,
         seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar,
         participants, buyer_can_call: buyerCanCall,
+        buyer_contact: buyerContact, payment_trace: paymentTrace,
       },
       viewer_is_seller: viewerIsSeller,
       messages: messages ?? [],

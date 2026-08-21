@@ -31,12 +31,8 @@ export interface OrderSession {
   delivery_reference?: string | null
   /** Estado del cobro del adelanto. */
   payment_verification?: string | null
-  /** Motivo escrito por el cruce: nombre distinto, código que no calza, etc. */
+  /** Motivo escrito por el cobro. Solo llega al vendedor. */
   payment_reason?: string | null
-  /** Ruta en el bucket privado `vouchers`. NUNCA es una URL abrible: se pide
-   *  firmada a la función `voucher-url` en el momento de mirarla. */
-  advance_voucher_url?: string | null
-  advance_yape_code?: string | null
   advance_amount?: number | string | null
   /** '360PAY' = el adelanto se cobra en línea; NULL = sin cobro en línea. */
   payment_provider?: string | null
@@ -46,6 +42,19 @@ export interface OrderSession {
   involved_seller_ids?: string[] | null
   writer_seller_ids?: string[] | null
   participants?: Participant[]
+  /** Ficha de contacto del comprador. SOLO llega cuando el que mira es
+   *  vendedor — para el comprador viaja null, igual que `payment_reason`. */
+  buyer_contact?: {
+    nombre: string | null
+    document_type: string | null
+    document_number: string | null
+    /** El WhatsApp del checkout (y el teléfono del cliente en 360pay). El
+     *  número desde el que YAPEÓ no existe: Yape no lo revela — del pago llega
+     *  la operación bancaria, en `payment_trace`. */
+    phone: string | null
+  } | null
+  /** Rastro bancario del pago cruzado: N° de operación y banco. Solo vendedor. */
+  payment_trace?: { operation_number: string | null; bank: string | null } | null
 }
 
 export interface OrderItem {
