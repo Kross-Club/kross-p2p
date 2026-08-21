@@ -122,10 +122,13 @@ export default function ContactSheet({ session, onClose }: {
           </div>
         )}
 
-        {/* Con qué pagó: la cadena COMPLETA del cotejo, no la operación suelta.
-            En el panel de 360pay el cupón se lista por el código de pago (KSH…)
-            y su detalle muestra el id del cupón y el pedido en la descripción;
-            aquí va la misma cadena para cuadrar mirando las dos pantallas.
+        {/* Con qué pagó. En pantalla, SOLO lo que se puede cotejar A OJO con el
+            portal de 360pay: el pedido (su detalle lo trae en la descripción) y
+            el código de pago (así LISTA los cupones). El id del cupón es un
+            alfanumérico de API que el portal no muestra — no ayuda a cuadrar
+            mirando, así que no se pinta; va únicamente dentro del texto que
+            copia el botón, junto con la operación bancaria, porque ESO es lo
+            que soporte de 360pay o el banco piden en un reclamo.
             El celular del pagador no existe en ningún sistema — Yape no lo
             revela — así que la identidad del pago es esta. */}
         {paid && (
@@ -143,17 +146,12 @@ export default function ContactSheet({ session, onClose }: {
                 <p><span className="text-green-600">Código de pago</span>{' '}
                   <span className="font-mono font-bold">{trace.payment_code}</span></p>
               )}
-              {trace?.coupon_id && (
-                <p><span className="text-green-600">Cupón</span>{' '}
-                  <span className="font-mono font-bold break-all">{trace.coupon_id}</span></p>
-              )}
-              {(trace?.operation_number || trace?.bank) && (
-                <p><span className="text-green-600">Operación</span>{' '}
-                  <span className="font-mono font-bold">
-                    {trace?.operation_number ?? '—'}{trace?.bank ? ` · ${trace.bank}` : ''}
-                  </span></p>
-              )}
             </div>
+            {(trace?.operation_number || trace?.bank) && (
+              <p className="mt-1 text-[10px] text-green-700/60">
+                Op. bancaria {trace?.operation_number ?? '—'}{trace?.bank ? ` · ${trace.bank}` : ''}
+              </p>
+            )}
             {(trace?.payment_code || trace?.operation_number) && (
               <button
                 type="button"
@@ -169,7 +167,7 @@ export default function ContactSheet({ session, onClose }: {
                 className="mt-2 flex items-center gap-1 rounded-lg border border-green-200 px-2.5 py-1.5 text-[11px] font-bold text-green-700"
               >
                 {traceCopied ? <Check size={12} /> : <Copy size={12} />}
-                {traceCopied ? 'Copiado' : 'Copiar cotejo completo'}
+                {traceCopied ? 'Copiado' : 'Copiar para soporte 360pay'}
               </button>
             )}
           </div>
