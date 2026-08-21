@@ -2,15 +2,17 @@
 // La pantalla que define el KPI del refactor: llegar aquí es la conversión.
 //
 // Regla dura del módulo: **al comprador nunca se le dice que su pago no
-// existe.** Si el cruce automático no encontró el yape, para él sigue siendo un
-// pedido registrado que un asesor está revisando — porque en la mayoría de esos
-// casos el fallo es nuestro (la notificación no llegó, el lector estaba caído),
-// no suyo.
+// existe.** Si el adelanto no está cobrado, para él sigue siendo un pedido
+// registrado que un asesor va a coordinar.
+//
+// Aquí vivía un polling de 22 consultas que esperaba a que el cruce manual
+// encontrara su yape. Murió con el flujo manual: hoy esta pantalla solo se
+// alcanza con el pago YA confirmado por el webhook (`paid`), o sin nada que
+// esperar —la tienda no cobra en línea, o el comprador pidió que lo llamen—.
+// Consultar en esos casos era gastarle la batería a cambio de nada.
 
-import { useEffect, useState } from 'react'
 import { Check, MessageCircle } from 'lucide-react'
 import { COPY } from '../../../lib/checkout/checkout.config'
-import { fetchPaymentVerification } from '../../../lib/checkout/services/OrderService'
 import type { PaymentVerification } from '../../../lib/checkout/types'
 
 interface OrderDoneProps {
@@ -19,46 +21,13 @@ interface OrderDoneProps {
   verification: PaymentVerification
   /** Token del pedido: abre su chat en `/p/:token`. */
   token?: string | null
-  /** Cobro en línea fallido y el comprador eligió que lo contacte un asesor:
-   *  ni caja de verificación ni polling — no hay pago en vuelo que esperar. */
+  /** El comprador eligió que lo contacte un asesor en vez de pagar ahora: no
+   *  se muestra la caja del adelanto, porque no hay pago en vuelo. */
   unpaid?: boolean
 }
 
-/** Cada cuánto se vuelve a preguntar y por cuánto tiempo. El yape cruza en
- *  segundos cuando el lector está sano; pasado el minuto y medio el comprador
- *  ya cerró o se fue al chat, y seguir preguntando solo gasta su batería. */
-const POLL_MS = 4000
-const POLL_LIMIT = 22
-
 export default function OrderDone({ orderCode, advance, verification, token, unpaid }: OrderDoneProps) {
-  // El estado del cruce llega DESPUÉS de esta pantalla: el comprador termina el
-  // pedido y su yape puede entrar segundos más tarde. Sin esto la caja se queda
-  // en "Estamos verificando" para siempre aunque el pago ya haya cuadrado, y el
-  // comprador se va con la duda —que es exactamente el mensaje de WhatsApp que
-  // este checkout existe para evitar.
-  //
-  // Con el pago ya confirmado, `verification` llega 'MATCHED' por prop: la
-  // caja nace verde y el polling ni se monta — la espera que este efecto
-  // acompaña es exactamente lo que el cobro directo eliminó.
-  const [live, setLive] = useState<PaymentVerification>(verification)
-
-  useEffect(() => {
-    // Ya cuadró, no hay adelanto que esperar, no hay pago en vuelo (unpaid), o
-    // no hay token con qué preguntar.
-    if (!token || advance <= 0 || live === 'MATCHED' || unpaid) return
-    let tries = 0
-    let cancelled = false
-
-    const id = setInterval(async () => {
-      if (cancelled || ++tries > POLL_LIMIT) { clearInterval(id); return }
-      // Si la consulta falla se ignora en silencio: el pedido YA está registrado
-      // y esto es solo un adorno. Un error de red no puede alarmar al comprador.
-      const v = await fetchPaymentVerification(token)
-      if (!cancelled && v === 'MATCHED') { setLive(v); clearInterval(id) }
-    }, POLL_MS)
-
-    return () => { cancelled = true; clearInterval(id) }
-  }, [token, advance, live, unpaid])
+  const paid = verification === 'MATCHED'
 
   return (
     <div className="py-6 text-center">
@@ -79,13 +48,13 @@ export default function OrderDone({ orderCode, advance, verification, token, unp
 
       {advance > 0 && !unpaid && (
         <div className="mx-auto max-w-[300px] rounded-2xl px-4 py-3 text-xs mb-5"
-          style={live === 'MATCHED'
+          style={paid
             ? { background: '#F0FDF4', color: '#15803D' }
             : { background: '#F3F4F6', color: '#4B5563' }}>
-          {live === 'MATCHED'
+          {paid
             ? <>✅ {COPY.verifyMatched}</>
             : <>
-                {COPY.verifying}
+                {COPY.advancePendingByChat}
                 {/* Poder cerrar sin miedo es lo que evita el mensaje de "¿mi
                     pedido se registró?" media hora después. */}
                 <span className="block mt-1 text-[11px] opacity-80">{COPY.verifyingCanClose}</span>

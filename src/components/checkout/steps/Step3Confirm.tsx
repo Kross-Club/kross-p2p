@@ -1,47 +1,35 @@
 // ─── PASO 3 · Resumen y adelanto ─────────────────────────────────────────────
-// Dos formas de cobrar el adelanto, según la tienda (prop `pay360`):
+// El paso 3 **no pide nada**. Nunca. Con 360pay activo anuncia el monto y el
+// botón que abre Yape aparece DESPUÉS de terminar el pedido; sin 360pay, dice
+// que un asesor coordina el adelanto por el chat.
 //
-//   360pay → aquí no se pide NADA: solo se anuncia el monto. El botón que abre
-//            Yape aparece DESPUÉS de terminar el pedido, con el monto ya fijado
-//            por el cupón del lado del servidor.
-//   Manual → caja de Yape con el número de la marca + el código de seguridad
-//            (obligatorio) + la captura (opcional, ver VOUCHER_REQUIRED). El
-//            cruce corre en background contra la notificación. Es el camino de
-//            las marcas que todavía no tienen 360pay conectado.
+// Aquí vivió la caja del Yape manual —número de la marca, código de seguridad
+// de 3 dígitos, captura del comprobante— y era el único punto del checkout
+// donde el comprador tenía que aprender algo nuevo: buscar tres dígitos en una
+// pantalla que quizá ya cerró. Se eliminó con el flujo entero cuando 360pay
+// pasó a producción: pedirle la PRUEBA de un pago es siempre peor que darle un
+// botón que lo cobra.
 //
 // El resumen va PRIMERO en los dos casos: antes de pedirle plata hay que
 // recordarle qué lleva y a dónde llega.
 
-import { COPY, YAPE_CODE_LENGTH, advanceFor } from '../../../lib/checkout/checkout.config'
+import { COPY, advanceFor } from '../../../lib/checkout/checkout.config'
 import type { AdvanceChoice, CheckoutState } from '../../../lib/checkout/types'
-import type { FieldErrors } from '../../../lib/checkout/validation'
-import type { StoreYape } from '../CheckoutModal'
-import YapeCodeHint from '../YapeCodeHint'
-import YapeBox from '../payment/YapeBox'
-import VoucherField from '../payment/VoucherField'
-import Field from '../fields/Field'
 
 interface Step3Props {
   state: CheckoutState
   /** Nombre y precio ya con descuento del pack elegido. */
   packName: string | null
   price: number
-  /** Datos de cobro de la tienda. `null` si la marca aún no los configuró. */
-  yape: StoreYape | null
   /** true = este pedido se cobra con 360pay (`pay360ActiveFor`, lo decide el
    *  modal). false = la tienda aún no lo tiene y va por la caja manual. */
   pay360: boolean
-  errors: FieldErrors
-  touch: (field: 'yapeCode') => void
-  onYapeCode: (code: string) => void
-  onVoucher: (file: File) => Promise<void>
   onAdvanceChoice: (choice: AdvanceChoice) => void
   submitError: string | null
 }
 
 export default function Step3Confirm({
-  state, packName, price, yape, pay360, errors, touch, onYapeCode,
-  onVoucher, onAdvanceChoice, submitError,
+  state, packName, price, pay360, onAdvanceChoice, submitError,
 }: Step3Props) {
   const advance = state.advanceAmount
   const isProvincia = state.locationType === 'PROVINCIA'
@@ -107,35 +95,19 @@ export default function Step3Confirm({
           </div>
         </div>
       ) : advance > 0 && (
-        /* Rama manual: la tienda todavía no tiene 360pay conectado. */
-        (
-          <>
-            <YapeBox yape={yape} amount={advance} />
-
-            <div className="mt-3">
-              {/* La ayuda va ARRIBA del campo: quien ya sabe la ignora en medio
-                  segundo, y quien no, la ve antes de quedarse mirando un input
-                  vacío sin saber qué escribir. */}
-              <YapeCodeHint />
-              <Field
-                label={COPY.yapeCodeLabel}
-                required
-                value={state.advanceYapeCode}
-                onChange={e => onYapeCode(e.target.value)}
-                onBlur={() => touch('yapeCode')}
-                error={errors.yapeCode}
-                hint={COPY.yapeCodeHint}
-                placeholder={COPY.yapeCodePlaceholder}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={YAPE_CODE_LENGTH}
-                className="tracking-[0.5em] text-center text-lg font-black"
-              />
-            </div>
-
-            <VoucherField voucher={state.paymentVoucher} onSelect={onVoucher} error={errors.voucher} />
-          </>
-        )
+        /* Sin 360pay conectado no hay nada que cobrar aquí: el pedido se cierra
+           igual y el adelanto lo coordina un asesor por el chat. Decirlo es
+           mejor que no decir nada — quien esperaba pagar ahora sabe qué sigue. */
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <p className="text-sm font-bold text-gray-900">{COPY.advanceByChatTitle}</p>
+          <p className="mt-1 text-xs leading-relaxed text-gray-500">{COPY.advanceByChatHint}</p>
+          <div className="mt-3 rounded-xl bg-gray-50 px-3 py-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+              {COPY.pay360AmountLabel}
+            </span>
+            <p className="text-2xl font-black text-gray-900">S/{advance}</p>
+          </div>
+        </div>
       )}
 
       {submitError && (

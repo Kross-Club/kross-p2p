@@ -701,13 +701,9 @@ export default function VendedorPedidoPage() {
       {/* Antes que la dirección: si el adelanto no cuadró, eso decide si se
           despacha o no — la dirección recién importa después. */}
       <AdvancePanel
-        sessionId={session.id}
-        sellerAuthId={effective?.auth_user_id ?? null}
         advanceAmount={Number(session.advance_amount ?? 0)}
         verification={session.payment_verification ?? null}
         reason={session.payment_reason ?? null}
-        yapeCode={session.advance_yape_code ?? null}
-        hasVoucher={!!session.advance_voucher_url}
         provider={session.payment_provider ?? null}
       />
 

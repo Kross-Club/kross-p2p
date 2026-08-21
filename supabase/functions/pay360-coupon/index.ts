@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
       .select('pay360_enabled, pay360_business_id, pay360_payment_prefix, pay360_env')
       .eq('id', originStoreId).maybeSingle(),
     supabase.from('store_secrets')
-      .select('payment_ingest_token').eq('store_id', originStoreId).maybeSingle(),
+      .select('payment_code_secret').eq('store_id', originStoreId).maybeSingle(),
   ])
 
   // Los identificadores del servicio 360Pay en Yape. No viven por tienda: son
@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
   // compartan código, y se firma con un secreto de la tienda para que no sea
   // adivinable — teclear un código en Yape muestra lo que ese cliente debe.
   const buyerKey = `${originStoreId}:${String(session.buyer_phone ?? session.id)}`
-  const codeSecret = secrets?.payment_ingest_token ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const codeSecret = secrets?.payment_code_secret ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const consumerCode = session.pay360_consumer_code
     ?? await consumerCodeFor(String(store.pay360_payment_prefix), codeSecret, buyerKey)
 

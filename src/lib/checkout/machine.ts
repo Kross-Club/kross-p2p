@@ -6,7 +6,7 @@
 // `courierSurcharge` y `deliveryNote` son DERIVADOS. Ninguna acción los setea
 // directamente — se recalculan en `derive()` después de cada cambio.
 
-import { EXIT_DISCOUNT_PEN, YAPE_CODE_LENGTH, advanceFor } from './checkout.config'
+import { EXIT_DISCOUNT_PEN, advanceFor } from './checkout.config'
 import { effectivePrice } from './product-packs'
 import { isLimaMetro, methodForCoverage } from './services/DistrictCoverageService'
 import { resolveVariant } from './variant'
@@ -49,8 +49,6 @@ export function initialCheckoutState(
     deliveryMethod: null,
     pickup: { ...EMPTY_PICKUP },
     needsLocationConfirmation: false,
-    paymentVoucher: null,
-    advanceYapeCode: '',
     pay360: null,
     advanceAmount: 0,
     discountPen: 0,
@@ -90,8 +88,6 @@ export type CheckoutAction =
   | { type: 'SET_OLVA_TEXT'; text: string }
   | { type: 'SET_PROVINCIA_ADDRESS'; addressText?: string; reference?: string }
   | { type: 'SET_DELIVERY_METHOD'; method: 'DOMICILIO' | 'AGENCIA' }
-  | { type: 'SET_VOUCHER'; url: string; uploadedAt: string }
-  | { type: 'SET_YAPE_CODE'; code: string }
   /** Config de la tienda, inyectada por el modal (puede llegar asíncrona). */
   | { type: 'SET_PAY360_CONFIG'; pay360: StorePay360 | null }
   /** Cómo reparte la tienda el experimento (`stores.checkout_ab_mode`). Llega
@@ -377,11 +373,6 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         reference: action.reference ?? prov().address?.reference ?? '',
       } } })
 
-    case 'SET_VOUCHER':
-      return derive({ ...state, paymentVoucher: { url: action.url, uploadedAt: action.uploadedAt } })
-
-    case 'SET_YAPE_CODE':
-      return derive({ ...state, advanceYapeCode: action.code.replace(/\D/g, '').slice(0, YAPE_CODE_LENGTH) })
 
     // Decide CÓMO se cobra, jamás CUÁNTO: `advanceAmount` sigue siendo
     // derivado en derive() y esta acción no lo toca.

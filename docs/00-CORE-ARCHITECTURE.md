@@ -104,8 +104,6 @@ type MerchantCustomerSession = {
                verification: 'NOT_REQUIRED' | 'PENDING' | 'MATCHED'
                provider?: '360PAY' | null   // NULL = flujo manual; separa las piscinas de cruce
                providerChargeId?: string    // id del cupón, en payment_events
-               yapeCode?: string            // 3 dígitos tecleados (solo flujo manual)
-               voucherPath?: string         // ruta en el bucket PRIVADO `vouchers`
                reason?: string }            // veredicto interno — NUNCA al comprador
   stage:     'nuevo' | 'validando' | 'confirmado' | 'preparando' | 'en_camino' | 'entregado'
              | 'no_entregado'               // terminal de fracaso: lo marca una persona;
@@ -116,14 +114,12 @@ type MerchantCustomerSession = {
 
 **Tres reglas del bloque `advance` que cruzan módulos y no se negocian por pantalla:**
 
-1. **`reason` y `voucherPath` no salen del backend hacia el comprador.** `reason` es el
-   veredicto interno ("el nombre no coincide") y `voucherPath` apunta a un bucket privado.
-   `get-session` los elimina de la respuesta cuando el que mira no es vendedor. Da igual
-   que la UI no los pinte: viajan en el JSON y se ven en la pestaña de red.
-2. **El comprobante nunca se sirve como URL directa.** Se pide firmado a la Edge Function
-   `voucher-url`, que valida que el vendedor sea de la tienda dueña del pedido.
-3. **`stage` avanza solo con el cruce**, y las advertencias no lo frenan: el pago entró,
-   la duda es de operaciones. Ver `01-SALES-ENGINE.md`.
+1. **`reason` no sale del backend hacia el comprador.** Es el veredicto interno del
+   cobro ("no coincide el monto", el error crudo del proveedor). `get-session` lo elimina
+   de la respuesta cuando el que mira no es vendedor. Da igual que la UI no lo pinte:
+   viaja en el JSON y se ve en la pestaña de red.
+2. **`stage` avanza solo con el pago confirmado**, y las advertencias no lo frenan: el
+   dinero entró, la duda es de operaciones. Ver `01-SALES-ENGINE.md`.
 
 Lector único: **`src/lib/session.ts` → `toCustomerSession(order, buyer)`** ensambla este
 objeto desde `order_sessions` + `buyers`. Todos los módulos leen la sesión por ahí.
@@ -139,11 +135,9 @@ Mapeo actual → objetivo:
 | `sale.paymentMethod` | `order_sessions.payment_method` (def `CONTRAENTREGA`) — escrito por checkout | ✅ |
 | `sale.closedBy` | `order_sessions.closed_by` (def `DIRECT_CHECKOUT`) — escrito por checkout | ✅ |
 | `advance.amountPen` | `order_sessions.advance_amount` — lo deriva el SERVIDOR (`_shared/advance.ts`) | ✅ |
-| `advance.verification` | `order_sessions.payment_verification` — la cruza `yape-ingest` o la fija `pay360-webhook` | ✅ |
+| `advance.verification` | `order_sessions.payment_verification` — la fija `pay360-webhook` | ✅ |
 | `advance.provider` | `order_sessions.payment_provider` — '360PAY' o NULL | ✅ |
 | `advance.providerChargeId` | `payment_events.provider_charge_id` (por `matched_order_id`) | ✅ |
-| `advance.yapeCode` | `order_sessions.advance_yape_code` | ✅ |
-| `advance.voucherPath` | `order_sessions.advance_voucher_url` (bucket privado) | ✅ |
 | `advance.reason` | `order_sessions.payment_reason` — solo Ventas | ✅ |
 | `stage` | `order_sessions.stage` — orden en `src/lib/order-stages.ts` | ✅ |
 | `loyalty.points` | `buyers.puntos` | ✅ |

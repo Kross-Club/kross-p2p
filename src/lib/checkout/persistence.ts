@@ -93,7 +93,6 @@ function hydrate(saved: CheckoutState): CheckoutState {
     // Los números que entran a aritmética se validan de verdad, no solo por
     // ausencia: basta un `null` guardado para propagar NaN a toda la pantalla.
     discountPen: finite(saved.discountPen, base.discountPen),
-    advanceYapeCode: typeof saved.advanceYapeCode === 'string' ? saved.advanceYapeCode : '',
     advanceAmount: finite(saved.advanceAmount, base.advanceAmount),
     // El estado de envío no sobrevive a la recarga: se retoma como borrador.
     status: 'DRAFT',

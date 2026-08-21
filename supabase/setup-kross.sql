@@ -359,19 +359,17 @@ CREATE INDEX IF NOT EXISTS idx_checkout_drafts_recovery
   WHERE converted_at IS NULL;
 
 
--- ─── 13. ADELANTO POR YAPE (Fase 3 del checkout) ────────────────────────────
--- Provincia adelanta el flete por Yape. El comprador sube su comprobante; en
--- paralelo entra el pago real por `yape-ingest` y el backend los cruza.
--- Ver docs/01-SALES-ENGINE.md §3.
-
--- 13.a Datos de cobro POR TIENDA. Kross es multi-tenant: cada marca cobra a su
--- propio Yape. Nunca en código ni en config del front.
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_number  text;   -- 9 dígitos
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_holder  text;   -- titular, tal como lo muestra Yape
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_qr_url  text;   -- QR en bucket público (desktop)
--- ¿Un match automático pasa el pedido a confirmado, o siempre lo confirma una
--- persona? Arranca en false a propósito: primero se mide cuánto acierta.
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_autoconfirm boolean DEFAULT false;
+-- ─── 13. ADELANTO DEL PEDIDO (Fase 3 del checkout) ──────────────────────────
+-- El comprador adelanta parte del pedido (la mitad, o el total si lo elige) y
+-- paga el resto al recibir. Quién lo cobra: 360pay (§20) si la marca lo tiene
+-- conectado; si no, un asesor por el chat. Ver docs/01-SALES-ENGINE.md §3.
+--
+-- Aquí vivió el flujo MANUAL de Yape: el número de la marca, el QR, el código
+-- de seguridad de 3 dígitos y el cruce contra las notificaciones que leía un
+-- celular con `yape-ingest`. Se eliminó entero cuando 360pay pasó a producción
+-- —era el único punto del checkout donde el comprador tenía que aprender algo
+-- nuevo, y ninguna marca lo tenía configurado—. Las columnas se DROPEAN en
+-- 13.g; las de `payment_events` se quedan, porque guardan pagos históricos.
 
 -- 13.a-ter ¿Esta marca ofrece entrega a DOMICILIO, o solo recojo en agencia?
 --
@@ -394,19 +392,18 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS home_delivery_enabled boolean DEFAUL
 -- ALTER separado es el que mueve el default en bases ya creadas.
 ALTER TABLE stores ALTER COLUMN home_delivery_enabled SET DEFAULT false;
 
--- ⚠️ Estas tres columnas son PÚBLICAS a propósito: el checkout se las muestra al
--- comprador para que yapee. `stores` tiene SELECT público (política
--- `stores_read`), y RLS es por FILA, no por columna: cualquier cosa que se
--- agregue a esta tabla queda legible con la anon key. Por eso el token del
--- ingestor NO vive aquí sino en `store_secrets` (13.a-bis).
+-- ⚠️ `stores` tiene SELECT público (política `stores_read`), y RLS es por FILA,
+-- no por columna: cualquier cosa que se agregue a esta tabla queda legible con
+-- la anon key. Por eso ningún secreto vive aquí, sino en `store_secrets`.
 
 -- 13.a-bis Secretos por tienda. Tabla aparte justamente porque `stores` se lee
 -- en público. Sin políticas: solo el service role de las Edge Functions entra.
 CREATE TABLE IF NOT EXISTS store_secrets (
   store_id             text PRIMARY KEY REFERENCES stores(id) ON DELETE CASCADE,
-  -- Lo lleva el celular que lee las notificaciones de Yape. Si se filtra, se
-  -- rota esta fila y el lector vuelve a configurarse; nada más cambia.
-  payment_ingest_token text NOT NULL,
+  -- Semilla HMAC del código de pago del comprador (ver §20). Nació como el
+  -- token del lector de notificaciones de Yape y se renombró en 13.g: el valor
+  -- se conserva tal cual, porque cambiarlo cambiaría los códigos ya emitidos.
+  payment_code_secret  text,
   created_at           timestamptz DEFAULT now()
 );
 ALTER TABLE store_secrets ENABLE ROW LEVEL SECURITY;
@@ -421,9 +418,6 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_amount       numeric
 -- ser un porcentaje del pedido, así que el emisor del cobro necesita saber cuál
 -- de las dos eligió el comprador para volver a derivar el mismo monto.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_choice       text DEFAULT 'HALF'; -- HALF | FULL
-ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_voucher_url  text;
--- Código de seguridad que TECLEA el comprador. Es la llave fuerte del cruce.
-ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_yape_code    text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_verification text DEFAULT 'NOT_REQUIRED'; -- NOT_REQUIRED | PENDING | MATCHED | UNMATCHED
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_matched_at   timestamptz;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_reason       text;  -- por qué NO cuadró; para quien revisa, jamás para el comprador
@@ -436,9 +430,11 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_payment_pending
   ON order_sessions(store_id, created_at)
   WHERE payment_verification = 'PENDING';
 
--- 13.c Pagos leídos del celular del dueño. Se guardan TODOS, cuadren o no:
--- un pago sin pedido hoy puede ser el de un pedido que entra en 30 segundos, y
--- `raw` permite reprocesar si el parser resultó corto.
+-- 13.c Todo pago que entra, cuadre o no. Hoy los escribe `pay360-webhook`; la
+-- tabla nació para los pagos que leía un celular del flujo manual, y por eso
+-- conserva columnas que aquel usaba (`security_code`, `operation_number`).
+-- No se dropean: guardan pagos históricos, y auditar cuánto cobró cada marca es
+-- justamente para lo que existe esta tabla.
 CREATE TABLE IF NOT EXISTS payment_events (
   id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   store_id      text        NOT NULL,
@@ -468,30 +464,34 @@ CREATE INDEX IF NOT EXISTS idx_payment_events_unmatched
 -- Contiene el nombre de quien paga (PII) y el token de cobro: solo service role.
 ALTER TABLE payment_events ENABLE ROW LEVEL SECURITY;
 
--- 13.d Bucket de comprobantes. PRIVADO: una captura de Yape lleva nombre y
--- teléfono. El equipo la ve por URL firmada desde la Edge Function.
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('vouchers', 'vouchers', false)
-ON CONFLICT (id) DO NOTHING;
-
--- 13.e El comprador sube su comprobante con la anon key (no tiene sesión). Se
--- le permite ESCRIBIR en el bucket, nunca leer: el bucket es privado y el
--- equipo abre las capturas con URL firmada desde una Edge Function.
-DROP POLICY IF EXISTS vouchers_public_insert ON storage.objects;
-CREATE POLICY vouchers_public_insert ON storage.objects
-  FOR INSERT TO anon, authenticated
-  WITH CHECK (bucket_id = 'vouchers');
-
 -- 13.f Motivo por el que un pago entrante NO se procesó (texto ilegible, pago
 -- saliente, variable del automatizador sin expandir…). Antes esos casos
 -- respondían 200 y no dejaban rastro: la fila no existía y no había forma de
 -- saber por qué. Un pago que no se ve es un pago perdido.
 ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS ignored_reason text;
--- El índice de cruce solo debe mirar pagos utilizables.
+
+-- 13.g Baja del flujo manual de Yape. El `payment_ingest_token` se RENOMBRA en
+-- vez de dropearse: su valor es la semilla HMAC del código de pago (§20), y
+-- borrarlo cambiaría los códigos ya emitidos — o sea, dejaría cupones vivos
+-- apuntando a un cliente que 360pay ya no resolvería. Idempotente: el rename
+-- solo corre si la columna vieja sigue ahí.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'store_secrets'
+               AND column_name = 'payment_ingest_token') THEN
+    ALTER TABLE store_secrets RENAME COLUMN payment_ingest_token TO payment_code_secret;
+  END IF;
+END $$;
+ALTER TABLE store_secrets ALTER COLUMN payment_code_secret DROP NOT NULL;
+
+ALTER TABLE stores DROP COLUMN IF EXISTS yape_number;
+ALTER TABLE stores DROP COLUMN IF EXISTS yape_holder;
+ALTER TABLE stores DROP COLUMN IF EXISTS yape_qr_url;
+ALTER TABLE stores DROP COLUMN IF EXISTS yape_autoconfirm;
+ALTER TABLE order_sessions DROP COLUMN IF EXISTS advance_yape_code;
+ALTER TABLE order_sessions DROP COLUMN IF EXISTS advance_voucher_url;
 DROP INDEX IF EXISTS idx_payment_events_unmatched;
-CREATE INDEX IF NOT EXISTS idx_payment_events_unmatched
-  ON payment_events(store_id, amount_pen, received_at DESC)
-  WHERE matched_order_id IS NULL AND ignored_reason IS NULL;
+DROP POLICY IF EXISTS vouchers_public_insert ON storage.objects;
 
 -- ─── 14. Etapa `validando` ───────────────────────────────────────────────────
 -- Un pedido con adelanto quedaba en "Pedido" desde que el comprador pagaba
@@ -627,9 +627,9 @@ CREATE TRIGGER trg_complaints_codigo BEFORE INSERT ON complaints
 -- ─── 16. INFRAESTRUCTURA DEL COBRO EN LÍNEA ──────────────────────────────────
 -- Columnas compartidas por cualquier motor de cobro que emita o cobre el
 -- adelanto DENTRO del checkout, en vez del flujo manual (caja con número de
--- Yape + código de 3 dígitos + cruce por `yape-ingest`). Hoy el único motor es
--- 360pay (§20); el flujo manual sigue vivo para las marcas que aún no lo tienen
--- conectado. Ver docs/06-360PAY.md.
+-- Yape + código de 3 dígitos + cruce por `yape-ingest`, eliminado en 13.g). Hoy
+-- el único motor es 360pay (§20); una marca sin conectar cierra el pedido igual
+-- y coordina el adelanto por el chat. Ver docs/06-360PAY.md.
 --
 -- Aquí vivió también el cobro con Culqi, con sus llaves por tienda en
 -- `store_secrets`. Se eliminó entero: nunca llegó a cobrar un sol —seguía
@@ -637,13 +637,7 @@ CREATE TRIGGER trg_complaints_codigo BEFORE INSERT ON complaints
 -- confundía la configuración de cada marca. Las columnas se DROPEAN abajo para
 -- que no queden llaves guardadas de un motor que ya no existe.
 
--- 16.a Una tienda puede cobrar en línea sin haber configurado nunca el lector
--- de Yape: su fila en store_secrets nace sin token de ingesta. `yape-ingest` ya
--- trata el NULL como "ingesta apagada" (responde 401), así que soltar el
--- NOT NULL no abre nada.
-ALTER TABLE store_secrets ALTER COLUMN payment_ingest_token DROP NOT NULL;
-
--- 16.b El cobro en línea entra a `payment_events` como un pago más: misma
+-- 16.a El cobro en línea entra a `payment_events` como un pago más: misma
 -- trazabilidad, misma tabla que audita cuánto cobró cada marca. `provider`
 -- distingue la fuente del dinero, `provider_charge_id` el identificador del
 -- cobro en el proveedor, y `provider_fee_pen` la comisión en soles (para que la
@@ -655,27 +649,25 @@ ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider           text;
 ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider_charge_id text;
 ALTER TABLE payment_events ADD COLUMN IF NOT EXISTS provider_fee_pen   numeric;
 
--- 16.c Marca de procedencia del pedido. NULL = flujo manual; '360PAY' = el
+-- 16.b Marca de procedencia del pedido. NULL = flujo manual; '360PAY' = el
 -- adelanto se cobra en línea. Es la línea que separa las dos piscinas de cruce:
--- un pedido con cobro en línea NO puede ser consumido por el cruce manual (un
--- yape ajeno de igual monto lo daría por pagado, y el cobro real nunca se
--- registraría). `register-buyer` la escribe al alta, y tanto su reverse-match
--- como `yape-ingest` excluyen estos pedidos.
+-- un pedido con cobro en línea solo lo puede dar por pagado su propio webhook.
+-- `register-buyer` la escribe al alta.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS payment_provider text;
 
--- 16.d Tienda de ORIGEN del pedido (la del producto). `register-buyer` puede
+-- 16.c Tienda de ORIGEN del pedido (la del producto). `register-buyer` puede
 -- asignar la sesión a la tienda de un vendedor de OTRA marca cuando no hay
 -- Ventas disponible en la propia (round-robin cross-store), y la config de
 -- cobro se tiene que resolver por la marca que VENDE, jamás por la del vendedor
 -- asignado — cobrar a la cuenta de otra marca es el peor bug posible.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS origin_store_id text;
 
--- 16.e Contador de intentos de cobro. Con un order_token válido (el propio) se
+-- 16.d Contador de intentos de cobro. Con un order_token válido (el propio) se
 -- podrían lanzar intentos ilimitados contra la cuenta de la marca. Corte duro
 -- en el emisor.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS advance_charge_attempts int DEFAULT 0;
 
--- 16.f Baja de Culqi. Las llaves se van PRIMERO: una credencial guardada de un
+-- 16.e Baja de Culqi. Las llaves se van PRIMERO: una credencial guardada de un
 -- motor que ya nadie ejecuta es superficie de ataque sin contraparte de valor.
 -- Idempotente y seguro de correr dos veces.
 ALTER TABLE store_secrets DROP COLUMN IF EXISTS culqi_public_key;
@@ -809,10 +801,7 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_pay360_coupon
   ON order_sessions(pay360_coupon_id)
   WHERE pay360_coupon_id IS NOT NULL;
 
--- 20.e `payment_provider` gana el valor '360PAY'. Sigue siendo la línea que
--- separa las piscinas de cruce: `yape-ingest` solo consume pedidos con
--- `payment_provider IS NULL`, así que un pedido de 360pay no puede ser dado por
--- pagado por un yape ajeno del mismo monto.
+-- 20.e `payment_provider` gana el valor '360PAY'.
 --
 -- El anti-duplicado del webhook reutiliza el índice único (store_id, dedupe_key)
 -- del 13.c con `dedupe_key = '360pay:' || X-360Pay-Event-Id`. Se deduplica por

@@ -412,33 +412,22 @@ describe('validación', () => {
     expect(validateStep(escrito).agencyBranch).toBeUndefined()
   })
 
-  // Lo obligatorio con adelanto es el CÓDIGO, no la captura: el código es lo que
-  // cuadra el pago con la notificación que le llega a la marca, y la imagen no la
-  // lee ninguna máquina. Ver VOUCHER_REQUIRED en checkout.config.ts.
-  it('el paso 3 con adelanto exige el código de Yape, no la captura', () => {
+  // El paso 3 dejó de pedir nada cuando se eliminó el flujo manual de Yape:
+  // exigía el código de seguridad de 3 dígitos, que es la PRUEBA de un pago que
+  // el comprador todavía no hizo. Con 360pay el botón que cobra aparece después
+  // de cerrar el pedido; sin 360pay, el adelanto lo coordina un asesor.
+  it('el paso 3 con adelanto ya no exige nada', () => {
     const s = run(conPack(), PROV_D, { type: 'GOTO', step: 3 })
-    expect(validateStep(s).yapeCode).toBeTruthy()
-    expect(validateStep(s).voucher).toBeUndefined()
-
-    expect(validateStep(run(s, { type: 'SET_YAPE_CODE', code: '96' })).yapeCode).toBeTruthy()
-
-    const conCodigo = run(s, { type: 'SET_YAPE_CODE', code: '965' })
-    // Sigue PENDING y aun así el paso valida: el CTA no espera la verificación,
-    // que corre en background mientras el comprador ya cerró su pedido.
-    expect(conCodigo.payment.verification).toBe('PENDING')
-    expect(validateStep(conCodigo)).toEqual({})
+    expect(validateStep(s)).toEqual({})
+    // Y sigue PENDING: el pedido tiene un adelanto por cobrar, solo que no se
+    // cobra en esta pantalla.
+    expect(s.payment.verification).toBe('PENDING')
   })
 
-  it('el código de Yape se queda en dígitos y no pasa de 3', () => {
-    const s = run(base(), { type: 'SET_YAPE_CODE', code: '9a6-5 4' })
-    expect(s.advanceYapeCode).toBe('965')
-  })
-
-  it('Lima también adelanta, así que el paso 3 sí pide el código de Yape', () => {
-    // Cuando Lima era contraentrega puro este paso no validaba nada. Ahora que
-    // adelanta la mitad tiene que exigir lo mismo que provincia.
+  it('Lima adelanta igual que provincia, y tampoco pide nada en el paso 3', () => {
     const s = run(conPack(), LIMA_D, { type: 'GOTO', step: 3 })
-    expect(validateStep(s)).not.toEqual({})
+    expect(s.advanceAmount).toBeGreaterThan(0)
+    expect(validateStep(s)).toEqual({})
   })
 
   it('canSubmit bloquea el doble tap mientras se envía', () => {
@@ -448,8 +437,6 @@ describe('validación', () => {
       { type: 'SET_DNI', dni: '12345678' },
       { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Miraflores' },
       { type: 'SET_LIMA_ADDRESS', addressText: 'Av. Larco 123' },
-      // Lima ya no cierra sin adelanto: hace falta el código del Yape.
-      { type: 'SET_YAPE_CODE', code: '195' },
     )
     expect(canSubmit(complete)).toBe(true)
     expect(canSubmit(run(complete, { type: 'SUBMITTING' }))).toBe(false)

@@ -538,25 +538,25 @@ describe('higiene de la llave de partner', () => {
   })
 })
 
-describe('el paso 3 con 360pay no pide nada', () => {
+describe('el paso 3 no pide nada', () => {
   // Con 360pay el comprador toca "Terminar mi pedido" y RECIÉN ahí aparece el
-  // botón que abre Yape. Pedirle antes el código de seguridad de 3 dígitos es
-  // pedirle la prueba de un pago que todavía no hizo — y era lo que dejaba el
-  // CTA bloqueado con "completa los datos marcados".
+  // botón que abre Yape. Sin 360pay el adelanto lo coordina un asesor por el
+  // chat. En los dos casos, pedirle algo aquí sería pedirle la prueba de un
+  // pago que todavía no hizo — y era lo que dejaba el CTA bloqueado con
+  // "completa los datos marcados".
   const base = (pay360: StorePay360 | null): CheckoutState => ({
     ...initialCheckoutState('p1'),
     pay360,
     locationType: 'LIMA',
     advanceAmount: 6,
-    advanceYapeCode: '',
   })
 
-  it('sin código de Yape, el paso 3 ya es válido', () => {
+  it('con 360pay, el paso 3 ya es válido', () => {
     expect(validateStep(base({ enabled: true }), 3)).toEqual({})
   })
 
-  it('sin 360pay sigue exigiendo el código, como siempre', () => {
-    expect(validateStep(base(null), 3).yapeCode).toBeTruthy()
+  it('sin 360pay tampoco pide nada: el pedido cierra y cobra un asesor', () => {
+    expect(validateStep(base(null), 3)).toEqual({})
   })
 
   it('sin adelanto no pide nada, con o sin 360pay', () => {

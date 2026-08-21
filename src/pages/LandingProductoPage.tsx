@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
+import CheckoutModal from '../components/checkout/CheckoutModal'
 import { COPY } from '../lib/checkout/checkout.config'
 import type { StorePay360 } from '../lib/checkout/types'
 import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
@@ -37,9 +37,6 @@ export default function LandingProductoPage() {
   // Pedido reciente de este navegador, si lo hay. Ver `saveLastOrder`.
   const [lastOrder, setLastOrder] = useState<LastOrder | null>(null)
   const [packIdx, setPackIdx] = useState(0)
-  // Datos de cobro de la MARCA. Cada tienda yapea a su propio número, así que
-  // salen de `stores`, nunca de config.
-  const [yape, setYape] = useState<StoreYape | null>(null)
   // `true` mientras no se sepa: la marca que sí reparte a domicilio no debe
   // perder la opción por un instante de carga. Si no reparte, el switch llega
   // en el mismo fetch que el Yape y la opción desaparece antes del paso 2.
@@ -84,14 +81,13 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     supabase.from('stores')
-      .select('yape_number, yape_holder, yape_qr_url, home_delivery_enabled, pay360_enabled, checkout_ab_mode')
+      .select('home_delivery_enabled, pay360_enabled, checkout_ab_mode')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         // Degradación POR CAMPO: si el select entero falla (p. ej. una columna
-        // aún sin migrar), el checkout cae al flujo manual — jamás se pierde la
-        // caja de Yape por una columna nueva ausente.
+        // aún sin migrar), el checkout cierra el pedido igual y el adelanto lo
+        // coordina un asesor — jamás se pierde la venta por una columna nueva.
         if (!data) return
-        setYape({ number: data.yape_number, holder: data.yape_holder, qrUrl: data.yape_qr_url })
         // `?? true` y no `!!`: una tienda de antes de la columna llega con el
         // campo ausente, y apagarle el domicilio por eso rompería su operación.
         setHomeDelivery(data.home_delivery_enabled ?? true)
@@ -175,7 +171,6 @@ export default function LandingProductoPage() {
           initialPack={packSelection.defaultPackId}
           onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
           onPartialLead={state => saveCheckoutDraft(state, product)}
-          yape={yape}
           homeDeliveryEnabled={homeDelivery}
           pay360={pay360}
           abMode={abMode}

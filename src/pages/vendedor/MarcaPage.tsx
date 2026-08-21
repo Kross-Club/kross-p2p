@@ -25,9 +25,6 @@ interface StoreRow {
   wa_display_phone?: string | null
   wa_business_account_id?: string | null
   // Cobros de la marca
-  yape_number?: string | null
-  yape_holder?: string | null
-  yape_qr_url?: string | null
   /** Derivado por el backend: la llave secreta jamás viaja, solo su presencia. */
   pay360_enabled?: boolean
   pay360_env?: string | null
@@ -53,7 +50,7 @@ const ERR: Record<string, string> = {
 
 async function call(payload: Record<string, unknown>) {
   // El JWT REAL del vendedor: manage-store lo verifica contra Auth, y los
-  // campos de cobro (yape/360pay) SOLO se aceptan por esta vía. El
+  // campos de cobro (360pay) SOLO se aceptan por esta vía. El
   // admin_auth_id del body queda como compat mientras conviven versiones.
   const { data: authData } = await supabase.auth.getSession()
   const jwt = authData.session?.access_token ?? ANON
@@ -226,9 +223,6 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [waDisplay, setWaDisplay] = useState(store.wa_display_phone ?? '')
   const [waBiz, setWaBiz] = useState(store.wa_business_account_id ?? '')
   // Cobros — del admin de la tienda, no del super: es SU número y SU cuenta.
-  const [yapeNumber, setYapeNumber] = useState(store.yape_number ?? '')
-  const [yapeHolder, setYapeHolder] = useState(store.yape_holder ?? '')
-  const [yapeQr, setYapeQr] = useState<string | null>(store.yape_qr_url ?? null)
   const [pay360On, setPay360On] = useState(!!store.pay360_enabled)
   const [pay360Env, setPay360Env] = useState(store.pay360_env === 'live' ? 'live' : 'sandbox')
   const [pay360Prefix, setPay360Prefix] = useState('')
@@ -240,14 +234,12 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
 
   const [uploading, setUploading] = useState(false)
   const [uploadingIcon, setUploadingIcon] = useState(false)
-  const [uploadingQr, setUploadingQr] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
 
   const pick = async (f: File) => { setUploading(true); const url = await uploadLogo(f, adminId); if (url) setLogo(url); setUploading(false) }
   const pickIcon = async (f: File) => { setUploadingIcon(true); const url = await uploadLogo(f, adminId); if (url) setNotifIcon(url); setUploadingIcon(false) }
-  const pickQr = async (f: File) => { setUploadingQr(true); const url = await uploadLogo(f, adminId); if (url) setYapeQr(url); setUploadingQr(false) }
 
   const save = async () => {
     if (!nombre.trim()) { setErr('Ponle un nombre a la marca.'); return }
@@ -257,7 +249,6 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       nombre: nombre.trim(), logo_url: logo, notif_icon_url: notifIcon, color_primary: cp, color_dark: cd,
       // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
       // verificado para estos campos — redirigen dinero, no un logo).
-      yape_number: yapeNumber, yape_holder: yapeHolder, yape_qr_url: yapeQr,
       pay360_enabled: pay360On, pay360_env: pay360Env,
     }
     if (isSuper) {
@@ -371,27 +362,16 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             </p>
           </div>
         )}
-        {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU Yape y
-              SU cuenta de 360pay. El backend exige el JWT verificado para todo
-              esto: son campos que redirigen dinero. ── */}
+        {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU cuenta
+              de 360pay. El backend exige el JWT verificado para todo esto: son
+              campos que redirigen dinero. ── */}
         <div className="rounded-2xl p-3 mb-4" style={{ background: '#FAF5FB', border: '1px solid #E9DDF9' }}>
           <p className="text-xs font-black mb-2" style={{ color: '#742284' }}>💜 Cobros de la marca</p>
 
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Número de Yape (9 dígitos)</label>
-          <input value={yapeNumber} inputMode="numeric" maxLength={9}
-            onChange={e => setYapeNumber(e.target.value.replace(/\D/g, '').slice(0, 9))}
-            placeholder="987654321"
-            className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Titular, tal como lo muestra Yape</label>
-          <input value={yapeHolder} onChange={e => setYapeHolder(e.target.value)}
-            placeholder="MARCA DEMO SAC"
-            className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2" />
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">QR de Yape (lo ve el comprador en desktop)</label>
-          <div className="mb-3"><LogoPicker logo={yapeQr} uploading={uploadingQr} onPick={pickQr} /></div>
-
           {/* 360pay: cobro EN el checkout con el botón de Yape. Sin esto, la
-              marca cobra su adelanto por el Yape manual de arriba. */}
-          <div className="border-t pt-3" style={{ borderColor: '#E9DDF9' }}>
+              marca no cobra adelantos en línea — el pedido se cierra igual y lo
+              coordina un asesor por el chat. */}
+          <div>
             <button onClick={() => pay360Connected && setPay360On(v => !v)}
               className="w-full flex items-center justify-between mb-1"
               style={{ opacity: pay360Connected || pay360On ? 1 : 0.5 }}>

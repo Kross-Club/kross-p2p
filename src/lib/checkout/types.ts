@@ -111,10 +111,6 @@ export interface PickupPoint {
   freeText: string | null
 }
 
-export interface PaymentVoucher {
-  url: string
-  uploadedAt: string
-}
 
 export interface PaymentState {
   verification: PaymentVerification
@@ -175,14 +171,6 @@ export interface CheckoutState {
   pickup: PickupPoint
   /** true si falta lat/lng o el resultado de cobertura es BORDERLINE. */
   needsLocationConfirmation: boolean
-  paymentVoucher: PaymentVoucher | null
-  /**
-   * Código de seguridad de 3 dígitos que el comprador copia de su propio
-   * comprobante de Yape. Es la **llave fuerte** del cruce automático: viaja
-   * también en la notificación que le llega a la marca, así que es lo único que
-   * permite decidir sin ambigüedad entre dos pedidos del mismo monto.
-   */
-  advanceYapeCode: string
   /**
    * Config de 360pay de la tienda. `null` = la tienda no cobra en línea (o aún
    * no cargó). NO es un derivado ni sobrevive al borrador: el modal la

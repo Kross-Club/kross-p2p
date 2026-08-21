@@ -29,7 +29,7 @@ export interface OrderSession {
   dispatch_type?: string | null
   agency_name?: string | null
   delivery_reference?: string | null
-  /** Estado del cruce del adelanto por Yape. */
+  /** Estado del cobro del adelanto. */
   payment_verification?: string | null
   /** Motivo escrito por el cruce: nombre distinto, código que no calza, etc. */
   payment_reason?: string | null
