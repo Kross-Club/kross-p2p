@@ -272,9 +272,11 @@ export const COPY = {
   pay360Intro: 'Toca el botón y Yape se abre con todo listo. No tienes que escribir el monto ni buscar ningún número.',
   pay360AmountLabel: 'Monto a pagar',
   // Lo que se ve ANTES de terminar el pedido. Dice qué va a pasar, para que
-  // tocar el botón no sea un salto al vacío — pero no pide nada, porque
-  // todavía no hay nada que el comprador pueda darnos.
-  pay360Step3Hint: 'Al terminar tu pedido te mostramos un botón que abre Yape con el monto ya puesto. No tienes que escribir nada.',
+  // el siguiente paso no sea un salto al vacío — pero no pide nada, porque
+  // todavía no hay nada que el comprador pueda darnos. No promete "un botón":
+  // en PC el botón no existe (ahí se paga con código) y prometerlo rompería
+  // la confianza justo antes de cobrar.
+  pay360Step3Hint: 'Al terminar tu pedido te mostramos cómo pagar con tu Yape. El monto ya queda reservado: no tienes que escribirlo.',
   pay360Cta: 'Pagar con Yape',
   // Lo que hay que decir ANTES de que se vaya: Yape no lo devuelve solo, y
   // volver sin entender qué pasó es donde se pierden los pedidos ya pagados.
@@ -285,9 +287,9 @@ export const COPY = {
   // El sello de confianza sobre la indicación. "Con Yape" y no "con 360pay":
   // el comprador confía en la app que ya usa, no en un recaudador que no conoce.
   pay360Secure: 'Pago 100% seguro con Yape',
-  pay360CodeLabel: '¿Pagas desde tu computadora?',
-  // Sin botón el código deja de ser el respaldo y pasa a ser el camino: el
-  // rótulo no puede seguir preguntando por la computadora.
+  // El código nunca convive con el botón en la misma pantalla (móvil = botón,
+  // desktop = código), así que el rótulo no pregunta por la computadora: donde
+  // se ve, ES el camino de pago.
   pay360CodeLabelOnly: 'Tu código de pago',
   pay360IntroCodeOnly: 'Abre tu Yape y paga con este código. El monto ya está reservado: no tienes que escribirlo.',
   pay360CodeCopy: 'Copiar',
