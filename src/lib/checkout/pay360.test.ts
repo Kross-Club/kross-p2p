@@ -335,6 +335,32 @@ describe('fases del cobro con 360pay', () => {
     if (p.k === 'AWAITING') expect(p.coupon.consumerCode).toBe('KRS12345678901')
   })
 
+  it('un cupón SIN enlace sigue siendo un cupón pagable', () => {
+    // El primer cupón real de producción llegó así: 360pay no devolvió enlace y
+    // la plataforma no tenía los identificadores del servicio de Yape. El
+    // pedido moría en ISSUE_FAILED con el cupón ya emitido — o sea, el
+    // comprador no pagaba algo que sí existía y quedaba vivo esperando cobrarse.
+    // Sin enlace se espera igual: el código se teclea en “Pagar servicios”.
+    const p = run({ k: 'IDLE' },
+      { type: 'REGISTERED_PAY360', ...ref },
+      { type: 'COUPON_ISSUED', coupon: { ...cupon, deeplink: null } })
+    expect(p.k).toBe('AWAITING')
+    if (p.k === 'AWAITING') {
+      expect(p.coupon.deeplink).toBeNull()
+      expect(p.coupon.consumerCode).toBe('KRS12345678901')
+      expect(p.coupon.amountPen).toBe(5)
+    }
+  })
+
+  it('sin enlace el pago igual se confirma solo', () => {
+    const p = run({ k: 'IDLE' },
+      { type: 'REGISTERED_PAY360', ...ref },
+      { type: 'COUPON_ISSUED', coupon: { ...cupon, deeplink: null } },
+      { type: 'PAID' })
+    expect(p.k).toBe('DONE')
+    if (p.k === 'DONE') expect(p.paid).toBe(true)
+  })
+
   it('esperar el pago NO es lo mismo que un cobro en duda', () => {
     // CONFIRMING significa "el dinero pudo salir y hay que averiguar"; AWAITING
     // significa "todavía no paga". Reusar CONFIRMING haría que un pedido recién

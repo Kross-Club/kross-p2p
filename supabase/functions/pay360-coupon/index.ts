@@ -193,20 +193,11 @@ Deno.serve(async (req) => {
     return json({ ok: false, stage: 'coupon', code: 'create_failed', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 502)
   }
 
-  // El enlace: primero el que mande 360pay, y si no viene, el que armamos. Si
-  // no hay ninguno el cupón YA está emitido, así que no se puede fallar en
-  // silencio — se deja el pedido a un asesor en vez de mostrar un botón muerto.
-  const deeplink = paymentUrlOf(coupon.data as Record<string, unknown>)
-    ?? (companyId && serviceId
-      ? yapeDeeplink({ companyId, serviceId, consumerCode, name: '360Pay' })
-      : null)
-
-  if (!deeplink) {
-    await notePaymentFailure(session, 'Cupón emitido pero sin enlace de pago — falta configurar el servicio de Yape')
-    console.error('[pay360-coupon] sin enlace de pago', JSON.stringify({ coupon: coupon.data._id }))
-    return json({ ok: false, stage: 'config', code: 'no_payment_link', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 409)
-  }
-
+  // El cupón YA existe en 360pay: se guarda ANTES que cualquier otra decisión.
+  // Un cupón emitido y no anotado es un cupón huérfano, y eso no es un registro
+  // que falta — es plata mal cobrada: el banco paga SIEMPRE el pendiente más
+  // antiguo, así que el huérfano se lleva el pago del próximo pedido de ese
+  // mismo comprador. Solo esta fila permite anularlo después.
   await supabase.from('order_sessions').update({
     pay360_coupon_id: coupon.data._id,
     pay360_consumer_code: consumerCode,
@@ -214,13 +205,36 @@ Deno.serve(async (req) => {
     payment_reason: null,
   }).eq('id', session.id)
 
+  // El enlace: primero el que mande 360pay, y si no viene, el que armamos.
+  const deeplink = paymentUrlOf(coupon.data as Record<string, unknown>)
+    ?? (companyId && serviceId
+      ? yapeDeeplink({ companyId, serviceId, consumerCode, name: '360Pay' })
+      : null)
+
+  // Sin enlace NO se cae el pedido. El botón es una comodidad, no el cobro: el
+  // cupón se paga igual entrando a “Pagar servicios” en Yape y tecleando el
+  // código, que es el camino que la caja de pago ya muestra siempre por la
+  // paridad con desktop. Tirar aquí dejaba al comprador sin pagar un cupón que
+  // sí existía, y al cupón vivo esperando cobrarse solo.
+  if (!deeplink) {
+    // Qué campos trajo el cupón — solo los NOMBRES, nunca los valores: el
+    // cuerpo lleva nombre y teléfono del comprador. Si 360pay devuelve el
+    // enlace con otro nombre, esta línea es la que lo delata.
+    console.warn('[pay360-coupon] cupón sin enlace — se paga tecleando el código', JSON.stringify({
+      coupon: coupon.data._id,
+      campos: Object.keys(coupon.data as Record<string, unknown>).sort(),
+      yape_configurado: !!(companyId && serviceId),
+    }))
+  }
+
   return json({
     ok: true,
     amount_pen: rowAmount,
     consumer_code: consumerCode,
     coupon_id: coupon.data._id,
     // El enlace se resuelve en el SERVIDOR: el front no conoce los
-    // identificadores de Yape ni puede alterar a qué servicio apunta.
+    // identificadores de Yape ni puede alterar a qué servicio apunta. `null`
+    // es un valor válido: la caja de pago cae al código tecleado a mano.
     deeplink,
   })
 })

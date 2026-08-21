@@ -12,8 +12,9 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 export interface CouponIssued {
   ok: true
   /** Enlace que abre Yape pre-llenado. Lo arma el servidor: el front no conoce
-   *  los identificadores de Yape ni puede alterar a qué servicio apunta. */
-  deeplink: string
+   *  los identificadores de Yape ni puede alterar a qué servicio apunta.
+   *  `null` = sin botón; el cupón se paga tecleando el código en Yape. */
+  deeplink: string | null
   consumerCode: string
   amountPen: number
   /** El adelanto ya estaba pagado (reapertura del modal, o el webhook ganó). */
@@ -51,7 +52,10 @@ export async function issueCoupon(input: { orderToken: string }): Promise<Coupon
   if (body.ok === true) {
     return {
       ok: true,
-      deeplink: typeof body.deeplink === 'string' ? body.deeplink : '',
+      // Solo un `https://` cuenta como enlace. Un '' o un esquema raro pintaría
+      // un botón que no abre nada, que es peor que no tener botón.
+      deeplink: typeof body.deeplink === 'string' && body.deeplink.startsWith('https://')
+        ? body.deeplink : null,
       consumerCode: typeof body.consumer_code === 'string' ? body.consumer_code : '',
       amountPen: typeof body.amount_pen === 'number' ? body.amount_pen : 0,
       alreadyPaid: body.already_paid === true || undefined,
