@@ -38,8 +38,11 @@ interface OrderRef {
 
 /** Lo que el comprador necesita para ir a pagar: el botón y el respaldo. */
 export interface CouponRef {
-  /** Enlace que abre Yape pre-llenado. Lo arma el SERVIDOR. */
-  deeplink: string
+  /** Enlace que abre Yape pre-llenado. Lo arma el SERVIDOR.
+   *  `null` cuando 360pay no devuelve enlace y la plataforma no tiene los
+   *  identificadores del servicio: el cupón sigue siendo pagable tecleando el
+   *  código, así que esto oculta el botón, no rompe el cobro. */
+  deeplink: string | null
   /** Código de pago, para tipearlo a mano si el enlace no abre (desktop). */
   consumerCode: string
   amountPen: number
