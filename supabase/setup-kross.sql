@@ -89,11 +89,20 @@ CREATE TABLE IF NOT EXISTS buyer_actions (
   UNIQUE (buyer_id, action_key)
 );
 
--- Únicos COMPLETOS (permiten varios NULL, pero no duplican DNI ni teléfono).
--- Deben ser índices únicos completos — NO parciales — para que el upsert
--- "onConflict: document_number / phone" de las Edge Functions funcione.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_buyers_document_number ON buyers(document_number);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_buyers_phone           ON buyers(phone);
+-- La unicidad del comprador es **POR TIENDA**, no global: la crea el bloque 0
+-- (`idx_buyers_store_doc` / `idx_buyers_store_phone`) y es lo que hace posible
+-- el multi-tenant — el mismo DNI puede comprarle a dos marcas distintas, y de
+-- hecho pasa: `12345678` existe en Gadicaf y en Kross Shop.
+--
+-- Aquí vivían los dos únicos GLOBALES, de cuando `buyers` no tenía `store_id`.
+-- El bloque 0 ya los dropea, y estas dos líneas los volvían a crear tres
+-- párrafos después: el script se contradecía a sí mismo y el resultado dependía
+-- del orden. Con datos reales dejó de ser sutil y pasó a reventar el script
+-- entero con `23505: Key (document_number)=(12345678) is duplicated`.
+--
+-- Las Edge Functions ya no los necesitan: todas hacen `onConflict` sobre
+-- `store_id,document_number` o `store_id,phone`. La limpieza de los restos que
+-- quedaron en producción con otros nombres vive en el bloque 18.
 
 -- Contienen PII (DNI/teléfono): solo las Edge Functions (service role) las tocan.
 ALTER TABLE buyers        ENABLE ROW LEVEL SECURITY;
