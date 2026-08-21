@@ -29,6 +29,8 @@ interface Step3Props {
   yape: StoreYape | null
   /** true = este pedido se cobra en línea (culqiActiveFor, lo decide el modal). */
   culqi: boolean
+  /** true = se cobra con 360pay. Manda sobre `culqi` (ver checkout.config). */
+  pay360: boolean
   errors: FieldErrors
   touch: (field: 'yapeCode' | 'culqiPhone' | 'culqiOtp') => void
   onYapeCode: (code: string) => void
@@ -40,7 +42,7 @@ interface Step3Props {
 }
 
 export default function Step3Confirm({
-  state, packName, price, yape, culqi, errors, touch, onYapeCode,
+  state, packName, price, yape, culqi, pay360, errors, touch, onYapeCode,
   onCulqiPhone, onCulqiOtp, onVoucher, onAdvanceChoice, submitError,
 }: Step3Props) {
   const advance = state.advanceAmount
@@ -91,7 +93,22 @@ export default function Step3Confirm({
         </p>
       )}
 
-      {advance > 0 && (culqi
+      {/* Con 360pay el paso 3 no pide nada: el botón que abre Yape aparece
+          DESPUÉS de terminar el pedido, con el monto ya fijado por el cupón.
+          Mostrar aquí la caja manual —número, código de 3 dígitos— pedía la
+          prueba de un pago que todavía no existe. */}
+      {advance > 0 && pay360 ? (
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <p className="text-sm font-bold text-gray-900">{COPY.pay360Title}</p>
+          <p className="mt-1 text-xs leading-relaxed text-gray-500">{COPY.pay360Step3Hint}</p>
+          <div className="mt-3 rounded-xl bg-gray-50 px-3 py-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+              {COPY.pay360AmountLabel}
+            </span>
+            <p className="text-2xl font-black text-gray-900">S/{advance}</p>
+          </div>
+        </div>
+      ) : advance > 0 && (culqi
         ? (
           <CulqiYapeBox
             state={state}

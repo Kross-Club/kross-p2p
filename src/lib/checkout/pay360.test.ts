@@ -309,6 +309,9 @@ describe('firma del webhook', () => {
 import { orderRegistered, payPhaseReducer } from './pay-phase'
 import type { CouponRef, PayPhase } from './pay-phase'
 import { pay360ActiveFor } from './checkout.config'
+import { validateStep } from './validation'
+import { initialCheckoutState } from './machine'
+import type { CheckoutState } from './types'
 import type { StorePay360 } from './types'
 
 const ref = { token: 't', orderCode: 'ORD-1', sessionId: 's1' }
@@ -469,5 +472,32 @@ describe('higiene de la llave de partner', () => {
   it('una llave que es solo espacios cuenta como ausente', () => {
     expect(pickPartnerKey('live', 'pt_sandbox', '   ')).toBe('pt_sandbox')
     expect(pickPartnerKey('sandbox', '   ', '')).toBe('')
+  })
+})
+
+describe('el paso 3 con 360pay no pide nada', () => {
+  // Con 360pay el comprador toca "Terminar mi pedido" y RECIÉN ahí aparece el
+  // botón que abre Yape. Pedirle antes el código de seguridad de 3 dígitos es
+  // pedirle la prueba de un pago que todavía no hizo — y era lo que dejaba el
+  // CTA bloqueado con "completa los datos marcados".
+  const base = (pay360: StorePay360 | null): CheckoutState => ({
+    ...initialCheckoutState('p1'),
+    pay360,
+    locationType: 'LIMA',
+    advanceAmount: 6,
+    advanceYapeCode: '',
+  })
+
+  it('sin código de Yape, el paso 3 ya es válido', () => {
+    expect(validateStep(base({ enabled: true }), 3)).toEqual({})
+  })
+
+  it('sin 360pay sigue exigiendo el código, como siempre', () => {
+    expect(validateStep(base(null), 3).yapeCode).toBeTruthy()
+  })
+
+  it('sin adelanto no pide nada, con o sin 360pay', () => {
+    expect(validateStep({ ...base({ enabled: true }), advanceAmount: 0 }, 3)).toEqual({})
+    expect(validateStep({ ...base(null), advanceAmount: 0 }, 3)).toEqual({})
   })
 })

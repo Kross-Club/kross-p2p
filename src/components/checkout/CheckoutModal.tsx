@@ -355,7 +355,11 @@ export default function CheckoutModal({
   }, [state.orderId, dispatch])
 
   const submitting = state.status === 'SUBMITTING'
-  const culqiActive = culqiActiveFor(state)
+  // Misma precedencia que en el submit: si los dos están activos manda 360pay.
+  // Calcularlo distinto aquí pintaría una pantalla que no corresponde al cobro
+  // que después se ejecuta.
+  const pay360Active = pay360ActiveFor(state)
+  const culqiActive = !pay360Active && culqiActiveFor(state)
   const done = phase.k === 'DONE'
 
   return (
@@ -434,6 +438,7 @@ export default function CheckoutModal({
               price={price}
               yape={yape}
               culqi={culqiActive}
+              pay360={pay360Active}
               errors={errors}
               touch={touch}
               onYapeCode={code => dispatch({ type: 'SET_YAPE_CODE', code })}

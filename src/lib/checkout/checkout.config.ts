@@ -373,6 +373,10 @@ export const COPY = {
   pay360Title: 'Paga tu adelanto con Yape',
   pay360Intro: 'Toca el botón y Yape se abre con todo listo. No tienes que escribir el monto ni buscar ningún número.',
   pay360AmountLabel: 'Monto a pagar',
+  // Lo que se ve ANTES de terminar el pedido. Dice qué va a pasar, para que
+  // tocar el botón no sea un salto al vacío — pero no pide nada, porque
+  // todavía no hay nada que el comprador pueda darnos.
+  pay360Step3Hint: 'Al terminar tu pedido te mostramos un botón que abre Yape con el monto ya puesto. No tienes que escribir nada.',
   pay360Cta: 'Pagar con Yape',
   // Lo que hay que decir ANTES de que se vaya: Yape no lo devuelve solo, y
   // volver sin entender qué pasó es donde se pierden los pedidos ya pagados.
