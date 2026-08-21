@@ -52,6 +52,12 @@ export default function ContactSheet({ session, onClose }: {
 }) {
   const c = session.buyer_contact
   const trace = session.payment_trace
+  const [traceCopied, setTraceCopied] = useState(false)
+  useEffect(() => {
+    if (!traceCopied) return
+    const t = setTimeout(() => setTraceCopied(false), 1500)
+    return () => clearTimeout(t)
+  }, [traceCopied])
   const name = c?.nombre || session.buyer_name || 'Comprador'
   const phone = c?.phone ?? null
   const paid = session.payment_verification === 'MATCHED'
@@ -116,20 +122,56 @@ export default function ContactSheet({ session, onClose }: {
           </div>
         )}
 
-        {/* Con qué pagó. El celular del pagador no existe en ningún sistema —
-            Yape no lo revela — así que lo identificable es la operación. */}
+        {/* Con qué pagó: la cadena COMPLETA del cotejo, no la operación suelta.
+            En el panel de 360pay el cupón se lista por el código de pago (KSH…)
+            y su detalle muestra el id del cupón y el pedido en la descripción;
+            aquí va la misma cadena para cuadrar mirando las dos pantallas.
+            El celular del pagador no existe en ningún sistema — Yape no lo
+            revela — así que la identidad del pago es esta. */}
         {paid && (
-          <div className="mt-3 flex items-start gap-2 rounded-2xl bg-green-50 px-4 py-3">
-            <CreditCard size={14} className="mt-0.5 flex-shrink-0 text-green-600" />
-            <div className="text-xs text-green-800">
-              <p className="font-bold">Pagó con Yape (360pay)</p>
+          <div className="mt-3 rounded-2xl bg-green-50 px-4 py-3">
+            <p className="flex items-center gap-2 text-xs font-bold text-green-800">
+              <CreditCard size={14} className="flex-shrink-0 text-green-600" />
+              Pagó con Yape (360pay)
+            </p>
+            <div className="mt-1.5 space-y-1 text-[11px] text-green-800">
+              {session.order_id && (
+                <p><span className="text-green-600">Pedido</span>{' '}
+                  <span className="font-mono font-bold">{session.order_id}</span></p>
+              )}
+              {trace?.payment_code && (
+                <p><span className="text-green-600">Código de pago</span>{' '}
+                  <span className="font-mono font-bold">{trace.payment_code}</span></p>
+              )}
+              {trace?.coupon_id && (
+                <p><span className="text-green-600">Cupón</span>{' '}
+                  <span className="font-mono font-bold break-all">{trace.coupon_id}</span></p>
+              )}
               {(trace?.operation_number || trace?.bank) && (
-                <p className="mt-0.5 font-mono">
-                  {trace?.bank ?? ''}{trace?.bank && trace?.operation_number ? ' · ' : ''}
-                  {trace?.operation_number ? `Op. ${trace.operation_number}` : ''}
-                </p>
+                <p><span className="text-green-600">Operación</span>{' '}
+                  <span className="font-mono font-bold">
+                    {trace?.operation_number ?? '—'}{trace?.bank ? ` · ${trace.bank}` : ''}
+                  </span></p>
               )}
             </div>
+            {(trace?.payment_code || trace?.operation_number) && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const lines = [
+                    session.order_id ? `Pedido ${session.order_id}` : null,
+                    trace?.payment_code ? `Código de pago ${trace.payment_code}` : null,
+                    trace?.coupon_id ? `Cupón ${trace.coupon_id}` : null,
+                    trace?.operation_number ? `Op. ${trace.operation_number}${trace?.bank ? ` · ${trace.bank}` : ''}` : null,
+                  ].filter(Boolean).join('\n')
+                  try { await navigator.clipboard.writeText(lines); setTraceCopied(true) } catch { /* visible igual */ }
+                }}
+                className="mt-2 flex items-center gap-1 rounded-lg border border-green-200 px-2.5 py-1.5 text-[11px] font-bold text-green-700"
+              >
+                {traceCopied ? <Check size={12} /> : <Copy size={12} />}
+                {traceCopied ? 'Copiado' : 'Copiar cotejo completo'}
+              </button>
+            )}
           </div>
         )}
 

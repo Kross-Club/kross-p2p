@@ -53,8 +53,16 @@ export interface OrderSession {
      *  la operación bancaria, en `payment_trace`. */
     phone: string | null
   } | null
-  /** Rastro bancario del pago cruzado: N° de operación y banco. Solo vendedor. */
-  payment_trace?: { operation_number: string | null; bank: string | null } | null
+  /** Rastro del pago cruzado — la cadena con la que el comercio coteja contra
+   *  el panel de 360pay y contra el banco. Solo vendedor. */
+  payment_trace?: {
+    operation_number: string | null
+    bank: string | null
+    /** Id del cupón en 360pay (el `_id` que su panel muestra en el detalle). */
+    coupon_id: string | null
+    /** Código de pago del cliente (KSH…): es como el panel LISTA los cupones. */
+    payment_code: string | null
+  } | null
 }
 
 export interface OrderItem {
