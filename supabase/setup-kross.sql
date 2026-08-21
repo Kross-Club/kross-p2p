@@ -386,7 +386,13 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS yape_autoconfirm boolean DEFAULT fal
 -- explícito. Un default `false` aquí habría apagado el domicilio de todos, y
 -- backfillear con un UPDATE rompería la idempotencia del script: al re-correrlo
 -- volvería a prender lo que el admin apagó a mano.
-ALTER TABLE stores ADD COLUMN IF NOT EXISTS home_delivery_enabled boolean DEFAULT true;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS home_delivery_enabled boolean DEFAULT false;
+-- El default es FALSE, y es una decisión de riesgo, no de gusto: prometer
+-- entrega a la puerta y no cumplirla cuesta más que no ofrecerla. Una marca
+-- nueva no debe nacer prometiéndola — la enciende cuando tiene última milla
+-- contratada. El ADD COLUMN de arriba no toca tiendas existentes, así que el
+-- ALTER separado es el que mueve el default en bases ya creadas.
+ALTER TABLE stores ALTER COLUMN home_delivery_enabled SET DEFAULT false;
 
 -- ⚠️ Estas tres columnas son PÚBLICAS a propósito: el checkout se las muestra al
 -- comprador para que yapee. `stores` tiene SELECT público (política
