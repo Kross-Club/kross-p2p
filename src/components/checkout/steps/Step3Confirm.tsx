@@ -1,7 +1,10 @@
 // ─── PASO 3 · Resumen y adelanto ─────────────────────────────────────────────
-// El paso 3 **no pide nada**. Nunca. Con 360pay activo anuncia el monto y el
-// botón que abre Yape aparece DESPUÉS de terminar el pedido; sin 360pay, dice
-// que un asesor coordina el adelanto por el chat.
+// El paso 3 **no pide nada**. Nunca. Con 360pay activo no anuncia nada extra:
+// el resumen ya dice cuánto se adelanta y la pantalla de Yape aparece DESPUÉS
+// de terminar el pedido — anunciarla aquí duplicaba el monto en la misma
+// pantalla y alargaba el paso sin sumar información. Sin 360pay sí se avisa:
+// un asesor coordina el adelanto por el chat, y no decirlo deja al comprador
+// esperando un cobro que nunca llega.
 //
 // Aquí vivió la caja del Yape manual —número de la marca, código de seguridad
 // de 3 dígitos, captura del comprobante— y era el único punto del checkout
@@ -13,6 +16,7 @@
 // El resumen va PRIMERO en los dos casos: antes de pedirle plata hay que
 // recordarle qué lleva y a dónde llega.
 
+import { Gift } from 'lucide-react'
 import { COPY, advanceFor } from '../../../lib/checkout/checkout.config'
 import type { AdvanceChoice, CheckoutState } from '../../../lib/checkout/types'
 
@@ -79,22 +83,11 @@ export default function Step3Confirm({
         </p>
       )}
 
-      {/* Con 360pay el paso 3 no pide nada: el botón que abre Yape aparece
-          DESPUÉS de terminar el pedido, con el monto ya fijado por el cupón.
-          Mostrar aquí la caja manual —número, código de 3 dígitos— pedía la
-          prueba de un pago que todavía no existe. */}
-      {advance > 0 && pay360 ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <p className="text-sm font-bold text-gray-900">{COPY.pay360Title}</p>
-          <p className="mt-1 text-xs leading-relaxed text-gray-500">{COPY.pay360Step3Hint}</p>
-          <div className="mt-3 rounded-xl bg-gray-50 px-3 py-2.5">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
-              {COPY.pay360AmountLabel}
-            </span>
-            <p className="text-2xl font-black text-gray-900">S/{advance}</p>
-          </div>
-        </div>
-      ) : advance > 0 && (
+      {/* Con 360pay aquí no va NADA: el resumen ya muestra el adelanto y la
+          pantalla de Yape llega al terminar el pedido. Aquí vivió una caja que
+          anunciaba el botón y repetía el monto — puro eco del resumen de arriba,
+          y se quitó. */}
+      {advance > 0 && !pay360 && (
         /* Sin 360pay conectado no hay nada que cobrar aquí: el pedido se cierra
            igual y el adelanto lo coordina un asesor por el chat. Decirlo es
            mejor que no decir nada — quien esperaba pagar ahora sabe qué sigue. */
@@ -132,16 +125,16 @@ function AdvancePicker({ price, choice, onPick }: {
   choice: AdvanceChoice
   onPick: (c: AdvanceChoice) => void
 }) {
-  const options: { id: AdvanceChoice; title: string; now: number }[] = [
+  const options: { id: AdvanceChoice; title: string; now: number; perk?: string }[] = [
     { id: 'HALF', title: 'Pago la mitad ahora', now: advanceFor(price, 'HALF') },
-    { id: 'FULL', title: 'Pago todo ahora', now: advanceFor(price, 'FULL') },
+    { id: 'FULL', title: 'Pago todo ahora', now: advanceFor(price, 'FULL'), perk: COPY.advanceFullPerk },
   ]
 
   return (
     <div className="mb-4">
       <p className="text-xs font-black text-gray-700 mb-2">¿Cuánto quieres adelantar? *</p>
       <div className="space-y-2" role="radiogroup" aria-label="¿Cuánto quieres adelantar?">
-        {options.map(({ id, title, now }) => {
+        {options.map(({ id, title, now, perk }) => {
           const active = choice === id
           const rest = Math.max(0, price - now)
           return (
@@ -164,6 +157,14 @@ function AdvancePicker({ price, choice, onPick }: {
               <span className="block text-[11px] text-gray-500 mt-0.5">
                 {rest > 0 ? `Te quedan S/${rest} por pagar al recibirlo.` : 'Ya no pagas nada al recibirlo.'}
               </span>
+              {/* El empujón hacia el pago completo: una línea, en verde, que
+                  suma un beneficio en vez de repetir el reparto. */}
+              {perk && (
+                <span className="mt-1 flex items-center gap-1 text-[11px] font-bold text-green-700">
+                  <Gift size={12} className="flex-shrink-0" aria-hidden="true" />
+                  {perk}
+                </span>
+              )}
             </button>
           )
         })}
