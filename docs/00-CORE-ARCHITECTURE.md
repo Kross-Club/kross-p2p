@@ -93,14 +93,18 @@ todo módulo debe poder leer/escribir:
 type MerchantCustomerSession = {
   customer:  { dni: string; fullName: string; phone: string }
   delivery:  { lat: number; lng: number; addressText: string; reference: string
-               dispatchType: 'MOTORIZADO_LIMA' | 'AGENCIA_PROVINCIA'
-               agencyName?: 'SHALOM' | 'OLVA' | 'OTRO' }
+               // Región × método: son CUATRO, no dos. "No es agencia" NO significa
+               // Lima, y "agencia" ya no significa provincia.
+               dispatchType: 'MOTORIZADO_LIMA' | 'MOTORIZADO_PROVINCIA'
+                           | 'AGENCIA_PROVINCIA' | 'AGENCIA_LIMA'
+               agencyName?: 'SHALOM' | 'OLVA' }
   sale:      { productId: string
                paymentMethod: 'YAPE_PLIN' | 'CONTRAENTREGA' | 'TARJETA'
                closedBy: 'AI_CLOSER' | 'DIRECT_CHECKOUT' }
   // Adelanto. Sales lo cobra (manual §3.1-3.2 o 360pay §3.3, según la tienda);
   // Logistics decide con él si despacha. Por eso vive en el contrato.
-  advance:   { amountPen: number            // Lima 5 · Shalom 20 · Olva 25 · domicilio provincia 30
+  advance:   { amountPen: number            // mitad del pedido, o el total. NO por destino
+               choice: 'HALF' | 'FULL'      // cuál eligió: el cobro re-deriva con esto
                verification: 'NOT_REQUIRED' | 'PENDING' | 'MATCHED'
                provider?: '360PAY' | null   // NULL = flujo manual; separa las piscinas de cruce
                providerChargeId?: string    // id del cupón, en payment_events
@@ -130,11 +134,12 @@ Mapeo actual → objetivo:
 | `customer.*` | `buyers.document_number/nombre/phone` | ✅ |
 | `delivery.lat/lng/addressText` | `order_sessions.address_*` / `buyers.address_*` | ✅ |
 | `delivery.reference` | `order_sessions.delivery_reference` (columna lista, sin UI aún) | 🟡 |
-| `delivery.dispatchType` | `order_sessions.dispatch_type` (def `MOTORIZADO_LIMA`) | ✅ |
-| `delivery.agencyName` | `order_sessions.agency_name` (columna lista, provincia pendiente) | 🟡 |
+| `delivery.dispatchType` | `order_sessions.dispatch_type` (def `MOTORIZADO_LIMA`) — ⚠️ lista blanca en `register-buyer`: lo no reconocido se aplasta al default **sin error** | ✅ |
+| `delivery.agencyName` | `order_sessions.agency_name` — lo escribe el checkout al elegir punto de recojo | ✅ |
 | `sale.paymentMethod` | `order_sessions.payment_method` (def `CONTRAENTREGA`) — escrito por checkout | ✅ |
 | `sale.closedBy` | `order_sessions.closed_by` (def `DIRECT_CHECKOUT`) — escrito por checkout | ✅ |
-| `advance.amountPen` | `order_sessions.advance_amount` — lo deriva el SERVIDOR (`_shared/advance.ts`) | ✅ |
+| `advance.amountPen` | `order_sessions.advance_amount` — lo deriva el SERVIDOR (`_shared/advance.ts`) sobre el precio **verificado contra `products.packs`**, nunca sobre el del body | ✅ |
+| `advance.choice` | `order_sessions.advance_choice` (def `'HALF'`) — sin esto el cobro no puede reproducir el monto mostrado | ✅ |
 | `advance.verification` | `order_sessions.payment_verification` — la fija `pay360-webhook` | ✅ |
 | `advance.provider` | `order_sessions.payment_provider` — '360PAY' o NULL | ✅ |
 | `advance.providerChargeId` | `payment_events.provider_charge_id` (por `matched_order_id`) | ✅ |

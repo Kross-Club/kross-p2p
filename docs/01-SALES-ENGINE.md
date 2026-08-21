@@ -37,9 +37,10 @@
 | `analytics.ts` | `trackEvent()` con interfaz lista para enchufar Pixel/GA4 |
 | `services/` | `DistrictCoverageService` (decide la venta), `CoverageService` (polígonos, post-venta), `AgencyService`, `PaymentVerificationService` |
 
-- **3 pasos:** pack → datos+entrega → resumen+pago. Adelantos vigentes: Lima **S/5**,
-  Shalom **S/20**, Olva **S/25**, domicilio en provincia **S/30** — única fuente:
-  `checkout.config.ts` (y su espejo server-side `_shared/advance.ts`, ver §3.3).
+- **3 pasos:** pack → datos+entrega → resumen+pago. Adelanto vigente: **la mitad del
+  pedido (mínimo) o el total**, a elección del comprador en el paso 3. Única fuente:
+  `advanceFor(price, choice)` en `checkout.config.ts`, con su espejo server-side
+  `_shared/advance.ts`. Ya **no** hay tabla por destino ni por courier.
 - **Idempotencia:** cada checkout nace con un `orderId` uuid. `register-buyer` debe
   aceptarlo para que un doble tap no genere dos pedidos (pendiente, Fase 3).
 - **No hay mapa en el checkout.** La cobertura se decide por **distrito** (178 cubiertos,
@@ -135,9 +136,10 @@ mi casa» y «Recojo en agencia»— y monta el mismo `AgencyPicker`.
 - **El método y el punto subieron a la raíz del estado** (`deliveryMethod` y `pickup`).
   Vivían dentro de `provinciaConfig`, y dejarlos ahí obligaba a que un pedido limeño
   arrastrara una config de provincia. `persistence.ts` migra los borradores guardados.
-- `ADVANCE_LIMA_AGENCIA_PEN` es su propia constante aunque hoy valga lo mismo que el de
-  domicilio (S/5): el filtro anti-rebote aplica igual, pero el flete Lima→mostrador contra
-  el viaje del motorizado **no está medido**. Cuando se mida, se separa en una línea.
+- ⚠️ **El adelanto ya no depende del destino.** `ADVANCE_LIMA_PEN`,
+  `ADVANCE_LIMA_AGENCIA_PEN`, `ADVANCE_PROVINCIA_PEN`, `ADVANCE_PROVINCIA_DOMICILIO_PEN`,
+  `ADVANCE_BY_AGENCY` y `ADVANCE_AGENCY_FROM_PEN` **se borraron**. Sale del precio del
+  pack — ver el bloque «El adelanto es la mitad del pedido, o el total».
 - ⚠️ **`dispatch_type` pasó de tres valores a cuatro** (región × método) y esto NO es solo
   frontend: `register-buyer` tiene lista blanca y **aplasta contra `MOTORIZADO_LIMA` todo
   lo que no reconoce**. Sin `AGENCIA_LIMA` ahí, un recojo en Lima se guardaba como entrega
@@ -187,12 +189,12 @@ pedido"*— planteaba un beneficio nuestro como si fuera suyo. Ahora dice **"La 
 lo pedirá para entregarte el paquete"**: un hecho de su mundo, verificable, no un trámite
 del nuestro.
 
-**e) El adelanto depende de la AGENCIA ✅.** Shalom cobra S/20 y **Olva S/25**, porque su
-flete es más caro. `advanceFor(isProvincia, agency)` en `checkout.config.ts` es la única
-fuente del monto. El adelanto se muestra **en la tarjeta de cada agencia, antes de
-elegir** — que el número suba después de haber elegido se lee como cambio de precio a
-mitad de compra. Efecto secundario deseable: Shalom, que ya era la recomendada por tener
-listado estructurado, además se ve más barata.
+**e) El adelanto dependía de la AGENCIA ⛔ derogado (ago-2026).** Shalom pedía S/20 y Olva
+S/25, y el monto salía en la tarjeta de cada sede. Se eliminó por una razón que trajo la
+lista unificada de puntos (`02-SMART-LOGISTICS.md`): **dos sedes contiguas de couriers
+distintos cobraban adelantos distintos por el mismo viaje**, y el número saltaba al
+cambiar de tarjeta. Hoy el adelanto sale del precio del pack, es el mismo elija el punto
+que elija, y **la tarjeta de la sede ya no muestra monto**.
 
 **d) Descuento de retención al intentar salir ✅.** Al cerrar el modal con datos
 ingresados se ofrecen **S/5 de descuento sobre cada pack** antes de dejarlo ir.
@@ -579,14 +581,59 @@ de pedírsela a todos por si acaso en el checkout.
 lleva — también en Lima. Dejarlo como escotilla de emergencia significaba que el
 botón de emergencia era "cobrar S/0", que es peor que la emergencia.
 
-### Los montos
+### El adelanto es la mitad del pedido, o el total ✅ (vigente desde ago-2026)
 
-| Destino | Antes | Ahora |
-|---|---|---|
-| Lima metropolitana | S/0 | **S/5** |
-| Provincia · agencia Shalom | S/10 | **S/20** |
-| Provincia · agencia Olva | S/20 | **S/25** |
-| Provincia · entrega en casa | S/10 | **S/30** |
+```ts
+export type AdvanceChoice = 'HALF' | 'FULL'
+export const ADVANCE_HALF_SHARE = 0.5
+
+export function advanceFor(price: number, choice: AdvanceChoice = 'HALF'): number {
+  if (!Number.isFinite(price) || price <= 0) return 0
+  return choice === 'FULL' ? Math.round(price) : Math.round(price * ADVANCE_HALF_SHARE)
+}
+```
+
+El comprador elige en el paso 3 (`AdvancePicker`) y cada tarjeta muestra **lo que
+paga ahora y lo que le queda** — la duda real no es "cuánto pago" sino "cuánto me
+falta después".
+
+**Por qué reemplazó a la tabla por destino.** La comisión de 360pay es plana
+(S/3.15 + IGV = **S/3.72** por transacción): sobre un adelanto de S/5 es el
+**74%** del cobro, sobre S/95 el **3.9%**. Un fijo chico no paga la pasarela — es
+la misma deuda ya anotada en `ESTADO-OPERATIVO.md` ("nada impide emitir un cupón
+por debajo de S/5"), resuelta por el lado de la política en vez del piso.
+
+> ⚠️ **Tensión abierta con el mercado.** Los operadores COD entrevistados cobran
+> **S/20–30** de adelanto (`ICP Sales/VALIDACION-AGENCIA.md`). La mitad de un pack
+> de S/189 son S/95: entre 3 y 5 veces el estándar. Puede ser el diferencial que
+> produce compromiso de recojo, o un freno de conversión. **No está medido**, y es
+> lo primero que hay que mirar cuando haya pedidos suficientes.
+
+#### El cambio movió una frontera de seguridad
+
+Con la tabla vieja el monto se derivaba del **destino**, así que era inmune a lo
+que mandara el navegador. Ahora depende del **precio**, y el precio venía del
+body: sin más, se podría declarar un pack de S/2 y que se cobre S/1.
+
+La defensa se movió un paso atrás: **`priceFromPacks()`** en `_shared/advance.ts`
+contrasta `product_price` contra `products.packs` **en el servidor** antes de
+calcular. Si no se puede verificar (sin `product_id`, producto sin packs) **no se
+bloquea la venta** —el pedido vale más que la comprobación— pero queda un
+`console.warn`, y el adelanto sale del precio verificado cuando existe.
+
+`choice` sí puede venir del cliente sin riesgo: solo elige entre mitad y total, y
+ninguna de las dos baja del mínimo. Se persiste en
+`order_sessions.advance_choice` (def `'HALF'`) porque el cobro en línea necesita
+**re-derivar exactamente** el monto que se mostró.
+
+#### Los montos viejos ⛔ histórico
+
+| Destino | Antes | Después | Hoy |
+|---|---|---|---|
+| Lima metropolitana | S/0 | S/5 | mitad del pedido |
+| Provincia · agencia Shalom | S/10 | S/20 | mitad del pedido |
+| Provincia · agencia Olva | S/20 | S/25 | mitad del pedido |
+| Provincia · entrega en casa | S/10 | S/30 | mitad del pedido |
 
 Lima adelantaba S/0 y el rebote lo pagaba la marca entera: el pedido falso no
 cuesta nada de hacer y sí cuesta el viaje del motorizado. S/5 no espanta a quien
