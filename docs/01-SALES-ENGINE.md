@@ -523,7 +523,11 @@ Dos aprendizajes de ahí sí siguen valiendo, y por eso quedan:
   error de Safari. El que sí funciona es el universal link
   `https://www.yape.com.pe/app/services-pay/pickService`, que es el que usa
   360pay: Android e iOS lo resuelven, y si la app no está instalada degrada a
-  una página web en vez de a un callejón sin salida.
+  una página web en vez de a un callejón sin salida. **Con un matiz aprendido
+  después** (§17.d de `06-360PAY.md`): desde la PWA instalada ese enlace sale
+  por una Custom Tab, cuya URL inicial Android carga como web sin resolver App
+  Links — ahí el `href` se convierte a `intent://` en el cliente
+  (`src/lib/checkout/yape-link.ts`), que abre la app de Yape directo.
 - **Paridad móvil/desktop.** Ninguna pantalla puede decir "ábrelo en tu
   celular": el flujo entero se graba en tutoriales desde una laptop. Por eso
   `Pay360Box` muestra SIEMPRE el código copiable, no solo cuando el botón falla.
