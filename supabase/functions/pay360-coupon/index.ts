@@ -164,6 +164,9 @@ Deno.serve(async (req) => {
     external_ref: String(session.id),
     // Obligatorio en el API real aunque el OpenAPI lo liste opcional.
     expiry_date: couponExpiryFrom(Date.now()),
+    // El API exige el código ARRIBA ("customer_id or code is required"); el
+    // `coupon_code` anidado del spec no le alcanza.
+    code: consumerCode,
     description: `Adelanto ${session.order_id ?? session.id}`.slice(0, 80),
     customer: {
       name: session.buyer_name ?? 'Cliente',
@@ -181,8 +184,11 @@ Deno.serve(async (req) => {
       return json({ ok: false, stage: 'network_after' }, 502)
     }
     await notePaymentFailure(session, `No se pudo generar el cupón de pago${coupon.error ? ` (${coupon.error})` : ''}`)
+    // El texto del error va también al log: `payment_reason` lo guarda, pero
+    // esto deja el rastro en el sitio donde se mira primero cuando algo falla.
     console.error('[pay360-coupon] create_failed', JSON.stringify({
-      status: coupon.status, scopes: coupon.requiredScopes ?? null,
+      status: coupon.status, error: coupon.error ?? null,
+      scopes: coupon.requiredScopes ?? null,
     }))
     return json({ ok: false, stage: 'coupon', code: 'create_failed', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 502)
   }

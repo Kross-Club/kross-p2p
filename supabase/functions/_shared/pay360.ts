@@ -172,12 +172,20 @@ export function couponExpiryFrom(nowMs: number): string {
  * adivina por monto + código de 3 dígitos.
  *
  * `expiry_date` es OBLIGATORIO pese a lo que dice el spec — ver COUPON_TTL_DAYS.
+ *
+ * `code` también: el API responde "customer_id or code is required" si no va, y
+ * NO le basta con el `coupon_code` anidado dentro de `customer` que documenta el
+ * OpenAPI. Se mandan los dos —el de arriba identifica al cliente para este
+ * cupón, el de adentro lo crea si no existe— porque son el mismo valor y omitir
+ * cualquiera de los dos ya falló una vez.
  */
 export function createCoupon(
   base: string, apiKey: string,
   input: {
     amount: number
     external_ref: string
+    /** Código de pago del comprador, al nivel de arriba. Ver la nota de abajo. */
+    code?: string
     customer_id?: string
     customer?: Record<string, unknown>
     description?: string
