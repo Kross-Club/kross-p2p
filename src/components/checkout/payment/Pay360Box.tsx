@@ -11,10 +11,13 @@
 //   `https://www.yape.com.pe/...`: Android e iOS lo resuelven, y si la app no
 //   está instalada cae en una página web en vez de en un callejón sin salida.
 //
-// · **Paridad móvil/desktop, que aquí no es un lujo.** El flujo se graba en
+// · **El código es de desktop; en móvil estorba.** El flujo se graba en
 //   tutoriales desde una laptop, y ninguna pantalla puede decir "ábrelo en tu
-//   celular". Por eso el código de pago va SIEMPRE visible y copiable, no solo
-//   cuando el botón falla: quien está en PC lo teclea en su Yape y sigue.
+//   celular": en desktop el código va siempre visible y copiable, porque ahí
+//   es el camino principal — quien está en PC lo teclea en su Yape y sigue.
+//   Pero en el celular nadie va a copiar un código teniendo Yape a un toque:
+//   ahí el código solo mete ruido justo donde la confianza decide, así que con
+//   botón se oculta (`hidden sm:block`) y la pantalla queda en una sola acción.
 //
 // · **El comprador no vuelve solo.** Yape no lo devuelve a la PWA — se cambia
 //   de app a mano. La pantalla se lo dice antes de que se vaya, porque volver y
@@ -27,7 +30,7 @@
 // que es exactamente lo que ya se mostraba abajo para quien compra en PC.
 
 import { useEffect, useState } from 'react'
-import { Check, Copy, ExternalLink } from 'lucide-react'
+import { Check, Copy, ExternalLink, ShieldCheck } from 'lucide-react'
 import { COPY, YAPE } from '../../../lib/checkout/checkout.config'
 import type { CouponRef } from '../../../lib/checkout/pay-phase'
 
@@ -78,14 +81,26 @@ export default function Pay360Box({ coupon }: { coupon: CouponRef }) {
             {COPY.pay360Cta}
             <ExternalLink className="h-4 w-4" aria-hidden="true" />
           </a>
-          <p className="mt-2 text-center text-[11px] text-gray-400">{COPY.pay360AfterHint}</p>
+          {/* En móvil el código se oculta y esto queda como LA indicación: por
+              eso no es una letra chica gris sino una tarjeta con sello de pago
+              seguro, en tamaño de lectura. */}
+          <div className="mt-3 rounded-xl bg-emerald-50 px-3 py-2.5">
+            <p className="flex items-center justify-center gap-1.5 text-xs font-black uppercase tracking-wide text-emerald-700">
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              {COPY.pay360Secure}
+            </p>
+            <p className="mt-1 text-center text-[13px] leading-relaxed text-gray-600">
+              {COPY.pay360AfterHint}
+            </p>
+          </div>
         </>
       )}
 
-      {/* Con botón esto es el respaldo, y aun así va SIEMPRE visible: en desktop
-          es el camino principal, no el plan B. Sin botón es el único camino, y
-          entonces no lleva separador ni rótulo de "¿pagas desde tu computadora?". */}
-      <div className={link ? 'mt-4 border-t border-gray-100 pt-3' : 'mt-3'}>
+      {/* Con botón, el código es solo para desktop: ahí es el camino principal,
+          no el plan B, y en móvil se oculta para dejar la pantalla en una sola
+          acción. Sin botón es el único camino en cualquier pantalla, y entonces
+          no lleva separador ni rótulo de "¿pagas desde tu computadora?". */}
+      <div className={link ? 'mt-4 hidden border-t border-gray-100 pt-3 sm:block' : 'mt-3'}>
         <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
           {link ? COPY.pay360CodeLabel : COPY.pay360CodeLabelOnly}
         </span>
@@ -103,7 +118,7 @@ export default function Pay360Box({ coupon }: { coupon: CouponRef }) {
               : <><Copy className="h-3.5 w-3.5" aria-hidden="true" />{COPY.pay360CodeCopy}</>}
           </button>
         </div>
-        <p className="mt-1.5 text-[11px] leading-relaxed text-gray-400">{COPY.pay360CodeHint}</p>
+        <p className="mt-1.5 text-[13px] leading-relaxed text-gray-500">{COPY.pay360CodeHint}</p>
       </div>
     </div>
   )

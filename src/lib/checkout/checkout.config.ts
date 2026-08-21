@@ -278,7 +278,13 @@ export const COPY = {
   pay360Cta: 'Pagar con Yape',
   // Lo que hay que decir ANTES de que se vaya: Yape no lo devuelve solo, y
   // volver sin entender qué pasó es donde se pierden los pedidos ya pagados.
-  pay360AfterHint: 'Cuando termines en Yape, vuelve a esta ventana: tu pedido se confirma solo.',
+  // En móvil esta es LA indicación (el código se oculta), así que dice las dos
+  // cosas que compran confianza: el pago se valida solo, y al volver está el
+  // detalle del pedido esperando.
+  pay360AfterHint: 'Cuando termines en Yape, regresa a esta ventana: tu pago se valida automáticamente y aquí verás el detalle de tu pedido.',
+  // El sello de confianza sobre la indicación. "Con Yape" y no "con 360pay":
+  // el comprador confía en la app que ya usa, no en un recaudador que no conoce.
+  pay360Secure: 'Pago 100% seguro con Yape',
   pay360CodeLabel: '¿Pagas desde tu computadora?',
   // Sin botón el código deja de ser el respaldo y pasa a ser el camino: el
   // rótulo no puede seguir preguntando por la computadora.

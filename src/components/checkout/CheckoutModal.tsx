@@ -375,7 +375,7 @@ export default function CheckoutModal({
                 <div className="h-3 w-3 animate-spin rounded-full border-2 border-gray-200 border-t-[#742284]" />
                 <p className="text-sm font-bold text-gray-700">{COPY.pay360Waiting}</p>
               </div>
-              <p className="mt-1 px-4 text-center text-xs text-gray-400">{COPY.pay360WaitingHint}</p>
+              <p className="mt-1.5 px-4 text-center text-[13px] leading-relaxed text-gray-600">{COPY.pay360WaitingHint}</p>
               <button
                 type="button"
                 onClick={() => phaseDispatch({ type: 'GIVE_UP' })}
