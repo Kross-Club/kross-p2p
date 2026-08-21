@@ -37,6 +37,17 @@
   Ver §4 y §5.
 - **Falta 🔮:** generación de **etiquetas/datos formateados para agencias** (Shalom / Olva
   Courier): nombre, DNI, teléfono, destino, contenido.
+- **Falta 🔮 — tracking por API de Shalom/Olva + cobranza del saldo.** Decisión validada
+  con operadores COD reales (ver `docs/ICP Sales/VALIDACION-AGENCIA.md`):
+  - Leer del **API de cada agencia** los estados del envío — **en origen → en tránsito →
+    en destino** — y reflejar cada transición en el pedido (contrato en
+    `MerchantCustomerSession`, `00-CORE-ARCHITECTURE.md`).
+  - **El saldo no se cobra en línea.** Al pasar a *en destino* se dispara la cobranza:
+    **plantilla de WhatsApp** de recojo/cobro (`send-wa-template`, ya construido) y el
+    pedido entra a la **cola de llamadas** del vendedor (LiveKit, ya construido). El
+    tracking decide *cuándo* cobrar; la conversación cobra.
+  - Subproducto: **tasa de recojo nativa** (*en destino* vs. *entregado*) — la métrica
+    que los operadores hoy siguen a mano o no tienen.
 - Debe setear `delivery.dispatchType = 'AGENCIA_PROVINCIA'` y `delivery.agencyName`.
 
 ### 4. Cobertura del courier (Aliclic / Alidriver) ✅ data · 🔮 UI
@@ -180,7 +191,9 @@ Corre **después** de los generadores de agencias, porque lee sus JSON ya constr
    checkout.
 2. 🔮 Route-sheet del motorizado (Lima) con cobranza por parada.
 3. 🔮 Generador de envíos a provincia (Shalom/Olva).
-4. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data
+4. 🔮 Tracking por API de Shalom/Olva (origen → tránsito → destino) con disparo de
+   cobranza del saldo (plantilla WhatsApp + llamada) al llegar a destino. Ver §3.
+5. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data
    con la que se negocia cobertura con Aliclic y se mide venta perdida por zona.
 
 ## Regenerar la data

@@ -23,6 +23,8 @@ vivió una transición de enfoque estratégico manteniendo la misma base de cód
 La doc está organizada en dos capas complementarias:
 
 - **Capa estratégica (por ICP):** *por qué* y *para quién* — `ICP Sales`, `ICP LTV`.
+  La tesis del producto de reparto solo por agencia, cotejada con operadores COD reales,
+  vive en [`ICP Sales/VALIDACION-AGENCIA.md`](./ICP%20Sales/VALIDACION-AGENCIA.md).
 - **Capa técnica (por módulo):** *cómo* está construido cada componente del Sistema
   Operativo de E-commerce, con estado real del código (✅/🟡/🔮).
 
