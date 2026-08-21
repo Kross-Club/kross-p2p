@@ -8,6 +8,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Search } from 'lucide-react'
+import { keepAligned, pinToTop, visibleBottom, scrollParentOf } from './scroll'
 
 export interface SelectOption {
   value: string
@@ -39,6 +40,8 @@ export default function SearchSelect({
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
+  /** Altura real disponible para la lista. NULL = el tope por defecto. */
+  const [listMax, setListMax] = useState<number | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
 
   const selected = useMemo(() => options.find(o => o.value === value) ?? null, [options, value])
@@ -51,18 +54,28 @@ export default function SearchSelect({
     return pool.slice(0, limit)
   }, [options, query, limit])
 
-  // Al abrir, subir el campo al tope del contenedor scrolleable del modal. La
-  // lista mide hasta 16rem y el campo suele quedar abajo, así que sin esto se
-  // abre fuera de la vista y el comprador tiene que scrollear para encontrarla
-  // (peor aún en móvil, donde el teclado se come media pantalla).
+  // Al abrir, subir el campo al tope del contenedor scrolleable del modal y
+  // darle a la lista SOLO el alto que de verdad se ve. Sin esto el comprador
+  // tiene que scrollear para encontrar las opciones — peor aún en móvil, donde
+  // el teclado se come media pantalla: el resize del teclado llega DESPUÉS del
+  // foco y el navegador re-centra el input deshaciendo cualquier scroll hecho
+  // al abrir, así que el alineado se repite en cada cambio de viewport
+  // (`keepAligned`) en vez de correr una sola vez.
+  // El alto calculado no se resetea al cerrar: solo se usa con la lista
+  // abierta, y al reabrir se recalcula en el primer frame.
   useEffect(() => {
     if (!open) return
-    // rAF: la lista tiene que existir en el DOM antes de scrollear, si no el
-    // navegador calcula el destino sin contar su altura.
-    const raf = requestAnimationFrame(() => {
-      boxRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    return keepAligned(() => {
+      const el = boxRef.current
+      if (!el) return
+      pinToTop(el)
+      // Lo que queda entre el borde inferior del campo y el borde visible
+      // (contenedor o teclado, el que corte primero). Piso de 140px para que
+      // en pantallas muy chicas la lista no degenere en una rendija; tope de
+      // 256px (el max-h-64 histórico) para que en desktop no se desparrame.
+      const room = visibleBottom(scrollParentOf(el)) - el.getBoundingClientRect().bottom - 12
+      setListMax(Math.min(256, Math.max(140, Math.floor(room))))
     })
-    return () => cancelAnimationFrame(raf)
   }, [open])
 
   // Cerrar al hacer clic fuera. En móvil evita que la lista tape el CTA.
@@ -91,7 +104,7 @@ export default function SearchSelect({
   }
 
   return (
-    <div ref={boxRef} className="relative scroll-mt-3">
+    <div ref={boxRef} className="relative">
       <label htmlFor={id} className="text-xs font-bold text-gray-600 mb-1 block">
         {label} {required && <span aria-hidden="true">*</span>}
       </label>
@@ -127,6 +140,7 @@ export default function SearchSelect({
           id={`${id}-list`}
           role="listbox"
           className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-2xl bg-white shadow-xl border border-gray-100 py-1"
+          style={listMax !== null ? { maxHeight: listMax } : undefined}
         >
           {results.length === 0 && (
             <li className="px-4 py-3 text-sm text-gray-400">

@@ -234,6 +234,10 @@ export const COPY = {
 
   advanceHeadsUp: `Se paga un adelanto del envío por Yape y el resto al recibir.`,
   advanceHeadsUpShort: 'El resto lo pagas al recibir tu pedido.',
+  // El empujón hacia "pago todo ahora": UNA línea con un beneficio futuro
+  // (puntos del Loyalty Engine), sin cifras ni condiciones — un porcentaje o
+  // un plazo aquí abre preguntas justo antes de cobrar.
+  advanceFullPerk: 'Ganas puntos de descuento para tu próxima compra.',
   // Antes de elegir cómo recibirlo NO se sabe el monto —cambia entre S/20, S/25
   // y S/30—, así que la nota tranquiliza sin cifra. Poner una y que después
   // suba es la sorpresa que el aviso existía para evitar.
@@ -271,17 +275,19 @@ export const COPY = {
   pay360Title: 'Paga tu adelanto con Yape',
   pay360Intro: 'Toca el botón y Yape se abre con todo listo. No tienes que escribir el monto ni buscar ningún número.',
   pay360AmountLabel: 'Monto a pagar',
-  // Lo que se ve ANTES de terminar el pedido. Dice qué va a pasar, para que
-  // tocar el botón no sea un salto al vacío — pero no pide nada, porque
-  // todavía no hay nada que el comprador pueda darnos.
-  pay360Step3Hint: 'Al terminar tu pedido te mostramos un botón que abre Yape con el monto ya puesto. No tienes que escribir nada.',
   pay360Cta: 'Pagar con Yape',
   // Lo que hay que decir ANTES de que se vaya: Yape no lo devuelve solo, y
   // volver sin entender qué pasó es donde se pierden los pedidos ya pagados.
-  pay360AfterHint: 'Cuando termines en Yape, vuelve a esta ventana: tu pedido se confirma solo.',
-  pay360CodeLabel: '¿Pagas desde tu computadora?',
-  // Sin botón el código deja de ser el respaldo y pasa a ser el camino: el
-  // rótulo no puede seguir preguntando por la computadora.
+  // En móvil esta es LA indicación (el código se oculta), así que dice las dos
+  // cosas que compran confianza: el pago se valida solo, y al volver está el
+  // detalle del pedido esperando.
+  pay360AfterHint: 'Cuando termines en Yape, regresa a esta ventana: tu pago se valida automáticamente y aquí verás el detalle de tu pedido.',
+  // El sello de confianza sobre la indicación. "Con Yape" y no "con 360pay":
+  // el comprador confía en la app que ya usa, no en un recaudador que no conoce.
+  pay360Secure: 'Pago 100% seguro con Yape',
+  // El código nunca convive con el botón en la misma pantalla (móvil = botón,
+  // desktop = código), así que el rótulo no pregunta por la computadora: donde
+  // se ve, ES el camino de pago.
   pay360CodeLabelOnly: 'Tu código de pago',
   pay360IntroCodeOnly: 'Abre tu Yape y paga con este código. El monto ya está reservado: no tienes que escribirlo.',
   pay360CodeCopy: 'Copiar',
