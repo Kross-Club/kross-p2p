@@ -368,21 +368,19 @@ export default function CheckoutModal({
             </div>
           )}
 
+          {/* Sin salida de "prefiero que me escriban": el adelanto se paga
+              aquí, y ofrecer la alternativa justo en la espera invitaba a
+              abandonar un cobro ya emitido. El escape sigue existiendo SOLO en
+              ISSUE_FAILED, donde no hay cupón que pagar hasta que el retry
+              funcione. */}
           {phase.k === 'AWAITING' && (
             <div className="py-2">
               <Pay360Box coupon={phase.coupon} />
               <div className="mt-4 flex items-center justify-center gap-2 text-center">
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-gray-200 border-t-[#742284]" />
-                <p className="text-sm font-bold text-gray-700">{COPY.pay360Waiting}</p>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#742284]" />
+                <p className="text-lg font-black text-gray-900">{COPY.pay360Waiting}</p>
               </div>
               <p className="mt-1.5 px-4 text-center text-[13px] leading-relaxed text-gray-600">{COPY.pay360WaitingHint}</p>
-              <button
-                type="button"
-                onClick={() => phaseDispatch({ type: 'GIVE_UP' })}
-                className="mt-3 w-full py-2 text-xs font-bold text-gray-400 underline"
-              >
-                {COPY.contactMeInstead}
-              </button>
             </div>
           )}
 
