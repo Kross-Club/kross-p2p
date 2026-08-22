@@ -37,6 +37,7 @@ La doc está organizada en dos capas complementarias:
 | 04 · Cumplimiento | [`04-CUMPLIMIENTO-CULQI.md`](./04-CUMPLIMIENTO-CULQI.md) | Web pública, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
 | 05 · PCI / SAQ-D | [`05-PCI-SAQ-D.md`](./05-PCI-SAQ-D.md) | El permiso para usar la API directa de Culqi: qué pedir, el expediente técnico y el correo al buzón de riesgos |
 | 06 · 360pay 🔮 | [`06-360PAY.md`](./06-360PAY.md) | 360pay como pasarela por defecto: el seam de proveedor que hoy no existe, el modelo de credenciales de partner y qué falta del spec |
+| 07 · Recojo 🔮 | [`07-RECORDATORIOS-RECOJO.md`](./07-RECORDATORIOS-RECOJO.md) | Cascada automática de recordatorios (push + WhatsApp) para que el comprador recoja su pedido de la agencia sin humanos persiguiendo; incluye la decisión de descartar el robocall |
 
 ### Cómo trabajamos
 
