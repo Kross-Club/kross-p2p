@@ -43,14 +43,18 @@ export type CheckoutEvent =
   /** Aceptó el descuento y se quedó. Contra `exit_offer_shown` da la tasa de
    *  rescate; contra `order_submitted` dice si además terminó comprando. */
   | { name: 'exit_discount_applied'; amount: number }
-  | { name: 'voucher_uploaded' }
   | { name: 'payment_verification_result'; result: 'MATCHED' | 'UNMATCHED' | 'TIMEOUT'; seconds: number }
   | { name: 'order_submitted'; orderId: string }
   | { name: 'order_failed'; orderId: string; reason: string }
   /** El cobro en línea, por separado del registro: son dos embudos. `stage`
    *  dice DÓNDE murió el que falló — token vencido ≠ sin saldo ≠ red. */
-  | { name: 'culqi_charge_ok'; orderId: string; alreadyPaid: boolean }
-  | { name: 'culqi_charge_failed'; orderId: string; stage: string; code?: string }
+  // 360pay: emitir el cupón no es cobrar. `issued` mide que el comprador llegó
+  // a tener CÓMO pagar; el pago en sí lo confirma el webhook, así que la tasa
+  // que importa —cuántos de los emitidos terminan pagados— se calcula contra
+  // los pedidos, no contra un evento del front: quien paga ya se fue a Yape y
+  // puede no volver nunca a esta pantalla.
+  | { name: 'pay360_coupon_issued'; orderId: string }
+  | { name: 'pay360_issue_failed'; orderId: string; stage: string; code?: string }
   | { name: 'checkout_abandoned'; lastStep: CheckoutStepId }
 
 /** Destino de los eventos. Se reemplaza por el real sin tocar los call sites. */

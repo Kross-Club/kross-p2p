@@ -4,7 +4,7 @@ import { Check, ShoppingCart } from 'lucide-react'
 import { precioTexto, periodoTexto, type ItemCatalogo } from '../../config/catalogo'
 import { useCarrito } from '../../lib/carrito'
 
-// Tarjeta del catálogo. Los tres datos que Culqi exige por producto —foto,
+// Tarjeta del catálogo. Los tres datos que la pasarela exige por producto —foto,
 // descripción y precio— son lo primero de la tarjeta, y el botón Comprar es
 // parte de ella: nada de "consultar por WhatsApp" como único camino de compra.
 export default function TarjetaServicio({ item }: { item: ItemCatalogo }) {

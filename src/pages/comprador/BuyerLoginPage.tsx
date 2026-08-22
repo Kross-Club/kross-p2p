@@ -9,7 +9,7 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 export default function BuyerLoginPage() {
   const navigate = useNavigate()
-  const { store } = useStore()
+  const { store, loading: storeLoading } = useStore()
   const [docNumber, setDocNumber] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -60,6 +60,26 @@ export default function BuyerLoginPage() {
           <a href="/login" className="inline-block mt-5 text-xs font-bold" style={{ color: '#00BFFF' }}>
             ¿Eres administrador de Kross? Ingresar aquí
           </a>
+        </div>
+      </div>
+    )
+  }
+
+  // Subdominio que NO corresponde a ninguna tienda (una letra cambiada, una
+  // marca dada de baja): decirlo. Antes se pintaba el login igual, con la
+  // tienda sin resolver, y todo DNI moría en "no existe ese usuario" — un
+  // error que culpa al comprador por un problema de la dirección.
+  if (!storeLoading && !store.id) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6 text-center"
+        style={{ background: 'linear-gradient(160deg, #060C1A 0%, #0D1F3C 60%, #0A2540 100%)' }}>
+        <div className="max-w-[360px]">
+          <div className="mx-auto mb-4 w-16 h-16"><KrossIcon size={64} /></div>
+          <h1 className="font-black text-xl text-white mb-2">Esta dirección no es de ninguna tienda</h1>
+          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            Revisa el enlace que te compartió tu tienda — la dirección va como
+            <b> tumarca.krossclub.app</b> y una letra distinta cae aquí.
+          </p>
         </div>
       </div>
     )

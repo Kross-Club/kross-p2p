@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import CheckoutModal, { type StoreYape } from '../components/checkout/CheckoutModal'
+import CheckoutModal from '../components/checkout/CheckoutModal'
 import { COPY } from '../lib/checkout/checkout.config'
-import type { StoreCulqi } from '../lib/checkout/types'
+import type { StorePay360 } from '../lib/checkout/types'
 import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
@@ -37,15 +37,12 @@ export default function LandingProductoPage() {
   // Pedido reciente de este navegador, si lo hay. Ver `saveLastOrder`.
   const [lastOrder, setLastOrder] = useState<LastOrder | null>(null)
   const [packIdx, setPackIdx] = useState(0)
-  // Datos de cobro de la MARCA. Cada tienda yapea a su propio número, así que
-  // salen de `stores`, nunca de config.
-  const [yape, setYape] = useState<StoreYape | null>(null)
   // `true` mientras no se sepa: la marca que sí reparte a domicilio no debe
   // perder la opción por un instante de carga. Si no reparte, el switch llega
   // en el mismo fetch que el Yape y la opción desaparece antes del paso 2.
   const [homeDelivery, setHomeDelivery] = useState(true)
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
-  const [culqi, setCulqi] = useState<StoreCulqi | null>(null)
+  const [pay360, setPay360] = useState<StorePay360 | null>(null)
   // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
   const [abMode, setAbMode] = useState<CheckoutAbMode>('SPLIT')
 
@@ -84,20 +81,21 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     supabase.from('stores')
-      .select('yape_number, yape_holder, yape_qr_url, home_delivery_enabled, culqi_enabled, culqi_scope, checkout_ab_mode')
+      .select('home_delivery_enabled, pay360_enabled, checkout_ab_mode')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
-        // Degradación POR CAMPO: si el select entero falla (p. ej. columnas
-        // culqi aún sin migrar), el checkout cae al flujo manual — jamás se
-        // pierde la caja de Yape por una columna nueva ausente.
+        // Degradación POR CAMPO: si el select entero falla (p. ej. una columna
+        // aún sin migrar), el checkout cierra el pedido igual y el adelanto lo
+        // coordina un asesor — jamás se pierde la venta por una columna nueva.
         if (!data) return
-        setYape({ number: data.yape_number, holder: data.yape_holder, qrUrl: data.yape_qr_url })
         // `?? true` y no `!!`: una tienda de antes de la columna llega con el
         // campo ausente, y apagarle el domicilio por eso rompería su operación.
         setHomeDelivery(data.home_delivery_enabled ?? true)
-        setCulqi(data.culqi_enabled
-          ? { enabled: true, scope: data.culqi_scope === 'ALL' ? 'ALL' : 'PROVINCIA' }
-          : null)
+        // `!!` y no `?? true`: una tienda sin la columna migrada NO debe caer en
+        // el cobro con 360pay. Al revés que el domicilio, acá el default seguro
+        // es apagado — encenderlo sin negocio dado de alta deja al comprador
+        // con un pedido creado y sin forma de pagar.
+        setPay360(data.pay360_enabled ? { enabled: true } : null)
         // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
         // reparto por defecto nunca puede depender de un dato mal escrito.
         setAbMode(abModeOf(data.checkout_ab_mode))
@@ -173,9 +171,8 @@ export default function LandingProductoPage() {
           initialPack={packSelection.defaultPackId}
           onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
           onPartialLead={state => saveCheckoutDraft(state, product)}
-          yape={yape}
           homeDeliveryEnabled={homeDelivery}
-          culqi={culqi}
+          pay360={pay360}
           abMode={abMode}
           submitContext={{
             storeId: product.store_id ?? '',

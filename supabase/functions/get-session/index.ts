@@ -30,8 +30,9 @@ Deno.serve(async (req) => {
       involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,
       address, address_verified, address_lat, address_lng, nota,
       dispatch_type, agency_name, delivery_reference,
-      payment_verification, payment_reason, advance_voucher_url,
-      advance_yape_code, advance_amount, payment_provider,
+      payment_verification, payment_reason, payment_event_id,
+      pay360_coupon_id, pay360_consumer_code,
+      advance_amount, payment_provider,
       expires_at, created_at
     `)
     .eq('token', token)
@@ -73,13 +74,63 @@ Deno.serve(async (req) => {
 
   // Whether this buyer may place outbound calls (enabled manually for top clients)
   let buyerCanCall = false
+  // Ficha de contacto del comprador — SOLO para el vendedor (ver `sellerOnly`
+  // abajo: mismas reglas que `payment_reason`, es PII y no debe viajar al
+  // navegador de un comprador que mira la pestaña de red).
+  let buyerContact: Record<string, unknown> | null = null
   if (session.buyer_id) {
     const { data: b } = await supabase
       .from('buyers')
-      .select('can_call')
+      .select('can_call, nombre, document_type, document_number, phone')
       .eq('id', session.buyer_id)
       .maybeSingle()
     buyerCanCall = !!b?.can_call
+    if (viewerIsSeller && b) {
+      buyerContact = {
+        nombre: b.nombre ?? session.buyer_name ?? null,
+        document_type: b.document_type ?? 'DNI',
+        document_number: b.document_number ?? null,
+        // El WhatsApp que llenó en el checkout. Es también el teléfono con el
+        // que se registró su cliente en 360pay. El número desde el que YAPEÓ no
+        // existe en ningún lado: Yape no lo revela — lo que sí llega del pago
+        // es la operación bancaria (abajo).
+        phone: b.phone ?? session.buyer_phone ?? null,
+      }
+    }
+  }
+
+  // Rastro del pago, si el pedido ya cruzó: la cadena completa con la que el
+  // comercio COTEJA contra el panel de 360pay y contra el banco. La operación
+  // sola no dice nada — cierra el círculo junto con el cupón y el código de
+  // pago, que son lo que el panel de 360pay lista. Del `raw` del evento se
+  // extraen solo `operation_number` y `bank_tx_id`: el raw entero lleva fees.
+  let paymentTrace: {
+    operation_number: string | null; bank: string | null
+    coupon_id: string | null; payment_code: string | null
+  } | null = null
+  if (viewerIsSeller && session.payment_event_id) {
+    const { data: ev } = await supabase.from('payment_events')
+      .select('raw, operation_number').eq('id', session.payment_event_id).maybeSingle()
+    if (ev) {
+      let op = ev.operation_number ?? null, bank: string | null = null
+      // El código de pago sale de la fila del pedido; el evento del webhook lo
+      // trae también (`code`), y ese es el respaldo para pedidos que pagaron
+      // pese a que la emisión no llegó a guardar la columna — pasó con el
+      // primer cupón real, cuando un fallo posterior a la emisión respondía
+      // antes de escribir la fila.
+      let code: string | null = session.pay360_consumer_code ?? null
+      try {
+        const raw = JSON.parse(ev.raw ?? '{}')
+        op = op ?? (typeof raw.operation_number === 'string' ? raw.operation_number : null)
+        bank = typeof raw.bank_tx_id === 'string' ? raw.bank_tx_id : null
+        code = code ?? (typeof raw.code === 'string' ? raw.code : null)
+      } catch { /* raw no-JSON (eventos viejos del flujo manual): sin rastro */ }
+      paymentTrace = {
+        operation_number: op, bank,
+        coupon_id: session.pay360_coupon_id ?? null,
+        payment_code: code,
+      }
+    }
   }
 
   // Header participants = current OWNER + people EXPLICITLY invited (not the
@@ -119,15 +170,15 @@ Deno.serve(async (req) => {
   if (!viewerIsSeller) mq = mq.or('visibility.is.null,visibility.eq.all')
   const { data: messages } = await mq
 
-  // Campos SOLO de Ventas. `payment_reason` es el veredicto interno del cruce
-  // ("el nombre no coincide", "el código no calza") y `advance_voucher_url` es
-  // la ruta del comprobante en el bucket privado. Mandárselos al comprador
-  // repetiría la fuga que ya se corrigió en los mensajes del chat: da igual que
-  // la UI no los pinte, viajan en la respuesta y quedan a la vista de cualquiera
-  // que mire la red.
-  const sellerOnly = viewerIsSeller
-    ? {}
-    : { payment_reason: undefined, advance_voucher_url: undefined }
+  // Campo SOLO de Ventas: `payment_reason` es el veredicto interno del cobro
+  // ("no coincide el monto", el error crudo del proveedor). Mandárselo al
+  // comprador repetiría la fuga que ya se corrigió en los mensajes del chat: da
+  // igual que la UI no lo pinte, viaja en la respuesta y queda a la vista de
+  // cualquiera que mire la red.
+  const sellerOnly = viewerIsSeller ? {} : {
+    payment_reason: undefined, payment_event_id: undefined,
+    pay360_coupon_id: undefined, pay360_consumer_code: undefined,
+  }
 
   return new Response(
     JSON.stringify({
@@ -135,6 +186,7 @@ Deno.serve(async (req) => {
         ...session, ...sellerOnly,
         seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar,
         participants, buyer_can_call: buyerCanCall,
+        buyer_contact: buyerContact, payment_trace: paymentTrace,
       },
       viewer_is_seller: viewerIsSeller,
       messages: messages ?? [],

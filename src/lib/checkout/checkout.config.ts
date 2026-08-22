@@ -152,83 +152,42 @@ export const EXIT_DISCOUNT_ONCE = true
 // ─── Yape ────────────────────────────────────────────────────────────────────
 
 export const YAPE = {
-  // Aquí vivía `deepLink: 'yape://'`, un esquema SUPUESTO que nunca se verificó
-  // contra la app y que en producción no abría nada. Se eliminó junto con su
-  // botón: ver el encabezado de YapeBox.tsx para las tres razones por las que
-  // tampoco vale la pena reintentarlo con `intent://`.
   copiedFeedbackMs: 1500,
 } as const
 
-/** Dígitos del código de seguridad de Yape. Confirmado contra la app real. */
-export const YAPE_CODE_LENGTH = 3
-
-// ─── Cobro en línea con Culqi ────────────────────────────────────────────────
-
-/** El "código de aprobación" de la app Yape: 6 dígitos, en Aprobar compras →
- *  Código de aprobación. No confundir con el código de SEGURIDAD (3 dígitos)
- *  del flujo manual: aquel evidencia un pago ya hecho; este AUTORIZA un cobro. */
-export const CULQI_OTP_LENGTH = 6
-
-/** Lo que la app de Yape le da de vida al código. El token de Culqi vive 5;
- *  manda el más corto, y es lo que la UI le advierte al comprador. */
-export const CULQI_OTP_TTL_MIN = 2
+// ─── Cobro con 360pay (cupón + deep link de Yape) ────────────────────────────
 
 /**
- * ¿Este pedido se cobra con Culqi? Decide la bifurcación del paso 3 y la del
- * submit. Es una LECTURA pura, no un derivado persistido: no va en `derive()`
- * porque no forma parte del estado — `culqi` lo inyecta el modal y puede llegar
- * asíncrono, después de que el comprador ya esté en el paso 3.
+ * ¿Este pedido se cobra con 360pay? Es una LECTURA pura, no un derivado
+ * persistido: no va en `derive()` porque no forma parte del estado — la config
+ * la inyecta el modal y puede llegar asíncrona, después de que el comprador ya
+ * esté en el paso 3.
  *
  * `locationType === null` (aún no eligió destino) da false: sin destino no hay
- * monto, y la rama Culqi sin monto no existe.
+ * monto, y la rama de cobro sin monto no existe.
+ *
+ * **No tiene `scope` por región**, a diferencia del motor que vivió antes aquí:
+ * aquel acotaba el cobro a provincia porque era un salto de fe que podía costar
+ * conversión limeña. 360pay no tiene ese riesgo —el comprador toca un botón y
+ * Yape abre con el monto puesto— así que aplica donde la tienda lo encendió.
  */
-export function culqiActiveFor(
-  s: Pick<CheckoutState, 'culqi' | 'locationType' | 'advanceAmount'>,
+export function pay360ActiveFor(
+  s: Pick<CheckoutState, 'pay360' | 'locationType' | 'advanceAmount'>,
 ): boolean {
-  if (!s.culqi?.enabled || s.advanceAmount <= 0 || !s.locationType) return false
-  return s.culqi.scope === 'ALL' || s.locationType === 'PROVINCIA'
+  return !!s.pay360?.enabled && s.advanceAmount > 0 && !!s.locationType
 }
-
-/**
- * ¿La captura del comprobante es obligatoria para terminar el pedido?
- *
- * **No, y es deliberado.** La imagen HOY no la lee ninguna máquina: no hay OCR
- * en el sistema. Lo que cuadra el pago es el **código de seguridad**, que viaja
- * en la notificación que le llega a la marca y que el comprador copia de su
- * propio comprobante. Exigir una foto de 4 MB en 4G cuesta conversión real y no
- * compra nada automático — solo evidencia para un humano, que el `payment_event`
- * ya provee mejor.
- *
- * Es un caso donde la regla de decisión (gana la conversión) y la calidad del
- * dato apuntan al mismo lado: el código es MEJOR dato que la imagen. La captura
- * se ofrece como acción secundaria y se sube si el comprador quiere.
- *
- * Ponerlo en `true` la vuelve obligatoria sin tocar componentes.
- */
-export const VOUCHER_REQUIRED = false
 
 // ─── Verificación del adelanto ───────────────────────────────────────────────
 
 /**
- * Si a los 20 s la verificación sigue PENDING, se deja de bloquear la UI y pasa
- * a validación humana. El comprador no espera más que eso, y el pedido ya está
- * registrado — puede cerrar la ventana sin perderlo.
+ * Cada cuánto se consulta el pedido mientras el comprador paga en Yape.
+ *
+ * 3 s y no menos: el comprador está EN OTRA APP, así que una consulta más
+ * rápida no le adelanta nada —no está mirando— y sí multiplica llamadas a
+ * `get-session` por cada pedido en vuelo. Y no más, porque cuando vuelve sí
+ * mira, y ahí los segundos se notan.
  */
-export const VERIFICATION_TIMEOUT_MS = 20_000
-
-/** Backoff del polling mientras se espera el match (ms). */
-export const VERIFICATION_POLL_MS = [1000, 2000, 3000, 5000, 5000] as const
-
-// ─── Comprobante ─────────────────────────────────────────────────────────────
-
-export const VOUCHER = {
-  /** El comprador está en 4G y las fotos pesan 4 MB: se comprime en el cliente. */
-  maxWidthPx: 1600,
-  jpegQuality: 0.8,
-  maxBytes: 8 * 1024 * 1024,
-  accept: 'image/jpeg,image/png,image/webp,image/heic,image/heif',
-  bucket: 'vouchers',
-} as const
+export const PAY360_POLL_MS = 3000
 
 // ─── Persistencia ────────────────────────────────────────────────────────────
 
@@ -275,55 +234,25 @@ export const COPY = {
 
   advanceHeadsUp: `Se paga un adelanto del envío por Yape y el resto al recibir.`,
   advanceHeadsUpShort: 'El resto lo pagas al recibir tu pedido.',
+  // El empujón hacia "pago todo ahora": UNA línea con un beneficio futuro
+  // (puntos del Loyalty Engine), sin cifras ni condiciones — un porcentaje o
+  // un plazo aquí abre preguntas justo antes de cobrar.
+  advanceFullPerk: 'Ganas puntos de descuento para tu próxima compra.',
   // Antes de elegir cómo recibirlo NO se sabe el monto —cambia entre S/20, S/25
   // y S/30—, así que la nota tranquiliza sin cifra. Poner una y que después
   // suba es la sorpresa que el aviso existía para evitar.
   advanceHeadsUpNoAmount:
     'Se adelanta una parte del envío por Yape y se descuenta del total: el resto lo pagas al recibir.',
-  voucherRequired: 'Sube tu comprobante para terminar',
 
   // ─── Paso 3 ────────────────────────────────────────────────────────────────
   step3Title: 'Último paso: confirma tu pedido',
   step3TitleAdvance: 'Último paso: adelanta tu envío',
-  yapeIntro: 'Yapea el adelanto a este número y copia tu código de seguridad.',
-  yapeCopy: 'Copiar número',
   yapeCopied: '¡Copiado!',
-  // Se nombra por lo que el comprador VE, no por el término técnico. El
-  // rótulo de Yape va entre comillas para que lo reconozca sin traducir nada.
-  yapeCodeLabel: 'Los 3 números que te dio Yape',
-  // El "dónde" es lo que evita el abandono: sin esto el comprador no sabe que
-  // el número está en su propia pantalla de confirmación.
-  // La explicación larga ahora la hace el dibujo (YapeCodeHint). Este texto
-  // solo dice DÓNDE mirar, sin repetir lo que ya se ve.
-  yapeCodeHint: 'Aparecen en tu pantalla de Yape como “Código de seguridad”.',
-  yapeCodePlaceholder: '000',
+  // Sin cobro en línea conectado el paso 3 no pide nada, pero tampoco se queda
+  // mudo: quien esperaba pagar ahora tiene que saber qué sigue.
+  advanceByChatTitle: 'Tu adelanto lo coordinamos por el chat',
+  advanceByChatHint: 'Termina tu pedido y un asesor te escribe para acordar el adelanto. No tienes que pagar nada en esta pantalla.',
 
-  // ─── Cobro en línea (Culqi) ────────────────────────────────────────────────
-  // Nada aquí nombra a Culqi: el comprador paga "con Yape" — el motor es
-  // cocina nuestra. Nombrar al procesador solo agrega una marca desconocida
-  // justo en la pantalla donde la confianza decide.
-  culqiTitle: 'Aprueba tu pago con Yape',
-  culqiIntro: 'Genera tu código de aprobación en Yape, pégalo aquí y el cobro entra al toque — sin capturas ni esperas.',
-  culqiPhoneLabel: 'Tu número de Yape',
-  culqiPhoneHint: 'Lo tomamos de tu WhatsApp. Cámbialo si tu Yape es otro.',
-  culqiOtpLabel: 'Código de aprobación de Yape',
-  culqiOtpHint: 'En Yape: Aprobar compras → Código de aprobación. Vence en 2 minutos.',
-  culqiOtpPlaceholder: '000000',
-  culqiOtpNew: 'Genera un código NUEVO en Yape: el anterior ya venció o ya se usó.',
-  /** CTA del paso 3 cuando el botón COBRA, no solo registra. */
-  culqiSubmit: 'Pagar y terminar mi pedido',
-  culqiCharging: 'Cobrando tu adelanto…',
-  culqiChargingHint: 'No cierres esta ventana.',
-  // Pedido creado + pago fallido: la pantalla que no puede decir "error" a
-  // secas. Primero lo que SÍ pasó (tu pedido existe), después lo que falta.
-  culqiRetryTitle: 'Tu pedido está guardado — falta el pago',
-  culqiRetryBody: 'No perdiste nada de lo que llenaste. Solo falta cobrar tu adelanto.',
-  culqiRetryCta: 'Reintentar el pago',
-  culqiContactMe: 'Prefiero que me escriban para pagar',
-  // network_after: el dinero PUDO salir. Reintentar aquí es arriesgar un doble
-  // cobro: se espera y se consulta, jamás se re-cobra a ciegas.
-  culqiConfirming: 'Estamos confirmando tu pago…',
-  culqiConfirmingHint: 'No vuelvas a pagar: si tu Yape ya se descontó, tu pedido se confirma solo en unos segundos.',
   doneUnpaid: 'Registramos tu pedido. Un asesor te escribirá por el chat para coordinar el adelanto.',
   /** La landing, cuando quedó un pedido con el pago pendiente. Nombra lo que el
    *  botón HACE —abrir el chat, donde un asesor cobra— y no lo que uno querría
@@ -332,9 +261,45 @@ export const COPY = {
    *  anotado como follow-up; hasta entonces, el rótulo dice la verdad. */
   finishPaymentCta: 'Coordinar el pago de tu pedido',
 
-  voucherOptional: 'Adjuntar captura (opcional)',
-  voucherAttached: 'Captura adjunta',
-  voucherReplace: 'Cambiar',
+  // ─── Cobro con 360pay ──────────────────────────────────────────────────────
+  // El comprador paga "con Yape": el recaudador es cocina nuestra. Nombrar a
+  // 360pay solo agrega una marca desconocida justo en la pantalla donde la
+  // confianza decide.
+  // Pedido creado + pago no resuelto: la pantalla que no puede decir "error" a
+  // secas. Primero lo que SÍ pasó (tu pedido existe), después lo que falta.
+  paymentPendingTitle: 'Tu pedido está guardado — falta el pago',
+  paymentPendingBody: 'No perdiste nada de lo que llenaste. Solo falta cobrar tu adelanto.',
+  retryPaymentCta: 'Reintentar el pago',
+  contactMeInstead: 'Prefiero que me escriban para pagar',
+
+  pay360Title: 'Paga tu adelanto con Yape',
+  pay360Intro: 'Toca el botón y Yape se abre con todo listo. No tienes que escribir el monto ni buscar ningún número.',
+  pay360AmountLabel: 'Monto a pagar',
+  pay360Cta: 'Pagar con Yape',
+  // Lo que hay que decir ANTES de que se vaya: Yape no lo devuelve solo, y
+  // volver sin entender qué pasó es donde se pierden los pedidos ya pagados.
+  // En móvil esta es LA indicación (el código se oculta), así que dice las dos
+  // cosas que compran confianza: el pago se valida solo, y al volver está el
+  // detalle del pedido esperando.
+  pay360AfterHint: 'Cuando termines en Yape, regresa a esta ventana: tu pago se valida automáticamente y aquí verás el detalle de tu pedido.',
+  // El sello de confianza sobre la indicación. "Con Yape" y no "con 360pay":
+  // el comprador confía en la app que ya usa, no en un recaudador que no conoce.
+  pay360Secure: 'Pago 100% seguro con Yape',
+  // El código nunca convive con el botón en la misma pantalla (móvil = botón,
+  // desktop = código), así que el rótulo no pregunta por la computadora: donde
+  // se ve, ES el camino de pago.
+  pay360CodeLabelOnly: 'Tu código de pago',
+  pay360IntroCodeOnly: 'Abre tu Yape y paga con este código. El monto ya está reservado: no tienes que escribirlo.',
+  pay360CodeCopy: 'Copiar',
+  // El nombre del servicio importa tanto como el código: sin él, el comprador
+  // no sabe qué buscar en la lista de pagos de servicios de su app.
+  pay360CodeHint: 'En tu Yape entra a “Pagar servicios”, busca 360Pay y pega este código.',
+  // La espera. No dice "verificando" a secas: el comprador acaba de salir de la
+  // app y tiene que saber que lo suyo ya está hecho.
+  pay360Waiting: 'Esperando tu pago por Yape…',
+  pay360WaitingHint: 'Apenas Yape confirme, esta pantalla cambia sola. Puedes cerrarla: tu pedido ya está registrado.',
+  pay360IssueFailed: 'No pudimos generar tu pago. Vuelve a intentarlo.',
+
   submit: 'Terminar mi pedido',
   submitting: 'Registrando tu pedido…',
   submitError: 'No pudimos registrar tu pedido. Toca para reintentar.',
@@ -361,7 +326,7 @@ export const COPY = {
   // vacuna, y este es el único momento de atención garantizada que queda.
   doneChatHint: 'Por aquí te escribiremos para coordinar tu entrega.',
 
-  verifying: 'Estamos verificando tu pago…',
+  advancePendingByChat: 'Un asesor te escribe por el chat para coordinar tu adelanto.',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',
   verifyMatched: '¡Pago confirmado! Tu pedido está en camino.',
   verifyUnmatched: 'Recibimos tu comprobante, un asesor lo está validando.',

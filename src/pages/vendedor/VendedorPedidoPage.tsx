@@ -6,6 +6,7 @@ import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import AdvancePanel from '../../components/checkout/payment/AdvancePanel'
 import OrderDetailModal from '../../components/OrderDetailModal'
+import ContactSheet from '../../components/ContactSheet'
 import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { useSeller } from '../../lib/seller-session'
@@ -369,6 +370,7 @@ export default function VendedorPedidoPage() {
   const [buyerOnline, setBuyerOnline] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
+  const [showContact, setShowContact] = useState(false)
   const [showOffer, setShowOffer] = useState(false)
   const [showWa, setShowWa] = useState(false)
   const [team, setTeam] = useState<{ auth_user_id: string; nombre: string; role_label: string }[]>([])
@@ -601,14 +603,17 @@ export default function VendedorPedidoPage() {
             <ArrowLeft size={18} className="text-white" />
           </button>
 
-          <div className="relative flex-shrink-0">
+          {/* El avatar abre a la PERSONA (ficha de contacto); el nombre, al
+              PEDIDO. Dos preguntas distintas, dos puertas. */}
+          <button onClick={() => setShowContact(true)} className="relative flex-shrink-0"
+            aria-label="Ver datos de contacto del cliente">
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-black"
               style={{ background: '#FFD400', color: '#111' }}>
               {(session.buyer_name || 'C')[0]}
             </div>
             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
               style={{ borderColor: '#111', background: buyerOnline ? '#4ADE80' : '#6B7280' }} />
-          </div>
+          </button>
 
           <button onClick={() => setShowDetail(true)} className="flex-1 min-w-0 text-left">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
@@ -701,13 +706,9 @@ export default function VendedorPedidoPage() {
       {/* Antes que la dirección: si el adelanto no cuadró, eso decide si se
           despacha o no — la dirección recién importa después. */}
       <AdvancePanel
-        sessionId={session.id}
-        sellerAuthId={effective?.auth_user_id ?? null}
         advanceAmount={Number(session.advance_amount ?? 0)}
         verification={session.payment_verification ?? null}
         reason={session.payment_reason ?? null}
-        yapeCode={session.advance_yape_code ?? null}
-        hasVoucher={!!session.advance_voucher_url}
         provider={session.payment_provider ?? null}
       />
 
@@ -824,6 +825,10 @@ export default function VendedorPedidoPage() {
           channelRef={channelRef}
           onClose={() => setShowCall(false)}
         />
+      )}
+
+      {showContact && (
+        <ContactSheet session={session} onClose={() => setShowContact(false)} />
       )}
 
       {showDetail && (

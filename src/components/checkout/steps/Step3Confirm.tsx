@@ -1,47 +1,39 @@
 // ─── PASO 3 · Resumen y adelanto ─────────────────────────────────────────────
-// Dos formas de cobrar el adelanto, según la tienda (prop `culqi`):
+// El paso 3 **no pide nada**. Nunca. Con 360pay activo no anuncia nada extra:
+// el resumen ya dice cuánto se adelanta y la pantalla de Yape aparece DESPUÉS
+// de terminar el pedido — anunciarla aquí duplicaba el monto en la misma
+// pantalla y alargaba el paso sin sumar información. Sin 360pay sí se avisa:
+// un asesor coordina el adelanto por el chat, y no decirlo deja al comprador
+// esperando un cobro que nunca llega.
 //
-//   Manual → caja de Yape con el número de la marca + el código de seguridad
-//            (obligatorio) + la captura (opcional, ver VOUCHER_REQUIRED). El
-//            cruce corre en background contra la notificación.
-//   Culqi  → celular + código de aprobación, y el CTA COBRA: monto exacto,
-//            confirmación al toque, sin captura ni cruce. Ver §3.3 del doc.
+// Aquí vivió la caja del Yape manual —número de la marca, código de seguridad
+// de 3 dígitos, captura del comprobante— y era el único punto del checkout
+// donde el comprador tenía que aprender algo nuevo: buscar tres dígitos en una
+// pantalla que quizá ya cerró. Se eliminó con el flujo entero cuando 360pay
+// pasó a producción: pedirle la PRUEBA de un pago es siempre peor que darle un
+// botón que lo cobra.
 //
 // El resumen va PRIMERO en los dos casos: antes de pedirle plata hay que
 // recordarle qué lleva y a dónde llega.
 
-import { COPY, YAPE_CODE_LENGTH, advanceFor } from '../../../lib/checkout/checkout.config'
+import { Gift } from 'lucide-react'
+import { COPY, advanceFor } from '../../../lib/checkout/checkout.config'
 import type { AdvanceChoice, CheckoutState } from '../../../lib/checkout/types'
-import type { FieldErrors } from '../../../lib/checkout/validation'
-import type { StoreYape } from '../CheckoutModal'
-import YapeCodeHint from '../YapeCodeHint'
-import YapeBox from '../payment/YapeBox'
-import CulqiYapeBox from '../payment/CulqiYapeBox'
-import VoucherField from '../payment/VoucherField'
-import Field from '../fields/Field'
 
 interface Step3Props {
   state: CheckoutState
   /** Nombre y precio ya con descuento del pack elegido. */
   packName: string | null
   price: number
-  /** Datos de cobro de la tienda. `null` si la marca aún no los configuró. */
-  yape: StoreYape | null
-  /** true = este pedido se cobra en línea (culqiActiveFor, lo decide el modal). */
-  culqi: boolean
-  errors: FieldErrors
-  touch: (field: 'yapeCode' | 'culqiPhone' | 'culqiOtp') => void
-  onYapeCode: (code: string) => void
-  onCulqiPhone: (phone: string) => void
-  onCulqiOtp: (otp: string) => void
-  onVoucher: (file: File) => Promise<void>
+  /** true = este pedido se cobra con 360pay (`pay360ActiveFor`, lo decide el
+   *  modal). false = la tienda aún no lo tiene y va por la caja manual. */
+  pay360: boolean
   onAdvanceChoice: (choice: AdvanceChoice) => void
   submitError: string | null
 }
 
 export default function Step3Confirm({
-  state, packName, price, yape, culqi, errors, touch, onYapeCode,
-  onCulqiPhone, onCulqiOtp, onVoucher, onAdvanceChoice, submitError,
+  state, packName, price, pay360, onAdvanceChoice, submitError,
 }: Step3Props) {
   const advance = state.advanceAmount
   const isProvincia = state.locationType === 'PROVINCIA'
@@ -91,47 +83,24 @@ export default function Step3Confirm({
         </p>
       )}
 
-      {advance > 0 && (culqi
-        ? (
-          <CulqiYapeBox
-            state={state}
-            amount={advance}
-            errors={errors}
-            touch={touch}
-            onPhone={onCulqiPhone}
-            onOtp={onCulqiOtp}
-          />
-        )
-        : (
-          /* Rama manual, BIT a BIT como siempre: es lo que sostiene la
-             convivencia — una tienda sin Culqi no nota este archivo. */
-          <>
-            <YapeBox yape={yape} amount={advance} />
-
-            <div className="mt-3">
-              {/* La ayuda va ARRIBA del campo: quien ya sabe la ignora en medio
-                  segundo, y quien no, la ve antes de quedarse mirando un input
-                  vacío sin saber qué escribir. */}
-              <YapeCodeHint />
-              <Field
-                label={COPY.yapeCodeLabel}
-                required
-                value={state.advanceYapeCode}
-                onChange={e => onYapeCode(e.target.value)}
-                onBlur={() => touch('yapeCode')}
-                error={errors.yapeCode}
-                hint={COPY.yapeCodeHint}
-                placeholder={COPY.yapeCodePlaceholder}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={YAPE_CODE_LENGTH}
-                className="tracking-[0.5em] text-center text-lg font-black"
-              />
-            </div>
-
-            <VoucherField voucher={state.paymentVoucher} onSelect={onVoucher} error={errors.voucher} />
-          </>
-        )
+      {/* Con 360pay aquí no va NADA: el resumen ya muestra el adelanto y la
+          pantalla de Yape llega al terminar el pedido. Aquí vivió una caja que
+          anunciaba el botón y repetía el monto — puro eco del resumen de arriba,
+          y se quitó. */}
+      {advance > 0 && !pay360 && (
+        /* Sin 360pay conectado no hay nada que cobrar aquí: el pedido se cierra
+           igual y el adelanto lo coordina un asesor por el chat. Decirlo es
+           mejor que no decir nada — quien esperaba pagar ahora sabe qué sigue. */
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <p className="text-sm font-bold text-gray-900">{COPY.advanceByChatTitle}</p>
+          <p className="mt-1 text-xs leading-relaxed text-gray-500">{COPY.advanceByChatHint}</p>
+          <div className="mt-3 rounded-xl bg-gray-50 px-3 py-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+              {COPY.pay360AmountLabel}
+            </span>
+            <p className="text-2xl font-black text-gray-900">S/{advance}</p>
+          </div>
+        </div>
       )}
 
       {submitError && (
@@ -156,16 +125,16 @@ function AdvancePicker({ price, choice, onPick }: {
   choice: AdvanceChoice
   onPick: (c: AdvanceChoice) => void
 }) {
-  const options: { id: AdvanceChoice; title: string; now: number }[] = [
+  const options: { id: AdvanceChoice; title: string; now: number; perk?: string }[] = [
     { id: 'HALF', title: 'Pago la mitad ahora', now: advanceFor(price, 'HALF') },
-    { id: 'FULL', title: 'Pago todo ahora', now: advanceFor(price, 'FULL') },
+    { id: 'FULL', title: 'Pago todo ahora', now: advanceFor(price, 'FULL'), perk: COPY.advanceFullPerk },
   ]
 
   return (
     <div className="mb-4">
       <p className="text-xs font-black text-gray-700 mb-2">¿Cuánto quieres adelantar? *</p>
       <div className="space-y-2" role="radiogroup" aria-label="¿Cuánto quieres adelantar?">
-        {options.map(({ id, title, now }) => {
+        {options.map(({ id, title, now, perk }) => {
           const active = choice === id
           const rest = Math.max(0, price - now)
           return (
@@ -188,6 +157,14 @@ function AdvancePicker({ price, choice, onPick }: {
               <span className="block text-[11px] text-gray-500 mt-0.5">
                 {rest > 0 ? `Te quedan S/${rest} por pagar al recibirlo.` : 'Ya no pagas nada al recibirlo.'}
               </span>
+              {/* El empujón hacia el pago completo: una línea, en verde, que
+                  suma un beneficio en vez de repetir el reparto. */}
+              {perk && (
+                <span className="mt-1 flex items-center gap-1 text-[11px] font-bold text-green-700">
+                  <Gift size={12} className="flex-shrink-0" aria-hidden="true" />
+                  {perk}
+                </span>
+              )}
             </button>
           )
         })}

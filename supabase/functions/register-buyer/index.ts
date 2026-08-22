@@ -1,5 +1,4 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { matchOrderToPayments } from '../_shared/yape-match.ts'
 import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
 
 const supabase = createClient(
@@ -44,15 +43,12 @@ Deno.serve(async (req) => {
     delivery_reference?: string   // referencia de la dirección / agencia destino
     address_lat?: number          // pin GPS fijado en el checkout
     address_lng?: number
-    advance_op_number?: string    // N° de operación del adelanto de flete (provincia)
-    // ─── Fase 3 · adelanto por Yape ─────────────────────────────────────────
+    // ─── Fase 3 · adelanto ──────────────────────────────────────────────────
     checkout_id?: string          // uuid del modal: hace el alta IDEMPOTENTE
     advance_amount?: number       // informativo: el monto REAL se deriva en el server
-    advance_voucher_url?: string  // ruta en el bucket privado `vouchers`
-    advance_yape_code?: string    // código de seguridad tecleado por el comprador
-    // 'CULQI' = el adelanto se cobra en línea vía `culqi-charge`. Saca al pedido
-    // de la piscina del cruce manual: sin esto, un yape ajeno del mismo monto lo
-    // daría por pagado y el cargo real nunca ocurriría. Ver §16.d del esquema.
+    // '360PAY' = el adelanto se cobra en línea con un cupón. Saca al pedido de
+    // la piscina del cruce manual: sin esto, un yape ajeno del mismo monto lo
+    // daría por pagado y el cobro real nunca ocurriría. Ver §16.d del esquema.
     payment_provider?: string
   }
 
@@ -245,7 +241,7 @@ Deno.serve(async (req) => {
   // El precio venía del body tal cual. Daba igual mientras el adelanto saliera
   // de una tabla fija por destino; desde que es un PORCENTAJE del precio,
   // aceptarlo del navegador es dejar que el comprador fije lo que se le cobra:
-  // declarar un pack de S/2 y que Culqi le cargue S/1.
+  // declarar un pack de S/2 y que el cobro en línea le saque S/1.
   //
   // Se contrasta contra los packs del producto. Si no se puede verificar (sin
   // product_id, producto sin packs) NO se bloquea la venta —el pedido vale más
@@ -293,8 +289,8 @@ Deno.serve(async (req) => {
 
   // ─── Adelanto ──────────────────────────────────────────────────────────────
   // Para el checkout directo el monto se DERIVA AQUÍ, nunca del body: aceptarlo
-  // del navegador permitía declarar S/1 — y con Culqi ese S/1 se cobraría de
-  // verdad y el pedido se auto-confirmaría. El body solo sirve para detectar
+  // del navegador permitía declarar S/1 — y con el cobro en línea ese S/1 se
+  // cobraría de verdad y el pedido se auto-confirmaría. El body solo sirve para detectar
   // front desalineado.
   //
   // Es la mitad del pedido, o el total si el comprador lo eligió. `finalPrice`
@@ -315,9 +311,9 @@ Deno.serve(async (req) => {
       body_advance: bodyAdvance, derived: advanceAmount, price: finalPrice, choice: advanceChoice,
     }))
   }
-  const paymentProvider = body.payment_provider === 'CULQI' ? 'CULQI' : null
-  const advanceVoucherUrl = body.advance_voucher_url?.trim() || null
-  const advanceYapeCode = body.advance_yape_code?.replace(/\D/g, '').slice(0, 6) || null
+  // Lista blanca, no passthrough: este campo decide de qué piscina de cruce
+  // sale el pedido, así que un valor inventado lo dejaría fuera de las dos.
+  const paymentProvider = body.payment_provider === '360PAY' ? '360PAY' : null
   const paymentVerification = advanceAmount > 0 ? 'PENDING' : 'NOT_REQUIRED'
 
   const { data, error } = await supabase
@@ -327,8 +323,8 @@ Deno.serve(async (req) => {
       // Align the order to the assigned seller's store so it shows in the team's lists
       store_id: assignedSellerStore ?? body.store_id,
       // La tienda del PRODUCTO, siempre. El pool de vendedores ya está scoped a
-      // la misma tienda, pero las llaves de Culqi se resuelven por esta columna
-      // — cobrar contra la cuenta de otra marca es el peor bug posible, así que
+      // la misma tienda, pero la config de cobro se resuelve por esta columna —
+      // cobrar contra la cuenta de otra marca es el peor bug posible, así que
       // el invariante queda escrito en la fila, no implícito en el round-robin.
       origin_store_id: body.store_id,
       token,
@@ -370,8 +366,6 @@ Deno.serve(async (req) => {
       checkout_id: checkoutId,
       checkout_variant: ['A', 'B'].includes(body.checkout_variant ?? '') ? body.checkout_variant : null,
       advance_amount: advanceAmount,
-      advance_voucher_url: advanceVoucherUrl,
-      advance_yape_code: advanceYapeCode,
       payment_verification: paymentVerification,
     })
     .select('id, token')
@@ -394,19 +388,15 @@ Deno.serve(async (req) => {
       ? 'te llegará a tu casa y el saldo lo pagas al recibirlo'
       : 'llegará a tu puerta y el saldo lo pagas al recibirlo'
 
-  // El estado del adelanto va en el PRIMER mensaje: el comprador acaba de yapear
-  // y esa es su única duda. Callarlo lo empuja al WhatsApp del vendedor a
+  // El estado del adelanto va en el PRIMER mensaje: es la única duda que le
+  // queda al comprador. Callarlo lo empuja al WhatsApp del vendedor a
   // preguntar, que es justo lo que este chat evita.
   //
-  // Siempre "estamos validando", nunca "confirmado": el cruce corre MÁS ABAJO en
-  // esta misma función, así que a esta altura no se sabe. Cuando cuadra, el
-  // propio cruce manda su "✅ ¡Recibimos tu adelanto!" segundos después y el
-  // comprador ve el sistema trabajando en vivo.
+  // Nunca "confirmado" desde aquí: con 360pay el pago llega por webhook, y el
+  // propio webhook manda su "✅ ¡Recibimos tu adelanto!" cuando cuadra. Sin
+  // cobro en línea, lo coordina el asesor por este mismo chat.
   //
-  // Regla dura del módulo: **nunca se le dice que su pago no existe.** Si no
-  // cruza, este mensaje queda como la única versión de los hechos, y dice que lo
-  // validamos NOSOTROS — porque en la mayoría de esos casos el fallo es del
-  // lector, no suyo.
+  // Regla dura del módulo: **nunca se le dice que su pago no existe.**
   const advanceLine = advanceAmount > 0
     ? `\n\n⏳ Estamos validando tu adelanto de S/${advanceAmount}. Te aviso por aquí apenas cuadre.`
     : ''
@@ -424,96 +414,6 @@ Deno.serve(async (req) => {
     body: welcomeBody,
   })
 
-  // Adelanto de flete reportado en el checkout → deja constancia para que Ventas
-  // verifique el Yape/Plin antes de despachar (verificación formal: pendiente #3).
-  if (body.advance_op_number) {
-    await supabase.from('chat_messages').insert({
-      session_id: data.id,
-      sender_role: 'system',
-      sender_name: 'Kross',
-      type: 'text',
-      body: `📎 Adelanto de flete reportado por el cliente · N° de operación ${body.advance_op_number}. Verifica el Yape/Plin antes de despachar.`,
-    })
-  }
-
-  // ─── Cruce inverso: el pago pudo llegar ANTES que el pedido ────────────────
-  // Es el caso normal, no el raro: el comprador yapea, mira su captura, la sube
-  // y recién ahí toca "Terminar pedido". Para cuando el pedido existe, su pago
-  // ya está guardado y sin consumir. Sin esta pasada, todo pedido de provincia
-  // quedaría PENDING esperando un pago que nunca va a volver a llegar.
-  //
-  // Un pedido Culqi NO entra aquí: su dinero llega por `culqi-charge`, no por
-  // el Yape de la marca. Dejarlo cruzar haría que un yape ajeno del mismo monto
-  // lo diera por pagado — y el cargo real nunca ocurriría.
-  if (advanceAmount > 0 && paymentProvider === null) {
-    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-    const { data: pending } = await supabase
-      .from('payment_events')
-      .select('id, amount_pen, sender_name, security_code')
-      .eq('store_id', body.store_id)
-      .is('matched_order_id', null)
-      .gte('received_at', since)
-      .order('received_at', { ascending: false })
-
-    const { chosen, reason, shortPaid } = matchOrderToPayments(
-      {
-        id: data.id, order_id: orderId, buyer_name: body.buyer_name,
-        advance_amount: advanceAmount, advance_yape_code: advanceYapeCode,
-      },
-      pending ?? [],
-    )
-
-    if (chosen) {
-      const matchedAt = new Date().toISOString()
-      const patch: Record<string, unknown> = {
-        // Monto incompleto: se enlaza para que Ventas lo vea, pero no se da
-        // por verificado — falta plata.
-        payment_verification: shortPaid ? 'PENDING' : 'MATCHED', payment_matched_at: matchedAt,
-        payment_reason: reason, payment_event_id: chosen.id,
-      }
-      // Un cruce confirmado mueve el pedido, sin flag de por medio: para el
-      // comprador el pago YA ocurrió, y dejarlo en "validando" mientras el
-      // dinero está cobrado es la contradicción que genera el reclamo.
-      // Las advertencias (nombre distinto, código que no calza) NO frenan esto
-      // — quedan en `payment_reason` y en el mensaje interno para que Ventas las
-      // revise antes de despachar, que es el momento donde importan.
-      if (!shortPaid) patch.stage = 'confirmado'
-
-      await supabase.from('order_sessions').update(patch).eq('id', data.id)
-      await supabase.from('payment_events')
-        .update({ matched_order_id: data.id, matched_at: matchedAt })
-        .eq('id', chosen.id)
-      // El veredicto interno es SOLO para Ventas: lleva el nombre de quien pagó
-      // (que puede ser un tercero) y nuestras dudas operativas.
-      await supabase.from('chat_messages').insert({
-        session_id: data.id, sender_role: 'system', sender_name: 'Kross', type: 'text',
-        visibility: 'sellers',
-        body: (shortPaid
-          ? `⚠️ Pago identificado pero INCOMPLETO — S/${advanceAmount} esperados`
-          : `✅ Adelanto de S/${advanceAmount} verificado automáticamente`)
-          + (chosen.sender_name ? ` · pagó ${chosen.sender_name}` : '')
-          + (reason ? `\n⚠️ ${reason}` : ''),
-      })
-      // El acuse al comprador SOLO si entró completo: decirle "recibimos tu
-      // adelanto" cuando pagó de menos lo deja creyendo que ya está.
-      if (!shortPaid) await supabase.from('chat_messages').insert({
-        session_id: data.id, sender_role: 'system', sender_name: 'Kross',
-        type: 'status_update', visibility: 'all',
-        body: `✅ ¡Recibimos tu adelanto de S/${advanceAmount}! Ya estamos preparando tu pedido.`
-          + ' Por aquí te avisamos cuando salga.',
-      })
-    } else if (advanceVoucherUrl) {
-      // El comprobante está subido pero el pago aún no aparece. Se avisa para
-      // que Ventas lo mire; NUNCA se le dice al comprador que su pago no existe
-      // —de ahí que este mensaje sea `sellers` y no lleve respuesta al chat.
-      await supabase.from('chat_messages').insert({
-        session_id: data.id, sender_role: 'system', sender_name: 'Kross', type: 'text',
-        visibility: 'sellers',
-        body: `📎 Comprobante de adelanto (S/${advanceAmount}) subido por el cliente. Aún sin cruce automático${reason ? ` · ${reason}` : ''}. Revísalo antes de despachar.`,
-      })
-    }
-  }
-
   // El lead deja de ser lead: no se persigue a quien ya compró.
   if (checkoutId) {
     await supabase.from('checkout_drafts')
@@ -526,7 +426,7 @@ Deno.serve(async (req) => {
       session_id: data.id,
       // La rama idempotente ya lo devolvía; esta no, y el front hace
       // `setOrderCode(res.order_id)` — el código del pedido llegaba undefined
-      // en todo pedido NUEVO. Con Culqi además el retry del cobro lo necesita.
+      // en todo pedido NUEVO. El reintento del cobro también lo necesita.
       order_id: orderId,
       buyer_id: buyer.id,
       score: buyer.score,

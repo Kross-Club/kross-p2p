@@ -37,6 +37,17 @@
   Ver §4 y §5.
 - **Falta 🔮:** generación de **etiquetas/datos formateados para agencias** (Shalom / Olva
   Courier): nombre, DNI, teléfono, destino, contenido.
+- **Falta 🔮 — tracking por API de Shalom/Olva + cobranza del saldo.** Decisión validada
+  con operadores COD reales (ver `docs/ICP Sales/VALIDACION-AGENCIA.md`):
+  - Leer del **API de cada agencia** los estados del envío — **en origen → en tránsito →
+    en destino** — y reflejar cada transición en el pedido (contrato en
+    `MerchantCustomerSession`, `00-CORE-ARCHITECTURE.md`).
+  - **El saldo no se cobra en línea.** Al pasar a *en destino* se dispara la cobranza:
+    **plantilla de WhatsApp** de recojo/cobro (`send-wa-template`, ya construido) y el
+    pedido entra a la **cola de llamadas** del vendedor (LiveKit, ya construido). El
+    tracking decide *cuándo* cobrar; la conversación cobra.
+  - Subproducto: **tasa de recojo nativa** (*en destino* vs. *entregado*) — la métrica
+    que los operadores hoy siguen a mano o no tienen.
 - Debe setear `delivery.dispatchType = 'AGENCIA_PROVINCIA'` y `delivery.agencyName`.
 
 ### 4. Cobertura del courier (Aliclic / Alidriver) ✅ data · 🔮 UI
@@ -98,13 +109,19 @@ real; se recalcula cuando haya pedidos con coordenadas.
 ### 5. Listado de agencias ✅ Shalom · ✅ Olva
 
 `src/lib/checkout/services/AgencyService.ts` — **las dos agencias se resuelven con el
-mismo código**. `OTRO` es la única sin listado: para esa la UI cae a texto libre y el
-pedido queda marcado para verificación manual.
+mismo código**.
 
-| | Sedes | Fuente | Adelanto |
-|---|---|---|---|
-| **Shalom** | 487 | CSV oficial → `scripts/build-agencies.mjs` | S/20 |
-| **Olva** | 424 | su propio buscador → `scripts/build-olva.mjs` | S/25 |
+| | Sedes | Fuente |
+|---|---|---|
+| **Shalom** | 487 | CSV oficial → `scripts/build-agencies.mjs` |
+| **Olva** | 424 | su propio buscador → `scripts/build-olva.mjs` |
+
+⛔ **El texto libre (`OTRO`) se eliminó** (ago-2026). Existía para la sede que no aparecía
+en el listado y abría un campo abierto que dejaba el pedido en verificación manual. Con
+911 puntos ordenados por distancia, quien no encuentra su sede exacta elige **la más
+cercana que reconoce** — y una sede escrita a mano no se puede validar, rankear ni
+rastrear. Con ella se fueron el botón "Mi agencia no está en la lista" y la rama `OTRO`
+del picker.
 
 #### El comprador elige un LUGAR, no un courier ✅
 
@@ -123,17 +140,65 @@ justificada en un adelanto de «S/10 contra S/20» que ya no era el vigente.
 el departamento**, así que su segunda opción más cercana está a **80 km**. La lista
 unificada mantiene las cuatro primeras bajo 40 km.
 
+El conteo completo, departamento por departamento (**Olva** marca dónde tiene más sedes):
+
+| Departamento | Shalom | Olva | Total |
+|---|---:|---:|---:|
+| Lima | 154 | 128 | 282 |
+| Arequipa **Olva** | 31 | 36 | 67 |
+| La Libertad | 29 | 27 | 56 |
+| San Martín **Olva** | 23 | 27 | 50 |
+| Cajamarca **Olva** | 19 | 25 | 44 |
+| Junín | 24 | 20 | 44 |
+| Piura | 30 | 14 | 44 |
+| Cusco | 25 | 12 | 37 |
+| Áncash **Olva** | 14 | 20 | 34 |
+| Lambayeque | 21 | 9 | 30 |
+| Puno | 16 | 8 | 24 |
+| Ica | 18 | 5 | 23 |
+| Loreto **Olva** | 8 | 11 | 19 |
+| Ayacucho **Olva** | 5 | 13 | 18 |
+| Callao | 11 | 6 | 17 |
+| Amazonas **Olva** | 6 | 10 | 16 |
+| Huánuco **Olva** | 6 | 9 | 15 |
+| Ucayali | 8 | 7 | 15 |
+| Tacna | 9 | 4 | 13 |
+| Tumbes | 9 | 4 | 13 |
+| Pasco **Olva** | 4 | 7 | 11 |
+| Apurímac **Olva** | 3 | 7 | 10 |
+| Huancavelica **Olva** | 1 | 9 | 10 |
+| Moquegua | 7 | 3 | 10 |
+| Madre de Dios | 6 | 3 | 9 |
+| **Total** | **487** | **424** | **911** |
+
+> Tabla contada sobre `src/data/agencies/shalom.json` y `olva.json` (campo `department`
+> de cada sede). Es una **foto, no una regla**: la recomendación no la lee — sale del
+> orden por distancia. Se recalcula con los JSON regenerados
+> (`node -e` sobre `branches` agrupando por departamento, o `npm run build:data` primero
+> si cambió la fuente).
+
 - Ordenar por distancia hace emerger la regionalización **sola**, y se mantiene sola
   cuando un courier abre o cierra un local. Una tabla por departamento habría que
   actualizarla a mano con cada cambio del listado.
 - `LISTED_AGENCIES` se deriva de los loaders: **sumar Marvisur o Cruz del Sur es agregar
   su loader**, y entra solo a los rankings, a la búsqueda y a la UI.
+- **Cuándo sumar una agencia más: cuando la tasa de recojo lo pida, no antes.** Con ambas
+  agencias en los 25 departamentos no hay hueco geográfico que llenar: una agencia nueva
+  agrega densidad donde ya hay cobertura, y cuesta un JSON que mantener y una fila más en
+  una pantalla que vive de tener pocas opciones. La señal para sumarla es que la tasa de
+  recojo caiga en una zona (y el courier local aparezca en los reclamos) — y esa métrica
+  ya está en camino: `agency_selected` con `rank`/`distanceKm` hoy, tracking por API (§3)
+  después.
 - ⚠️ **Los ids solo son únicos dentro de cada agencia** — 197 se repiten entre las dos. En
   una lista mezclada hay que comparar por `pointKey()` (`AGENCIA:id`); comparar por id
   seleccionaría dos tarjetas a la vez.
-- El adelanto va **dentro de cada tarjeta** porque cambia por courier (S/20 vs S/25). El
-  «desde» previo sale de `ADVANCE_AGENCY_FROM_PEN`, que se calcula: escrito a mano, sumar
-  una agencia más barata dejaría la tarjeta mintiendo un piso que ya no es el piso.
+- ⛔ **La tarjeta ya no muestra adelanto.** Lo mostraba porque cambiaba por courier (S/20
+  Shalom vs S/25 Olva), y eso es justo lo que la lista unificada volvió absurdo: dos sedes
+  contiguas de couriers distintos pedían montos distintos **por el mismo viaje**, y el
+  número saltaba al cambiar de tarjeta. Desde ago-2026 el adelanto es la mitad del pedido
+  (o el total) y **no depende del punto elegido**, así que cambiar de sede ya no puede
+  reescribir el monto que el comprador vio. Con esto se fue `ADVANCE_AGENCY_FROM_PEN`, el
+  «desde» que se pintaba antes de elegir. Ver `01-SALES-ENGINE.md`.
 - `agency_selected` ahora lleva `rank` y `distanceKm`: es la métrica que valida el cambio
   —si el comprador casi siempre toma el primero, ordenar por distancia recomienda bien— y
   la primera versión de la tasa de aceptación por courier y zona.
@@ -180,7 +245,9 @@ Corre **después** de los generadores de agencias, porque lee sus JSON ya constr
    checkout.
 2. 🔮 Route-sheet del motorizado (Lima) con cobranza por parada.
 3. 🔮 Generador de envíos a provincia (Shalom/Olva).
-4. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data
+4. 🔮 Tracking por API de Shalom/Olva (origen → tránsito → destino) con disparo de
+   cobranza del saldo (plantilla WhatsApp + llamada) al llegar a destino. Ver §3.
+5. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data
    con la que se negocia cobertura con Aliclic y se mide venta perdida por zona.
 
 ## Regenerar la data
@@ -222,14 +289,13 @@ Un pedido de provincia no se despacha por estar "confirmado": se despacha cuando
 adelanto está verificado **y sin advertencias pendientes**.
 
 - `advance.verification = 'MATCHED'` y `reason` vacío → listo.
-- `MATCHED` **con** `reason` (nombre distinto, código que no calza) → lo mira una persona.
-  El pedido avanza igual en la barra del comprador —el pago entró, la duda es nuestra—
-  pero el `AdvancePanel` del chat de Ventas muestra la advertencia y el comprobante.
-- `PENDING` → el pago no ha cruzado. No se despacha.
+- `MATCHED` **con** `reason` → lo mira una persona. El pedido avanza igual en la barra del
+  comprador —el dinero entró, la duda es nuestra— pero el `AdvancePanel` del chat de
+  Ventas muestra la advertencia.
+- `PENDING` → el adelanto no está cobrado. No se despacha. Si la marca no tiene 360pay
+  conectado, ese es su estado normal y el cobro lo coordina Ventas por el chat.
 
-El comprobante se abre desde ese panel con URL firmada de 5 minutos (`voucher-url`).
-Nunca se sirve como enlace directo: lleva nombre, teléfono parcial y número de operación
-del comprador. Contrato y reglas completas en `00-CORE-ARCHITECTURE.md`.
+Contrato y reglas completas en `00-CORE-ARCHITECTURE.md`.
 
 ## El catálogo de distritos sale del padrón del INEI ✅
 
@@ -320,22 +386,34 @@ alguien cambia la definición, no puede abrir un agujero sin que falle.
 |---|---|
 | Lima metropolitana (motorizado propio) | 50 |
 | Resto del país (courier o agencia) | 1 824 |
-## Tres formas de entregar, no dos
+## Cuatro formas de entregar: región × método
 
 `dispatch_type` tenía solo `MOTORIZADO_LIMA` y `AGENCIA_PROVINCIA`, y el reparto
 **a domicilio en provincia** no era ninguna de las dos. Caía en la rama de Lima
 por descarte —"no es agencia, entonces es motorizado"— y entraba al tablero como
 pedido limeño: otro courier, otros plazos y otro costo, contados donde no van.
 
-| Valor | Qué es | Adelanto |
-|---|---|---|
-| `MOTORIZADO_LIMA` | Motorizado propio, Lima metropolitana | S/5 |
-| `MOTORIZADO_PROVINCIA` | Courier a la puerta, fuera de Lima | S/30 |
-| `AGENCIA_PROVINCIA` | Mostrador de Shalom u Olva | S/20 · S/25 |
+Después se sumó el cuarto: **recoger en agencia también en Lima**. "No es agencia"
+dejó de significar Lima, y "agencia" dejó de significar provincia.
 
-Antes casi no pasaba: la cobertura rara vez elegía domicilio fuera de Lima. Con
-el **checkout B** es una opción que el comprador marca a propósito, así que pasó
-de rareza a caso frecuente.
+| Valor | Qué es |
+|---|---|
+| `MOTORIZADO_LIMA` | Motorizado propio, Lima metropolitana |
+| `MOTORIZADO_PROVINCIA` | Courier a la puerta, fuera de Lima |
+| `AGENCIA_PROVINCIA` | Mostrador de Shalom u Olva, fuera de Lima |
+| `AGENCIA_LIMA` | Mostrador de Shalom u Olva, en Lima |
+
+> La columna "Adelanto" que tenía esta tabla se eliminó: el monto ya no depende
+> del despacho sino del precio del pack. Ver `01-SALES-ENGINE.md`.
+
+`MOTORIZADO_PROVINCIA` antes casi no pasaba: la cobertura rara vez elegía
+domicilio fuera de Lima. Con el **checkout B** es una opción que el comprador
+marca a propósito, así que pasó de rareza a caso frecuente.
+
+⚠️ **La lista blanca de `register-buyer` es obligatoria.** Aplasta contra
+`MOTORIZADO_LIMA` todo valor que no reconoce, **sin error**: sumar una combinación
+al front sin agregarla ahí manda un motorizado a una casa por un paquete que está
+en el mostrador, y nada avisa.
 
 **Lo que sigue igual:** todo lo que pregunta `=== 'AGENCIA_PROVINCIA'` ("¿es
 recojo?") no cambió — el pin GPS se sigue pidiendo salvo en agencia, y ahora eso

@@ -25,13 +25,12 @@ interface StoreRow {
   wa_display_phone?: string | null
   wa_business_account_id?: string | null
   // Cobros de la marca
-  yape_number?: string | null
-  yape_holder?: string | null
-  yape_qr_url?: string | null
-  culqi_enabled?: boolean
-  culqi_scope?: string | null
   /** Derivado por el backend: la llave secreta jamás viaja, solo su presencia. */
-  culqi_secret_configured?: boolean
+  pay360_enabled?: boolean
+  pay360_env?: string | null
+  /** Presencia = la marca ya es un negocio en 360pay. No es un secreto. */
+  pay360_business_id?: string | null
+  pay360_payment_prefix?: string | null
 }
 
 const ERR: Record<string, string> = {
@@ -41,15 +40,17 @@ const ERR: Record<string, string> = {
   admin_invalido: 'Revisa el correo y la contraseña (mín. 6) del admin.',
   nada_que_guardar: 'No hay cambios para guardar.',
   auth_requerida: 'Tu sesión venció. Vuelve a entrar para tocar los cobros.',
-  culqi_pk_invalida: 'La llave pública no tiene el formato pk_test_/pk_live_.',
-  culqi_sk_invalida: 'La llave secreta no tiene el formato sk_test_/sk_live_.',
-  culqi_env_mismatch: 'Las llaves son de entornos distintos (una test y una live).',
-  culqi_sin_llaves: 'Pega tus dos llaves de Culqi antes de encender el cobro.',
+  pay360_sin_llave_partner: 'Falta configurar la llave de partner de 360pay en el servidor.',
+  pay360_ya_conectado: 'Esta marca ya está conectada a 360pay.',
+  pay360_prefijo_invalido: 'El prefijo son 3 caracteres: letras y números.',
+  pay360_alta_fallo: 'No pudimos crear la cuenta en 360pay. Revisa e inténtalo de nuevo.',
+  pay360_sin_conectar: 'Conecta la marca con 360pay antes de encender el cobro.',
+  pay360_nombre_invalido: 'Escribe el nombre del comercio para 360pay.',
 }
 
 async function call(payload: Record<string, unknown>) {
   // El JWT REAL del vendedor: manage-store lo verifica contra Auth, y los
-  // campos de cobro (yape/culqi) SOLO se aceptan por esta vía. El
+  // campos de cobro (360pay) SOLO se aceptan por esta vía. El
   // admin_auth_id del body queda como compat mientras conviven versiones.
   const { data: authData } = await supabase.auth.getSession()
   const jwt = authData.session?.access_token ?? ANON
@@ -222,26 +223,23 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [waDisplay, setWaDisplay] = useState(store.wa_display_phone ?? '')
   const [waBiz, setWaBiz] = useState(store.wa_business_account_id ?? '')
   // Cobros — del admin de la tienda, no del super: es SU número y SU cuenta.
-  const [yapeNumber, setYapeNumber] = useState(store.yape_number ?? '')
-  const [yapeHolder, setYapeHolder] = useState(store.yape_holder ?? '')
-  const [yapeQr, setYapeQr] = useState<string | null>(store.yape_qr_url ?? null)
-  const [culqiOn, setCulqiOn] = useState(!!store.culqi_enabled)
-  const [culqiScope, setCulqiScope] = useState(store.culqi_scope === 'ALL' ? 'ALL' : 'PROVINCIA')
-  // Las llaves arrancan VACÍAS a propósito: '' = "no tocar la guardada". El
-  // backend jamás las devuelve — solo dice si la secreta está configurada.
-  const [culqiPk, setCulqiPk] = useState('')
-  const [culqiSk, setCulqiSk] = useState('')
+  const [pay360On, setPay360On] = useState(!!store.pay360_enabled)
+  const [pay360Env, setPay360Env] = useState(store.pay360_env === 'live' ? 'live' : 'sandbox')
+  const [pay360Prefix, setPay360Prefix] = useState('')
+  // El nombre del comercio en 360pay: por defecto el de la marca, editable
+  // porque allá es la razón comercial frente al banco y acá el rótulo.
+  const [pay360Name, setPay360Name] = useState(store.nombre ?? '')
+  const [connecting, setConnecting] = useState(false)
+  const pay360Connected = !!store.pay360_business_id
+
   const [uploading, setUploading] = useState(false)
   const [uploadingIcon, setUploadingIcon] = useState(false)
-  const [uploadingQr, setUploadingQr] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  const canEnableCulqi = store.culqi_secret_configured || culqiSk.trim().length > 0
 
   const pick = async (f: File) => { setUploading(true); const url = await uploadLogo(f, adminId); if (url) setLogo(url); setUploading(false) }
   const pickIcon = async (f: File) => { setUploadingIcon(true); const url = await uploadLogo(f, adminId); if (url) setNotifIcon(url); setUploadingIcon(false) }
-  const pickQr = async (f: File) => { setUploadingQr(true); const url = await uploadLogo(f, adminId); if (url) setYapeQr(url); setUploadingQr(false) }
 
   const save = async () => {
     if (!nombre.trim()) { setErr('Ponle un nombre a la marca.'); return }
@@ -251,12 +249,8 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       nombre: nombre.trim(), logo_url: logo, notif_icon_url: notifIcon, color_primary: cp, color_dark: cd,
       // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
       // verificado para estos campos — redirigen dinero, no un logo).
-      yape_number: yapeNumber, yape_holder: yapeHolder, yape_qr_url: yapeQr,
-      culqi_enabled: culqiOn, culqi_scope: culqiScope,
+      pay360_enabled: pay360On, pay360_env: pay360Env,
     }
-    // Las llaves SOLO viajan si se escribieron: vacío = conservar la guardada.
-    if (culqiPk.trim()) payload.culqi_public_key = culqiPk.trim()
-    if (culqiSk.trim()) payload.culqi_secret_key = culqiSk.trim()
     if (isSuper) {
       payload.slug = slug; payload.active = active
       payload.wa_enabled = waEnabled
@@ -269,6 +263,31 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
     setBusy(false)
     if (!ok) { setErr(ERR[data.error] || data.error || 'No se pudo guardar.'); return }
     onSaved()
+  }
+
+  // Alta en 360pay. Va aparte del guardado y no junto a él a propósito: crea
+  // una cuenta REAL en un tercero y no se puede deshacer desde aquí, así que no
+  // puede viajar de polizón en el botón que guarda un logo.
+  const connectPay360 = async () => {
+    if (connecting || pay360Connected) return
+    setConnecting(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id,
+      pay360_env: pay360Env,
+      pay360_connect: {
+        payment_prefix: pay360Prefix.trim().toUpperCase(),
+        name: pay360Name.trim(),
+      },
+    })
+    setConnecting(false)
+    if (!ok) {
+      setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No pudimos conectar con 360pay.')
+      return
+    }
+    // Se recarga en vez de mutar el estado local: el alta escribió el
+    // business_id y el secreto del webhook del lado del servidor, y seguir con
+    // una copia vieja en pantalla invitaría a darla de alta dos veces.
+    onSaved?.()
   }
 
   return (
@@ -343,65 +362,84 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             </p>
           </div>
         )}
-        {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU Yape y
-              SU cuenta Culqi. El backend exige el JWT verificado para todo
-              esto: son campos que redirigen dinero. ── */}
+        {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU cuenta
+              de 360pay. El backend exige el JWT verificado para todo esto: son
+              campos que redirigen dinero. ── */}
         <div className="rounded-2xl p-3 mb-4" style={{ background: '#FAF5FB', border: '1px solid #E9DDF9' }}>
           <p className="text-xs font-black mb-2" style={{ color: '#742284' }}>💜 Cobros de la marca</p>
 
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Número de Yape (9 dígitos)</label>
-          <input value={yapeNumber} inputMode="numeric" maxLength={9}
-            onChange={e => setYapeNumber(e.target.value.replace(/\D/g, '').slice(0, 9))}
-            placeholder="987654321"
-            className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Titular, tal como lo muestra Yape</label>
-          <input value={yapeHolder} onChange={e => setYapeHolder(e.target.value)}
-            placeholder="MARCA DEMO SAC"
-            className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2" />
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">QR de Yape (lo ve el comprador en desktop)</label>
-          <div className="mb-3"><LogoPicker logo={yapeQr} uploading={uploadingQr} onPick={pickQr} /></div>
-
-          {/* Culqi: cobro EN el checkout. El toggle no prende sin llaves — el
-              backend lo rechaza igual, pero el botón muerto avisa antes. */}
-          <div className="border-t pt-3" style={{ borderColor: '#E9DDF9' }}>
-            <button onClick={() => canEnableCulqi && setCulqiOn(v => !v)}
+          {/* 360pay: cobro EN el checkout con el botón de Yape. Sin esto, la
+              marca no cobra adelantos en línea — el pedido se cierra igual y lo
+              coordina un asesor por el chat. */}
+          <div>
+            <button onClick={() => pay360Connected && setPay360On(v => !v)}
               className="w-full flex items-center justify-between mb-1"
-              style={{ opacity: canEnableCulqi || culqiOn ? 1 : 0.5 }}>
+              style={{ opacity: pay360Connected || pay360On ? 1 : 0.5 }}>
               <span className="text-xs font-black" style={{ color: '#742284' }}>
-                Cobrar el adelanto en línea (Culqi)
+                Cobrar el adelanto con Yape (360pay)
               </span>
               <span className="text-[10px] font-black px-2 py-1 rounded-full"
-                style={{ background: culqiOn ? '#742284' : '#E5E7EB', color: culqiOn ? '#fff' : '#6B7280' }}>
-                {culqiOn ? 'ACTIVO' : 'APAGADO'}
+                style={{ background: pay360On ? '#742284' : '#E5E7EB', color: pay360On ? '#fff' : '#6B7280' }}>
+                {pay360On ? 'ACTIVO' : 'APAGADO'}
               </span>
             </button>
             <p className="text-[10px] text-gray-500 mb-2">
-              El comprador aprueba con su código de Yape y el cargo entra solo, por el monto
-              exacto, a la cuenta Culqi de tu marca.
-              {!canEnableCulqi && ' Pega tus dos llaves para poder encenderlo.'}
+              El comprador toca un botón y Yape se abre con el monto ya puesto. El pago se
+              confirma solo, sin capturas ni códigos.
             </p>
 
-            <label className="text-[10px] font-bold text-gray-500 mb-1 block">¿Dónde cobra?</label>
-            <select value={culqiScope} onChange={e => setCulqiScope(e.target.value === 'ALL' ? 'ALL' : 'PROVINCIA')}
-              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2">
-              <option value="PROVINCIA">Solo provincia (Lima sigue con Yape manual)</option>
-              <option value="ALL">Todo el país, incluida Lima</option>
+            {pay360Connected ? (
+              <div className="rounded-xl px-3 py-2 mb-2" style={{ background: '#F5F0FA' }}>
+                <p className="text-[10px] font-black" style={{ color: '#742284' }}>
+                  ✓ Conectado · prefijo {store.pay360_payment_prefix}
+                </p>
+                {/* El ambiente se muestra siempre: una marca cobrando de verdad
+                    contra sandbox no falla de forma visible, simplemente nunca
+                    recibe el dinero. */}
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  Ambiente: <strong>{pay360Env === 'live' ? 'producción' : 'pruebas'}</strong>
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: '#FFF8E1' }}>
+                <label className="text-[10px] font-bold text-gray-600 mb-1 block">
+                  Nombre del comercio en 360pay
+                </label>
+                <input value={pay360Name} onChange={e => setPay360Name(e.target.value)}
+                  placeholder="Kross Shop"
+                  className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
+                <label className="text-[10px] font-bold text-gray-600 mb-1 block">
+                  Prefijo de los códigos de pago (3 caracteres)
+                </label>
+                <div className="flex gap-2">
+                  <input value={pay360Prefix}
+                    onChange={e => setPay360Prefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3))}
+                    placeholder="KRS" maxLength={3}
+                    className="w-20 bg-white border rounded-xl px-3 py-2 text-sm font-mono font-bold outline-none" />
+                  <button onClick={connectPay360}
+                    disabled={connecting || pay360Prefix.length !== 3 || !pay360Name.trim()}
+                    className="flex-1 rounded-xl px-3 py-2 text-xs font-black text-white disabled:opacity-40"
+                    style={{ background: '#742284' }}>
+                    {connecting ? 'Conectando…' : 'Conectar con 360pay'}
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1.5">
+                  Se crea la cuenta de la marca en 360pay. <strong>Se hace una sola vez</strong> y
+                  no se puede deshacer desde aquí.
+                </p>
+              </div>
+            )}
+
+            <label className="text-[10px] font-bold text-gray-500 mb-1 block">Ambiente</label>
+            <select value={pay360Env}
+              onChange={e => setPay360Env(e.target.value === 'live' ? 'live' : 'sandbox')}
+              disabled={pay360Connected}
+              className="w-full bg-white border rounded-xl px-3 py-2 text-sm mb-3 disabled:opacity-50">
+              <option value="sandbox">Pruebas (sandbox)</option>
+              <option value="live">Producción</option>
             </select>
-
-            <input value={culqiPk} onChange={e => setCulqiPk(e.target.value)} type="password"
-              autoComplete="off" placeholder="Llave pública · pk_live_…"
-              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
-            <input value={culqiSk} onChange={e => setCulqiSk(e.target.value)} type="password"
-              autoComplete="off"
-              placeholder={store.culqi_secret_configured
-                ? 'Llave secreta ✓ configurada — pega una nueva para rotarla'
-                : 'Llave secreta · sk_live_…'}
-              className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none font-mono" />
-            <p className="text-[10px] text-gray-400 mt-1.5">
-              Las llaves salen de tu CulqiPanel → Desarrollo → API Keys. La secreta solo se
-              escribe: nunca vuelve a mostrarse.
-            </p>
           </div>
+
         </div>
 
         {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca

@@ -18,8 +18,9 @@
 // misma cifra cuatro veces solo gastaba línea y sugería una diferencia que no
 // existe.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, MapPin, Store } from 'lucide-react'
+import { keepAligned, pinToTop } from '../fields/scroll'
 import { AgencyService, describePickupDistance, pointKey } from '../../../lib/checkout/services/AgencyService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { AgencyBranch, AgencyName, NearbyBranch } from '../../../lib/checkout/types'
@@ -118,6 +119,24 @@ function PointPicker({ near, agency, branchId, error, onSelectPoint }: {
 
   const selectedKey = agency && branchId ? pointKey({ agency, id: branchId }) : null
 
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  // Al aparecer las tarjetas, subirlas a la vista: nacen debajo del pliegue del
+  // modal (el comprador viene de elegir distrito, campos arriba) y sin esto no
+  // sabe que ya puede escoger — ni que hay más de una opción. En el buscador
+  // ("ver todos") el alineado además se repite en cada cambio de viewport,
+  // porque el teclado abre después del foco y vuelve a tapar los resultados.
+  useEffect(() => {
+    if (loading) return
+    const el = wrapRef.current
+    if (!el) return
+    if (!showAll) {
+      const raf = requestAnimationFrame(() => pinToTop(el))
+      return () => cancelAnimationFrame(raf)
+    }
+    return keepAligned(() => pinToTop(el))
+  }, [loading, showAll])
+
   const pick = (b: AgencyBranch, rank?: number, distanceKm?: number) => {
     onSelectPoint(b.agency, b.id)
     trackEvent({ name: 'agency_selected', agency: b.agency, rank, distanceKm })
@@ -128,7 +147,7 @@ function PointPicker({ near, agency, branchId, error, onSelectPoint }: {
   }
 
   return (
-    <div>
+    <div ref={wrapRef}>
       <span className="text-xs font-bold text-gray-600 mb-1.5 block">
         {showAll ? 'Busca tu punto de recojo *' : '¿Dónde recoges tu pedido? *'}
       </span>

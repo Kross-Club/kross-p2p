@@ -10,7 +10,7 @@ import { useCarrito } from '../../lib/carrito'
 // Header y footer viven aquí para que TODAS las páginas públicas lleven lo
 // mismo: los datos de contacto, las redes que sí existen, los enlaces legales y
 // el aviso del Libro de Reclamaciones. Que el pie esté completo en todas las
-// URLs es literalmente uno de los requisitos de Culqi; tenerlo en un solo
+// URLs es literalmente uno de los requisitos de la pasarela; tenerlo en un solo
 // componente es lo que impide que una página nueva salga sin él.
 
 const NAV = [

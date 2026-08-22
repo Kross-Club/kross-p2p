@@ -29,16 +29,12 @@ export interface OrderSession {
   dispatch_type?: string | null
   agency_name?: string | null
   delivery_reference?: string | null
-  /** Estado del cruce del adelanto por Yape. */
+  /** Estado del cobro del adelanto. */
   payment_verification?: string | null
-  /** Motivo escrito por el cruce: nombre distinto, código que no calza, etc. */
+  /** Motivo escrito por el cobro. Solo llega al vendedor. */
   payment_reason?: string | null
-  /** Ruta en el bucket privado `vouchers`. NUNCA es una URL abrible: se pide
-   *  firmada a la función `voucher-url` en el momento de mirarla. */
-  advance_voucher_url?: string | null
-  advance_yape_code?: string | null
   advance_amount?: number | string | null
-  /** 'CULQI' = el adelanto se cobra en línea; NULL = flujo Yape manual. */
+  /** '360PAY' = el adelanto se cobra en línea; NULL = sin cobro en línea. */
   payment_provider?: string | null
   items?: OrderItem[] | null
   buyer_can_call?: boolean
@@ -46,6 +42,27 @@ export interface OrderSession {
   involved_seller_ids?: string[] | null
   writer_seller_ids?: string[] | null
   participants?: Participant[]
+  /** Ficha de contacto del comprador. SOLO llega cuando el que mira es
+   *  vendedor — para el comprador viaja null, igual que `payment_reason`. */
+  buyer_contact?: {
+    nombre: string | null
+    document_type: string | null
+    document_number: string | null
+    /** El WhatsApp del checkout (y el teléfono del cliente en 360pay). El
+     *  número desde el que YAPEÓ no existe: Yape no lo revela — del pago llega
+     *  la operación bancaria, en `payment_trace`. */
+    phone: string | null
+  } | null
+  /** Rastro del pago cruzado — la cadena con la que el comercio coteja contra
+   *  el panel de 360pay y contra el banco. Solo vendedor. */
+  payment_trace?: {
+    operation_number: string | null
+    bank: string | null
+    /** Id del cupón en 360pay (el `_id` que su panel muestra en el detalle). */
+    coupon_id: string | null
+    /** Código de pago del cliente (KSH…): es como el panel LISTA los cupones. */
+    payment_code: string | null
+  } | null
 }
 
 export interface OrderItem {

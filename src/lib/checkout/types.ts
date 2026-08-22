@@ -50,15 +50,12 @@ export type PaymentVerification = 'NOT_REQUIRED' | 'PENDING' | 'MATCHED' | 'UNMA
 
 export type CheckoutStatus = 'DRAFT' | 'SUBMITTING' | 'SUBMITTED' | 'ERROR'
 
-/** Dónde cobra Culqi: solo provincia, o todo el país incluida Lima. Es la
- *  retirada operativa — replegarse a 'PROVINCIA' no requiere deploy. */
-export type CulqiScope = 'PROVINCIA' | 'ALL'
-
 /** Config de cobro en línea de la TIENDA (columnas públicas de `stores`).
- *  La inyecta el modal en cada apertura; jamás viene del borrador guardado. */
-export interface StoreCulqi {
+ *  La inyecta el modal en cada apertura y jamás viene del borrador guardado:
+ *  un borrador con 360pay activo no puede forzar el cobro en una tienda que lo
+ *  apagó. */
+export interface StorePay360 {
   enabled: boolean
-  scope: CulqiScope
 }
 
 export interface CustomerInfo {
@@ -114,10 +111,6 @@ export interface PickupPoint {
   freeText: string | null
 }
 
-export interface PaymentVoucher {
-  url: string
-  uploadedAt: string
-}
 
 export interface PaymentState {
   verification: PaymentVerification
@@ -178,25 +171,13 @@ export interface CheckoutState {
   pickup: PickupPoint
   /** true si falta lat/lng o el resultado de cobertura es BORDERLINE. */
   needsLocationConfirmation: boolean
-  paymentVoucher: PaymentVoucher | null
   /**
-   * Código de seguridad de 3 dígitos que el comprador copia de su propio
-   * comprobante de Yape. Es la **llave fuerte** del cruce automático: viaja
-   * también en la notificación que le llega a la marca, así que es lo único que
-   * permite decidir sin ambigüedad entre dos pedidos del mismo monto.
+   * Config de 360pay de la tienda. `null` = la tienda no cobra en línea (o aún
+   * no cargó). NO es un derivado ni sobrevive al borrador: el modal la
+   * reinyecta en cada apertura, para que un borrador guardado con el cobro
+   * activo no pueda forzarlo en una tienda que lo apagó.
    */
-  advanceYapeCode: string
-  /**
-   * Config Culqi de la tienda. `null` = la tienda no cobra en línea (o aún no
-   * cargó). NO es un derivado ni sobrevive al borrador: el modal la reinyecta
-   * en cada apertura, para que un borrador guardado con Culqi activo no pueda
-   * forzar el cobro en una tienda que lo apagó.
-   */
-  culqi: StoreCulqi | null
-  /** Celular que aprueba en Yape. Se prellena del WhatsApp; editable. */
-  culqiPhone: string
-  /** Código de aprobación de Yape (6 dígitos, vence en 2 min). Jamás persiste. */
-  culqiOtp: string
+  pay360: StorePay360 | null
   /**
    * Precio de LISTA del pack elegido, tal como vino del producto. Entra al
    * estado con `SET_PACK` porque el adelanto pasó a ser un porcentaje del

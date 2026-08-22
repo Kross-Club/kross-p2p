@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import LegalPage, { Seccion } from '../../components/publico/LegalPage'
 import { EMPRESA, PLAZO_RESPUESTA_HABILES } from '../../config/empresa'
 
-// Política de cambios y devoluciones. Culqi la exige junto con los términos, y
+// Política de cambios y devoluciones. La pasarela la exige junto con los términos, y
 // es la que responde la pregunta que más se hace antes de pagar: "¿y si no me
 // sirve?". Cubre los dos casos que existen en Kross: el software que vendemos
 // nosotros y el producto físico que vende cada marca contraentrega.

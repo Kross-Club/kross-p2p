@@ -6,7 +6,7 @@
 // Los mensajes de error dicen CÓMO arreglarlo, no qué está mal: "Deben ser 9
 // dígitos" convierte mejor que "Teléfono inválido".
 
-import { COVERAGE_MODE, CULQI_OTP_LENGTH, DNI_LENGTH, PHONE_LENGTH_PE, VOUCHER_REQUIRED, YAPE_CODE_LENGTH, culqiActiveFor } from './checkout.config'
+import { COVERAGE_MODE, DNI_LENGTH, PHONE_LENGTH_PE } from './checkout.config'
 import { hasBranchList } from './services/AgencyService'
 import type { CheckoutState, CheckoutStepId } from './types'
 
@@ -14,8 +14,7 @@ import type { CheckoutState, CheckoutStepId } from './types'
 // del distrito, así que sus errores se reportan en `district`.
 export type FieldName =
   | 'selectedPack' | 'dni' | 'whatsapp' | 'receiverName'
-  | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch' | 'voucher' | 'yapeCode'
-  | 'culqiPhone' | 'culqiOtp'
+  | 'district' | 'addressText' | 'city' | 'agency' | 'agencyBranch'
 
 export type FieldErrors = Partial<Record<FieldName, string>>
 
@@ -140,59 +139,16 @@ function validatePickup(s: CheckoutState): FieldErrors {
   return freeText?.trim() ? {} : { agencyBranch: 'Escribe en qué agencia vas a recoger' }
 }
 
-export function validateYapeCode(code: string): string | null {
-  const d = digits(code)
-  if (!d) return 'Copia el código que te dio Yape'
-  if (d.length !== YAPE_CODE_LENGTH) return `Son ${YAPE_CODE_LENGTH} dígitos`
-  return null
-}
-
-/** El celular que aprueba en Yape: mismas reglas que un celular peruano. */
-export function validateCulqiPhone(phone: string): string | null {
-  const d = digits(phone)
-  if (!d) return 'Pon el celular con el que vas a yapear'
-  if (d.length !== PHONE_LENGTH_PE) return `Deben ser ${PHONE_LENGTH_PE} dígitos`
-  if (!d.startsWith('9')) return 'Un celular peruano empieza con 9'
-  return null
-}
-
-export function validateCulqiOtp(otp: string): string | null {
-  const d = digits(otp)
-  if (!d) return 'Genera tu código de aprobación en Yape'
-  if (d.length !== CULQI_OTP_LENGTH) return `Son ${CULQI_OTP_LENGTH} dígitos`
-  return null
-}
-
-function validateStep3(s: CheckoutState): FieldErrors {
-  // Sin adelanto no hay nada que verificar y el CTA queda habilitado de una.
-  if (s.advanceAmount <= 0) return {}
-
-  // Cobro en línea: lo obligatorio es el celular + el código de aprobación.
-  // Ni el código de seguridad de 3 dígitos ni la captura aplican — no hay
-  // notificación que cruzar ni evidencia que revisar: el cargo ES la prueba.
-  if (culqiActiveFor(s)) {
-    const e: FieldErrors = {}
-    const ph = validateCulqiPhone(s.culqiPhone)
-    if (ph) e.culqiPhone = ph
-    const otp = validateCulqiOtp(s.culqiOtp)
-    if (otp) e.culqiOtp = otp
-    return e
-  }
-
-  const e: FieldErrors = {}
-
-  // El CÓDIGO es lo obligatorio, no la imagen. Es la llave que cuadra el pago
-  // con la notificación que le llega a la marca; son 3 dígitos que el comprador
-  // tiene en pantalla. Ver VOUCHER_REQUIRED en checkout.config.ts.
-  const code = validateYapeCode(s.advanceYapeCode)
-  if (code) e.yapeCode = code
-
-  // La captura solo bloquea si la marca lo pide explícitamente. Nunca se espera
-  // al RESULTADO de la verificación: esa corre en background y el comprador no
-  // debe quedarse mirando un spinner.
-  if (VOUCHER_REQUIRED && !s.paymentVoucher) e.voucher = 'Sube tu comprobante para terminar'
-
-  return e
+function validateStep3(_s: CheckoutState): FieldErrors {
+  // **El paso 3 no pide nada, nunca.** Con 360pay el comprador toca "Terminar
+  // mi pedido" y recién ahí aparece el botón que abre Yape; sin 360pay, el
+  // adelanto lo coordina un asesor por el chat.
+  //
+  // Aquí se exigía el código de seguridad de 3 dígitos del flujo manual, que
+  // era pedirle la PRUEBA de un pago que todavía no había hecho — y es lo que
+  // dejaba el CTA bloqueado con "completa los datos marcados" en las tiendas
+  // con cobro en línea.
+  return {}
 }
 
 const VALIDATORS: Record<CheckoutStepId, (s: CheckoutState) => FieldErrors> = {

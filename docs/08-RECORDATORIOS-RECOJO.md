@@ -1,4 +1,4 @@
-# 07 — Recordatorios de recojo en agencia 🔮
+# 08 — Recordatorios de recojo en agencia 🔮
 
 > **Diseño, aún no construido.** Cascada automática de recordatorios (push + WhatsApp)
 > para que el comprador recoja su pedido de la agencia sin que una persona tenga que

@@ -93,16 +93,7 @@ function hydrate(saved: CheckoutState): CheckoutState {
     // Los números que entran a aritmética se validan de verdad, no solo por
     // ausencia: basta un `null` guardado para propagar NaN a toda la pantalla.
     discountPen: finite(saved.discountPen, base.discountPen),
-    advanceYapeCode: typeof saved.advanceYapeCode === 'string' ? saved.advanceYapeCode : '',
     advanceAmount: finite(saved.advanceAmount, base.advanceAmount),
-    // La config de la tienda NUNCA sale del borrador — como `variant`, la
-    // reinyecta el modal en cada apertura. Un borrador guardado con Culqi
-    // activo no puede forzar el cobro en línea en una tienda que lo apagó.
-    culqi: null,
-    culqiPhone: typeof saved.culqiPhone === 'string' ? saved.culqiPhone : '',
-    // El código de aprobación vence en 2 minutos: retomarlo de un borrador
-    // garantiza un cargo rechazado, así que siempre vuelve vacío.
-    culqiOtp: '',
     // El estado de envío no sobrevive a la recarga: se retoma como borrador.
     status: 'DRAFT',
   }
@@ -186,21 +177,18 @@ export interface LastOrder {
   /** El pedido quedó creado pero el cobro en línea NO entró: la landing ofrece
    *  "Termina el pago" en vez de solo "Ver mi pedido". */
   advancePending?: boolean
-  /** Celular de Yape del intento fallido, para prellenar el reintento. */
-  culqiPhone?: string
 }
 
 export function saveLastOrder(
   token: string,
   orderCode: string,
   productId: string | null,
-  opts?: { advancePending?: boolean; culqiPhone?: string },
+  opts?: { advancePending?: boolean },
 ): void {
   try {
     localStorage.setItem(LAST_ORDER_KEY, JSON.stringify({
       token, orderCode, productId, savedAt: Date.now(),
       advancePending: opts?.advancePending || undefined,
-      culqiPhone: opts?.culqiPhone || undefined,
     } satisfies LastOrder))
   } catch { /* modo incógnito o storage lleno: perder esto no rompe nada */ }
 }
@@ -214,7 +202,6 @@ export function clearAdvancePending(): void {
     const o = JSON.parse(raw) as LastOrder
     if (!o?.advancePending) return
     delete o.advancePending
-    delete o.culqiPhone
     localStorage.setItem(LAST_ORDER_KEY, JSON.stringify(o))
   } catch { /* ignorar */ }
 }

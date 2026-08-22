@@ -4,7 +4,7 @@ import PublicLayout from '../../components/publico/PublicLayout'
 import { useCarrito } from '../../lib/carrito'
 import { precioTexto, periodoTexto } from '../../config/catalogo'
 
-// Carrito. Requisito directo de Culqi ("debe contar con un carrito de compras o
+// Carrito. Requisito directo de la pasarela ("debe contar con un carrito de compras o
 // botón de Comprar") y, sobre todo, el único sitio donde el cliente ve el total
 // antes de dar sus datos.
 export default function CarritoPage() {

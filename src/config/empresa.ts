@@ -1,6 +1,6 @@
 // ─── DATOS DEL COMERCIO (web pública de krossclub.app) ───────────────────────
 //
-// Todo lo que Culqi, INDECOPI y el comprador tienen que poder leer sale de AQUÍ.
+// Todo lo que la pasarela, INDECOPI y el comprador tienen que poder leer sale de AQUÍ.
 // Un solo archivo: si mañana cambia el número de atención o el domicilio fiscal,
 // se cambia una vez y se actualiza el footer, la página de contacto, los
 // términos, la política de devoluciones y la hoja del Libro de Reclamaciones.
@@ -10,12 +10,12 @@
 // falso en una página legal es peor que no tenerla. Mientras estén vacíos:
 //   · la web los oculta en producción (no muestra filas a medias), y
 //   · en desarrollo sale un aviso en pantalla listando lo que falta.
-// Complétalos antes de mandar la web a revisión de Culqi.
+// Complétalos antes de mandar la web a revisión de la pasarela.
 
 export interface RedSocial {
   /** Nombre visible de la red. */
   nombre: string
-  /** URL de la cuenta REAL. Culqi rechaza iconos que no llevan a ningún lado. */
+  /** URL de la cuenta REAL. La pasarela rechaza iconos que no llevan a ningún lado. */
   url: string
   /** Clave del icono en `RedIcon`. */
   icono: 'instagram' | 'facebook' | 'tiktok' | 'linkedin' | 'youtube' | 'whatsapp'
@@ -97,7 +97,7 @@ const ETIQUETAS: Record<string, string> = {
 /**
  * Campos obligatorios que siguen en blanco. La web los usa para no pintar filas
  * vacías y, en desarrollo, para avisar en pantalla qué falta antes de la
- * revisión de Culqi.
+ * revisión de la pasarela.
  */
 export function camposPendientes(): string[] {
   const faltan = Object.keys(ETIQUETAS)
