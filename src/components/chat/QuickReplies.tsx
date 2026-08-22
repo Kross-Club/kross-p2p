@@ -17,10 +17,25 @@ interface QuickRepliesProps {
   /** Se ocultan en cuanto el comprador escribe: ya cumplieron su trabajo, y
    *  dejarlas para siempre convierte la ayuda en estorbo sobre el teclado. */
   buyerHasWritten: boolean
+  /** `isPickupDispatch(dispatch_type)`: recoge en agencia, no le llega a la
+   *  puerta. Sus dudas son OTRAS —la guía, dónde recoger— y ofrecerle "quiero
+   *  cambiar mi dirección" enseña que estas fichas no le hablan a él. */
+  esRecojo?: boolean
+  /** Lo que le falta pagar cuando dejó un adelanto parcial (precio − adelanto).
+   *  0 = pagó todo o es contraentrega puro: en ambos casos la ficha del saldo
+   *  sobra, preguntarlo sembraría la duda que el mensaje de bienvenida cerró. */
+  saldoPendiente?: number
   onPick: (text: string) => void
 }
 
-function repliesFor(stage: string | null | undefined): string[] {
+function repliesFor(
+  stage: string | null | undefined,
+  ctx: { esRecojo?: boolean; saldoPendiente?: number } = {},
+): string[] {
+  const { esRecojo = false, saldoPendiente = 0 } = ctx
+  // Solo para quien de verdad debe: confirma el monto por escrito en el chat,
+  // que es justo lo que quiere releer antes de ir a la agencia con la plata.
+  const saldoChip = saldoPendiente > 0 ? ['¿Cuánto me falta pagar?'] : []
   switch (stage) {
     // Pagó y estamos cuadrando. Las dos dudas reales de ese momento —y la
     // segunda además nos trae el comprobante justo cuando puede hacer falta,
@@ -29,19 +44,29 @@ function repliesFor(stage: string | null | undefined): string[] {
       return ['¿Ya llegó mi pago?', 'Te envío mi comprobante']
     case 'confirmado':
     case 'preparando':
-      return ['¿Cuándo llega mi pedido?', 'Quiero cambiar mi dirección']
+      // En recojo la espera es por la GUÍA (prometida en la bienvenida), no por
+      // un timbrazo en la puerta.
+      return esRecojo
+        ? ['¿Ya tienen la guía de mi envío?', '¿Dónde recojo mi pedido?', ...saldoChip]
+        : ['¿Cuándo llega mi pedido?', 'Quiero cambiar mi dirección', ...saldoChip]
     case 'en_camino':
-      return ['¿Cuánto falta?', 'No voy a estar, ¿pueden venir después?']
+      // "¿Pueden venir después?" a alguien que va a ir él mismo al mostrador
+      // no significa nada; lo que necesita es la guía a mano y saber si ya está.
+      return esRecojo
+        ? ['¿Ya puedo recoger mi pedido?', '¿Me reenvías la guía?', ...saldoChip]
+        : ['¿Cuánto falta?', 'No voy a estar, ¿pueden venir después?']
     case 'entregado':
       return ['Ya lo recibí, gracias', 'Tengo un problema con mi pedido']
     default:
-      return ['¿Cuándo llega mi pedido?', 'Quiero cambiar mi dirección']
+      return esRecojo
+        ? ['¿Cuándo puedo recoger mi pedido?', ...(saldoChip.length ? saldoChip : ['¿Dónde recojo mi pedido?'])]
+        : ['¿Cuándo llega mi pedido?', 'Quiero cambiar mi dirección']
   }
 }
 
-export default function QuickReplies({ stage, buyerHasWritten, onPick }: QuickRepliesProps) {
+export default function QuickReplies({ stage, buyerHasWritten, esRecojo, saldoPendiente, onPick }: QuickRepliesProps) {
   if (buyerHasWritten) return null
-  const replies = repliesFor(stage)
+  const replies = repliesFor(stage, { esRecojo, saldoPendiente })
   if (replies.length === 0) return null
 
   return (

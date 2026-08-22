@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { stagesFor, stageIndex } from '../../lib/order-stages'
+import { isPickupDispatch } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -868,6 +869,10 @@ export default function OrderChatPage() {
         <QuickReplies
           stage={session.stage}
           buyerHasWritten={messages.some(m => m.sender_role === 'buyer')}
+          esRecojo={isPickupDispatch(session.dispatch_type)}
+          saldoPendiente={Number(session.advance_amount ?? 0) > 0
+            ? Math.max(0, Number(session.product_price ?? 0) - Number(session.advance_amount ?? 0))
+            : 0}
           onPick={text => handleSend(text)}
         />
         <div className="flex items-center gap-2">

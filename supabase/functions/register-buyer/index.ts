@@ -383,26 +383,52 @@ Deno.serve(async (req) => {
   // Lima pasó a cobrar S/5, y provincia-a-domicilio caía en esa misma rama.
   const esRecojo = dispatchType === 'AGENCIA_PROVINCIA' || dispatchType === 'AGENCIA_LIMA'
   const entrega = esRecojo
-    ? `se enviará por agencia${agencyName ? ' ' + agencyName : ''} y el saldo lo pagas al recoger`
+    ? `se enviará por agencia${agencyName ? ' ' + agencyName : ''}`
     : dispatchType === 'MOTORIZADO_PROVINCIA'
-      ? 'te llegará a tu casa y el saldo lo pagas al recibirlo'
-      : 'llegará a tu puerta y el saldo lo pagas al recibirlo'
+      ? 'te llegará a tu casa'
+      : 'llegará a tu puerta'
 
-  // El estado del adelanto va en el PRIMER mensaje: es la única duda que le
+  // El saldo se DERIVA, nunca se asume. "El saldo lo pagas al recoger" le
+  // mentía a quien eligió pagar el TOTAL: le anunciaba una deuda que no tiene,
+  // y esa duda ("¿me van a cobrar otra vez?") termina en el WhatsApp del
+  // vendedor. Tres casos:
+  //   · pagó una parte → se le recuerda el monto EXACTO que le falta: es la
+  //     cifra que tiene que llevar (en efectivo o en el celular) al recojo.
+  //   · pagó el total  → se le dice explícito que no debe nada más.
+  //   · sin adelanto   → contraentrega puro: paga el total al recibir/recoger.
+  const saldo = Math.max(0, finalPrice - advanceAmount)
+  const alFinal = esRecojo ? 'al recogerlo' : 'al recibirlo'
+  const cobro = saldo > 0
+    ? (advanceAmount > 0
+        ? `. Te queda un saldo de S/${saldo} que pagas ${alFinal}`
+        : `. Lo pagas completo (S/${saldo}) ${alFinal}`)
+    : `. Ya está pagado por completo: no pagas nada más ${alFinal}`
+
+  // El estado del pago va en el PRIMER mensaje: es la única duda que le
   // queda al comprador. Callarlo lo empuja al WhatsApp del vendedor a
-  // preguntar, que es justo lo que este chat evita.
+  // preguntar, que es justo lo que este chat evita. "Adelanto" solo cuando de
+  // verdad queda saldo: al que pagó todo se le llama pago, no adelanto.
   //
   // Nunca "confirmado" desde aquí: con 360pay el pago llega por webhook, y el
-  // propio webhook manda su "✅ ¡Recibimos tu adelanto!" cuando cuadra. Sin
+  // propio webhook manda su "✅ ¡Recibimos tu pago!" cuando cuadra. Sin
   // cobro en línea, lo coordina el asesor por este mismo chat.
   //
   // Regla dura del módulo: **nunca se le dice que su pago no existe.**
   const advanceLine = advanceAmount > 0
-    ? `\n\n⏳ Estamos validando tu adelanto de S/${advanceAmount}. Te aviso por aquí apenas cuadre.`
+    ? `\n\n⏳ Estamos validando tu ${saldo > 0 ? 'adelanto' : 'pago'} de S/${advanceAmount}. Te aviso por aquí apenas cuadre.`
+    : ''
+
+  // El que recoge en agencia carga dos incógnitas que el domicilio no tiene:
+  // ¿cuándo registran mi envío? y ¿con qué guía lo recojo? Se le contesta ANTES
+  // de que pregunte, y de paso se ancla el canal: la guía llega por ESTE chat.
+  // Prometer WhatsApp u otro canal desangra la tasa de entrega (ver
+  // docs/01-SALES-ENGINE.md, "El canal es el chat, no WhatsApp").
+  const agenciaLine = esRecojo
+    ? '\n\n📦 En unas horas vamos a la agencia a registrar tu pedido. Ni bien tengamos la guía de recojo te la enviamos por aquí: este chat es nuestro canal principal de comunicación.'
     : ''
 
   const welcomeBody = `¡Hola${firstName}! 🎉 Gracias por tu compra. Tu ${body.product_name}`
-    + ` (${priceLine}) ${entrega}.${advanceLine}`
+    + ` (${priceLine}) ${entrega}${cobro}.${advanceLine}${agenciaLine}`
     + '\n\nEscríbeme por aquí cualquier duda y te ayudo al toque. 😊'
 
   await supabase.from('chat_messages').insert({
