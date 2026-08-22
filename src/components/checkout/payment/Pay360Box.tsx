@@ -8,10 +8,15 @@
 // · **Sí hay botón, y esta vez sí funciona — pero solo en el celular.** El que
 //   se eliminó usaba `yape://`, un esquema custom que Chrome Android no abre
 //   desde un enlace normal y que en iOS lleva a la pantalla de error de Safari.
-//   Este es un universal link `https://www.yape.com.pe/...`: Android e iOS lo
-//   resuelven abriendo la app con el cupón puesto. En una PC ese mismo enlace
-//   solo abre la página web de Yape — no cobra nada — así que ahí el botón se
-//   oculta (`sm:hidden`) en vez de invitar a un clic que no lleva a ningún lado.
+//   El servidor manda un universal link `https://www.yape.com.pe/...` — pero
+//   desde la PWA INSTALADA ese enlace abría la página web de Yape, no la app:
+//   los enlaces externos de una PWA standalone salen por una Custom Tab, y
+//   Android no resuelve App Links para la URL inicial de una Custom Tab. Por
+//   eso el `href` pasa por `yapeHref()`: en Android se vuelve un `intent://`
+//   que abre la app de Yape directo (con la web como fallback si no está
+//   instalada), y va sin `target="_blank"`, que rompía lo mismo en navegador.
+//   En una PC el enlace solo abre la web de Yape — no cobra nada — así que ahí
+//   el botón se oculta (`sm:hidden`) en vez de invitar a un clic muerto.
 //
 // · **Cada pantalla muestra UN camino.** En el celular, el botón: nadie va a
 //   copiar un código teniendo Yape a un toque, y el código solo mete ruido
@@ -32,6 +37,7 @@
 import { useEffect, useState } from 'react'
 import { Check, Copy, ExternalLink, ShieldCheck } from 'lucide-react'
 import { COPY, YAPE } from '../../../lib/checkout/checkout.config'
+import { yapeHref } from '../../../lib/checkout/yape-link'
 import type { CouponRef } from '../../../lib/checkout/pay-phase'
 
 export default function Pay360Box({ coupon }: { coupon: CouponRef }) {
@@ -77,12 +83,13 @@ export default function Pay360Box({ coupon }: { coupon: CouponRef }) {
 
       {/* El monto no viaja en el enlace: lo resuelve Yape leyendo el cupón, y el
           comprador no puede editarlo. Por eso se puede prometer el monto exacto.
-          Solo móvil: en PC el universal link abre la web de Yape y no cobra. */}
+          Solo móvil: en PC el universal link abre la web de Yape y no cobra.
+          Sin `target="_blank"`: la navegación tiene que ser la del propio tap
+          para que el sistema la entregue a la app; si Yape no está instalada,
+          el fallback navega y el borrador + "Ver mi pedido" sostienen la vuelta. */}
       {link && (
         <a
-          href={link}
-          target="_blank"
-          rel="noopener noreferrer"
+          href={yapeHref(link, navigator.userAgent)}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#742284] px-4 py-3.5 text-base font-black text-white active:scale-[0.99] sm:hidden"
         >
           {COPY.pay360Cta}
