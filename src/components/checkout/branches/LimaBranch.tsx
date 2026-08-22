@@ -116,7 +116,11 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
         <p className="text-[11px] text-gray-500 bg-green-50 rounded-xl px-3 py-2.5">
           ✅ <strong className="font-black text-green-800">
             Adelanto de S/{state.advanceAmount}
-          </strong> para reservar tu pedido. El resto lo pagas al {method === 'AGENCIA' ? 'recoger' : 'recibir'}.
+          </strong> para reservar tu pedido. {method === 'AGENCIA'
+            /* El saldo de agencia no se paga en el mostrador: se paga por la
+               app y ese pago suelta la clave de recojo. */
+            ? 'El resto lo pagas por la app cuando tu pedido ya esté enviado.'
+            : 'El resto lo pagas al recibir.'}
         </p>
       )}
     </div>

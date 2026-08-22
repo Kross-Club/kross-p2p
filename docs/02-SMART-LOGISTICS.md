@@ -297,6 +297,21 @@ adelanto está verificado **y sin advertencias pendientes**.
 
 Contrato y reglas completas en `00-CORE-ARCHITECTURE.md`.
 
+## El saldo de agencia se cobra por la app, nunca en el mostrador
+
+Regla de negocio que TODO copy (chat, checkout, closer de voz) tiene que respetar:
+
+- El saldo de un pedido con recojo en agencia **no se paga a la agencia**: se nos paga a
+  nosotros, **por la misma app/chat del pedido**.
+- El cobro procede recién cuando el envío está registrado y **tenemos la guía** (que se le
+  envía por el chat: es el canal principal). El comprador elige el momento: pagar apenas
+  recibe la guía, o esperar a que el pedido llegue a la agencia y pagar antes de retirarlo.
+- La **clave de recojo se entrega contra el saldo pagado**. Quien pagó el total la recibe
+  junto con la guía, sin condición.
+- Corolario: nunca escribir "el saldo lo pagas al recoger" ni "pagas el resto ahí" para
+  agencia — ese copy arma el reclamo del día del recojo. "Al recibir" sigue siendo
+  correcto solo para entrega a domicilio.
+
 ## El catálogo de distritos sale del padrón del INEI ✅
 
 `src/data/peru-geo.ts` se escribía **a mano** y tenía **483 de los 1 874

@@ -109,12 +109,13 @@ Deno.serve(async (req) => {
   }
 
   // ─── El pedido ─────────────────────────────────────────────────────────────
+  const sessionCols = 'id, order_id, store_id, origin_store_id, buyer_name, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id'
   const { data: session } = externalRef
     ? await supabase.from('order_sessions')
-        .select('id, order_id, store_id, origin_store_id, buyer_name, advance_amount, payment_verification, payment_provider, pay360_coupon_id')
+        .select(sessionCols)
         .eq('id', externalRef).maybeSingle()
     : await supabase.from('order_sessions')
-        .select('id, order_id, store_id, origin_store_id, buyer_name, advance_amount, payment_verification, payment_provider, pay360_coupon_id')
+        .select(sessionCols)
         .eq('pay360_coupon_id', couponId ?? '__none__').maybeSingle()
 
   if (!session) return await ignore(storeId, dedupeKey, 'pedido no encontrado')
@@ -191,11 +192,26 @@ Deno.serve(async (req) => {
       + (session.buyer_name ? ` · pagó ${session.buyer_name}` : '')
       + ` · 360pay ${coupon.data._id}${bank}`,
   })
+  // El acuse al comprador con el saldo DERIVADO del pedido, no asumido:
+  // "tu adelanto" a quien pagó el total suena a que aún falta plata, y callar
+  // el saldo a quien pagó la mitad lo manda a preguntar cuánto debe justo el
+  // día del recojo. Misma regla que el mensaje de bienvenida de register-buyer,
+  // y misma mecánica: en agencia el saldo se paga POR LA APP (la clave de
+  // recojo se entrega contra ese pago), nunca en el mostrador.
+  const saldoRestante = Math.max(0, Number(session.product_price ?? 0) - paid)
+  const esRecojo = session.dispatch_type === 'AGENCIA_PROVINCIA' || session.dispatch_type === 'AGENCIA_LIMA'
+  const buyerAck = saldoRestante > 0
+    ? (esRecojo
+        ? `✅ ¡Recibimos tu adelanto de S/${paid}! Te queda un saldo de S/${saldoRestante}`
+          + ' que nos pagas por esta misma app —no en la agencia— cuando te enviemos la guía'
+          + ' de tu envío. Apenas lo pagues te entregamos tu clave de recojo.'
+        : `✅ ¡Recibimos tu adelanto de S/${paid}! Te queda un saldo de S/${saldoRestante}`
+          + ' que pagas al recibir tu pedido.')
+    : `✅ ¡Recibimos tu pago completo de S/${paid}! No te queda ningún saldo pendiente.`
   await supabase.from('chat_messages').insert({
     session_id: session.id, sender_role: 'system', sender_name: 'Kross',
     type: 'status_update', visibility: 'all',
-    body: `✅ ¡Recibimos tu adelanto de S/${paid}! Ya estamos preparando tu pedido.`
-      + ' Por aquí te avisamos cuando salga.',
+    body: `${buyerAck} Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.`,
   })
 
   return ok({ received: true, matched: true })

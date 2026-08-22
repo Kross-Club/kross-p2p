@@ -225,7 +225,10 @@ export const COPY = {
   // a leerse como una excepción que está forzando.
   inZoneChosen: 'Ok, te lo enviaremos a tu casa.',
   outOfZoneChosen: 'Con gusto, te lo dejamos en la agencia que prefieras.',
-  outOfZoneBenefit: 'Recoges cuando quieras, y pagas el resto ahí.',
+  // Decía "y pagas el resto ahí" — y el saldo NUNCA se paga en la agencia: se
+  // paga por la app (es lo que suelta la clave de recojo). Prometer pagar en
+  // el mostrador arma el reclamo exacto del día del recojo.
+  outOfZoneBenefit: 'Recoges cuando quieras; el saldo lo pagas por la app.',
   agencyNeutral: 'Elige tu agencia de recojo',
   /** Reemplaza a la cifra cuando el centroide no da para afirmar una distancia
    *  real. Ver `NEARBY_LABEL_THRESHOLD_KM`. */
@@ -234,6 +237,10 @@ export const COPY = {
 
   advanceHeadsUp: `Se paga un adelanto del envío por Yape y el resto al recibir.`,
   advanceHeadsUpShort: 'El resto lo pagas al recibir tu pedido.',
+  // La variante de AGENCIA. "Al recibir" ahí es falso dos veces: el saldo no se
+  // paga al recoger ni en el mostrador — se paga por la app cuando el envío ya
+  // está registrado, y ese pago es el que suelta la clave de recojo.
+  advanceHeadsUpShortPickup: 'El saldo lo pagas por la app cuando tu pedido ya esté enviado.',
   // El empujón hacia "pago todo ahora": UNA línea con un beneficio futuro
   // (puntos del Loyalty Engine), sin cifras ni condiciones — un porcentaje o
   // un plazo aquí abre preguntas justo antes de cobrar.
@@ -241,8 +248,11 @@ export const COPY = {
   // Antes de elegir cómo recibirlo NO se sabe el monto —cambia entre S/20, S/25
   // y S/30—, así que la nota tranquiliza sin cifra. Poner una y que después
   // suba es la sorpresa que el aviso existía para evitar.
+  // "El resto lo pagas al recibir" aquí era una promesa a ciegas: todavía no
+  // eligió casa o agencia, y en agencia el saldo se paga por la app. Neutro
+  // hasta que la elección exista; la mecánica exacta llega con ella.
   advanceHeadsUpNoAmount:
-    'Se adelanta una parte del envío por Yape y se descuenta del total: el resto lo pagas al recibir.',
+    'Se adelanta una parte del envío por Yape y se descuenta del total: el resto lo pagas después.',
 
   // ─── Paso 3 ────────────────────────────────────────────────────────────────
   step3Title: 'Último paso: confirma tu pedido',
