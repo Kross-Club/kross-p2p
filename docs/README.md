@@ -38,6 +38,7 @@ La doc está organizada en dos capas complementarias:
 | 03 · Loyalty | [`03-LOYALTY-ENGINE.md`](./03-LOYALTY-ENGINE.md) | Recompra, puntos, campañas WhatsApp, LTV |
 | 04 · Cumplimiento | [`04-CUMPLIMIENTO-WEB.md`](./04-CUMPLIMIENTO-WEB.md) | Web pública, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
 | 06 · 360pay 🔮 | [`06-360PAY.md`](./06-360PAY.md) | 360pay como pasarela por defecto: el seam de proveedor que hoy no existe, el modelo de credenciales de partner y qué falta del spec |
+| 08 · Recojo 🔮 | [`08-RECORDATORIOS-RECOJO.md`](./08-RECORDATORIOS-RECOJO.md) | Cascada automática de recordatorios (push + WhatsApp) para que el comprador recoja su pedido de la agencia sin humanos persiguiendo; incluye la decisión de descartar el robocall |
 
 ### Cómo trabajamos
 
