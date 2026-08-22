@@ -188,7 +188,8 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
             {method === 'DOMICILIO' || state.pickup.agency ? (
               <>
                 <strong className="font-black">Adelanto de S/{state.advanceAmount}.</strong>{' '}
-                {COPY.advanceHeadsUpShort}
+                {/* En agencia el saldo se paga por la app, no al recibir. */}
+                {method === 'DOMICILIO' ? COPY.advanceHeadsUpShort : COPY.advanceHeadsUpShortPickup}
               </>
             ) : COPY.advanceHeadsUpNoAmount}
           </span>

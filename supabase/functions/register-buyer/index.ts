@@ -388,21 +388,24 @@ Deno.serve(async (req) => {
       ? 'te llegará a tu casa'
       : 'llegará a tu puerta'
 
-  // El saldo se DERIVA, nunca se asume. "El saldo lo pagas al recoger" le
-  // mentía a quien eligió pagar el TOTAL: le anunciaba una deuda que no tiene,
-  // y esa duda ("¿me van a cobrar otra vez?") termina en el WhatsApp del
-  // vendedor. Tres casos:
-  //   · pagó una parte → se le recuerda el monto EXACTO que le falta: es la
-  //     cifra que tiene que llevar (en efectivo o en el celular) al recojo.
+  // El saldo se DERIVA, nunca se asume. "El saldo lo pagas al recoger" mentía
+  // dos veces: al que eligió pagar el TOTAL le anunciaba una deuda que no
+  // tiene, y al que sí debe le decía que paga EN LA AGENCIA — y el saldo nunca
+  // se paga ahí: se nos paga POR LA APP, porque la clave de recojo se entrega
+  // contra ese pago (la mecánica completa va en `agenciaLine`). Tres casos:
+  //   · pagó una parte → se le recuerda el monto EXACTO que le falta.
   //   · pagó el total  → se le dice explícito que no debe nada más.
-  //   · sin adelanto   → contraentrega puro: paga el total al recibir/recoger.
+  //   · sin adelanto   → contraentrega a domicilio: paga el total al recibir.
   const saldo = Math.max(0, finalPrice - advanceAmount)
-  const alFinal = esRecojo ? 'al recogerlo' : 'al recibirlo'
-  const cobro = saldo > 0
-    ? (advanceAmount > 0
-        ? `. Te queda un saldo de S/${saldo} que pagas ${alFinal}`
-        : `. Lo pagas completo (S/${saldo}) ${alFinal}`)
-    : `. Ya está pagado por completo: no pagas nada más ${alFinal}`
+  const cobro = esRecojo
+    ? (saldo > 0
+        ? `. Te queda un saldo de S/${saldo} por pagar`
+        : '. Ya está pagado por completo: no pagas nada más')
+    : (saldo > 0
+        ? (advanceAmount > 0
+            ? `. Te queda un saldo de S/${saldo} que pagas al recibirlo`
+            : `. Lo pagas completo (S/${saldo}) al recibirlo`)
+        : '. Ya está pagado por completo: no pagas nada más al recibirlo')
 
   // El estado del pago va en el PRIMER mensaje: es la única duda que le
   // queda al comprador. Callarlo lo empuja al WhatsApp del vendedor a
@@ -418,14 +421,23 @@ Deno.serve(async (req) => {
     ? `\n\n⏳ Estamos validando tu ${saldo > 0 ? 'adelanto' : 'pago'} de S/${advanceAmount}. Te aviso por aquí apenas cuadre.`
     : ''
 
-  // El que recoge en agencia carga dos incógnitas que el domicilio no tiene:
-  // ¿cuándo registran mi envío? y ¿con qué guía lo recojo? Se le contesta ANTES
-  // de que pregunte, y de paso se ancla el canal: la guía llega por ESTE chat.
-  // Prometer WhatsApp u otro canal desangra la tasa de entrega (ver
-  // docs/01-SALES-ENGINE.md, "El canal es el chat, no WhatsApp").
-  const agenciaLine = esRecojo
-    ? '\n\n📦 En unas horas vamos a la agencia a registrar tu pedido. Ni bien tengamos la guía de recojo te la enviamos por aquí: este chat es nuestro canal principal de comunicación.'
-    : ''
+  // El que recoge en agencia carga tres incógnitas que el domicilio no tiene:
+  // ¿cuándo registran mi envío?, ¿con qué guía lo recojo? y ¿cómo pago lo que
+  // falta? Se le contesta ANTES de que pregunte, y de paso se ancla el canal:
+  // la guía llega por ESTE chat. Prometer WhatsApp u otro canal desangra la
+  // tasa de entrega (docs/01-SALES-ENGINE.md, "El canal es el chat").
+  //
+  // La mecánica del saldo es la parte que NO puede quedar ambigua: no se paga
+  // en el mostrador de la agencia, se nos paga por la app —apenas llegue la
+  // guía o, si prefiere, cuando el pedido ya esté en la agencia— y contra ese
+  // pago le entregamos la clave de recojo. Al que pagó todo, la clave le llega
+  // junto con la guía: no hay nada que condicione.
+  const agenciaLine = !esRecojo
+    ? ''
+    : saldo > 0
+      ? '\n\n📦 En unas horas vamos a la agencia a registrar tu pedido y, ni bien tengamos la guía del envío, te la enviamos por aquí: este chat es nuestro canal principal de comunicación.'
+        + `\n\n💳 Tu saldo de S/${saldo} no se paga en la agencia: nos lo pagas por esta misma app. Puedes pagarlo apenas te llegue la guía, o si prefieres esperar a que tu pedido llegue a la agencia. Apenas lo pagues te enviamos tu clave de recojo para retirarlo.`
+      : '\n\n📦 En unas horas vamos a la agencia a registrar tu pedido y, ni bien tengamos la guía del envío, te la enviamos por aquí junto con tu clave de recojo: este chat es nuestro canal principal de comunicación.'
 
   const welcomeBody = `¡Hola${firstName}! 🎉 Gracias por tu compra. Tu ${body.product_name}`
     + ` (${priceLine}) ${entrega}${cobro}.${advanceLine}${agenciaLine}`

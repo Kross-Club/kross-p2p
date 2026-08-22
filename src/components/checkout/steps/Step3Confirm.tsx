@@ -51,7 +51,9 @@ export default function Step3Confirm({
         {advance > 0 ? COPY.step3TitleAdvance : COPY.step3Title}
       </h2>
       <p className="text-sm text-gray-500 mb-4">
-        {advance > 0 ? COPY.advanceHeadsUpShort : COPY.doneCod}
+        {advance > 0
+          ? (state.deliveryMethod === 'AGENCIA' ? COPY.advanceHeadsUpShortPickup : COPY.advanceHeadsUpShort)
+          : COPY.doneCod}
       </p>
 
       {/* ── Resumen ── */}
@@ -64,9 +66,11 @@ export default function Step3Confirm({
           <>
             <Row label="Adelantas ahora" value={`S/${advance}`} strong accent />
             {/* El saldo explícito evita el reclamo de "pensé que ya había pagado
-                todo". Es la cifra que el comprador va a recordar. */}
+                todo". Es la cifra que el comprador va a recordar. En agencia el
+                saldo NO se paga al recoger: se paga por la app (suelta la clave
+                de recojo), y la etiqueta no puede prometer lo contrario. */}
             <Row
-              label={state.deliveryMethod === 'AGENCIA' ? 'Pagas al recoger' : 'Pagas al recibir'}
+              label={state.deliveryMethod === 'AGENCIA' ? 'Saldo (lo pagas por la app)' : 'Pagas al recibir'}
               value={`S/${Math.max(0, price - advance)}`}
             />
           </>
@@ -74,7 +78,8 @@ export default function Step3Confirm({
       </dl>
 
       {price > 0 && (
-        <AdvancePicker price={price} choice={state.advanceChoice} onPick={onAdvanceChoice} />
+        <AdvancePicker price={price} choice={state.advanceChoice}
+          pickup={state.deliveryMethod === 'AGENCIA'} onPick={onAdvanceChoice} />
       )}
 
       {state.deliveryNote && (
@@ -120,9 +125,12 @@ export default function Step3Confirm({
 // Las dos tarjetas muestran el reparto completo —lo de ahora Y lo que queda—
 // porque la duda real no es "cuánto pago" sino "cuánto me falta después".
 
-function AdvancePicker({ price, choice, onPick }: {
+function AdvancePicker({ price, choice, pickup, onPick }: {
   price: number
   choice: AdvanceChoice
+  /** Recojo en agencia: el saldo se paga por la app (suelta la clave de
+   *  recojo), nunca "al recibirlo" — la letra chica no puede decir otra cosa. */
+  pickup?: boolean
   onPick: (c: AdvanceChoice) => void
 }) {
   const options: { id: AdvanceChoice; title: string; now: number; perk?: string }[] = [
@@ -155,7 +163,11 @@ function AdvancePicker({ price, choice, onPick }: {
                 <span className="text-sm font-black" style={{ color: 'var(--brand)' }}>S/{now}</span>
               </span>
               <span className="block text-[11px] text-gray-500 mt-0.5">
-                {rest > 0 ? `Te quedan S/${rest} por pagar al recibirlo.` : 'Ya no pagas nada al recibirlo.'}
+                {rest > 0
+                  ? (pickup
+                      ? `Te quedan S/${rest}, que pagas por la app cuando tu pedido se envíe.`
+                      : `Te quedan S/${rest} por pagar al recibirlo.`)
+                  : (pickup ? 'Ya no pagas nada más.' : 'Ya no pagas nada al recibirlo.')}
               </span>
               {/* El empujón hacia el pago completo: una línea, en verde, que
                   suma un beneficio en vez de repetir el reparto. */}

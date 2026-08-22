@@ -33,9 +33,13 @@ function repliesFor(
   ctx: { esRecojo?: boolean; saldoPendiente?: number } = {},
 ): string[] {
   const { esRecojo = false, saldoPendiente = 0 } = ctx
-  // Solo para quien de verdad debe: confirma el monto por escrito en el chat,
-  // que es justo lo que quiere releer antes de ir a la agencia con la plata.
-  const saldoChip = saldoPendiente > 0 ? ['¿Cuánto me falta pagar?'] : []
+  // Solo para quien de verdad debe. En recojo el saldo se paga POR LA APP —la
+  // clave de recojo se entrega contra ese pago—, así que la ficha útil no es
+  // preguntar el monto sino INICIAR el pago. A domicilio se paga en la puerta:
+  // ahí la duda sí es cuánto llevar.
+  const saldoChip = saldoPendiente > 0
+    ? [esRecojo ? 'Quiero pagar mi saldo' : '¿Cuánto me falta pagar?']
+    : []
   switch (stage) {
     // Pagó y estamos cuadrando. Las dos dudas reales de ese momento —y la
     // segunda además nos trae el comprobante justo cuando puede hacer falta,
@@ -51,9 +55,12 @@ function repliesFor(
         : ['¿Cuándo llega mi pedido?', 'Quiero cambiar mi dirección', ...saldoChip]
     case 'en_camino':
       // "¿Pueden venir después?" a alguien que va a ir él mismo al mostrador
-      // no significa nada; lo que necesita es la guía a mano y saber si ya está.
+      // no significa nada. Con saldo, lo que le abre la puerta es pagarlo (eso
+      // suelta la clave); ya pagado, lo que necesita a mano es la clave misma.
       return esRecojo
-        ? ['¿Ya puedo recoger mi pedido?', '¿Me reenvías la guía?', ...saldoChip]
+        ? ['¿Ya puedo recoger mi pedido?',
+           ...(saldoPendiente > 0 ? saldoChip : ['¿Me reenvías mi clave de recojo?']),
+           '¿Me reenvías la guía?']
         : ['¿Cuánto falta?', 'No voy a estar, ¿pueden venir después?']
     case 'entregado':
       return ['Ya lo recibí, gracias', 'Tengo un problema con mi pedido']

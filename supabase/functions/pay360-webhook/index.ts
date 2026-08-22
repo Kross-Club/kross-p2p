@@ -195,12 +195,18 @@ Deno.serve(async (req) => {
   // El acuse al comprador con el saldo DERIVADO del pedido, no asumido:
   // "tu adelanto" a quien pagó el total suena a que aún falta plata, y callar
   // el saldo a quien pagó la mitad lo manda a preguntar cuánto debe justo el
-  // día del recojo. Misma regla que el mensaje de bienvenida de register-buyer.
+  // día del recojo. Misma regla que el mensaje de bienvenida de register-buyer,
+  // y misma mecánica: en agencia el saldo se paga POR LA APP (la clave de
+  // recojo se entrega contra ese pago), nunca en el mostrador.
   const saldoRestante = Math.max(0, Number(session.product_price ?? 0) - paid)
   const esRecojo = session.dispatch_type === 'AGENCIA_PROVINCIA' || session.dispatch_type === 'AGENCIA_LIMA'
   const buyerAck = saldoRestante > 0
-    ? `✅ ¡Recibimos tu adelanto de S/${paid}! Te queda un saldo de S/${saldoRestante}`
-      + ` que pagas al ${esRecojo ? 'recoger' : 'recibir'} tu pedido.`
+    ? (esRecojo
+        ? `✅ ¡Recibimos tu adelanto de S/${paid}! Te queda un saldo de S/${saldoRestante}`
+          + ' que nos pagas por esta misma app —no en la agencia— cuando te enviemos la guía'
+          + ' de tu envío. Apenas lo pagues te entregamos tu clave de recojo.'
+        : `✅ ¡Recibimos tu adelanto de S/${paid}! Te queda un saldo de S/${saldoRestante}`
+          + ' que pagas al recibir tu pedido.')
     : `✅ ¡Recibimos tu pago completo de S/${paid}! No te queda ningún saldo pendiente.`
   await supabase.from('chat_messages').insert({
     session_id: session.id, sender_role: 'system', sender_name: 'Kross',

@@ -48,7 +48,7 @@ export function buildCloserContext(s: CheckoutState): string {
     `Pago: ${a.paymentMethod} (estado adelanto: ${s.paymentStatus}).`,
   ]
   if (a.deliveryType === 'AGENCIA_PROVINCIA' && s.step === 'entrega') {
-    lines.push(`Regla provincia: pedir adelanto de S/${DEFAULT_ADVANCE_PEN} para el flete (Shalom/Olva); el saldo se paga al recibir.`)
+    lines.push(`Regla provincia: pedir adelanto de S/${DEFAULT_ADVANCE_PEN} para el flete (Shalom/Olva); el saldo se paga por la app cuando el envío ya tiene guía —nunca en la agencia—, y la clave de recojo se entrega con el saldo pagado.`)
   }
   if (s.step === 'pago_adelanto') {
     lines.push('Guía al cliente a yapear el adelanto al número en pantalla y adjuntar la foto del comprobante o el número de operación.')

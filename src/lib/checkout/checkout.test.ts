@@ -1183,15 +1183,28 @@ describe('respuestas rápidas del chat', () => {
   })
 
   it('la ficha del saldo aparece solo cuando de verdad queda saldo', () => {
+    // En recojo el saldo se paga POR LA APP (suelta la clave de recojo), así
+    // que la ficha inicia el pago; a domicilio se paga en la puerta y la duda
+    // es cuánto llevar.
     expect(repliesFor('preparando', { esRecojo: true, saldoPendiente: 25 }))
+      .toContain('Quiero pagar mi saldo')
+    expect(repliesFor('preparando', { saldoPendiente: 25 }))
       .toContain('¿Cuánto me falta pagar?')
     // Pagó todo (o contraentrega puro): preguntar por el saldo sembraría la
     // duda que el mensaje de bienvenida acaba de cerrar.
     expect(repliesFor('preparando', { esRecojo: true, saldoPendiente: 0 }).join(' '))
-      .not.toMatch(/falta pagar/i)
+      .not.toMatch(/saldo|falta pagar/i)
     // Mientras el pago se valida la duda es OTRA (¿llegó?); el saldo espera.
     expect(repliesFor('validando', { saldoPendiente: 25 }))
       .toEqual(['¿Ya llegó mi pago?', 'Te envío mi comprobante'])
+  })
+
+  it('en camino y ya pagado, la ficha ofrece la clave de recojo; con saldo, pagarlo', () => {
+    expect(repliesFor('en_camino', { esRecojo: true, saldoPendiente: 0 }))
+      .toContain('¿Me reenvías mi clave de recojo?')
+    const conSaldo = repliesFor('en_camino', { esRecojo: true, saldoPendiente: 25 })
+    expect(conSaldo).toContain('Quiero pagar mi saldo')
+    expect(conSaldo).not.toContain('¿Me reenvías mi clave de recojo?')
   })
 })
 
