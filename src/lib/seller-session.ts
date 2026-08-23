@@ -38,9 +38,6 @@ export function setActingSeller(s: SellerProfile | null) {
   window.dispatchEvent(new Event(EVT))
 }
 
-export const roleIsVentas = (role?: string | null) =>
-  (role ?? '').toLowerCase().includes('venta')
-
 // Central hook: resolves the REAL logged-in seller plus any admin "view as"
 // override. `effective` is who the UI should act as right now.
 export function useSeller() {

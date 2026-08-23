@@ -11,3 +11,7 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_push_subs_session ON push_subscriptions(session_id, sub_role);
 CREATE INDEX IF NOT EXISTS idx_push_subs_seller  ON push_subscriptions(seller_id, sub_role);
+
+-- Preferencias por dispositivo: silenciar un tipo de aviso sin perder la suscripción.
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS notify_new_client  boolean NOT NULL DEFAULT true;
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS notify_new_message boolean NOT NULL DEFAULT true;
