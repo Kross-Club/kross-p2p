@@ -29,8 +29,14 @@ y actualizan.
 - **Super Admin (plataforma Kross):** `sellers.is_super_admin`. Solo ve "Marcas" y
   **Entra** a una marca para operarla (impersonación `acting`/`effective` en
   `src/lib/seller-session.ts`).
-- **Admin de tienda:** `is_admin`, scoped a su `store_id`.
-- **Roles de equipo (`role_label`):** Ventas · Logística · Soporte · Motorizado.
+- **Admin de tienda:** `is_admin`, scoped a su `store_id`. Lo ve todo.
+- **Roles de equipo (`role_label`):** el modelo por defecto solo usa **Logística**,
+  que supervisa que el seguimiento automático (checkout → cobro → tracking) esté
+  funcionando bien; la venta la cierra la app sola y el reparto lo hace la agencia,
+  así que no hacen falta vendedores ni motorizados. Ventas · Soporte · Motorizado
+  quedan como roles **legado**: el panel ya no los ofrece al crear/cambiar rol,
+  pero se siguen reconociendo — si una tienda aún conserva Ventas, sus vendedores
+  reciben los pedidos nuevos primero; sin Ventas, se asignan a Logística.
 - **Comprador:** identificado por DNI/teléfono (`buyers`), sin login de contraseña; entra
   por su subdominio (`/acceso`). NO hay login de comprador en el host de plataforma.
 
@@ -76,12 +82,23 @@ y `MisPedidosPage` son justamente las pantallas que lo justifican.
   `address_lat/lng/verified`, `source`, `activated_at`.
 - `order_sessions` — pedidos: `stage` (`nuevo→confirmado→preparando→en_camino→entregado`),
   `assigned_seller_id`, `product_price`, `items`, `token` público.
-- `chat_messages`, `push_subscriptions`, `notifications_log`, `call_recordings`.
+- `chat_messages`, `push_subscriptions` (una fila por **dispositivo** suscrito —
+  celular y desktop conviven — con preferencias `notify_new_client` /
+  `notify_new_message` que el servidor filtra al enviar), `notifications_log`,
+  `call_recordings`.
 
 ## Panel Admin ✅
 
 Edge Function `manage-store` (list/create/update/wa_usage/client_stats). El super admin
 crea marcas + su primer admin sin SQL. Navegación por rol en `src/components/BottomNav.tsx`.
+
+**Notificaciones push del equipo** (Equipo → Notificaciones, `src/components/PushSettings.tsx`):
+cada miembro las activa/desactiva **por dispositivo** — el celular y la computadora se
+suscriben por separado y ambos reciben — y por **evento**: 🛍️ nuevo cliente y 💬 nuevo
+mensaje, cada uno con su sonido propio (`src/lib/notification-sounds.ts`). Con la app
+enfocada la notificación entra silenciosa y suena el sonido del evento; en segundo plano
+suena el sistema. El filtro por evento se aplica **en el servidor** (columnas
+`notify_new_*` de la suscripción): lo apagado ni siquiera se envía.
 
 ## Estado central compartido — `MerchantCustomerSession`
 

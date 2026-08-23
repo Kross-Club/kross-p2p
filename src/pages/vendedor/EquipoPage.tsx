@@ -3,11 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { Users, Eye, LogIn, UserPlus, X, Pencil } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
+import PushSettings from '../../components/PushSettings'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-const ROLES = ['Ventas', 'Logística', 'Soporte', 'Motorizado']
+// Modelo por defecto: la venta la cierra el checkout/IA y el reparto lo hace la
+// agencia, así que el equipo operativo es LOGÍSTICA (supervisa que el
+// seguimiento automático funcione) + el admin, que lo ve todo. Ventas, Soporte
+// y Motorizado quedan como roles legado: se muestran si un miembro aún los
+// tiene, pero ya no se ofrecen al crear ni al cambiar rol.
+const ROLES = ['Logística']
 const ROLE_ORDER = ['venta', 'logist', 'despacho', 'soporte', 'motoriz', 'admin']
 const roleRank = (r: string) => { const i = ROLE_ORDER.findIndex(k => r.toLowerCase().includes(k)); return i === -1 ? 99 : i }
 function roleColor(role: string) {
@@ -100,6 +106,7 @@ export default function EquipoPage() {
       <div className="px-4 py-4">
         <h1 className="text-xl font-black text-gray-900 mb-4 flex items-center gap-2"><Users size={20} /> Mi cuenta</h1>
         {effective && <MemberCard s={effective} isSelf online={online} />}
+        {real && <div className="mt-3"><PushSettings sellerAuthId={real.auth_user_id} /></div>}
         <p className="text-xs text-gray-400 mt-4 text-center">Solo el administrador administra el equipo.</p>
       </div>
     )
@@ -132,6 +139,8 @@ export default function EquipoPage() {
         ))}
       </div>
 
+      {real && <div className="mt-4"><PushSettings sellerAuthId={real.auth_user_id} /></div>}
+
       {/* Profile / change role */}
       {profile && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setProfile(null)}>
@@ -145,6 +154,12 @@ export default function EquipoPage() {
             ) : (
               <>
                 <p className="text-xs font-bold text-gray-500 mb-2">Cambiar rol</p>
+                {!ROLES.includes(profile.role_label) && (
+                  <p className="text-[10px] text-gray-400 mb-2">
+                    Rol actual: <span className="font-bold" style={{ color: roleColor(profile.role_label) }}>{profile.role_label}</span> (legado
+                    — el modelo por defecto solo usa Logística; la venta la cierra la app sola).
+                  </p>
+                )}
                 <div className="space-y-2">
                   {ROLES.map(r => (
                     <button key={r} onClick={() => setRole(profile, r)} disabled={busy}
@@ -220,7 +235,8 @@ function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adm
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState('Ventas')
+  // Único rol de equipo del modelo por defecto (la venta la cierra la app sola)
+  const role = 'Logística'
   const [asAdmin, setAsAdmin] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -265,13 +281,14 @@ function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adm
             </span>
           </button>
           {asAdmin && <p className="text-[10px] text-gray-400 px-1">Podrá gestionar el equipo, productos y CRM, y entrar por su subdominio.</p>}
-          <div className="flex gap-2" style={{ opacity: asAdmin ? 0.4 : 1, pointerEvents: asAdmin ? 'none' : 'auto' }}>
-            {ROLES.map(r => (
-              <button key={r} onClick={() => setRole(r)}
-                className="flex-1 py-2 rounded-xl text-xs font-black"
-                style={{ background: role === r ? roleColor(r) : '#f0f0f0', color: role === r ? '#fff' : '#888' }}>{r}</button>
-            ))}
-          </div>
+          {!asAdmin && (
+            <div className="rounded-2xl px-4 py-3" style={{ background: `${roleColor(role)}15` }}>
+              <p className="text-xs font-black" style={{ color: roleColor(role) }}>Rol: {role}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">
+                Supervisa que el seguimiento automático de los pedidos funcione bien. La venta la cierra la app sola.
+              </p>
+            </div>
+          )}
         </div>
         {err && <p className="text-xs font-semibold text-center mt-2" style={{ color: '#DC2626' }}>{err}</p>}
         <button onClick={submit} disabled={busy}

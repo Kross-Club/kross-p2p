@@ -82,34 +82,54 @@ Deno.serve(async (req) => {
     }),
   })
 
-  // Push notification to assigned seller
-  if (session.assigned_seller_id) {
-    const { data: subs } = await supabase
-      .from('push_subscriptions')
-      .select('subscription')
-      .eq('seller_id', session.assigned_seller_id)
-      .eq('sub_role', 'seller')
-
-    let storeLogo: string | null = null
+  // Push de nuevo mensaje: al asignado Y a los admins de la tienda (el admin ve
+  // todo — en el modelo por defecto el equipo es admin + logística y no hay un
+  // vendedor por chat). Cada dispositivo puede silenciar este aviso desde el
+  // panel: el filtro es la columna notify_new_message de SU suscripción.
+  {
+    const recipientIds = new Set<string>()
+    if (session.assigned_seller_id) recipientIds.add(session.assigned_seller_id)
     if (session.store_id) {
-      const { data: store } = await supabase.from('stores').select('logo_url').eq('id', session.store_id).maybeSingle()
-      storeLogo = store?.logo_url ?? null
+      const { data: admins } = await supabase
+        .from('sellers')
+        .select('auth_user_id')
+        .eq('store_id', session.store_id)
+        .eq('is_admin', true)
+        .eq('active', true)
+        .not('auth_user_id', 'is', null)
+      for (const a of admins ?? []) recipientIds.add(a.auth_user_id as string)
     }
 
-    const buyerFirstName = (session.buyer_name ?? 'Cliente').split(' ')[0]
-    const preview = type === 'text' ? (body ?? '').slice(0, 80) : '🎵 Mensaje de audio'
+    if (recipientIds.size > 0) {
+      const { data: subs } = await supabase
+        .from('push_subscriptions')
+        .select('subscription, notify_new_message')
+        .in('seller_id', [...recipientIds])
+        .eq('sub_role', 'seller')
 
-    await Promise.all((subs ?? []).map(row =>
-      trySendPush(row.subscription, {
-        title: `💬 ${buyerFirstName}`,
-        body: preview,
-        url: `/vendedor/chats`,
-        tag: `msg-${session.id}`,
-        type: 'message',
-        icon: storeLogo ?? undefined,
-        badge: storeLogo ?? undefined,
-      })
-    ))
+      let storeLogo: string | null = null
+      if (session.store_id) {
+        const { data: store } = await supabase.from('stores').select('logo_url').eq('id', session.store_id).maybeSingle()
+        storeLogo = store?.logo_url ?? null
+      }
+
+      const buyerFirstName = (session.buyer_name ?? 'Cliente').split(' ')[0]
+      const preview = type === 'text' ? (body ?? '').slice(0, 80) : '🎵 Mensaje de audio'
+
+      await Promise.all((subs ?? [])
+        .filter(row => row.notify_new_message !== false)
+        .map(row =>
+          trySendPush(row.subscription, {
+            title: `💬 ${buyerFirstName}`,
+            body: preview,
+            url: `/vendedor/chats`,
+            tag: `msg-${session.id}`,
+            type: 'message',
+            icon: storeLogo ?? undefined,
+            badge: storeLogo ?? undefined,
+          })
+        ))
+    }
   }
 
   return new Response(JSON.stringify(msg), {

@@ -1,6 +1,6 @@
 // Kross Service Worker — PWA + Push
 
-const CACHE_NAME = 'kross-v6'
+const CACHE_NAME = 'kross-v7'
 const OFFLINE_URL = '/'
 
 self.addEventListener('install', (event) => {
@@ -31,25 +31,35 @@ self.addEventListener('push', (event) => {
   const { title, body, url, tag, type, icon, badge, image } = data
   const isCall = type === 'call'
 
-  const options = {
-    body: body || 'Tienes una novedad',
-    icon: icon || '/icon-192.png',   // large icon: seller photo or brand logo
-    badge: badge || '/icon-192.png', // small monochrome icon: brand logo
-    image: image || undefined,       // big preview (rich, IG-style) when provided
-    tag: tag || 'kross',
-    renotify: true, // buzz again even if a notification with the same tag exists
-    data: { url: url || '/' },
-    vibrate: isCall ? [500, 200, 500, 200, 500, 200, 500] : [200, 100, 200],
-    requireInteraction: isCall, // call stays until dismissed
-    silent: false,
-    actions: isCall ? [{ action: 'open', title: '📞 Abrir app' }] : [],
-  }
+  event.waitUntil((async () => {
+    // Con la app ENFOCADA la notificación entra silenciosa y el sonido lo pone
+    // la app: cada evento (nuevo cliente / nuevo mensaje) tiene el suyo. En
+    // segundo plano o con la app cerrada suena el sistema, como siempre.
+    let focused = []
+    try {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      focused = wins.filter((c) => c.focused)
+      for (const c of focused) c.postMessage({ kind: 'kross-push', type: type || 'message' })
+    } catch (_e) { /* clients API falló — se notifica con sonido de sistema */ }
 
-  // MUST call showNotification for every push, otherwise Chrome/Android may
-  // revoke the push subscription for "silent push" abuse.
-  event.waitUntil(
-    self.registration.showNotification(title || 'Kross 📦', options)
-  )
+    const options = {
+      body: body || 'Tienes una novedad',
+      icon: icon || '/icon-192.png',   // large icon: seller photo or brand logo
+      badge: badge || '/icon-192.png', // small monochrome icon: brand logo
+      image: image || undefined,       // big preview (rich, IG-style) when provided
+      tag: tag || 'kross',
+      renotify: true, // buzz again even if a notification with the same tag exists
+      data: { url: url || '/' },
+      vibrate: isCall ? [500, 200, 500, 200, 500, 200, 500] : [200, 100, 200],
+      requireInteraction: isCall, // call stays until dismissed
+      silent: focused.length > 0 && !isCall,
+      actions: isCall ? [{ action: 'open', title: '📞 Abrir app' }] : [],
+    }
+
+    // MUST call showNotification for every push, otherwise Chrome/Android may
+    // revoke the push subscription for "silent push" abuse.
+    await self.registration.showNotification(title || 'Kross 📦', options)
+  })())
 })
 
 // Notification click: open/focus the target URL

@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import webpush from 'npm:web-push'
 import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
 
 const supabase = createClient(
@@ -9,6 +10,16 @@ const supabase = createClient(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+}
+
+const VAPID_SUBJECT = Deno.env.get('VAPID_MAILTO') ?? 'mailto:equipo@kross.club'
+const VAPID_PUBLIC  = Deno.env.get('VAPID_PUBLIC_KEY') ?? ''
+const VAPID_PRIVATE = Deno.env.get('VAPID_PRIVATE_KEY') ?? ''
+if (VAPID_PUBLIC && VAPID_PRIVATE) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
+
+async function trySendPush(sub: object, payload: object) {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return
+  try { await webpush.sendNotification(sub as any, JSON.stringify(payload)) } catch { /* suscripción vencida — ignorar */ }
 }
 
 function randomToken() {
@@ -177,13 +188,16 @@ Deno.serve(async (req) => {
   // New orders always go to a SALES person (role Ventas) — never to Despacho,
   // Motorizado or Admin. We prefer sellers scoped to this store; if that store
   // has no sales rep, fall back to any Ventas rep across stores.
-  type Seller = { auth_user_id: string; nombre: string; role_label: string; avatar_url: string | null; store_id?: string }
+  type Seller = { auth_user_id: string; nombre: string; role_label: string; avatar_url: string | null; store_id?: string; is_admin?: boolean }
   const isVentas = (s: any) => (s.role_label ?? '').toLowerCase().includes('venta')
+  const isLogistica = (s: any) => /logist|despacho/.test((s.role_label ?? '').toLowerCase())
   // A seller off-shift (available=false) doesn't receive new orders. Missing
   // column (undefined) is treated as available so it works before the migration.
   const isAvailable = (s: any) => s.available !== false
 
-  // Only sellers of THIS store — never assign across tenants
+  // Only sellers of THIS store — never assign across tenants.
+  // `storeTeam` completo se reutiliza abajo para el push de "nuevo cliente".
+  let storeTeam: Seller[] = []
   let sellerPool: Seller[] = []
   {
     const { data: scoped } = await supabase
@@ -192,7 +206,14 @@ Deno.serve(async (req) => {
       .eq('store_id', body.store_id)
       .eq('active', true)
       .not('auth_user_id', 'is', null)
-    sellerPool = (scoped ?? []).filter((s: any) => !s.is_admin && isVentas(s) && isAvailable(s))
+    storeTeam = (scoped ?? []) as Seller[]
+    // La venta ya la cierra el checkout/IA solo: el modelo por defecto no tiene
+    // Ventas ni Motorizado, y el chat del pedido lo atiende LOGÍSTICA, que
+    // supervisa el seguimiento automático. Si la tienda aún conserva vendedores
+    // (legado), ellos siguen primero; si no hay, se asigna a logística.
+    const ventas = storeTeam.filter((s: any) => !s.is_admin && isVentas(s) && isAvailable(s))
+    const logistica = storeTeam.filter((s: any) => !s.is_admin && isLogistica(s) && isAvailable(s))
+    sellerPool = ventas.length > 0 ? ventas : logistica
   }
 
   if (sellerPool.length > 0) {
@@ -447,10 +468,46 @@ Deno.serve(async (req) => {
     session_id: data.id,
     sender_role: 'seller',
     sender_name: assignedSellerName ?? 'Kross',
-    sender_role_label: assignedSellerRole ?? 'Ventas',
+    sender_role_label: assignedSellerRole ?? 'Equipo',
     type: 'text',
     body: welcomeBody,
   })
+
+  // ─── Push "nuevo cliente" al equipo ────────────────────────────────────────
+  // Le llega a quien vigila la operación: admins + logística + el asignado (si
+  // lo hay). Cada dispositivo puede silenciar este aviso desde el panel
+  // (columna notify_new_client de SU suscripción); el que lo apagó no recibe.
+  {
+    const recipientIds = new Set<string>()
+    if (assignedSellerId) recipientIds.add(assignedSellerId)
+    for (const s of storeTeam) {
+      if (s.is_admin || isLogistica(s)) recipientIds.add(s.auth_user_id)
+    }
+    if (recipientIds.size > 0) {
+      const { data: subs } = await supabase
+        .from('push_subscriptions')
+        .select('subscription, notify_new_client')
+        .in('seller_id', [...recipientIds])
+        .eq('sub_role', 'seller')
+
+      const { data: st } = await supabase.from('stores').select('logo_url').eq('id', body.store_id).maybeSingle()
+      const storeLogo = st?.logo_url ?? null
+
+      await Promise.all((subs ?? [])
+        .filter(row => row.notify_new_client !== false)
+        .map(row =>
+          trySendPush(row.subscription, {
+            title: '🛍️ ¡Nuevo cliente!',
+            body: `${body.buyer_name} · ${body.product_name} (S/${finalPrice})`,
+            url: '/vendedor/chats',
+            tag: `new-client-${data.id}`,
+            type: 'new_client',
+            icon: storeLogo ?? undefined,
+            badge: storeLogo ?? undefined,
+          })
+        ))
+    }
+  }
 
   // El lead deja de ser lead: no se persigue a quien ya compró.
   if (checkoutId) {

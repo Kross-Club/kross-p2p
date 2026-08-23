@@ -6,7 +6,8 @@ import IncomingCallOverlay from './IncomingCallOverlay'
 import InstallBanner from './InstallBanner'
 import SellerPresenceTracker from './SellerPresenceTracker'
 import { KrossIcon } from './KrossLogo'
-import { subscribePush, notifPermission } from '../lib/push'
+import { subscribePush, notifPermission, getPushPrefs } from '../lib/push'
+import { playNotificationSound } from '../lib/notification-sounds'
 import { supabase } from '../lib/supabase'
 import { useSeller, clearSellerCache, setActingSeller } from '../lib/seller-session'
 
@@ -54,6 +55,23 @@ export default function Layout() {
       subscribePush({ sellerId: real.auth_user_id, role: 'seller' as const }).catch(() => {})
     }
   }, [real?.auth_user_id])
+
+  // Con la app enfocada el service worker muestra la notificación en silencio y
+  // avisa por postMessage: aquí suena el sonido PROPIO de cada evento (nuevo
+  // cliente / nuevo mensaje). Las llamadas no pasan por aquí — tienen su
+  // ringtone en IncomingCallOverlay.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    const onMessage = (e: MessageEvent) => {
+      const d = e.data as { kind?: string; type?: string } | null
+      if (d?.kind !== 'kross-push') return
+      const prefs = getPushPrefs()
+      if (d.type === 'new_client' && prefs.new_client) playNotificationSound('new_client')
+      else if (d.type === 'message' && prefs.new_message) playNotificationSound('new_message')
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage)
+  }, [])
 
   const uploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

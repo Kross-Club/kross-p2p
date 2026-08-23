@@ -145,6 +145,12 @@ ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS buyer_id uuid REFERENCES
 CREATE INDEX IF NOT EXISTS idx_push_subs_buyer_id ON push_subscriptions(buyer_id, sub_role);
 ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY; -- solo service role (Edge Functions)
 
+-- Preferencias POR DISPOSITIVO (una fila = un navegador suscrito). El equipo puede
+-- silenciar cada tipo de aviso desde el panel sin perder la suscripción: el filtro
+-- se aplica en el servidor al enviar, no borrando la fila.
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS notify_new_client  boolean NOT NULL DEFAULT true;
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS notify_new_message boolean NOT NULL DEFAULT true;
+
 -- Bitácora de notificaciones: qué se intentó por push y si cayó a WhatsApp.
 -- Sirve para medir cobertura de push vs. costo de WhatsApp por tienda.
 CREATE TABLE IF NOT EXISTS notifications_log (
