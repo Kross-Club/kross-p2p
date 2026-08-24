@@ -12,6 +12,7 @@
 // ~36 KB + ~40 KB de índice, con import() dinámico: no entran al bundle inicial.
 
 import { AGENCY_ONLY_CITIES } from '../checkout.config'
+import { haversineKm } from '../../geo/haversine'
 import type { LatLng } from '../../geo/haversine'
 import type { CoverageResult, DistrictCoverage, DistrictOption } from '../types'
 
@@ -46,6 +47,12 @@ function loadIndex(): Promise<DistrictOption[]> {
   indexCache ??= import('../../../data/coverage/peru-districts.json')
     .then(m => (m.default as { districts: DistrictOption[] }).districts)
   return indexCache
+}
+
+function loadCentroids(): Promise<Centroids> {
+  centroidsCache ??= import('../../../data/coverage/district-centroids.json')
+    .then(m => m.default as unknown as Centroids)
+  return centroidsCache
 }
 
 /**
@@ -108,6 +115,30 @@ export const DistrictCoverageService = {
   },
 
   /**
+   * Los distritos reordenados por cercanía a un punto — la pista de geo-IP del
+   * selector. SOLO cambia el orden, nunca el contenido: la IP de datos móviles
+   * en Perú geolocaliza al hub del operador (casi siempre Lima), así que la
+   * señal sirve de prior entre empates del ranking, no de filtro. Un prior
+   * equivocado cuesta cero — el comprador teclea y encuentra su distrito igual.
+   *
+   * Mismo centroide degradado distrito → provincia → departamento que
+   * `getDistrictCenter`; sin centroide (no debería pasar: los 25 departamentos
+   * tienen) el distrito conserva su posición relativa al final.
+   */
+  async sortByProximity(districts: DistrictOption[], from: LatLng): Promise<DistrictOption[]> {
+    const c = await loadCentroids()
+    const km = (d: DistrictOption): number => {
+      const p =
+        c.districts[`${norm(d.department)}|${norm(d.district)}`] ??
+        c.provinces[`${norm(d.department)}|${norm(d.province)}`] ??
+        c.departments[norm(d.department)]
+      return p ? haversineKm(from, p) : Infinity
+    }
+    const dist = new Map(districts.map(d => [d, km(d)]))
+    return [...districts].sort((a, b) => (dist.get(a) ?? Infinity) - (dist.get(b) ?? Infinity))
+  },
+
+  /**
    * El veredicto que decide la rama del checkout.
    *
    *   IN_ZONE     → se le ofrece entrega a domicilio
@@ -163,9 +194,7 @@ export const DistrictCoverageService = {
    * da algo razonablemente cerca.
    */
   async getDistrictCenter(department: string, province: string, district: string): Promise<LatLng | null> {
-    centroidsCache ??= import('../../../data/coverage/district-centroids.json')
-      .then(m => m.default as unknown as Centroids)
-    const c = await centroidsCache
+    const c = await loadCentroids()
     const found =
       c.districts[`${norm(department)}|${norm(district)}`] ??
       c.provinces[`${norm(department)}|${norm(province)}`] ??

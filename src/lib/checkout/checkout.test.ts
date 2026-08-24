@@ -14,6 +14,7 @@ import { isPickupDispatch } from '../session'
 import { CoverageService, coveredCities } from './services/CoverageService'
 import { AgencyService, LISTED_AGENCIES, describePickupDistance, pointKey, suggestFreeText } from './services/AgencyService'
 import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
+import type { LatLng } from '../geo/haversine'
 import type { CheckoutState } from './types'
 import { stagesFor, stageIndex, toStage } from '../order-stages'
 import { abModeOf, resolveVariant } from './variant'
@@ -1083,6 +1084,48 @@ describe('centroides con degradación', () => {
       expect(cerca).toHaveLength(3)
       expect(cerca![0].distanceKm).toBeLessThan(60)
     }
+  })
+})
+
+// ─── Distritos por cercanía (prior del selector) ─────────────────────────────
+// La pista de geo-IP solo REORDENA la lista del selector; estos tests fijan las
+// dos garantías: nunca se pierde ni duplica un distrito, y la cercanía degrada
+// distrito → provincia → departamento igual que `getDistrictCenter`.
+describe('sortByProximity · el orden geo del selector', () => {
+  const LIMA: LatLng = { lat: -12.089, lng: -77.02 } // Lima centro
+
+  it('desde Lima, Lima metro queda por delante de Amazonas', async () => {
+    const all = await DistrictCoverageService.listDistricts()
+    const sorted = await DistrictCoverageService.sortByProximity(all, LIMA)
+    const iSurco = sorted.findIndex(d => d.district === 'Santiago de Surco')
+    const iBagua = sorted.findIndex(d => d.district === 'Bagua')
+    expect(iSurco).toBeGreaterThanOrEqual(0)
+    expect(iSurco).toBeLessThan(iBagua)
+    // El dataset crudo va por departamento alfabético: Bagua (Amazonas) salía
+    // antes que todo Lima. Este es exactamente el orden que se corrige.
+    expect(all.findIndex(d => d.district === 'Bagua'))
+      .toBeLessThan(all.findIndex(d => d.district === 'Santiago de Surco'))
+  })
+
+  it('no pierde, duplica ni muta: mismos distritos, otra lista', async () => {
+    const all = await DistrictCoverageService.listDistricts()
+    const before = all.map(d => d.district)
+    const sorted = await DistrictCoverageService.sortByProximity(all, LIMA)
+    expect(sorted).toHaveLength(all.length)
+    expect(new Set(sorted)).toEqual(new Set(all))
+    // La lista original es el cache compartido del servicio: reordenarla en
+    // sitio contaminaría a todo consumidor posterior.
+    expect(all.map(d => d.district)).toEqual(before)
+  })
+
+  it('un distrito sin centroide propio ordena por su provincia', async () => {
+    // Poroy no tiene sedes (sin centroide de distrito): con la degradación
+    // queda entre los distritos de Cusco al ordenar desde el propio Cusco.
+    const all = await DistrictCoverageService.listDistricts()
+    const sorted = await DistrictCoverageService.sortByProximity(all, { lat: -13.52, lng: -71.98 })
+    const iPoroy = sorted.findIndex(d => d.district === 'Poroy')
+    expect(iPoroy).toBeGreaterThanOrEqual(0)
+    expect(iPoroy).toBeLessThan(150)
   })
 })
 
