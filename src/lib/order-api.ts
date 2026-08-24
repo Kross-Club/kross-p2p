@@ -29,6 +29,15 @@ export interface OrderSession {
   dispatch_type?: string | null
   agency_name?: string | null
   delivery_reference?: string | null
+  /** Contrato `shipment` (00-CORE): identificadores del comprobante del
+   *  courier + fase reflejada por el job de tracking. */
+  tracking_courier?: string | null
+  tracking_numero?: string | null
+  tracking_codigo?: string | null
+  tracking_ose_id?: string | null
+  tracking_phase?: string | null
+  tracking_phase_at?: string | null
+  tracking_demora_at?: string | null
   /** Estado del cobro del adelanto. */
   payment_verification?: string | null
   /** Motivo escrito por el cobro. Solo llega al vendedor. */

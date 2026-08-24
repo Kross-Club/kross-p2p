@@ -4,6 +4,7 @@ import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, B
 import { supabase } from '../../lib/supabase'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
+import TrackingBar from '../../components/TrackingBar'
 import AdvancePanel from '../../components/checkout/payment/AdvancePanel'
 import OrderDetailModal from '../../components/OrderDetailModal'
 import ContactSheet from '../../components/ContactSheet'
@@ -438,6 +439,9 @@ export default function VendedorPedidoPage() {
       .on('broadcast', { event: 'nota_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, nota: payload.nota } : prev)
       })
+      .on('broadcast', { event: 'tracking_update' }, ({ payload }) => {
+        setSession(prev => prev ? { ...prev, ...payload } : prev)
+      })
       .on('broadcast', { event: 'items_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, items: payload.items, product_price: payload.total } : prev)
       })
@@ -722,6 +726,17 @@ export default function VendedorPedidoPage() {
         dispatchType={session.dispatch_type}
         agencyName={session.agency_name}
         onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
+      />
+
+      {/* Tracking del envío por agencia: Logística registra la guía y el job
+          refleja la fase (contrato `shipment`, 00-CORE) */}
+      <TrackingBar
+        sessionId={session.id}
+        role="seller"
+        dispatchType={session.dispatch_type}
+        agencyName={session.agency_name}
+        tracking={session}
+        onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
       />
 
       {/* Messages */}

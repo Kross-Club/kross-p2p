@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
+import { shalomApiKey } from '../_shared/shalom.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -34,7 +35,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats' | 'ab_stats'
+    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status'
     home_delivery_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
@@ -62,6 +63,10 @@ Deno.serve(async (req) => {
     pay360_env?: string                // 'sandbox' | 'live'
     /** Da de alta la marca como negocio en 360pay. Ver `connectPay360`. */
     pay360_connect?: { payment_prefix?: string; name?: string }
+    // Envíos — la cuenta Shalom Pro del cliente. SOLO por JWT verificado
+    // (mismo trato que los cobros). `null` = desconectar. El password se
+    // guarda en `store_secrets` y jamás vuelve en ninguna respuesta.
+    shalom_pro?: { email?: string; password?: string } | null
     // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
     // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
     checkout_ab_mode?: string
@@ -111,7 +116,40 @@ Deno.serve(async (req) => {
     const { data, error } = await q
     if (error) return json({ error: error.message }, 400)
 
-    return json({ stores: data ?? [], is_super: isSuper })
+    // Estado de la cuenta Shalom Pro de cada marca. Vive en `store_secrets`
+    // (stores es de SELECT público) y se mezcla aquí: email y veredicto sí,
+    // el password JAMÁS.
+    const stores = data ?? []
+    if (stores.length > 0) {
+      const { data: secs } = await supabase.from('store_secrets')
+        .select('store_id, shalom_pro_email, shalom_pro_status, shalom_pro_checked_at')
+        .in('store_id', stores.map((s: { id: string }) => s.id))
+      const byId = new Map((secs ?? []).map((s: Record<string, unknown>) => [s.store_id, s]))
+      for (const s of stores as Record<string, unknown>[]) {
+        const sec = byId.get(s.id as string)
+        s.shalom_pro_email = sec?.shalom_pro_email ?? null
+        s.shalom_pro_status = sec?.shalom_pro_status ?? null
+        s.shalom_pro_checked_at = sec?.shalom_pro_checked_at ?? null
+      }
+    }
+
+    return json({ stores, is_super: isSuper })
+  }
+
+  // ─── SHALOM STATUS (semáforo verde/rojo de la API de tracking/envíos) ───────
+  // Salud del proveedor (healthz es público, sin auth). Cuando está en rojo, el
+  // panel muestra el plan de contingencia manual: la guía se registra igual (el
+  // barrido la vigila solo cuando vuelva) y el estado se consulta a mano.
+  if (body.action === 'shalom_status') {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 5000)
+    let operational = false
+    try {
+      const r = await fetch('https://api.shalom-api-peru.com/healthz', { signal: ctrl.signal })
+      operational = r.ok
+    } catch { /* caído o timeout: queda false */ }
+    clearTimeout(t)
+    return json({ operational, checked_at: new Date().toISOString() })
   }
 
   // ─── WHATSAPP USAGE (para el cobro 2x por plantilla) ─────────────────────────
@@ -244,6 +282,69 @@ Deno.serve(async (req) => {
       || body.pay360_env !== undefined || body.pay360_connect !== undefined
     if (touchesPayments && !trusted) return json({ error: 'auth_requerida' }, 403)
 
+    // ─── Envíos: la cuenta Shalom Pro de la marca ────────────────────────────
+    // Mismo trato que los cobros: SOLO por JWT verificado — son las
+    // credenciales del cliente en pro.shalom.pe. Se guardan en `store_secrets`
+    // (stores es de SELECT público) y el password jamás vuelve al panel.
+    if (body.shalom_pro !== undefined && !trusted) return json({ error: 'auth_requerida' }, 403)
+    let wroteShalom = false
+    if (body.shalom_pro === null) {
+      const { error: clrErr } = await supabase.from('store_secrets').upsert({
+        store_id: targetId,
+        shalom_pro_email: null, shalom_pro_password: null,
+        shalom_pro_status: null, shalom_pro_checked_at: null,
+      }, { onConflict: 'store_id' })
+      if (clrErr) return json({ error: clrErr.message }, 400)
+      wroteShalom = true
+    } else if (body.shalom_pro) {
+      const email = String(body.shalom_pro.email ?? '').trim().toLowerCase()
+      const password = String(body.shalom_pro.password ?? '')
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 4) {
+        return json({ error: 'shalom_credenciales_invalidas' }, 400)
+      }
+      const { error: upErr } = await supabase.from('store_secrets').upsert({
+        store_id: targetId,
+        shalom_pro_email: email, shalom_pro_password: password,
+        shalom_pro_status: 'PENDING', shalom_pro_checked_at: new Date().toISOString(),
+      }, { onConflict: 'store_id' })
+      if (upErr) return json({ error: upErr.message }, 400)
+      wroteShalom = true
+
+      // Verificación REAL contra pro.shalom.pe, en SEGUNDO PLANO: el primer
+      // login de una cuenta tarda ~90 s (hasta 2 min, dice el proveedor) y no
+      // puede colgarse del guardado del panel. El veredicto queda en
+      // shalom_pro_status y el panel lo refresca. UNVERIFIED = proveedor caído
+      // o timeout: ni sí ni no — se reintenta guardando de nuevo.
+      const verify = (async () => {
+        let status = 'UNVERIFIED'
+        try {
+          const key = await shalomApiKey()
+          if (key) {
+            const ctrl = new AbortController()
+            const t = setTimeout(() => ctrl.abort(), 145_000)
+            const r = await fetch('https://api.shalom-api-peru.com/v1/shalom/sessions', {
+              method: 'POST',
+              headers: { 'X-API-Key': key, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password }),
+              signal: ctrl.signal,
+            })
+            clearTimeout(t)
+            if (r.ok) status = 'CONNECTED'
+            else if (r.status === 401) status = 'FAILED' // shalom_auth_failed
+            console.log('[manage-store] shalom pro verificación', targetId, r.status, '→', status)
+          }
+        } catch (e) {
+          console.error('[manage-store] shalom pro verificación falló', targetId, e)
+        }
+        await supabase.from('store_secrets').update({
+          shalom_pro_status: status, shalom_pro_checked_at: new Date().toISOString(),
+        }).eq('store_id', targetId)
+      })()
+      const rt = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime
+      if (rt?.waitUntil) rt.waitUntil(verify)
+      else verify.catch(() => {})
+    }
+
     // Lista blanca: el CHECK de la columna rechaza cualquier otra cosa, y un
     // 500 aquí tumbaría el guardado entero de la marca por un campo opcional.
     if (body.checkout_ab_mode === 'SPLIT' || body.checkout_ab_mode === 'A' || body.checkout_ab_mode === 'B') {
@@ -339,7 +440,7 @@ Deno.serve(async (req) => {
       if (!connected) return json({ error: 'pay360_sin_conectar' }, 400)
     }
 
-    if (Object.keys(patch).length === 0 && !wroteSecretsPay360) return json({ error: 'nada_que_guardar' }, 400)
+    if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom) return json({ error: 'nada_que_guardar' }, 400)
     if (Object.keys(patch).length > 0) {
       const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
       if (error) return json({ error: error.message }, 400)

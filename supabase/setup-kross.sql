@@ -839,3 +839,148 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.olva_api_key() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.olva_api_key() TO service_role;
+
+-- ─── 22. SHALOM API PERÚ (tracking de envíos) ───────────────────────────────
+-- Misma familia de proveedor que Olva API Perú (sección 21): independiente,
+-- NO la API oficial de Shalom. Su key NO va en el repo: la Edge Function la
+-- lee del secret de entorno SHALOM_API_KEY y, si no existe, del Vault del
+-- proyecto por este RPC. Solo service_role puede ejecutarlo — el frontend
+-- jamás ve la key.
+--
+-- Alta de la key en Vault (correr aparte, con la key real, NUNCA pegarla aquí):
+--   SELECT vault.create_secret('<la-key>', 'SHALOM_API_KEY', 'Shalom API Perú');
+CREATE OR REPLACE FUNCTION public.shalom_api_key() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'SHALOM_API_KEY' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.shalom_api_key() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.shalom_api_key() TO service_role;
+
+-- ─── 23. TRACKING DE ENVÍOS EN EL PEDIDO (contrato `shipment`) ──────────────
+-- Bloque `shipment` de MerchantCustomerSession (00-CORE-ARCHITECTURE):
+-- Logistics registra los identificadores del comprobante (order-manage,
+-- acción `set_tracking`) y el job `shalom-tracking-sync` (23.c) consulta la
+-- API del courier y refleja la fase. La fase dispara la cobranza del saldo al
+-- llegar a EN_DESTINO, pero NUNCA mueve `stage` sola: el pipeline lo avanza
+-- una persona.
+
+-- 23.a Identificadores del comprobante + fase reflejada.
+--   tracking_courier: 'SHALOM' (Olva 🔮 cuando su reflejo se construya).
+--   numero (guía 8–10 dígitos) + codigo (4 alfanum) van juntos; ose_id es el
+--   id interno de Shalom (handle de eventos/comprobante/GRT).
+--   tracking_phase: EN_ORIGEN | EN_TRANSITO | EN_DESTINO | ENTREGADO.
+--   tracking_demora_at: alerta de demora del courier — NO es una fase.
+--   Sin CHECK a propósito, como stage/dispatch_type: la lista blanca vive en
+--   el código que escribe (order-manage / shalom-tracking-sync).
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_courier    text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_numero     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_codigo     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_ose_id     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_phase      text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_phase_at   timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_demora_at  timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_checked_at timestamptz;
+
+-- 23.b Los envíos VIVOS que el job va a barrer: con guía y sin entregar.
+CREATE INDEX IF NOT EXISTS idx_order_sessions_tracking_active
+  ON order_sessions(tracking_checked_at)
+  WHERE tracking_courier IS NOT NULL
+    AND (tracking_phase IS NULL OR tracking_phase <> 'ENTREGADO');
+
+-- 23.c Plantilla WhatsApp de recojo/cobro por tienda. Si está configurada (y
+-- `wa_enabled`), el sync la dispara vía `send-wa-template` cuando el envío
+-- llega a EN_DESTINO. NULL = esa marca no auto-envía WhatsApp; el mensaje del
+-- chat del pedido sale igual. El nombre debe ser el de una plantilla APROBADA
+-- en Meta (variables: name, product, link — el mapping por defecto).
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_recojo_template text;
+
+-- 23.d El job periódico. pg_cron + pg_net invocan la Edge Function
+-- `shalom-tracking-sync` cada 30 min. La key que viaja es la ANON pública (la
+-- misma del bundle del frontend): la función no recibe parámetros, no expone
+-- datos (solo conteos) y es idempotente, así que un tercero invocándola solo
+-- consigue refrescar el tracking. 60 req/min del proveedor ÷ lotes de 50 =
+-- miles de envíos activos por barrida sin acercarse al límite.
+--   cron.schedule con el mismo nombre ACTUALIZA el job: correr esto dos veces
+--   no duplica nada.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+SELECT cron.schedule(
+  'shalom-tracking-sync',
+  '*/30 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/shalom-tracking-sync',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mZGpnaG50dm1yZGZqaGF6ZnZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTM4NDcsImV4cCI6MjA5OTA4OTg0N30.DSgcjvYZUWLqUyQ9aFTOjkAISt7hOwpLUhwFTniBQsI'
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000
+  );
+  $$
+);
+
+-- ─── 24. WEBHOOK DE TRACKING SHALOM (push del proveedor) ────────────────────
+-- La Edge Function `shalom-webhook` (deploy con --no-verify-jwt) recibe el
+-- POST firmado que Shalom API Perú manda en cada cambio de estado de un envío
+-- suscrito (la suscripción la hace order-manage al registrar la guía). Es la
+-- entrada rápida del reflejo; el barrido 23.d queda de respaldo. La
+-- autenticación es la firma HMAC del proveedor; su signing_secret lo emite
+-- PUT /v1/webhooks UNA sola vez y NO va en el repo: se lee del secret de
+-- entorno SHALOM_WEBHOOK_SECRET y, si no existe, del Vault por este RPC.
+--
+-- El registro es AUTÓNOMO: `shalom-tracking-sync` (ensureWebhook, en
+-- `_shared/shalom.ts`) detecta que no hay secret local ni webhook en el
+-- proveedor, hace el PUT con la URL de `shalom-webhook` (el ping de
+-- verificación lo responde esa función sola — deployarla antes) y guarda el
+-- signing_secret DIRECTO en Vault vía el RPC de abajo. El secret nunca se
+-- imprime ni pasa por chats. Si el proveedor ya tiene webhook de otra URL, NO
+-- se pisa: rotar con POST /v1/webhooks/rotate y guardar el nuevo a mano.
+CREATE OR REPLACE FUNCTION public.shalom_webhook_secret() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'SHALOM_WEBHOOK_SECRET' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.shalom_webhook_secret() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.shalom_webhook_secret() TO service_role;
+
+-- 24.b Guardar/rotar el signing_secret desde la Edge Function (service role),
+-- sin exponer el Vault entero: upsert de UN nombre fijo, nada más.
+CREATE OR REPLACE FUNCTION public.store_shalom_webhook_secret(secret text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE sid uuid;
+BEGIN
+  IF secret IS NULL OR length(secret) < 16 THEN
+    RAISE EXCEPTION 'secret inválido';
+  END IF;
+  SELECT id INTO sid FROM vault.secrets WHERE name = 'SHALOM_WEBHOOK_SECRET' LIMIT 1;
+  IF sid IS NULL THEN
+    PERFORM vault.create_secret(secret, 'SHALOM_WEBHOOK_SECRET', 'Firma del webhook de Shalom API Perú');
+  ELSE
+    PERFORM vault.update_secret(sid, secret);
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.store_shalom_webhook_secret(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.store_shalom_webhook_secret(text) TO service_role;
+
+-- ─── 25. CUENTA SHALOM PRO POR MARCA ────────────────────────────────────────
+-- Credenciales de la cuenta del cliente en pro.shalom.pe, para los endpoints
+-- que operan SU cuenta (crear guías, cotizar tarifas, tracking detallado 🔮).
+-- El rastreo de fases NO las necesita (modo estado, solo X-API-Key).
+--
+-- Van en `store_secrets` — TAMBIÉN el email — porque `stores` tiene SELECT
+-- público y RLS es por fila: cualquier columna nueva ahí queda legible con la
+-- anon key. Las escribe manage-store SOLO por JWT verificado (mismo trato que
+-- los campos de cobro); el password jamás vuelve en ninguna respuesta.
+--
+-- shalom_pro_status: veredicto de la verificación real contra pro.shalom.pe
+-- (POST /v1/shalom/sessions, en segundo plano — el login tarda ~90 s):
+--   PENDING (verificando) · CONNECTED · FAILED (credenciales rechazadas) ·
+--   UNVERIFIED (proveedor caído: ni sí ni no; reintentar guardando de nuevo).
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_email      text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_password   text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_status     text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_checked_at timestamptz;

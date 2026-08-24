@@ -37,9 +37,10 @@
   Ver §4 y §5.
 - **Falta 🔮:** generación de **etiquetas/datos formateados para agencias** (Shalom / Olva
   Courier): nombre, DNI, teléfono, destino, contenido.
-- **🟡 Tracking por API + cobranza del saldo — la capa de consulta de Olva ya
-  existe** (ver § *Tracking de guías Olva* abajo); falta reflejarla en el pedido
-  y Shalom entero. Decisión validada
+- **🟡 Tracking por API + cobranza del saldo — Shalom ✅ entero (consulta,
+  reflejo y disparo de cobranza; ver § *Tracking de envíos Shalom*); de Olva
+  existe la capa de consulta y falta su reflejo** (ver § *Tracking de guías
+  Olva*). Decisión validada
   con operadores COD reales (ver `docs/ICP Sales/VALIDACION-AGENCIA.md`):
   - Leer del **API de cada agencia** los estados del envío — **en origen → en tránsito →
     en destino** — y reflejar cada transición en el pedido (contrato en
@@ -250,8 +251,9 @@ Corre **después** de los generadores de agencias, porque lee sus JSON ya constr
    checkout.
 2. 🔮 Route-sheet del motorizado (Lima) con cobranza por parada.
 3. 🔮 Generador de envíos a provincia (Shalom/Olva).
-4. 🔮 Tracking por API de Shalom/Olva (origen → tránsito → destino) con disparo de
-   cobranza del saldo (plantilla WhatsApp + llamada) al llegar a destino. Ver §3.
+4. Tracking por API con disparo de cobranza al llegar a destino — **Shalom ✅**
+   (ciclo completo, ver § *Tracking de envíos Shalom*) · **Olva 🟡** (consulta
+   lista, reflejo pendiente). Ver §3.
 5. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data
    con la que se negocia cobertura con Aliclic y se mide venta perdida por zona.
 
@@ -569,3 +571,139 @@ proveedor, en su web).
 3. Al pasar a `EN_DESTINO`: plantilla WhatsApp de recojo/cobro
    (`send-wa-template`, ya construido) + cola de llamadas del vendedor.
 4. La tasa de recojo nativa (`EN_DESTINO` vs `ENTREGADO`) sale gratis de ahí.
+
+## Tracking de envíos Shalom ✅ · ciclo completo
+
+El pendiente #4 **construido entero para Shalom**: consulta, reflejo en el
+pedido y disparo de la cobranza. Contra **Shalom API Perú**
+(`https://shalom-api-peru.com/docs`) — misma familia de proveedor que Olva API
+Perú: **independiente, no la API oficial de Shalom**, con la misma fragilidad
+y el mismo aislamiento (si aparece API oficial, cambia el proxy y nada más).
+
+| | |
+|---|---|
+| Base | `https://api.shalom-api-peru.com` |
+| Auth | header `X-API-Key` en todas las rutas |
+| Límite | 60 requests/min por key → `429` |
+| Tracking | `GET /v1/tracking?numero=…&codigo=…` — por guía exige `numero` (8–10 dígitos) **y** `codigo` (4 alfanuméricos) juntos, o solo `ose_id` (id interno de Shalom). ⚠️ Verificado contra la API real: su doc dice que basta el `numero`, pero el 400 vivo pide ambos. Los tres vienen impresos en el comprobante físico |
+| No existe | **`404` de verdad** — a diferencia de Olva API Perú, aquí `not_found` sí es distinguible de proveedor caído |
+
+**Dos niveles de auth, usamos solo el primero.** El "modo estado" (solo
+`X-API-Key`) devuelve la línea de tiempo completa del envío — suficiente para
+la fase canónica. El "modo detallado" agrega la orden (montos, contenido) pero
+exige además credenciales de la cuenta **Shalom Pro** (`X-Shalom-Email/Password`
+o sesión efímera `ssk_`), y su **primera llamada hace un login real contra
+Shalom (~90 s, hasta 2 min)**. No mandamos credenciales: el modo estado no paga
+esa latencia y no obliga a custodiar un password de terceros.
+
+### Las piezas
+
+- **`supabase/functions/shalom-tracking`** — proxy de consulta puntual con las
+  convenciones de la casa: CORS + validación + key solo en el servidor, error
+  crudo del proveedor solo a los logs.
+- **`src/lib/checkout/services/ShalomTrackingService.ts`** — cliente que nunca
+  lanza (mismo contrato que Olva/360pay); comparte el tipo `TrackingPhase`.
+- **`derivePhase()` es determinista, no heurística.** El proveedor marca hitos
+  explícitos (`registrado/origen/transito/destino/entregado/reparto`: objeto
+  con fecha, o `null` si no ocurrió); gana el más avanzado. `reparto` (salió a
+  puerta) y `destino` (en agencia) son ambos `EN_DESTINO`. **`demora` no es una
+  fase**: es una alerta que convive con cualquiera y se expone aparte. Nada que
+  calibrar con guías vivas — el contraste que Olva sí necesita.
+
+### El ciclo: registrar → barrer → reflejar → cobrar ✅
+
+1. **Registrar la guía** — acción `set_tracking` de `order-manage`, con UI en
+   `TrackingBar` (chat del vendedor, solo pedidos de recojo). Valida como la
+   API real: `numero`+`codigo` juntos, o `ose_id`. Al registrarla, la guía le
+   llega al comprador por el chat con el saldo **derivado** (a quien pagó el
+   total no se le habla de saldo) — con la guía en mano ya puede pagar por la
+   app, como manda § *El saldo de agencia*.
+2. **Barrer** — `shalom-tracking-sync`, invocada por **pg_cron cada 30 min**
+   (sección 23.d de `setup-kross.sql`, vía pg_net con la key anon pública: la
+   función no recibe parámetros ni expone datos, solo conteos). Consulta los
+   envíos vivos **en lote** (`POST /v1/tracking/batch`, hasta 50 por request,
+   errores por ítem con `custom_id` = id de la sesión): una corrida cubre 500
+   envíos con 10 requests de los 60/min.
+3. **Reflejar** — fase nueva solo **hacia adelante** (un hito que desaparece en
+   el proveedor no retrocede el pedido). Cada transición escribe
+   `tracking_phase/phase_at`, avisa por broadcast (`tracking_update`) y por
+   mensaje del sistema. `demora` avisa solo-vendedores una vez; una guía que el
+   courier no encuentra (`not_found` real) avisa solo-vendedores en el primer
+   chequeo. **La fase jamás mueve `stage`**: el pipeline lo avanza una persona
+   (misma regla que `no_entregado`).
+4. **Cobrar** — al pasar a `EN_DESTINO`: mensaje al comprador con el saldo
+   derivado ("por esta misma app, nunca en la agencia; la clave de recojo
+   contra el saldo pagado"), aviso solo-vendedores para la llamada (la "cola de
+   llamadas" v1 🔮 es este aviso; la cola formal sigue pendiente) y **plantilla
+   WhatsApp automática** si la tienda configuró `stores.wa_recojo_template`
+   (usa `send-wa-template`; NULL = sin auto-envío). En `ENTREGADO`: cierre al
+   comprador + recordatorio de confirmar la entrega en el pipeline — de ahí
+   sale la tasa de recojo (`EN_DESTINO` vs `ENTREGADO`).
+
+Verificado contra el proveedor real: el batch responde por ítem (guía
+inexistente → `not_found` en ese ítem, el resto sigue) y el ciclo entero se
+probó con un pedido de prueba (creado y borrado): barrida → `not_found` →
+aviso al vendedor → `tracking_checked_at`.
+
+### La key
+
+Misma plomería que Olva: la Edge Function lee el secret **`SHALOM_API_KEY`**
+(`supabase secrets set`, ya cargado) y, si no está, el Vault vía el RPC
+`shalom_api_key()` (sección 22 de `setup-kross.sql`, solo `service_role`). La
+key **jamás** va en el repo, el frontend ni el chat.
+
+### Webhooks del proveedor ✅ · el reflejo instantáneo
+
+El proveedor **empuja** cada transición en vez de esperarla: al registrar la
+guía, `set_tracking` suscribe el envío (`POST /v1/tracking/subscriptions`,
+best-effort) y `supabase/functions/shalom-webhook` recibe el POST firmado y
+aplica el **mismo reflejo** que el barrido — la lógica vive en
+`_shared/shalom.ts`, compartida a propósito para que el pedido no hable dos
+idiomas según por dónde llegó la noticia. El barrido de 23.d queda de
+**respaldo**: cubre cupo lleno (50 suscripciones activas, se liberan solas al
+entregar), eventos perdidos y suscripciones expiradas (~21 días → aviso
+solo-vendedores: un envío tan viejo sin cerrar es para mirarlo).
+
+- **Auth = firma HMAC del proveedor** (`X-Shalom-Signature: t=…,v1=…`,
+  SHA-256 sobre `t + "." + cuerpo crudo`), verificada en tiempo constante con
+  ventana anti-replay de 5 min. La función va con `--no-verify-jwt` (como
+  `livekit-webhook`). Entrega at-least-once: no hace falta tabla de dedupe —
+  el reflejo solo-hacia-adelante vuelve idempotente cualquier reintento.
+- **El `signing_secret` jamás pasó por un chat.** El bootstrap es autónomo
+  (`ensureWebhook`): el sync detecta que falta, registra la URL en el
+  proveedor, el ping de verificación lo responde `shalom-webhook` solo (eco
+  del challenge) y el secret viaja del proveedor **directo al Vault** vía el
+  RPC `store_shalom_webhook_secret` (sección 24). Verificado en vivo:
+  `verified = true` y un evento sin firma rebota con `400`.
+- Si el proveedor ya tuviera un webhook de otra URL, el bootstrap **no lo
+  pisa**: avisa en logs y se rota a mano (`POST /v1/webhooks/rotate`).
+
+Sin usar todavía: `GET /v1/tracking/{ose_id}/events` (solo hitos, por
+`ose_id`), el comprobante por ose_id (⚠️ su doc lo declara **fuera de
+servicio**: responde 404 para toda orden — no depender de él), el GRT (exige
+credenciales Shalom Pro + `cap_id` del carguero) y toda la familia de **crear
+pedido** (`POST /v1/orders`, cotización, rótulo PDF) — esa exige credenciales
+de la cuenta Shalom Pro de la marca y es el candidato natural para el
+pendiente #3 (generador de envíos), decisión aparte porque crea guías reales
+y cobrables, sin sandbox ni idempotencia.
+
+### Cuenta Shalom Pro por marca + semáforo de la API ✅
+
+Panel → Mi marca → **Envíos de la marca (Shalom Pro)**. Dos cosas viven ahí:
+
+- **Credenciales del cliente** (email + password de pro.shalom.pe), la llave
+  de la familia de crear pedido de arriba. Mismo trato que los campos de
+  cobro: `manage-store` las acepta **solo por JWT verificado**, van a
+  `store_secrets` — también el email, porque `stores` es de SELECT público y
+  RLS es por fila — y el password **jamás vuelve al panel**. Al guardar se
+  validan **contra pro.shalom.pe de verdad** (`POST /v1/shalom/sessions`), en
+  segundo plano porque el primer login tarda ~90 s: el veredicto queda en
+  `shalom_pro_status` (`PENDING → CONNECTED / FAILED / UNVERIFIED`, sección
+  25 de `setup-kross.sql`) y el panel lo refresca. **El rastreo de fases no
+  las necesita** — funciona solo con la API key de la plataforma.
+- **Semáforo verde/rojo de la API** (`manage-store` acción `shalom_status`,
+  sobre el `/healthz` público del proveedor). En rojo, el panel muestra el
+  **plan de contingencia manual**: registrar la guía igual (el barrido la
+  vigila solo apenas la API vuelva — el tracking degrada, no se rompe),
+  consultar el estado a mano en shalom.pe → Rastrea, y avisar al comprador
+  por el chat del pedido.

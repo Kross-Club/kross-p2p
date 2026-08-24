@@ -11,6 +11,7 @@ import { startRingtone } from '../../lib/ringtone'
 import { sendCallReject, sendCallCancel, listenCallReject, listenCallCancel } from '../../lib/call-signal'
 import InstallBanner, { isInstalled } from '../../components/InstallBanner'
 import AddressBar from '../../components/AddressBar'
+import TrackingBar from '../../components/TrackingBar'
 import OrderDetailModal from '../../components/OrderDetailModal'
 import OfferCard from '../../components/OfferCard'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -586,6 +587,9 @@ export default function OrderChatPage() {
       .on('broadcast', { event: 'address_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified, address_lat: payload.address_lat, address_lng: payload.address_lng } : prev)
       })
+      .on('broadcast', { event: 'tracking_update' }, ({ payload }) => {
+        setSession(prev => prev ? { ...prev, ...payload } : prev)
+      })
       .on('broadcast', { event: 'order_cancelled' }, () => {
         setSession(prev => prev ? { ...prev, status: 'cancelado' } : prev)
       })
@@ -822,6 +826,18 @@ export default function OrderChatPage() {
           dispatchType={session.dispatch_type}
           agencyName={session.agency_name}
           onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
+        />
+      </div>
+
+      {/* ── Tracking del envío por agencia (guía + fase, solo si está registrado) ── */}
+      <div className="flex-shrink-0">
+        <TrackingBar
+          sessionId={session.id}
+          role="buyer"
+          dispatchType={session.dispatch_type}
+          agencyName={session.agency_name}
+          tracking={session}
+          onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
         />
       </div>
 
