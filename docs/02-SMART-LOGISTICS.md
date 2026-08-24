@@ -569,3 +569,21 @@ proveedor, en su web).
 3. Al pasar a `EN_DESTINO`: plantilla WhatsApp de recojo/cobro
    (`send-wa-template`, ya construido) + cola de llamadas del vendedor.
 4. La tasa de recojo nativa (`EN_DESTINO` vs `ENTREGADO`) sale gratis de ahí.
+
+## Tracking de envíos Shalom 🟡 · en preparación
+
+Cierra la otra mitad del pendiente #4: la misma capa de consulta que ya existe
+para Olva, contra **Shalom API Perú** (`https://shalom-api-peru.com/docs`) — misma
+familia de proveedor que Olva API Perú: **independiente, no la API oficial de
+Shalom**, con la misma fragilidad y el mismo aislamiento (si aparece API oficial,
+cambia el proxy y nada más).
+
+- **Hecho ✅:** plomería de la key, calcada de Olva. La Edge Function leerá el
+  secret **`SHALOM_API_KEY`** (`supabase secrets set`) y, si no está, el Vault
+  vía el RPC `shalom_api_key()` (sección 22 de `setup-kross.sql`, solo
+  `service_role`). La key **jamás** va en el repo, el frontend ni el chat.
+- **Falta 🟡:** Edge Function `shalom-tracking` + `ShalomTrackingService` con la
+  misma superficie que Olva (`derivePhase` hacia las fases canónicas del §3).
+  Bloqueado en confirmar contra la doc del proveedor: base URL, header de auth,
+  forma del endpoint de tracking (Shalom identifica el envío por orden de
+  servicio + código, no por guía+año como Olva) y forma de la respuesta.

@@ -839,3 +839,21 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.olva_api_key() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.olva_api_key() TO service_role;
+
+-- ─── 22. SHALOM API PERÚ (tracking de envíos) ───────────────────────────────
+-- Misma familia de proveedor que Olva API Perú (sección 21): independiente,
+-- NO la API oficial de Shalom. Su key NO va en el repo: la Edge Function la
+-- lee del secret de entorno SHALOM_API_KEY y, si no existe, del Vault del
+-- proyecto por este RPC. Solo service_role puede ejecutarlo — el frontend
+-- jamás ve la key.
+--
+-- Alta de la key en Vault (correr aparte, con la key real, NUNCA pegarla aquí):
+--   SELECT vault.create_secret('<la-key>', 'SHALOM_API_KEY', 'Shalom API Perú');
+CREATE OR REPLACE FUNCTION public.shalom_api_key() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'SHALOM_API_KEY' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.shalom_api_key() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.shalom_api_key() TO service_role;
