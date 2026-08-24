@@ -18,7 +18,11 @@ export type CheckoutEvent =
   | { name: 'step_viewed'; step: CheckoutStepId }
   | { name: 'step_completed'; step: CheckoutStepId; msOnStep: number }
   | { name: 'field_error'; field: string }
-  | { name: 'location_selected'; locationType: LocationType }
+  /** `rank` = posición del distrito elegido en la lista antes de teclear, y
+   *  `geoHint` dice si ese orden venía de la geo-IP o del prior por defecto
+   *  (Lima metro → cubiertos). Si el elegido casi siempre está arriba, el
+   *  prior recomienda bien; si no, la geo-IP no está aportando su costo. */
+  | { name: 'location_selected'; locationType: LocationType; rank?: number; geoHint?: boolean }
   /** Veredicto de cobertura del distrito elegido. `place` = "Distrito, Provincia". */
   | { name: 'coverage_checked'; place: string; result: CoverageResult }
   /** Se le prometió domicilio y el distrito tiene zonas de distinto costo: es

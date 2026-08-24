@@ -368,6 +368,41 @@ Ordenar agencias por cercanía no se degradó con los 1 400 distritos nuevos:
 `district-centroids.json` cae distrito → provincia → departamento, y los 25
 departamentos están cubiertos. Todos tienen un punto de referencia razonable.
 
+## El selector ordena por relevancia, no por dataset ✅
+
+Con el padrón completo, el filtro plano (`includes` en el orden del dataset,
+alfabético por departamento) enterraba al distrito probable: tecleando
+**"santiago"** salían 24 coincidencias con **Santiago de Surco en el puesto 23**,
+detrás de 22 homónimos rurales. Y era sensible a tildes: "ancash" no encontraba
+Áncash, "canete" no encontraba Cañete — cero resultados, venta en riesgo.
+
+Se corrigió en dos capas, las dos sin añadir campos ni pasos (se evaluó y
+descartó preguntar provincia antes del distrito: cobra fricción a todos, nadie
+piensa en "provincia", y una provincia mal elegida esconde el distrito real):
+
+1. **Ranking** (`src/components/checkout/fields/rank.ts`): pliega tildes y
+   ordena por cómo coincide — empieza-con > palabra del nombre > subcadena >
+   provincia/departamento. El sort es estable: entre iguales gana el que venía
+   primero en la lista.
+2. **Prior de orden**: quién va primero entre iguales lo decide el orden de
+   entrada de la lista, que `Step2Delivery` arma así:
+   - con **pista de geo-IP** (`api/geo.js` re-expone los headers
+     `x-vercel-ip-*` de Vercel; `GeoHintService` la trae con cache y timeout),
+     por cercanía vía `DistrictCoverageService.sortByProximity`, con la misma
+     degradación de centroides;
+   - sin ella, **Lima metro → cubiertos → resto** — donde vive el grueso de
+     los pedidos.
+
+> La geo-IP **solo reordena, jamás filtra ni preselecciona**: los datos móviles
+> peruanos salen por CGNAT del operador y geolocalizan a Lima esté donde esté el
+> comprador. Como prior, un fallo cuesta cero (el comprador teclea y encuentra
+> su distrito igual); como filtro costaría la venta. Por lo mismo, nada de
+> prompt de GPS en el checkout. Fuera del Perú la función devuelve `null`.
+
+La métrica que valida el prior es `rank` en el evento `location_selected`:
+posición del distrito elegido en la lista antes de teclear, con `geoHint`
+diciendo qué prior estaba activo.
+
 ## Las dos ramas dejaban 128 distritos sin puerta ✅
 
 El selector de Lima filtraba `department === 'Lima' && province ∈ {Lima, Callao}`

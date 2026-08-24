@@ -1,13 +1,16 @@
 // ─── Select con búsqueda ─────────────────────────────────────────────────────
-// Un <select> nativo con 483 distritos es inusable en un Android de gama media.
-// Esto es un input que filtra mientras escribes: tecleando "sur" salen Surco,
-// Surquillo y San Juan de Miraflores.
+// Un <select> nativo con 1 874 distritos es inusable en un Android de gama
+// media. Esto es un input que filtra mientras escribes, con ranking de
+// relevancia (`rank.ts`): tecleando "santiago" el primer Santiago que sale es
+// el que empieza igual Y venía primero en el orden de entrada — no el que el
+// dataset lista primero por alfabeto de departamentos.
 //
 // Navegable con teclado (↑ ↓ Enter Esc) porque el flujo completo tiene que poder
 // grabarse desde una laptop con mouse y teclado.
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Search } from 'lucide-react'
+import { rankOptions } from './rank'
 import { keepAligned, pinToTop, visibleBottom, scrollParentOf } from './scroll'
 
 export interface SelectOption {
@@ -46,13 +49,7 @@ export default function SearchSelect({
 
   const selected = useMemo(() => options.find(o => o.value === value) ?? null, [options, value])
 
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const pool = q
-      ? options.filter(o => `${o.label} ${o.detail ?? ''}`.toLowerCase().includes(q))
-      : options
-    return pool.slice(0, limit)
-  }, [options, query, limit])
+  const results = useMemo(() => rankOptions(options, query, limit), [options, query, limit])
 
   // Al abrir, subir el campo al tope del contenedor scrolleable del modal y
   // darle a la lista SOLO el alto que de verdad se ve. Sin esto el comprador

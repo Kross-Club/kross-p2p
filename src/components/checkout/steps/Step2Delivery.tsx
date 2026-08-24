@@ -4,7 +4,7 @@
 //   2. DNI       → trae el nombre de RENIEC, así que el campo siguiente suele
 //                  aparecer ya lleno
 //   3. Nombre
-//   4. Distrito  → UNO solo, con los 483 del país
+//   4. Distrito  → UNO solo, con los 1 874 del país
 //
 // Aquí vivía un toggle "Lima y Callao / Provincia" antes del DNI. Se eliminó:
 // `isLimaMetro()` deduce la región del distrito, así que el toggle pedía un dato
@@ -21,6 +21,7 @@ import type { ReactNode } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { COPY, DNI_LENGTH } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService, isLimaMetro } from '../../../lib/checkout/services/DistrictCoverageService'
+import { getGeoHint } from '../../../lib/checkout/services/GeoHintService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
 import type { CheckoutAction } from '../../../lib/checkout/machine'
@@ -83,6 +84,11 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
   useEffect(() => {
     phoneRef.current?.querySelector('input')?.focus()
   }, [])
+
+  // Precalentar la pista de geo-IP: el selector de distrito recién se monta
+  // cuando el DNI está completo, y para entonces la respuesta ya está en cache
+  // — así el orden por cercanía no le cuesta espera a nadie.
+  useEffect(() => { void getGeoHint() }, [])
 
   return (
     <>
@@ -154,10 +160,21 @@ export default function Step2Delivery({ state, dispatch, errors, touch }: Step2P
   )
 }
 
-// ─── Distrito · uno solo, los 483 del país ───────────────────────────────────
+// ─── Distrito · uno solo, los 1 874 del país ─────────────────────────────────
 // Antes había dos selectores, uno por rama, cada uno con su propio filtro. Entre
 // los dos se perdieron los 128 distritos del departamento de Lima que no son
 // Lima metropolitana. Con una sola lista ese agujero no puede volver a existir.
+//
+// El ORDEN de la lista es el prior del ranking de `SearchSelect`: entre
+// coincidencias del mismo nivel gana la que va primero aquí. Con pista de
+// geo-IP se ordena por cercanía; sin ella, Lima metro → cubiertos → resto,
+// que es donde vive el grueso de los pedidos. El dataset crudo venía por
+// departamento alfabético y "santiago" mostraba 22 homónimos rurales antes
+// que Santiago de Surco.
+
+/** Prior sin geo: menor = más arriba. */
+const defaultPrior = (d: DistrictOption): number =>
+  isLimaMetro(d) ? 0 : d.covered ? 1 : 2
 
 function DistrictSelect({ state, dispatch, error, touch }: {
   state: CheckoutState
@@ -166,13 +183,32 @@ function DistrictSelect({ state, dispatch, error, touch }: {
   touch: (field: FieldName) => void
 }) {
   const [all, setAll] = useState<DistrictOption[] | null>(null)
+  const [geoUsed, setGeoUsed] = useState(false)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let alive = true
-    DistrictCoverageService.listDistricts()
-      .then(list => { if (alive) setAll(list) })
-      .catch(() => { if (alive) setFailed(true) })
+    void (async () => {
+      let list: DistrictOption[]
+      try {
+        list = await DistrictCoverageService.listDistricts()
+      } catch {
+        if (alive) setFailed(true)
+        return
+      }
+      // `sort` es estable: dentro de cada prior se conserva el orden del padrón.
+      let ordered = [...list].sort((a, b) => defaultPrior(a) - defaultPrior(b))
+      try {
+        const near = await getGeoHint()
+        if (near) {
+          ordered = await DistrictCoverageService.sortByProximity(ordered, near)
+          if (alive) setGeoUsed(true)
+        }
+      } catch {
+        // Sin geo no se pierde nada: el prior por defecto ya está aplicado.
+      }
+      if (alive) setAll(ordered)
+    })()
     return () => { alive = false }
   }, [])
 
@@ -224,6 +260,11 @@ function DistrictSelect({ state, dispatch, error, touch }: {
         trackEvent({
           name: 'location_selected',
           locationType: isLimaMetro({ department, province }) ? 'LIMA' : 'PROVINCIA',
+          // Posición del elegido en la lista SIN teclear: mide si el prior
+          // (geo o por defecto) recomienda bien, igual que `rank` en
+          // `agency_selected` valida el orden por cercanía de las agencias.
+          rank: options.findIndex(o => o.value === key),
+          geoHint: geoUsed,
         })
       }}
     />
