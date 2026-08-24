@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status'
+    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status'
     home_delivery_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
@@ -146,6 +146,23 @@ Deno.serve(async (req) => {
     let operational = false
     try {
       const r = await fetch('https://api.shalom-api-peru.com/healthz', { signal: ctrl.signal })
+      operational = r.ok
+    } catch { /* caído o timeout: queda false */ }
+    clearTimeout(t)
+    return json({ operational, checked_at: new Date().toISOString() })
+  }
+
+  // ─── OLVA STATUS (mismo semáforo, otro proveedor) ───────────────────────────
+  // A diferencia de Shalom Pro, Olva no tiene NADA que configurar por marca: su
+  // key es de la plataforma (Vault, sección 21) y no existe cuenta del cliente.
+  // El panel solo necesita saber si el proveedor está vivo — en rojo, plan B
+  // manual (la guía se registra igual; el barrido la vigila cuando vuelva).
+  if (body.action === 'olva_status') {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 5000)
+    let operational = false
+    try {
+      const r = await fetch('https://api.olva-api-peru.com/healthz', { signal: ctrl.signal })
       operational = r.ok
     } catch { /* caído o timeout: queda false */ }
     clearTimeout(t)

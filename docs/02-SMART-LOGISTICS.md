@@ -573,6 +573,11 @@ vendedor que la guía no existe cuando lo caído es Olva arma un reclamo falso.
 - **`src/lib/checkout/services/OlvaTrackingService.ts`** — cliente que nunca
   lanza (mismo contrato que `Pay360Service`): cada fallo dice su etapa
   (`validation` / `config` / `rate_limit` / `upstream` / `network`).
+- **Semáforo en el panel** (`manage-store` · `olva_status` → tarjeta *Rastreo
+  de guías (Olva)* en Marca) — mismo healthz que el de Shalom, chip separado
+  porque son proveedores distintos. A diferencia de Shalom Pro, la tarjeta
+  **no pide credenciales**: la key es de la plataforma (Vault, §21) y no
+  existe cuenta del cliente en Olva. En rojo muestra el plan B manual.
 - **`derivePhase()`** — mapea los TEXTOS de los eventos a la fase canónica
   (`EN_ORIGEN → EN_TRANSITO → EN_DESTINO → ENTREGADO`); gana la más avanzada,
   sin asumir orden ni forma. A diferencia de Shalom (hitos explícitos,

@@ -245,11 +245,17 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [shalomBusy, setShalomBusy] = useState(false)
   const [shalomEditing, setShalomEditing] = useState(false)
   const shalomConnected = !!store.shalom_pro_email
-  // Semáforo del proveedor (healthz vía manage-store). null = verificando.
+  // Semáforo de cada proveedor (healthz vía manage-store). null = verificando.
+  // Son chips separados a propósito: son proveedores distintos y uno puede
+  // estar caído con el otro vivo.
   const [apiUp, setApiUp] = useState<boolean | null>(null)
+  const [olvaUp, setOlvaUp] = useState<boolean | null>(null)
   useEffect(() => {
     call({ action: 'shalom_status', admin_auth_id: adminId }).then(({ ok, data }) => {
       setApiUp(ok ? !!(data as { operational?: boolean }).operational : false)
+    })
+    call({ action: 'olva_status', admin_auth_id: adminId }).then(({ ok, data }) => {
+      setOlvaUp(ok ? !!(data as { operational?: boolean }).operational : false)
     })
   }, [adminId])
 
@@ -583,6 +589,43 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               )}
             </div>
           )}
+        </div>
+
+        {/* ── Rastreo Olva — solo el semáforo. A diferencia de Shalom Pro, aquí
+              NO hay nada que conectar por marca: la key es de la plataforma
+              (Vault) y no existe una cuenta del cliente en Olva. La tarjeta
+              existe para que el semáforo y el plan B vivan donde el equipo ya
+              los busca. ── */}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: '#FFF7ED', border: '1px solid #FED7AA' }}>
+          <div className="w-full flex items-center justify-between mb-1">
+            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#C2410C' }}>
+              <Truck size={14} /> Rastreo de guías (Olva)
+            </span>
+            <span className="text-[10px] font-black px-2 py-1 rounded-full"
+              style={{
+                background: olvaUp === null ? '#F3F4F6' : olvaUp ? '#DCFCE7' : '#FEE2E2',
+                color: olvaUp === null ? '#6B7280' : olvaUp ? '#16A34A' : '#DC2626',
+              }}>
+              ● {olvaUp === null ? 'Verificando API…' : olvaUp ? 'API operativa' : 'API caída'}
+            </span>
+          </div>
+
+          {olvaUp === false && (
+            <div className="rounded-xl px-3 py-2 mb-2" style={{ background: '#FEE2E2' }}>
+              <p className="text-[10px] font-bold" style={{ color: '#DC2626' }}>
+                Plan B mientras vuelve: registra la guía igual en el pedido (el sistema la
+                vigilará solo apenas la API regrese), consulta el estado a mano en
+                olvacourier.com → Rastrea tu envío, y avísale al comprador por el chat del pedido.
+              </p>
+            </div>
+          )}
+
+          <p className="text-[10px] text-gray-500">
+            Aquí no hay nada que conectar: el rastreo de Olva funciona para todas las marcas
+            con la conexión de la plataforma (no existe una cuenta del cliente, como sí pasa
+            con Shalom Pro). La guía se registra en el chat del pedido y las fases se
+            reflejan solas.
+          </p>
         </div>
 
         {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca
