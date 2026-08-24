@@ -867,9 +867,11 @@ GRANT EXECUTE ON FUNCTION public.shalom_api_key() TO service_role;
 -- una persona.
 
 -- 23.a Identificadores del comprobante + fase reflejada.
---   tracking_courier: 'SHALOM' (Olva 🔮 cuando su reflejo se construya).
---   numero (guía 8–10 dígitos) + codigo (4 alfanum) van juntos; ose_id es el
---   id interno de Shalom (handle de eventos/comprobante/GRT).
+--   tracking_courier: 'SHALOM' | 'OLVA'.
+--   Shalom: numero (guía 8–10 dígitos) + codigo (4 alfanum) van juntos; ose_id
+--   es su id interno (handle de eventos/comprobante/GRT).
+--   Olva: numero (típicamente 8 dígitos) + tracking_year (año de emisión, YY):
+--   su API rastrea por numero+año, sin código.
 --   tracking_phase: EN_ORIGEN | EN_TRANSITO | EN_DESTINO | ENTREGADO.
 --   tracking_demora_at: alerta de demora del courier — NO es una fase.
 --   Sin CHECK a propósito, como stage/dispatch_type: la lista blanca vive en
@@ -878,6 +880,7 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_courier    text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_numero     text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_codigo     text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_ose_id     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_year       text;  -- YY, solo Olva
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_phase      text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_phase_at   timestamptz;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_demora_at  timestamptz;
@@ -911,6 +914,27 @@ SELECT cron.schedule(
   $$
   SELECT net.http_post(
     url := 'https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/shalom-tracking-sync',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mZGpnaG50dm1yZGZqaGF6ZnZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTM4NDcsImV4cCI6MjA5OTA4OTg0N30.DSgcjvYZUWLqUyQ9aFTOjkAISt7hOwpLUhwFTniBQsI'
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000
+  );
+  $$
+);
+
+-- 23.e El barrido de Olva, intercalado a los :15/:45 con el de Shalom (:00/:30)
+-- para no juntar las corridas. A diferencia de Shalom, aquí el barrido es LA
+-- entrada del reflejo: Olva API Perú no tiene webhook ni batch — la Edge
+-- Function `olva-tracking-sync` consulta guía por guía (hasta 50 por corrida,
+-- los menos chequeados primero; su límite es 60 req/min).
+SELECT cron.schedule(
+  'olva-tracking-sync',
+  '15,45 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/olva-tracking-sync',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mZGpnaG50dm1yZGZqaGF6ZnZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTM4NDcsImV4cCI6MjA5OTA4OTg0N30.DSgcjvYZUWLqUyQ9aFTOjkAISt7hOwpLUhwFTniBQsI'

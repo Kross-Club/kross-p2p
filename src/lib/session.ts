@@ -38,9 +38,8 @@ export type ClosedBy = 'AI_CLOSER' | 'DIRECT_CHECKOUT'
 /** Fases canónicas del envío (02-SMART-LOGISTICS §3). Mismo literal que el
  *  `TrackingPhase` de los servicios de tracking; aquí vive el del contrato. */
 export type ShipmentPhase = 'EN_ORIGEN' | 'EN_TRANSITO' | 'EN_DESTINO' | 'ENTREGADO'
-/** Couriers con reflejo de tracking construido. Olva 🔮 se suma cuando su
- *  reflejo exista (la capa de consulta ya está). */
-export type ShipmentCourier = 'SHALOM'
+/** Couriers con reflejo de tracking construido. */
+export type ShipmentCourier = 'SHALOM' | 'OLVA'
 
 // Etapas REALES del pedido (alineadas a order_sessions.stage)
 // El tipo vive en `order-stages.ts` junto con el orden y las etiquetas: tenerlo
@@ -75,7 +74,8 @@ export interface MerchantCustomerSession {
    *  mueve `stage` sola: el pipeline lo avanza una persona. */
   shipment: {
     courier: ShipmentCourier
-    ref: { numero: string | null; codigo: string | null; oseId: string | null }
+    /** Shalom rastrea por numero+codigo (u oseId); Olva por numero+year (YY). */
+    ref: { numero: string | null; codigo: string | null; oseId: string | null; year: string | null }
     phase: ShipmentPhase | null
     phaseAt: string | null
     /** Alerta de demora del courier. NO es una fase: convive con cualquiera. */
@@ -108,6 +108,7 @@ export interface RawOrderSession {
   tracking_numero?: string | null
   tracking_codigo?: string | null
   tracking_ose_id?: string | null
+  tracking_year?: string | null
   tracking_phase?: string | null
   tracking_phase_at?: string | null
   tracking_demora_at?: string | null
@@ -157,6 +158,7 @@ export function toCustomerSession(order: RawOrderSession, buyer?: RawBuyer | nul
             numero: order.tracking_numero ?? null,
             codigo: order.tracking_codigo ?? null,
             oseId: order.tracking_ose_id ?? null,
+            year: order.tracking_year ?? null,
           },
           phase: (order.tracking_phase as ShipmentPhase) ?? null,
           phaseAt: order.tracking_phase_at ?? null,

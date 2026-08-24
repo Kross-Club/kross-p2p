@@ -86,7 +86,7 @@ Anotada donde vive, para que no haya que redescubrirla:
 | `manage-store` mantiene vivo el camino legacy `admin_auth_id` para branding. | `01-SALES-ENGINE.md` §3.3 · `manage-store/index.ts:82` | Doble superficie de auth. Los campos de cobro ya exigen JWT verificado; falta retirar el resto. |
 | Catálogo de distritos incompleto 🟡 | `02-SMART-LOGISTICS.md` § Deuda conocida | Afecta la cobertura de reparto. |
 | La key de prueba de Olva API Perú viajó por el chat al recibirse. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Rotarla al pasar a producción (se pide por el WhatsApp del proveedor) y recargar Vault/secret. Misma familia que el bloqueo #2. |
-| `derivePhase()` del tracking Olva está calibrada sin guías reales. | `OlvaTrackingService.ts` | Decide cuándo se dispara la cobranza del saldo; contrastarla con las primeras guías vivas antes de automatizar. |
+| `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. |
 
 ## Limpieza pendiente
 

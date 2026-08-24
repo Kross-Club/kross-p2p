@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { shalomApiKey } from '../_shared/shalom.ts'
+import { normalizeYear } from '../_shared/olva.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
     message_id?: string
     index?: number
     qty?: number
-    tracking?: { courier?: string; numero?: string; codigo?: string; ose_id?: string }
+    tracking?: { courier?: string; numero?: string; codigo?: string; ose_id?: string; year?: string }
   }
 
   if (!body.session_id) return new Response('Missing session_id', { status: 400, headers: corsHeaders })
@@ -128,31 +129,39 @@ Deno.serve(async (req) => {
   }
 
   // ─── SET TRACKING (Logistics registra la guía del courier en el pedido) ─────
-  // Contrato `shipment` de 00-CORE. Misma regla que la API real de Shalom:
-  // numero (8–10 dígitos) Y codigo (4 alfanum) juntos, o solo ose_id. La guía
-  // viaja al comprador por el chat —es el canal principal— y con ella en mano
-  // ya puede pagar el saldo POR LA APP (nunca en el mostrador, ver 02 §saldo).
+  // Contrato `shipment` de 00-CORE. Cada courier con su regla, la de su API
+  // real: Shalom exige numero (8–10 dígitos) Y codigo (4 alfanum) juntos, o
+  // solo ose_id; Olva rastrea por numero (típicamente 8 dígitos) + año de
+  // emisión — sin código. La guía viaja al comprador por el chat —es el canal
+  // principal— y con ella en mano ya puede pagar el saldo POR LA APP (nunca en
+  // el mostrador, ver 02 §saldo).
   if (body.action === 'set_tracking') {
     const t = body.tracking ?? {}
     const courier = String(t.courier ?? session.agency_name ?? '').toUpperCase()
-    // Olva 🔮: su capa de consulta existe, pero el reflejo en el pedido aún no.
-    if (courier !== 'SHALOM') {
+    if (courier !== 'SHALOM' && courier !== 'OLVA') {
       return new Response(JSON.stringify({ error: 'unsupported_courier' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
     const numero = String(t.numero ?? '').replace(/\D/g, '')
     const codigo = String(t.codigo ?? '').trim().toUpperCase()
     const oseId = String(t.ose_id ?? '').replace(/\D/g, '')
-    const numeroOk = /^\d{8,10}$/.test(numero)
+    const numeroOk = courier === 'SHALOM' ? /^\d{8,10}$/.test(numero) : /^\d{6,15}$/.test(numero)
     const codigoOk = /^[A-Z0-9]{4}$/.test(codigo)
-    if (!(numeroOk && codigoOk) && !oseId) {
+    // El año de emisión de la guía Olva (YY): sin él la API no rastrea. Si no
+    // llega, es el año actual de Lima — la guía se registra al despachar.
+    const year = courier === 'OLVA' ? normalizeYear(t.year, Date.now()) : null
+    const valid = courier === 'SHALOM'
+      ? (numeroOk && codigoOk) || !!oseId
+      : numeroOk && !!year
+    if (!valid) {
       return new Response(JSON.stringify({ error: 'invalid_tracking' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     const tracking = {
       tracking_courier: courier,
       tracking_numero: numeroOk ? numero : null,
-      tracking_codigo: codigoOk ? codigo : null,
-      tracking_ose_id: oseId || null,
+      tracking_codigo: courier === 'SHALOM' && codigoOk ? codigo : null,
+      tracking_ose_id: courier === 'SHALOM' && oseId ? oseId : null,
+      tracking_year: year,
       // Guía nueva = tracking desde cero: el sync recalcula la fase.
       tracking_phase: null, tracking_phase_at: null,
       tracking_demora_at: null, tracking_checked_at: null,
@@ -162,7 +171,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: trackErr.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    const ids = numeroOk ? `Guía ${numero} · Código ${codigo}` : `Orden de servicio ${oseId}`
+    const ids = courier === 'OLVA' ? `Guía ${numero}`
+      : numeroOk ? `Guía ${numero} · Código ${codigo}` : `Orden de servicio ${oseId}`
     // El saldo DERIVADO, no asumido (misma regla que el acuse de pay360-webhook):
     // a quien pagó el total no se le habla de un saldo que no existe — su clave
     // de recojo va sin condición.
@@ -174,7 +184,7 @@ Deno.serve(async (req) => {
     const { data: msg } = await supabase.from('chat_messages').insert({
       session_id: session.id, sender_role: 'system', sender_name: 'Kross',
       type: 'status_update', visibility: 'all',
-      body: `📦 ¡Tu envío ya está registrado en ${courier}! ${ids}. Guárdalos para el recojo. `
+      body: `📦 ¡Tu envío ya está registrado en ${courier}! ${ids}. ${courier === 'OLVA' ? 'Guárdala' : 'Guárdalos'} para el recojo. `
         + cobroCopy + ' Por aquí te avisamos cuando tu pedido llegue a tu agencia.',
     }).select().single()
 
@@ -185,7 +195,8 @@ Deno.serve(async (req) => {
     // al instante. Best-effort (como su "track": true): si falla —webhook sin
     // configurar, cupo lleno, red— el barrido de pg_cron cubre igual. La
     // suscripción exige numero+codigo; con solo ose_id no hay qué suscribir.
-    if (numeroOk && codigoOk) {
+    // Solo Shalom: Olva API Perú no tiene webhook — su barrido es la entrada.
+    if (courier === 'SHALOM' && numeroOk && codigoOk) {
       try {
         const key = await shalomApiKey()
         if (key) {

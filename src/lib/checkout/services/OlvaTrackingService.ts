@@ -6,15 +6,19 @@
 // Nunca lanza: cada fallo dice en qué etapa ocurrió, porque la UI reacciona
 // distinto a "guía no encontrada" que a "Olva caído" o "sin red".
 //
-// El objetivo de módulo (02-SMART-LOGISTICS §3) es reflejar origen → tránsito →
-// destino en el pedido y disparar la cobranza del saldo al llegar a destino.
-// `derivePhase` es ese mapeo; ver su nota de calibración.
+// La heurística evento → fase vive en `supabase/functions/_shared/olva.ts`,
+// COMPARTIDA con la Edge Function y el barrido `olva-tracking-sync` (mismo
+// patrón que pay360.ts): servidor y chat leen los mismos eventos con las
+// mismas reglas. Con `sessionId`, el servidor además REFLEJA la fase en el
+// pedido (contrato `shipment`, solo si la guía es la registrada ahí).
+
+import type { TrackingPhase } from '../../../../supabase/functions/_shared/olva.ts'
+import { derivePhase, isValidTrack } from '../../../../supabase/functions/_shared/olva.ts'
+export { derivePhase, isValidTrack, normalizeYear } from '../../../../supabase/functions/_shared/olva.ts'
+export type { TrackingPhase } from '../../../../supabase/functions/_shared/olva.ts'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-/** Fases canónicas del envío según el contrato del módulo (§3). */
-export type TrackingPhase = 'EN_ORIGEN' | 'EN_TRANSITO' | 'EN_DESTINO' | 'ENTREGADO'
 
 export interface TrackingGeneral {
   fecha_envio: string | null
@@ -44,41 +48,13 @@ export interface TrackingFailed {
 
 export type TrackingResult = TrackingOk | TrackingFailed
 
-const deaccent = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '')
-
-// Palabras que delatan cada fase en los textos de eventos del courier, de la
-// más avanzada a la menos. PROVISIONAL: calibrada sin guías reales a la vista
-// (el proveedor elide `details` en su doc). Al pasar las primeras guías vivas,
-// contrastar contra los textos reales y ajustar — un envío mal clasificado
-// dispara (o calla) la cobranza del saldo en el momento equivocado.
-const PHASE_RULES: [TrackingPhase, RegExp][] = [
-  ['ENTREGADO', /ENTREGAD/],
-  ['EN_DESTINO', /EN DESTINO|AGENCIA DESTINO|DISPONIBLE|RECOJO|REPARTO/],
-  ['EN_TRANSITO', /TRANSITO|TRASLADO|RUTA|SALID/],
-  ['EN_ORIGEN', /ORIGEN|ADMITID|REGISTRAD|RECEPCIONAD/],
-]
-
-/**
- * Deduce la fase mirando TODOS los textos de los eventos y quedándose con la
- * más avanzada que aparezca. No asume orden en `details` (ni ascendente ni
- * descendente) ni una forma de item concreta: junta todo string que traiga.
- */
-export function derivePhase(events: Record<string, unknown>[]): TrackingPhase | null {
-  const haystack = deaccent(
-    events.flatMap(e => Object.values(e).filter((v): v is string => typeof v === 'string')).join(' ')
-  ).toUpperCase()
-  for (const [phase, rule] of PHASE_RULES) {
-    if (rule.test(haystack)) return phase
-  }
-  return null
-}
-
-/** Número de guía: solo dígitos (Olva usa 8, se tolera 6–15). */
-export function isValidTrack(track: string): boolean {
-  return /^\d{6,15}$/.test(track)
-}
-
-export async function trackShipment(input: { track: string; year?: string }): Promise<TrackingResult> {
+export async function trackShipment(input: {
+  track: string
+  year?: string | null
+  /** Con el id del pedido, el servidor refleja la lectura en `order_sessions`
+   *  vía `applyTracking` — solo si la guía consultada es la registrada ahí. */
+  sessionId?: string
+}): Promise<TrackingResult> {
   const track = input.track.replace(/\D/g, '')
   if (!isValidTrack(track)) return { ok: false, stage: 'validation' }
 
@@ -87,7 +63,7 @@ export async function trackShipment(input: { track: string; year?: string }): Pr
     const res = await fetch(`${BASE}/olva-tracking`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ track, year: input.year }),
+      body: JSON.stringify({ track, year: input.year ?? undefined, session_id: input.sessionId }),
     })
     body = await res.json().catch(() => ({}))
   } catch {
@@ -108,9 +84,13 @@ export async function trackShipment(input: { track: string; year?: string }): Pr
 
   const details = list(body.details)
   const realtime = list(body.realtime)
+  const serverPhase = body.phase
+  const phaseOk = serverPhase === 'EN_ORIGEN' || serverPhase === 'EN_TRANSITO' || serverPhase === 'EN_DESTINO' || serverPhase === 'ENTREGADO'
   return {
     ok: true,
-    phase: derivePhase([...details, ...realtime]),
+    // La fase la manda el servidor (es la que persiste en el pedido); derivar
+    // local es solo el respaldo si la función desplegada aún no la incluye.
+    phase: phaseOk ? serverPhase as TrackingPhase : derivePhase([...details, ...realtime]),
     general: {
       fecha_envio: str(g.fecha_envio),
       id_envio: str(g.id_envio),
