@@ -48,14 +48,18 @@ Deno.serve(async (req) => {
     { numero?: unknown; codigo?: unknown; ose_id?: unknown }
 
   // Identificadores del envío (comprobante físico / POST /v1/orders):
-  //   numero = la guía (8–10 dígitos) · ose_id = id interno de Shalom ·
-  //   codigo = 4 alfanuméricos, que por sí solo NO resuelve el estado.
+  //   numero = la guía (8–10 dígitos) · codigo = 4 alfanuméricos ·
+  //   ose_id = id interno de Shalom.
+  // ⚠️ Verificado contra la API real: el rastreo por guía exige numero Y codigo
+  // juntos, o solo ose_id — la doc del proveedor dice que basta el numero, pero
+  // su 400 vivo pide ambos.
   const numero = String(body.numero ?? '').replace(/\D/g, '')
   const oseId = String(body.ose_id ?? '').replace(/\D/g, '')
   const codigo = String(body.codigo ?? '').trim().toUpperCase()
   const numeroOk = /^\d{8,10}$/.test(numero)
+  const codigoOk = /^[A-Z0-9]{4}$/.test(codigo)
   const oseOk = oseId.length > 0
-  if ((!numeroOk && !oseOk) || (codigo && !/^[A-Z0-9]{4}$/.test(codigo))) {
+  if ((!(numeroOk && codigoOk) && !oseOk) || (codigo !== '' && !codigoOk)) {
     return json({ ok: false, stage: 'validation' }, 400)
   }
 

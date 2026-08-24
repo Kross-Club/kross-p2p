@@ -55,6 +55,10 @@ export function isValidCodigo(codigo: string): boolean {
   return /^[A-Z0-9]{4}$/i.test(codigo)
 }
 
+// ⚠️ Verificado contra la API real: el rastreo por guía exige numero Y codigo
+// juntos, o solo ose_id. La doc del proveedor dice que basta el numero; su 400
+// vivo pide ambos. Los dos vienen impresos en el comprobante físico.
+
 // Hito → fase canónica, del más avanzado al menos. `reparto` (salió a puerta,
 // solo domicilio) y `destino` (en agencia destino) son ambos EN_DESTINO: el
 // paquete ya está en la ciudad del comprador, que es lo que dispara la
@@ -89,7 +93,9 @@ export async function trackShipment(input: {
   const numero = (input.numero ?? '').replace(/\D/g, '')
   const oseId = (input.oseId ?? '').replace(/\D/g, '')
   const codigo = (input.codigo ?? '').trim()
-  if (!isValidNumero(numero) && !oseId) return { ok: false, stage: 'validation' }
+  if (!(isValidNumero(numero) && isValidCodigo(codigo)) && !oseId) {
+    return { ok: false, stage: 'validation' }
+  }
   if (codigo && !isValidCodigo(codigo)) return { ok: false, stage: 'validation' }
 
   let body: Record<string, unknown>

@@ -584,7 +584,7 @@ pasos que Olva, § *Lo que sigue*).
 | Base | `https://api.shalom-api-peru.com` |
 | Auth | header `X-API-Key` en todas las rutas |
 | Límite | 60 requests/min por key → `429` |
-| Tracking | `GET /v1/tracking?numero=…` — al menos 1 de `numero` (guía, 8–10 dígitos), `ose_id` (id interno de Shalom); `codigo` (4 alfanuméricos) por sí solo NO resuelve el estado. Los tres vienen impresos en el comprobante físico |
+| Tracking | `GET /v1/tracking?numero=…&codigo=…` — por guía exige `numero` (8–10 dígitos) **y** `codigo` (4 alfanuméricos) juntos, o solo `ose_id` (id interno de Shalom). ⚠️ Verificado contra la API real: su doc dice que basta el `numero`, pero el 400 vivo pide ambos. Los tres vienen impresos en el comprobante físico |
 | No existe | **`404` de verdad** — a diferencia de Olva API Perú, aquí `not_found` sí es distinguible de proveedor caído |
 
 **Dos niveles de auth, usamos solo el primero.** El "modo estado" (solo
