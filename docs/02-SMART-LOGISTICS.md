@@ -686,3 +686,24 @@ pedido** (`POST /v1/orders`, cotización, rótulo PDF) — esa exige credenciale
 de la cuenta Shalom Pro de la marca y es el candidato natural para el
 pendiente #3 (generador de envíos), decisión aparte porque crea guías reales
 y cobrables, sin sandbox ni idempotencia.
+
+### Cuenta Shalom Pro por marca + semáforo de la API ✅
+
+Panel → Mi marca → **Envíos de la marca (Shalom Pro)**. Dos cosas viven ahí:
+
+- **Credenciales del cliente** (email + password de pro.shalom.pe), la llave
+  de la familia de crear pedido de arriba. Mismo trato que los campos de
+  cobro: `manage-store` las acepta **solo por JWT verificado**, van a
+  `store_secrets` — también el email, porque `stores` es de SELECT público y
+  RLS es por fila — y el password **jamás vuelve al panel**. Al guardar se
+  validan **contra pro.shalom.pe de verdad** (`POST /v1/shalom/sessions`), en
+  segundo plano porque el primer login tarda ~90 s: el veredicto queda en
+  `shalom_pro_status` (`PENDING → CONNECTED / FAILED / UNVERIFIED`, sección
+  25 de `setup-kross.sql`) y el panel lo refresca. **El rastreo de fases no
+  las necesita** — funciona solo con la API key de la plataforma.
+- **Semáforo verde/rojo de la API** (`manage-store` acción `shalom_status`,
+  sobre el `/healthz` público del proveedor). En rojo, el panel muestra el
+  **plan de contingencia manual**: registrar la guía igual (el barrido la
+  vigila solo apenas la API vuelva — el tracking degrada, no se rompe),
+  consultar el estado a mano en shalom.pe → Rastrea, y avisar al comprador
+  por el chat del pedido.

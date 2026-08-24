@@ -965,3 +965,22 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.store_shalom_webhook_secret(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.store_shalom_webhook_secret(text) TO service_role;
+
+-- ─── 25. CUENTA SHALOM PRO POR MARCA ────────────────────────────────────────
+-- Credenciales de la cuenta del cliente en pro.shalom.pe, para los endpoints
+-- que operan SU cuenta (crear guías, cotizar tarifas, tracking detallado 🔮).
+-- El rastreo de fases NO las necesita (modo estado, solo X-API-Key).
+--
+-- Van en `store_secrets` — TAMBIÉN el email — porque `stores` tiene SELECT
+-- público y RLS es por fila: cualquier columna nueva ahí queda legible con la
+-- anon key. Las escribe manage-store SOLO por JWT verificado (mismo trato que
+-- los campos de cobro); el password jamás vuelve en ninguna respuesta.
+--
+-- shalom_pro_status: veredicto de la verificación real contra pro.shalom.pe
+-- (POST /v1/shalom/sessions, en segundo plano — el login tarda ~90 s):
+--   PENDING (verificando) · CONNECTED · FAILED (credenciales rechazadas) ·
+--   UNVERIFIED (proveedor caído: ni sí ni no; reintentar guardando de nuevo).
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_email      text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_password   text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_status     text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_checked_at timestamptz;

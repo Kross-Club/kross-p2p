@@ -31,6 +31,11 @@ interface StoreRow {
   /** Presencia = la marca ya es un negocio en 360pay. No es un secreto. */
   pay360_business_id?: string | null
   pay360_payment_prefix?: string | null
+  // Envíos — cuenta Shalom Pro del cliente. El backend mezcla email y veredicto
+  // desde `store_secrets`; el password jamás viaja al panel.
+  shalom_pro_email?: string | null
+  /** PENDING | CONNECTED | FAILED | UNVERIFIED (ver setup-kross.sql §25). */
+  shalom_pro_status?: string | null
 }
 
 const ERR: Record<string, string> = {
@@ -46,6 +51,7 @@ const ERR: Record<string, string> = {
   pay360_alta_fallo: 'No pudimos crear la cuenta en 360pay. Revisa e inténtalo de nuevo.',
   pay360_sin_conectar: 'Conecta la marca con 360pay antes de encender el cobro.',
   pay360_nombre_invalido: 'Escribe el nombre del comercio para 360pay.',
+  shalom_credenciales_invalidas: 'Revisa el correo y la contraseña de Shalom Pro.',
 }
 
 async function call(payload: Record<string, unknown>) {
@@ -232,6 +238,21 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [connecting, setConnecting] = useState(false)
   const pay360Connected = !!store.pay360_business_id
 
+  // Envíos — la cuenta Shalom Pro del cliente (para crear guías y cotizar 🔮;
+  // el rastreo de fases no la necesita). El password nunca vuelve del server.
+  const [shalomEmail, setShalomEmail] = useState('')
+  const [shalomPass, setShalomPass] = useState('')
+  const [shalomBusy, setShalomBusy] = useState(false)
+  const [shalomEditing, setShalomEditing] = useState(false)
+  const shalomConnected = !!store.shalom_pro_email
+  // Semáforo del proveedor (healthz vía manage-store). null = verificando.
+  const [apiUp, setApiUp] = useState<boolean | null>(null)
+  useEffect(() => {
+    call({ action: 'shalom_status', admin_auth_id: adminId }).then(({ ok, data }) => {
+      setApiUp(ok ? !!(data as { operational?: boolean }).operational : false)
+    })
+  }, [adminId])
+
   const [uploading, setUploading] = useState(false)
   const [uploadingIcon, setUploadingIcon] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -287,6 +308,32 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
     // Se recarga en vez de mutar el estado local: el alta escribió el
     // business_id y el secreto del webhook del lado del servidor, y seguir con
     // una copia vieja en pantalla invitaría a darla de alta dos veces.
+    onSaved?.()
+  }
+
+  // Conexión de Shalom Pro. Aparte del guardado, como el alta de 360pay: toca
+  // credenciales de un tercero y el backend las valida en segundo plano (el
+  // primer login contra Shalom tarda hasta 2 minutos).
+  const connectShalom = async () => {
+    if (shalomBusy) return
+    setShalomBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id,
+      shalom_pro: { email: shalomEmail.trim(), password: shalomPass },
+    })
+    setShalomBusy(false)
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo guardar las credenciales.'); return }
+    onSaved?.()
+  }
+
+  const disconnectShalom = async () => {
+    if (shalomBusy) return
+    setShalomBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id, shalom_pro: null,
+    })
+    setShalomBusy(false)
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo desconectar.'); return }
     onSaved?.()
   }
 
@@ -440,6 +487,102 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             </select>
           </div>
 
+        </div>
+
+        {/* ── Envíos — la cuenta Shalom Pro del cliente. Sin gate isSuper, como
+              Cobros: es SU cuenta. El backend exige JWT verificado y el password
+              jamás vuelve al panel. El semáforo dice si la API del proveedor
+              está viva; en rojo, se muestra el plan de contingencia manual. ── */}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: '#FFF7ED', border: '1px solid #FED7AA' }}>
+          <div className="w-full flex items-center justify-between mb-1">
+            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#C2410C' }}>
+              <Truck size={14} /> Envíos de la marca (Shalom Pro)
+            </span>
+            <span className="text-[10px] font-black px-2 py-1 rounded-full"
+              style={{
+                background: apiUp === null ? '#F3F4F6' : apiUp ? '#DCFCE7' : '#FEE2E2',
+                color: apiUp === null ? '#6B7280' : apiUp ? '#16A34A' : '#DC2626',
+              }}>
+              ● {apiUp === null ? 'Verificando API…' : apiUp ? 'API operativa' : 'API caída'}
+            </span>
+          </div>
+
+          {apiUp === false && (
+            <div className="rounded-xl px-3 py-2 mb-2" style={{ background: '#FEE2E2' }}>
+              <p className="text-[10px] font-bold" style={{ color: '#DC2626' }}>
+                Plan B mientras vuelve: registra la guía igual en el pedido (el sistema la
+                vigilará solo apenas la API regrese), consulta el estado a mano en
+                shalom.pe → Rastrea, y avísale al comprador por el chat del pedido.
+              </p>
+            </div>
+          )}
+
+          <p className="text-[10px] text-gray-500 mb-2">
+            El rastreo de guías funciona sin esto. Estas credenciales —las de la cuenta del
+            cliente en pro.shalom.pe— sirven para lo que viene: crear guías y cotizar
+            tarifas desde Kross sin salir de la app.
+          </p>
+
+          {shalomConnected && !shalomEditing ? (
+            <div className="rounded-xl px-3 py-2" style={{ background: '#FFFBEB' }}>
+              <p className="text-[10px] font-black" style={{
+                color: store.shalom_pro_status === 'CONNECTED' ? '#16A34A'
+                  : store.shalom_pro_status === 'FAILED' ? '#DC2626' : '#B45309',
+              }}>
+                {store.shalom_pro_status === 'CONNECTED' ? '✓ Conectado'
+                  : store.shalom_pro_status === 'PENDING' ? '⏳ Verificando credenciales… (hasta 2 min)'
+                  : store.shalom_pro_status === 'FAILED' ? '✗ Credenciales rechazadas por Shalom Pro'
+                  : '· Guardadas sin poder verificar (proveedor caído)'}
+                {' · '}{store.shalom_pro_email}
+              </p>
+              <div className="flex gap-2 mt-1.5">
+                {store.shalom_pro_status === 'PENDING' && (
+                  <button onClick={() => onSaved?.()} disabled={shalomBusy}
+                    className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#FEF3C7', color: '#B45309' }}>
+                    Actualizar estado
+                  </button>
+                )}
+                <button onClick={() => { setShalomEditing(true); setShalomEmail(store.shalom_pro_email ?? ''); setShalomPass('') }}
+                  disabled={shalomBusy}
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#F3F4F6', color: '#555' }}>
+                  Cambiar
+                </button>
+                <button onClick={disconnectShalom} disabled={shalomBusy}
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto" style={{ background: '#FEE2E2', color: '#DC2626' }}>
+                  {shalomBusy ? '…' : 'Desconectar'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl px-3 py-2.5" style={{ background: '#FFFBEB' }}>
+              <label className="text-[10px] font-bold text-gray-600 mb-1 block">Correo de pro.shalom.pe</label>
+              <input value={shalomEmail} onChange={e => setShalomEmail(e.target.value)}
+                placeholder="cliente@empresa.com" type="email" autoComplete="off"
+                className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
+              <label className="text-[10px] font-bold text-gray-600 mb-1 block">Contraseña</label>
+              <div className="flex gap-2">
+                <input value={shalomPass} onChange={e => setShalomPass(e.target.value)}
+                  type="password" placeholder="••••••••" autoComplete="new-password"
+                  className="flex-1 min-w-0 bg-white border rounded-xl px-3 py-2 text-sm outline-none" />
+                <button onClick={connectShalom}
+                  disabled={shalomBusy || !shalomEmail.includes('@') || shalomPass.length < 4}
+                  className="rounded-xl px-3 py-2 text-xs font-black text-white disabled:opacity-40 flex-shrink-0"
+                  style={{ background: '#C2410C' }}>
+                  {shalomBusy ? 'Guardando…' : 'Conectar'}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1.5">
+                La contraseña se guarda en el servidor y se valida contra pro.shalom.pe
+                (la primera verificación tarda hasta 2 minutos). No vuelve a mostrarse aquí.
+              </p>
+              {shalomEditing && (
+                <button onClick={() => setShalomEditing(false)}
+                  className="text-[10px] font-black mt-1.5" style={{ color: '#6B7280' }}>
+                  Cancelar
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca
