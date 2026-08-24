@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { shalomApiKey } from '../_shared/shalom.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -179,6 +180,27 @@ Deno.serve(async (req) => {
 
     await broadcast(session.id, 'tracking_update', tracking)
     if (msg) await broadcast(session.id, 'new_message', msg)
+
+    // Suscribe el envío al webhook del proveedor para recibir cada transición
+    // al instante. Best-effort (como su "track": true): si falla —webhook sin
+    // configurar, cupo lleno, red— el barrido de pg_cron cubre igual. La
+    // suscripción exige numero+codigo; con solo ose_id no hay qué suscribir.
+    if (numeroOk && codigoOk) {
+      try {
+        const key = await shalomApiKey()
+        if (key) {
+          const r = await fetch('https://api.shalom-api-peru.com/v1/tracking/subscriptions', {
+            method: 'POST',
+            headers: { 'X-API-Key': key, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ numero, codigo }),
+          })
+          if (!r.ok) console.error('set_tracking: suscripción webhook falló', r.status, await r.text().catch(() => ''))
+        }
+      } catch (e) {
+        console.error('set_tracking: suscripción webhook falló', e)
+      }
+    }
+
     return new Response(JSON.stringify({ ok: true, tracking }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 

@@ -652,13 +652,37 @@ Misma plomería que Olva: la Edge Function lee el secret **`SHALOM_API_KEY`**
 `shalom_api_key()` (sección 22 de `setup-kross.sql`, solo `service_role`). La
 key **jamás** va en el repo, el frontend ni el chat.
 
-### Webhooks del proveedor 🔮
+### Webhooks del proveedor ✅ · el reflejo instantáneo
 
-La doc trae `POST /v1/webhooks/…` ("Suscribir envíos", con firma verificable y
-reintentos): el proveedor empuja las transiciones en vez de que las consultemos.
-Candidato a reemplazar el barrido de pg_cron (23.d) — un webhook por envío
-registrado gasta cero del límite de 60/min y refleja al instante, no cada 30
-min. Sin usar todavía: también existen `GET /v1/tracking/{ose_id}/events`
-(solo hitos, por `ose_id`), el comprobante (⚠️ su doc lo declara **fuera de
-servicio**: responde 404 para toda orden — no depender de él) y el GRT (exige
-credenciales Shalom Pro + `cap_id` del carguero).
+El proveedor **empuja** cada transición en vez de esperarla: al registrar la
+guía, `set_tracking` suscribe el envío (`POST /v1/tracking/subscriptions`,
+best-effort) y `supabase/functions/shalom-webhook` recibe el POST firmado y
+aplica el **mismo reflejo** que el barrido — la lógica vive en
+`_shared/shalom.ts`, compartida a propósito para que el pedido no hable dos
+idiomas según por dónde llegó la noticia. El barrido de 23.d queda de
+**respaldo**: cubre cupo lleno (50 suscripciones activas, se liberan solas al
+entregar), eventos perdidos y suscripciones expiradas (~21 días → aviso
+solo-vendedores: un envío tan viejo sin cerrar es para mirarlo).
+
+- **Auth = firma HMAC del proveedor** (`X-Shalom-Signature: t=…,v1=…`,
+  SHA-256 sobre `t + "." + cuerpo crudo`), verificada en tiempo constante con
+  ventana anti-replay de 5 min. La función va con `--no-verify-jwt` (como
+  `livekit-webhook`). Entrega at-least-once: no hace falta tabla de dedupe —
+  el reflejo solo-hacia-adelante vuelve idempotente cualquier reintento.
+- **El `signing_secret` jamás pasó por un chat.** El bootstrap es autónomo
+  (`ensureWebhook`): el sync detecta que falta, registra la URL en el
+  proveedor, el ping de verificación lo responde `shalom-webhook` solo (eco
+  del challenge) y el secret viaja del proveedor **directo al Vault** vía el
+  RPC `store_shalom_webhook_secret` (sección 24). Verificado en vivo:
+  `verified = true` y un evento sin firma rebota con `400`.
+- Si el proveedor ya tuviera un webhook de otra URL, el bootstrap **no lo
+  pisa**: avisa en logs y se rota a mano (`POST /v1/webhooks/rotate`).
+
+Sin usar todavía: `GET /v1/tracking/{ose_id}/events` (solo hitos, por
+`ose_id`), el comprobante por ose_id (⚠️ su doc lo declara **fuera de
+servicio**: responde 404 para toda orden — no depender de él), el GRT (exige
+credenciales Shalom Pro + `cap_id` del carguero) y toda la familia de **crear
+pedido** (`POST /v1/orders`, cotización, rótulo PDF) — esa exige credenciales
+de la cuenta Shalom Pro de la marca y es el candidato natural para el
+pendiente #3 (generador de envíos), decisión aparte porque crea guías reales
+y cobrables, sin sandbox ni idempotencia.

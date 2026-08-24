@@ -920,3 +920,48 @@ SELECT cron.schedule(
   );
   $$
 );
+
+-- ─── 24. WEBHOOK DE TRACKING SHALOM (push del proveedor) ────────────────────
+-- La Edge Function `shalom-webhook` (deploy con --no-verify-jwt) recibe el
+-- POST firmado que Shalom API Perú manda en cada cambio de estado de un envío
+-- suscrito (la suscripción la hace order-manage al registrar la guía). Es la
+-- entrada rápida del reflejo; el barrido 23.d queda de respaldo. La
+-- autenticación es la firma HMAC del proveedor; su signing_secret lo emite
+-- PUT /v1/webhooks UNA sola vez y NO va en el repo: se lee del secret de
+-- entorno SHALOM_WEBHOOK_SECRET y, si no existe, del Vault por este RPC.
+--
+-- El registro es AUTÓNOMO: `shalom-tracking-sync` (ensureWebhook, en
+-- `_shared/shalom.ts`) detecta que no hay secret local ni webhook en el
+-- proveedor, hace el PUT con la URL de `shalom-webhook` (el ping de
+-- verificación lo responde esa función sola — deployarla antes) y guarda el
+-- signing_secret DIRECTO en Vault vía el RPC de abajo. El secret nunca se
+-- imprime ni pasa por chats. Si el proveedor ya tiene webhook de otra URL, NO
+-- se pisa: rotar con POST /v1/webhooks/rotate y guardar el nuevo a mano.
+CREATE OR REPLACE FUNCTION public.shalom_webhook_secret() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'SHALOM_WEBHOOK_SECRET' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.shalom_webhook_secret() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.shalom_webhook_secret() TO service_role;
+
+-- 24.b Guardar/rotar el signing_secret desde la Edge Function (service role),
+-- sin exponer el Vault entero: upsert de UN nombre fijo, nada más.
+CREATE OR REPLACE FUNCTION public.store_shalom_webhook_secret(secret text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE sid uuid;
+BEGIN
+  IF secret IS NULL OR length(secret) < 16 THEN
+    RAISE EXCEPTION 'secret inválido';
+  END IF;
+  SELECT id INTO sid FROM vault.secrets WHERE name = 'SHALOM_WEBHOOK_SECRET' LIMIT 1;
+  IF sid IS NULL THEN
+    PERFORM vault.create_secret(secret, 'SHALOM_WEBHOOK_SECRET', 'Firma del webhook de Shalom API Perú');
+  ELSE
+    PERFORM vault.update_secret(sid, secret);
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.store_shalom_webhook_secret(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.store_shalom_webhook_secret(text) TO service_role;

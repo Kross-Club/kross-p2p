@@ -27,7 +27,7 @@ comando, comparten organización pero **no** comparten esquema ni convenciones.
 | **Neural** | `nqibrziksedspoctjhmc` | `us-west-2` | Backoffice SaaS multi-tenant de operaciones COD: integraciones GoHighLevel / Shopify / Shalom / Aliclik, cobertura COD, tracking de envíos. Sistema aparte, no vive en este repo. |
 
 - Deploy función: `supabase functions deploy <n> --project-ref ofdjghntvmrdfjhazfvz`
-  (`livekit-webhook` va con `--no-verify-jwt`).
+  (`livekit-webhook` y `shalom-webhook` van con `--no-verify-jwt`).
 - Esquema idempotente: `supabase/setup-kross.sql` (correr en SQL Editor).
 
 ## Mapa de documentación (`/docs`)
