@@ -126,6 +126,16 @@ type MerchantCustomerSession = {
                provider?: '360PAY' | null   // NULL = flujo manual; separa las piscinas de cruce
                providerChargeId?: string    // id del cupón, en payment_events
                reason?: string }            // veredicto interno — NUNCA al comprador
+  // Envío por agencia (tracking por API, 02-SMART-LOGISTICS §3). Logistics
+  // registra los identificadores del comprobante; un job periódico los consulta
+  // contra la API del courier y refleja la fase. La fase dispara la cobranza
+  // del saldo al llegar a EN_DESTINO — pero NUNCA mueve `stage` sola: el
+  // pipeline lo avanza una persona (misma regla que `no_entregado`).
+  shipment?: { courier: 'SHALOM'              // 'OLVA' 🔮 cuando su reflejo se construya
+               ref: { numero?: string; codigo?: string; oseId?: string }
+               phase: 'EN_ORIGEN' | 'EN_TRANSITO' | 'EN_DESTINO' | 'ENTREGADO' | null
+               phaseAt?: Date
+               demoraAt?: Date }              // alerta de demora del courier; NO es una fase
   stage:     'nuevo' | 'validando' | 'confirmado' | 'preparando' | 'en_camino' | 'entregado'
              | 'no_entregado'               // terminal de fracaso: lo marca una persona;
                                             // tasa de entrega = entregado/(entregado+no_entregado)
@@ -161,6 +171,8 @@ Mapeo actual → objetivo:
 | `advance.provider` | `order_sessions.payment_provider` — '360PAY' o NULL | ✅ |
 | `advance.providerChargeId` | `payment_events.provider_charge_id` (por `matched_order_id`) | ✅ |
 | `advance.reason` | `order_sessions.payment_reason` — solo Ventas | ✅ |
+| `shipment.courier/ref` | `order_sessions.tracking_courier/tracking_numero/tracking_codigo/tracking_ose_id` — los registra `order-manage` (acción `set_tracking`) | ✅ |
+| `shipment.phase/phaseAt/demoraAt` | `order_sessions.tracking_phase/tracking_phase_at/tracking_demora_at` — los escribe `shalom-tracking-sync` (job pg_cron); `tracking_checked_at` audita el último chequeo | ✅ |
 | `stage` | `order_sessions.stage` — orden en `src/lib/order-stages.ts` | ✅ |
 | `loyalty.points` | `buyers.puntos` | ✅ |
 | `loyalty.nextReorderDate` | derivado de `restock_days` en campañas | 🟡 |

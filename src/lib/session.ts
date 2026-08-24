@@ -35,6 +35,13 @@ export function isPickupDispatch(d: string | null | undefined): boolean {
 export type AgencyName = 'SHALOM' | 'OLVA' | 'OTRO'
 export type ClosedBy = 'AI_CLOSER' | 'DIRECT_CHECKOUT'
 
+/** Fases canónicas del envío (02-SMART-LOGISTICS §3). Mismo literal que el
+ *  `TrackingPhase` de los servicios de tracking; aquí vive el del contrato. */
+export type ShipmentPhase = 'EN_ORIGEN' | 'EN_TRANSITO' | 'EN_DESTINO' | 'ENTREGADO'
+/** Couriers con reflejo de tracking construido. Olva 🔮 se suma cuando su
+ *  reflejo exista (la capa de consulta ya está). */
+export type ShipmentCourier = 'SHALOM'
+
 // Etapas REALES del pedido (alineadas a order_sessions.stage)
 // El tipo vive en `order-stages.ts` junto con el orden y las etiquetas: tenerlo
 // aquí duplicado ya provocó que una pantalla mostrara un orden y otra, otro.
@@ -63,6 +70,17 @@ export interface MerchantCustomerSession {
     closedBy: ClosedBy
     stage: OrderStage
   }
+  /** Envío por agencia con tracking por API. `null` = sin guía registrada.
+   *  La fase dispara la cobranza del saldo al llegar a EN_DESTINO, pero NUNCA
+   *  mueve `stage` sola: el pipeline lo avanza una persona. */
+  shipment: {
+    courier: ShipmentCourier
+    ref: { numero: string | null; codigo: string | null; oseId: string | null }
+    phase: ShipmentPhase | null
+    phaseAt: string | null
+    /** Alerta de demora del courier. NO es una fase: convive con cualquiera. */
+    demoraAt: string | null
+  } | null
   loyalty: {
     points: number
     pointsEarned: number
@@ -86,6 +104,13 @@ export interface RawOrderSession {
   agency_name?: string | null
   delivery_reference?: string | null
   closed_by?: string | null
+  tracking_courier?: string | null
+  tracking_numero?: string | null
+  tracking_codigo?: string | null
+  tracking_ose_id?: string | null
+  tracking_phase?: string | null
+  tracking_phase_at?: string | null
+  tracking_demora_at?: string | null
 }
 
 // Datos del comprador (buyers) que enriquecen la sesión.
@@ -125,6 +150,19 @@ export function toCustomerSession(order: RawOrderSession, buyer?: RawBuyer | nul
       closedBy: (order.closed_by as ClosedBy) ?? 'DIRECT_CHECKOUT',
       stage: asStage(order.stage),
     },
+    shipment: order.tracking_courier
+      ? {
+          courier: order.tracking_courier as ShipmentCourier,
+          ref: {
+            numero: order.tracking_numero ?? null,
+            codigo: order.tracking_codigo ?? null,
+            oseId: order.tracking_ose_id ?? null,
+          },
+          phase: (order.tracking_phase as ShipmentPhase) ?? null,
+          phaseAt: order.tracking_phase_at ?? null,
+          demoraAt: order.tracking_demora_at ?? null,
+        }
+      : null,
     loyalty: {
       points: buyer?.puntos ?? 0,
       pointsEarned: 0,

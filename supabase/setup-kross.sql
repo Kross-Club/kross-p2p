@@ -857,3 +857,66 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.shalom_api_key() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.shalom_api_key() TO service_role;
+
+-- ─── 23. TRACKING DE ENVÍOS EN EL PEDIDO (contrato `shipment`) ──────────────
+-- Bloque `shipment` de MerchantCustomerSession (00-CORE-ARCHITECTURE):
+-- Logistics registra los identificadores del comprobante (order-manage,
+-- acción `set_tracking`) y el job `shalom-tracking-sync` (23.c) consulta la
+-- API del courier y refleja la fase. La fase dispara la cobranza del saldo al
+-- llegar a EN_DESTINO, pero NUNCA mueve `stage` sola: el pipeline lo avanza
+-- una persona.
+
+-- 23.a Identificadores del comprobante + fase reflejada.
+--   tracking_courier: 'SHALOM' (Olva 🔮 cuando su reflejo se construya).
+--   numero (guía 8–10 dígitos) + codigo (4 alfanum) van juntos; ose_id es el
+--   id interno de Shalom (handle de eventos/comprobante/GRT).
+--   tracking_phase: EN_ORIGEN | EN_TRANSITO | EN_DESTINO | ENTREGADO.
+--   tracking_demora_at: alerta de demora del courier — NO es una fase.
+--   Sin CHECK a propósito, como stage/dispatch_type: la lista blanca vive en
+--   el código que escribe (order-manage / shalom-tracking-sync).
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_courier    text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_numero     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_codigo     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_ose_id     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_phase      text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_phase_at   timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_demora_at  timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_checked_at timestamptz;
+
+-- 23.b Los envíos VIVOS que el job va a barrer: con guía y sin entregar.
+CREATE INDEX IF NOT EXISTS idx_order_sessions_tracking_active
+  ON order_sessions(tracking_checked_at)
+  WHERE tracking_courier IS NOT NULL
+    AND (tracking_phase IS NULL OR tracking_phase <> 'ENTREGADO');
+
+-- 23.c Plantilla WhatsApp de recojo/cobro por tienda. Si está configurada (y
+-- `wa_enabled`), el sync la dispara vía `send-wa-template` cuando el envío
+-- llega a EN_DESTINO. NULL = esa marca no auto-envía WhatsApp; el mensaje del
+-- chat del pedido sale igual. El nombre debe ser el de una plantilla APROBADA
+-- en Meta (variables: name, product, link — el mapping por defecto).
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_recojo_template text;
+
+-- 23.d El job periódico. pg_cron + pg_net invocan la Edge Function
+-- `shalom-tracking-sync` cada 30 min. La key que viaja es la ANON pública (la
+-- misma del bundle del frontend): la función no recibe parámetros, no expone
+-- datos (solo conteos) y es idempotente, así que un tercero invocándola solo
+-- consigue refrescar el tracking. 60 req/min del proveedor ÷ lotes de 50 =
+-- miles de envíos activos por barrida sin acercarse al límite.
+--   cron.schedule con el mismo nombre ACTUALIZA el job: correr esto dos veces
+--   no duplica nada.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+SELECT cron.schedule(
+  'shalom-tracking-sync',
+  '*/30 * * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/shalom-tracking-sync',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mZGpnaG50dm1yZGZqaGF6ZnZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTM4NDcsImV4cCI6MjA5OTA4OTg0N30.DSgcjvYZUWLqUyQ9aFTOjkAISt7hOwpLUhwFTniBQsI'
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 60000
+  );
+  $$
+);

@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'cancel' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item'
+    action: 'advance' | 'invite' | 'expel' | 'cancel' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking'
     session_id: string
     stage?: string
     invite_seller_id?: string
@@ -106,13 +106,14 @@ Deno.serve(async (req) => {
     message_id?: string
     index?: number
     qty?: number
+    tracking?: { courier?: string; numero?: string; codigo?: string; ose_id?: string }
   }
 
   if (!body.session_id) return new Response('Missing session_id', { status: 400, headers: corsHeaders })
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by')
+    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification')
     .eq('id', body.session_id)
     .single()
 
@@ -123,6 +124,62 @@ Deno.serve(async (req) => {
     await supabase.from('order_sessions').update({ nota: body.nota ?? null }).eq('id', session.id)
     await broadcast(session.id, 'nota_update', { nota: body.nota ?? null })
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── SET TRACKING (Logistics registra la guía del courier en el pedido) ─────
+  // Contrato `shipment` de 00-CORE. Misma regla que la API real de Shalom:
+  // numero (8–10 dígitos) Y codigo (4 alfanum) juntos, o solo ose_id. La guía
+  // viaja al comprador por el chat —es el canal principal— y con ella en mano
+  // ya puede pagar el saldo POR LA APP (nunca en el mostrador, ver 02 §saldo).
+  if (body.action === 'set_tracking') {
+    const t = body.tracking ?? {}
+    const courier = String(t.courier ?? session.agency_name ?? '').toUpperCase()
+    // Olva 🔮: su capa de consulta existe, pero el reflejo en el pedido aún no.
+    if (courier !== 'SHALOM') {
+      return new Response(JSON.stringify({ error: 'unsupported_courier' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    const numero = String(t.numero ?? '').replace(/\D/g, '')
+    const codigo = String(t.codigo ?? '').trim().toUpperCase()
+    const oseId = String(t.ose_id ?? '').replace(/\D/g, '')
+    const numeroOk = /^\d{8,10}$/.test(numero)
+    const codigoOk = /^[A-Z0-9]{4}$/.test(codigo)
+    if (!(numeroOk && codigoOk) && !oseId) {
+      return new Response(JSON.stringify({ error: 'invalid_tracking' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    const tracking = {
+      tracking_courier: courier,
+      tracking_numero: numeroOk ? numero : null,
+      tracking_codigo: codigoOk ? codigo : null,
+      tracking_ose_id: oseId || null,
+      // Guía nueva = tracking desde cero: el sync recalcula la fase.
+      tracking_phase: null, tracking_phase_at: null,
+      tracking_demora_at: null, tracking_checked_at: null,
+    }
+    const { error: trackErr } = await supabase.from('order_sessions').update(tracking).eq('id', session.id)
+    if (trackErr) {
+      return new Response(JSON.stringify({ error: trackErr.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    const ids = numeroOk ? `Guía ${numero} · Código ${codigo}` : `Orden de servicio ${oseId}`
+    // El saldo DERIVADO, no asumido (misma regla que el acuse de pay360-webhook):
+    // a quien pagó el total no se le habla de un saldo que no existe — su clave
+    // de recojo va sin condición.
+    const pagado = session.payment_verification === 'MATCHED' ? Number(session.advance_amount ?? 0) : 0
+    const saldo = Math.max(0, Number(session.product_price ?? 0) - pagado)
+    const cobroCopy = saldo > 0
+      ? `Tu saldo de S/${saldo} lo pagas cuando quieras por esta misma app —nunca en la agencia— y apenas lo pagues te entregamos tu clave de recojo.`
+      : 'Como ya pagaste el total, junto con la guía te entregaremos tu clave de recojo.'
+    const { data: msg } = await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'system', sender_name: 'Kross',
+      type: 'status_update', visibility: 'all',
+      body: `📦 ¡Tu envío ya está registrado en ${courier}! ${ids}. Guárdalos para el recojo. `
+        + cobroCopy + ' Por aquí te avisamos cuando tu pedido llegue a tu agencia.',
+    }).select().single()
+
+    await broadcast(session.id, 'tracking_update', tracking)
+    if (msg) await broadcast(session.id, 'new_message', msg)
+    return new Response(JSON.stringify({ ok: true, tracking }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   // ─── SET QTY (seller edits a product quantity → price follows the packs) ────
