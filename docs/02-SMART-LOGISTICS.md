@@ -37,10 +37,10 @@
   Ver §4 y §5.
 - **Falta 🔮:** generación de **etiquetas/datos formateados para agencias** (Shalom / Olva
   Courier): nombre, DNI, teléfono, destino, contenido.
-- **🟡 Tracking por API + cobranza del saldo — Shalom ✅ entero (consulta,
-  reflejo y disparo de cobranza; ver § *Tracking de envíos Shalom*); de Olva
-  existe la capa de consulta y falta su reflejo** (ver § *Tracking de guías
-  Olva*). Decisión validada
+- **✅ Tracking por API + cobranza del saldo — Shalom y Olva enteros** (consulta,
+  reflejo y disparo de cobranza, con el reflejo compartido en
+  `_shared/tracking.ts`; ver § *Tracking de envíos Shalom* y § *Tracking de
+  guías Olva*). Decisión validada
   con operadores COD reales (ver `docs/ICP Sales/VALIDACION-AGENCIA.md`):
   - Leer del **API de cada agencia** los estados del envío — **en origen → en tránsito →
     en destino** — y reflejar cada transición en el pedido (contrato en
@@ -252,8 +252,9 @@ Corre **después** de los generadores de agencias, porque lee sus JSON ya constr
 2. 🔮 Route-sheet del motorizado (Lima) con cobranza por parada.
 3. 🔮 Generador de envíos a provincia (Shalom/Olva).
 4. Tracking por API con disparo de cobranza al llegar a destino — **Shalom ✅**
-   (ciclo completo, ver § *Tracking de envíos Shalom*) · **Olva 🟡** (consulta
-   lista, reflejo pendiente). Ver §3.
+   (ciclo completo, ver § *Tracking de envíos Shalom*) · **Olva ✅** (mismo
+   ciclo, por barrido: su proveedor no tiene webhook — ver § *Tracking de guías
+   Olva*). Ver §3.
 5. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data
    con la que se negocia cobertura con Aliclic y se mide venta perdida por zona.
 
@@ -509,10 +510,23 @@ cruzarlo contra la cobertura del courier, igual que hoy hace
 como "sin cobertura a domicilio" — que ya es un camino válido: se entrega por
 agencia.
 
-## Tracking de guías Olva 🟡 · la capa de consulta
+## Tracking de guías Olva ✅ · ciclo completo, por barrido
 
-Primer tramo del pendiente #4 (§3): **consultar** el estado de una guía de Olva.
-Reflejarlo en el pedido y disparar la cobranza siguen 🔮.
+El pendiente #4 (§3) para Olva: registrar la guía, consultarla contra la API,
+reflejar la fase en el pedido y disparar la cobranza al llegar a destino. Es el
+**mismo ciclo de Shalom** — el reflejo compartido vive en `_shared/tracking.ts`
+y ambos couriers lo atraviesan idéntico — con dos diferencias que impone el
+proveedor:
+
+- **No hay webhook ni batch**: el barrido `olva-tracking-sync` (pg_cron a los
+  `:15/:45`, intercalado con el de Shalom) ES la entrada del reflejo — consulta
+  guía por guía, hasta 50 por corrida, los menos chequeados primero. Para no
+  esperar media hora, la `TrackingBar` del chat trae botón **Actualizar** en
+  Olva: consulta al toque y el servidor persiste por el mismo camino
+  (`olva-tracking` con `session_id` → `applyTracking`).
+- **La guía se rastrea por numero + año de emisión (YY)** — sin código. El año
+  lo pone el servidor al registrarla (`set_tracking`): la guía se registra al
+  despachar, así que es el año actual de Lima. Vive en `tracking_year` (23.a).
 
 ### Quién es el proveedor (y quién no es)
 
@@ -538,19 +552,34 @@ vendedor que la guía no existe cuando lo caído es Olva arma un reclamo falso.
 
 ### Las piezas
 
+- **`supabase/functions/_shared/olva.ts`** — lo específico del courier, PURO
+  (sin Deno): la heurística de fase, la validación de guía y el año. Lo
+  importan las Edge Functions Y el front (`OlvaTrackingService` re-exporta),
+  igual que `pay360.ts`: servidor y chat leen los mismos eventos con las
+  mismas reglas.
 - **`supabase/functions/olva-tracking`** — proxy con las convenciones de la
   casa: CORS + validación + key solo en el servidor, y el error crudo del
   proveedor **solo** a los logs (misma regla que 360pay: ningún texto de
-  terceros frente a compradores o vendedores).
+  terceros frente a compradores o vendedores). Con `session_id`, refleja la
+  lectura en el pedido vía `applyTracking` — solo si la guía consultada es la
+  registrada ahí.
+- **`supabase/functions/olva-tracking-sync`** — el barrido (23.e). Como el 502
+  del proveedor no distingue guía inexistente de Olva caído, aquí NO se acusa
+  a la guía en el chat (a diferencia del `not_found` explícito de Shalom):
+  solo se audita el chequeo y el detalle va a los logs.
+- **`order-manage` · `set_tracking` con `courier: 'OLVA'`** — numero (6–15
+  dígitos, típicamente 8) + año automático. La guía viaja al comprador por el
+  chat con el mismo copy de saldo derivado de Shalom.
 - **`src/lib/checkout/services/OlvaTrackingService.ts`** — cliente que nunca
   lanza (mismo contrato que `Pay360Service`): cada fallo dice su etapa
   (`validation` / `config` / `rate_limit` / `upstream` / `network`).
-- **`derivePhase()`** — mapea los eventos crudos a la fase canónica del módulo:
-  `EN_ORIGEN → EN_TRANSITO → EN_DESTINO → ENTREGADO`. Gana la fase más avanzada
-  que aparezca, sin asumir orden ni forma de los eventos. ⚠️ **Heurística
-  provisional**: el proveedor elide los `details` en su doc y no hubo guía real
-  que mirar; calibrarla con las primeras guías vivas antes de colgarle la
-  cobranza automática.
+- **`derivePhase()`** — mapea los TEXTOS de los eventos a la fase canónica
+  (`EN_ORIGEN → EN_TRANSITO → EN_DESTINO → ENTREGADO`); gana la más avanzada,
+  sin asumir orden ni forma. A diferencia de Shalom (hitos explícitos,
+  deterministas), Olva da textos. ⚠️ **Heurística provisional**: el proveedor
+  elide los `details` en su doc y no hubo guía real que mirar. La cascada ya
+  está VIVA sobre ella — vigilar las primeras guías Olva de cerca y calibrar
+  contra sus textos reales (deuda anotada en ESTADO-OPERATIVO).
 
 ### La key
 
@@ -563,14 +592,11 @@ La key **jamás** va en el repo ni al frontend. La de prueba viajó por chat al
 recibirse → rotarla al pasar a producción (se pide por el WhatsApp del
 proveedor, en su web).
 
-### Lo que sigue (el resto del pendiente #4)
+### Lo que queda
 
-1. Persistir guía + año en `order_sessions` cuando Logistics registre el envío.
-2. Un job (pg_cron) que consulte las guías activas —60/min alcanza de sobra— y
-   refleje la transición en el pedido vía el contrato `MerchantCustomerSession`.
-3. Al pasar a `EN_DESTINO`: plantilla WhatsApp de recojo/cobro
-   (`send-wa-template`, ya construido) + cola de llamadas del vendedor.
-4. La tasa de recojo nativa (`EN_DESTINO` vs `ENTREGADO`) sale gratis de ahí.
+- **Calibrar `derivePhase`** con las primeras guías vivas (la deuda de arriba).
+- La **tasa de recojo nativa** (`EN_DESTINO` vs `ENTREGADO`) sale gratis del
+  reflejo, para ambos couriers.
 
 ## Tracking de envíos Shalom ✅ · ciclo completo
 

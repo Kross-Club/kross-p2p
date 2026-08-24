@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
       address, address_verified, address_lat, address_lng, nota,
       dispatch_type, agency_name, delivery_reference,
       tracking_courier, tracking_numero, tracking_codigo, tracking_ose_id,
-      tracking_phase, tracking_phase_at, tracking_demora_at,
+      tracking_year, tracking_phase, tracking_phase_at, tracking_demora_at,
       payment_verification, payment_reason, payment_event_id,
       pay360_coupon_id, pay360_consumer_code,
       advance_amount, payment_provider,

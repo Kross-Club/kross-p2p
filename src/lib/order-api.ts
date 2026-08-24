@@ -35,6 +35,8 @@ export interface OrderSession {
   tracking_numero?: string | null
   tracking_codigo?: string | null
   tracking_ose_id?: string | null
+  /** Año de emisión de la guía Olva (YY): su API rastrea por numero+año. */
+  tracking_year?: string | null
   tracking_phase?: string | null
   tracking_phase_at?: string | null
   tracking_demora_at?: string | null

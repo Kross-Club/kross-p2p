@@ -131,8 +131,10 @@ type MerchantCustomerSession = {
   // contra la API del courier y refleja la fase. La fase dispara la cobranza
   // del saldo al llegar a EN_DESTINO — pero NUNCA mueve `stage` sola: el
   // pipeline lo avanza una persona (misma regla que `no_entregado`).
-  shipment?: { courier: 'SHALOM'              // 'OLVA' 🔮 cuando su reflejo se construya
-               ref: { numero?: string; codigo?: string; oseId?: string }
+  shipment?: { courier: 'SHALOM' | 'OLVA'
+               // Shalom rastrea por numero+codigo (u oseId); Olva por
+               // numero+year (año de emisión en 2 dígitos, sin código).
+               ref: { numero?: string; codigo?: string; oseId?: string; year?: string }
                phase: 'EN_ORIGEN' | 'EN_TRANSITO' | 'EN_DESTINO' | 'ENTREGADO' | null
                phaseAt?: Date
                demoraAt?: Date }              // alerta de demora del courier; NO es una fase
@@ -171,8 +173,8 @@ Mapeo actual → objetivo:
 | `advance.provider` | `order_sessions.payment_provider` — '360PAY' o NULL | ✅ |
 | `advance.providerChargeId` | `payment_events.provider_charge_id` (por `matched_order_id`) | ✅ |
 | `advance.reason` | `order_sessions.payment_reason` — solo Ventas | ✅ |
-| `shipment.courier/ref` | `order_sessions.tracking_courier/tracking_numero/tracking_codigo/tracking_ose_id` — los registra `order-manage` (acción `set_tracking`) | ✅ |
-| `shipment.phase/phaseAt/demoraAt` | `order_sessions.tracking_phase/tracking_phase_at/tracking_demora_at` — los escribe `shalom-tracking-sync` (job pg_cron); `tracking_checked_at` audita el último chequeo | ✅ |
+| `shipment.courier/ref` | `order_sessions.tracking_courier/tracking_numero/tracking_codigo/tracking_ose_id/tracking_year` — los registra `order-manage` (acción `set_tracking`) | ✅ |
+| `shipment.phase/phaseAt/demoraAt` | `order_sessions.tracking_phase/tracking_phase_at/tracking_demora_at` — los escriben los jobs `shalom-tracking-sync` / `olva-tracking-sync` (pg_cron) vía el reflejo compartido `_shared/tracking.ts`; `tracking_checked_at` audita el último chequeo | ✅ |
 | `stage` | `order_sessions.stage` — orden en `src/lib/order-stages.ts` | ✅ |
 | `loyalty.points` | `buyers.puntos` | ✅ |
 | `loyalty.nextReorderDate` | derivado de `restock_days` en campañas | 🟡 |
