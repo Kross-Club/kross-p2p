@@ -570,20 +570,57 @@ proveedor, en su web).
    (`send-wa-template`, ya construido) + cola de llamadas del vendedor.
 4. La tasa de recojo nativa (`EN_DESTINO` vs `ENTREGADO`) sale gratis de ahí.
 
-## Tracking de envíos Shalom 🟡 · en preparación
+## Tracking de envíos Shalom 🟡 · la capa de consulta
 
-Cierra la otra mitad del pendiente #4: la misma capa de consulta que ya existe
-para Olva, contra **Shalom API Perú** (`https://shalom-api-peru.com/docs`) — misma
-familia de proveedor que Olva API Perú: **independiente, no la API oficial de
-Shalom**, con la misma fragilidad y el mismo aislamiento (si aparece API oficial,
-cambia el proxy y nada más).
+La otra mitad del pendiente #4: la misma capa de consulta que Olva, contra
+**Shalom API Perú** (`https://shalom-api-peru.com/docs`) — misma familia de
+proveedor: **independiente, no la API oficial de Shalom**, con la misma
+fragilidad y el mismo aislamiento (si aparece API oficial, cambia el proxy y
+nada más). Reflejarlo en el pedido y disparar la cobranza siguen 🔮 (mismos
+pasos que Olva, § *Lo que sigue*).
 
-- **Hecho ✅:** plomería de la key, calcada de Olva. La Edge Function leerá el
-  secret **`SHALOM_API_KEY`** (`supabase secrets set`) y, si no está, el Vault
-  vía el RPC `shalom_api_key()` (sección 22 de `setup-kross.sql`, solo
-  `service_role`). La key **jamás** va en el repo, el frontend ni el chat.
-- **Falta 🟡:** Edge Function `shalom-tracking` + `ShalomTrackingService` con la
-  misma superficie que Olva (`derivePhase` hacia las fases canónicas del §3).
-  Bloqueado en confirmar contra la doc del proveedor: base URL, header de auth,
-  forma del endpoint de tracking (Shalom identifica el envío por orden de
-  servicio + código, no por guía+año como Olva) y forma de la respuesta.
+| | |
+|---|---|
+| Base | `https://api.shalom-api-peru.com` |
+| Auth | header `X-API-Key` en todas las rutas |
+| Límite | 60 requests/min por key → `429` |
+| Tracking | `GET /v1/tracking?numero=…` — al menos 1 de `numero` (guía, 8–10 dígitos), `ose_id` (id interno de Shalom); `codigo` (4 alfanuméricos) por sí solo NO resuelve el estado. Los tres vienen impresos en el comprobante físico |
+| No existe | **`404` de verdad** — a diferencia de Olva API Perú, aquí `not_found` sí es distinguible de proveedor caído |
+
+**Dos niveles de auth, usamos solo el primero.** El "modo estado" (solo
+`X-API-Key`) devuelve la línea de tiempo completa del envío — suficiente para
+la fase canónica. El "modo detallado" agrega la orden (montos, contenido) pero
+exige además credenciales de la cuenta **Shalom Pro** (`X-Shalom-Email/Password`
+o sesión efímera `ssk_`), y su **primera llamada hace un login real contra
+Shalom (~90 s, hasta 2 min)**. No mandamos credenciales: el modo estado no paga
+esa latencia y no obliga a custodiar un password de terceros.
+
+### Las piezas
+
+- **`supabase/functions/shalom-tracking`** — proxy con las convenciones de la
+  casa: CORS + validación + key solo en el servidor, error crudo del proveedor
+  solo a los logs.
+- **`src/lib/checkout/services/ShalomTrackingService.ts`** — cliente que nunca
+  lanza (mismo contrato que Olva/360pay); comparte el tipo `TrackingPhase`.
+- **`derivePhase()` es determinista, no heurística.** El proveedor marca hitos
+  explícitos (`registrado/origen/transito/destino/entregado/reparto`: objeto
+  con fecha, o `null` si no ocurrió); gana el más avanzado. `reparto` (salió a
+  puerta) y `destino` (en agencia) son ambos `EN_DESTINO`. **`demora` no es una
+  fase**: es una alerta que convive con cualquiera y se expone aparte. Nada que
+  calibrar con guías vivas — el contraste que Olva sí necesita.
+
+### La key
+
+Misma plomería que Olva: la Edge Function lee el secret **`SHALOM_API_KEY`**
+(`supabase secrets set`, ya cargado) y, si no está, el Vault vía el RPC
+`shalom_api_key()` (sección 22 de `setup-kross.sql`, solo `service_role`). La
+key **jamás** va en el repo, el frontend ni el chat.
+
+### Webhooks del proveedor 🔮
+
+La doc trae `POST /v1/webhooks/…` ("Suscribir envíos", con firma verificable y
+reintentos): el proveedor empuja las transiciones en vez de que las consultemos.
+Candidato a reemplazar el job de polling (paso 2 de § *Lo que sigue*) cuando se
+construya el reflejo en el pedido — un webhook por envío registrado gasta cero
+del límite de 60/min. También existen `POST /v1/tracking` en lote, `GET` de
+eventos, comprobante y GRT, sin usar todavía.
