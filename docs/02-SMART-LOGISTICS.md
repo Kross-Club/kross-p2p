@@ -37,7 +37,9 @@
   Ver §4 y §5.
 - **Falta 🔮:** generación de **etiquetas/datos formateados para agencias** (Shalom / Olva
   Courier): nombre, DNI, teléfono, destino, contenido.
-- **Falta 🔮 — tracking por API de Shalom/Olva + cobranza del saldo.** Decisión validada
+- **🟡 Tracking por API + cobranza del saldo — la capa de consulta de Olva ya
+  existe** (ver § *Tracking de guías Olva* abajo); falta reflejarla en el pedido
+  y Shalom entero. Decisión validada
   con operadores COD reales (ver `docs/ICP Sales/VALIDACION-AGENCIA.md`):
   - Leer del **API de cada agencia** los estados del envío — **en origen → en tránsito →
     en destino** — y reflejar cada transición en el pedido (contrato en
@@ -215,7 +217,10 @@ El conteo completo, departamento por departamento (**Olva** marca dónde tiene m
   cada sede: se omite a propósito. Olva sí trae **horarios por día**, todavía sin usar.
 - ⚠️ **La data de Olva no viene de un acuerdo con ellos**, sino de su buscador público.
   Puede cambiar de forma sin aviso y el generador se rompería. Lo sólido a mediano plazo
-  es pedirles el listado oficial, como se hizo con Shalom.
+  es pedirles el listado oficial, como se hizo con Shalom. Mientras tanto, la misma data
+  existe como API (`GET /v1/agencias` de Olva API Perú, con `ubigeo`, coordenadas y
+  horario por sede — ver § *Tracking de guías Olva*): candidata a reemplazar el scraping
+  de `build-olva.mjs`, con la misma reserva de que tampoco es un acuerdo oficial.
 
 ### 6. Centroides para ordenar agencias ✅
 
@@ -501,3 +506,66 @@ cruzarlo contra la cobertura del courier, igual que hoy hace
 `scripts/build-districts.mjs`. Los distritos sin veredicto de cobertura entran
 como "sin cobertura a domicilio" — que ya es un camino válido: se entrega por
 agencia.
+
+## Tracking de guías Olva 🟡 · la capa de consulta
+
+Primer tramo del pendiente #4 (§3): **consultar** el estado de una guía de Olva.
+Reflejarlo en el pedido y disparar la cobranza siguen 🔮.
+
+### Quién es el proveedor (y quién no es)
+
+**Olva API Perú** (`https://olva-api-peru.com/docs/`) — un proveedor
+**independiente**, no la API oficial de Olva Courier; su propio pie de página lo
+declara. Misma fragilidad que ya asumimos con `olva.json` (§5, sale de su
+buscador público): puede cambiar o morir sin aviso. La capa está aislada
+justamente para eso — si mañana hay API oficial, cambia el proxy y nada más.
+
+| | |
+|---|---|
+| Base | `https://api.olva-api-peru.com` |
+| Auth | header `X-API-Key` (key `sk_…`) |
+| Límite | 60 requests/min por key → `429` |
+| Tracking | `GET /v1/tracking/{track}/{year}` — año de emisión en 2 dígitos, solo últimos 4 años |
+| Agencias | `GET /v1/agencias` — filtros `cod_dep`, `departamento`, `tipo`, `partner`, `nombres`; paginado `page`/`limit` (máx 100) |
+| Health | `GET /healthz`, sin auth |
+
+⚠️ **Una guía inexistente NO devuelve 404: devuelve `502` "Error consultando
+Olva"**, indistinguible de Olva caído (verificado contra la API real). Por eso
+el fallo se reporta como `upstream`, nunca como "guía no existe" — decirle al
+vendedor que la guía no existe cuando lo caído es Olva arma un reclamo falso.
+
+### Las piezas
+
+- **`supabase/functions/olva-tracking`** — proxy con las convenciones de la
+  casa: CORS + validación + key solo en el servidor, y el error crudo del
+  proveedor **solo** a los logs (misma regla que 360pay: ningún texto de
+  terceros frente a compradores o vendedores).
+- **`src/lib/checkout/services/OlvaTrackingService.ts`** — cliente que nunca
+  lanza (mismo contrato que `Pay360Service`): cada fallo dice su etapa
+  (`validation` / `config` / `rate_limit` / `upstream` / `network`).
+- **`derivePhase()`** — mapea los eventos crudos a la fase canónica del módulo:
+  `EN_ORIGEN → EN_TRANSITO → EN_DESTINO → ENTREGADO`. Gana la fase más avanzada
+  que aparezca, sin asumir orden ni forma de los eventos. ⚠️ **Heurística
+  provisional**: el proveedor elide los `details` en su doc y no hubo guía real
+  que mirar; calibrarla con las primeras guías vivas antes de colgarle la
+  cobranza automática.
+
+### La key
+
+1. La Edge Function lee el secret **`OLVA_API_KEY`** (`supabase secrets set`);
+2. si no está, cae al **Vault** del proyecto vía el RPC `olva_api_key()`
+   (sección 21 de `setup-kross.sql`, ejecutable solo por `service_role`). La key
+   de prueba ya está cargada ahí: la función anda sin pasos manuales.
+
+La key **jamás** va en el repo ni al frontend. La de prueba viajó por chat al
+recibirse → rotarla al pasar a producción (se pide por el WhatsApp del
+proveedor, en su web).
+
+### Lo que sigue (el resto del pendiente #4)
+
+1. Persistir guía + año en `order_sessions` cuando Logistics registre el envío.
+2. Un job (pg_cron) que consulte las guías activas —60/min alcanza de sobra— y
+   refleje la transición en el pedido vía el contrato `MerchantCustomerSession`.
+3. Al pasar a `EN_DESTINO`: plantilla WhatsApp de recojo/cobro
+   (`send-wa-template`, ya construido) + cola de llamadas del vendedor.
+4. La tasa de recojo nativa (`EN_DESTINO` vs `ENTREGADO`) sale gratis de ahí.

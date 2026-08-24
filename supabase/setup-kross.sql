@@ -822,3 +822,20 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_pay360_coupon
 -- del 13.c con `dedupe_key = '360pay:' || X-360Pay-Event-Id`. Se deduplica por
 -- **Event-Id** y no por Delivery-Id: el segundo cambia en cada reintento, así
 -- que deduplicar por él dejaría entrar el mismo pago una vez por intento.
+
+-- ─── 21. OLVA API PERÚ (tracking de guías) ──────────────────────────────────
+-- La Edge Function `olva-tracking` consulta guías de Olva vía Olva API Perú
+-- (proveedor independiente, no oficial). Su key NO va en el repo: se lee del
+-- secret de entorno OLVA_API_KEY y, si no existe, del Vault del proyecto por
+-- este RPC. Solo service_role puede ejecutarlo — el frontend jamás ve la key.
+--
+-- Alta de la key en Vault (correr aparte, con la key real, NUNCA pegarla aquí):
+--   SELECT vault.create_secret('<la-key>', 'OLVA_API_KEY', 'Olva API Perú');
+CREATE OR REPLACE FUNCTION public.olva_api_key() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'OLVA_API_KEY' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.olva_api_key() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.olva_api_key() TO service_role;
