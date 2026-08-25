@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X, Package, AlertTriangle, RefreshCw, Trash2, Eye } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
+import { NOTA_META, NOTA_KEYS } from '../lib/order-chips'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -11,12 +12,8 @@ const STAGE_LABEL: Record<string, string> = {
   en_camino: '🚚 En camino', entregado: '✅ Entregado',
 }
 
-const NOTAS: { key: string; label: string; color: string }[] = [
-  { key: 'no_contesta', label: 'No contesta', color: '#F59E0B' },
-  { key: 'recuperado', label: 'Recuperado', color: '#16A34A' },
-  { key: 'cancelado', label: 'Cancelado', color: '#DC2626' },
-  { key: 'anulado', label: 'Anulado', color: '#6B7280' },
-]
+// Las notas y su color viven en un solo lugar (§6.1)
+const NOTAS = NOTA_KEYS.map(key => ({ key, ...NOTA_META[key] }))
 
 const LOSES = [
   'Comprar sin pagar adelanto',
@@ -110,7 +107,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
             const items = (session.items && session.items.length ? session.items : [{ nombre: session.product_name || 'Producto', precio: session.product_price ?? 0, pack_name: session.pack_name, image: null, qty: 1 }])
             const total = items.reduce((s, it) => s + (Number(it.precio) || 0), 0)
             return (
-              <div className="rounded-2xl p-3 mb-3" style={{ background: 'var(--warn-bg-soft)', border: '1.5px solid var(--warn-border)' }}>
+              <div className="rounded-2xl p-3 mb-3" style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)' }}>
                 {items.length > 1 && <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 mb-2">🛒 {items.length} productos</p>}
                 <div className="space-y-2">
                   {items.map((it, i) => (
@@ -134,7 +131,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
                             <button onClick={() => setQty(i, (it.qty ?? 1) + 1)} disabled={busy} className="w-6 h-6 rounded-lg bg-white border text-gray-700 font-black">+</button>
                           </div>
                         )}
-                        <p className="font-bold text-gray-800 text-sm flex-shrink-0 w-14 text-right">S/{it.precio}</p>
+                        <p className="font-bold text-gray-800 text-sm flex-shrink-0 w-14 text-right">S/ {it.precio}</p>
                         {role === 'buyer' && items.length > 1 && (
                           <button onClick={() => setRemovingIdx(removingIdx === i ? null : i)} className="p-1.5 rounded-lg flex-shrink-0" style={{ background: 'var(--danger-bg)' }}>
                             <Trash2 size={13} className="text-red-500" />
@@ -142,7 +139,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
                         )}
                       </div>
                       {role === 'buyer' && removingIdx === i && (
-                        <div className="mt-2 rounded-xl p-2.5" style={{ background: 'var(--danger-bg-soft)', border: '1px solid var(--danger-border)' }}>
+                        <div className="mt-2 rounded-xl p-2.5" style={{ background: 'var(--danger-bg-soft)', border: '0.5px solid var(--danger-border)' }}>
                           <p className="text-[11px] text-red-700 font-semibold mb-2">¿Quitar este producto? Bajará tu puntuación.</p>
                           <div className="flex gap-2">
                             <button onClick={() => setRemovingIdx(null)} className="flex-1 py-1.5 rounded-lg text-xs font-black bg-white border text-gray-600">No</button>
@@ -155,7 +152,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-2" style={{ borderTop: '1px dashed #FDE68A' }}>
                   <p className="text-xs font-black text-gray-500 uppercase">Total</p>
-                  <p className="font-black text-2xl" style={{ color: 'var(--ok-fg)' }}>S/{total}</p>
+                  <p className="font-black text-2xl" style={{ color: 'var(--ok-fg)' }}>S/ {total}</p>
                 </div>
               </div>
             )
@@ -177,7 +174,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
                   return (
                     <button key={n.key} onClick={() => setNota(on ? null : n.key)}
                       className="px-2.5 py-1 rounded-full text-[11px] font-bold"
-                      style={{ background: on ? n.color : `${n.color}18`, color: on ? '#fff' : n.color }}>
+                      style={on ? n.style : { background: 'var(--surface-3)', color: 'var(--text-faint)' }}>
                       {n.label}
                     </button>
                   )
@@ -202,7 +199,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
               Cancelar pedido
             </button>
           ) : (
-            <div className="rounded-2xl p-4" style={{ background: 'var(--danger-bg-soft)', border: '1.5px solid var(--danger-border)' }}>
+            <div className="rounded-2xl p-4" style={{ background: 'var(--danger-bg-soft)', border: '0.5px solid var(--danger-border)' }}>
               <div className="flex items-start gap-2 mb-2">
                 <AlertTriangle size={18} style={{ color: 'var(--danger-fg)' }} className="flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-red-700 font-black">

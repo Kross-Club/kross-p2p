@@ -101,8 +101,11 @@ function applyBranding(s: Store) {
       setLink('icon', s.logo_url)
     }
     const root = document.documentElement
-    root.style.setProperty('--brand', s.color_primary)
-    root.style.setProperty('--brand-dark', s.color_dark)
+    // El color de la MARCA pinta lo que ve el comprador. `--brand` se deriva
+    // de acá en index.css: dentro del panel del vendedor gana el lima de Kross,
+    // porque esa pantalla es la herramienta de Kross, no la tienda.
+    root.style.setProperty('--store-brand', s.color_primary)
+    root.style.setProperty('--store-brand-dark', s.color_dark)
   } catch { /* ignore */ }
 }
 

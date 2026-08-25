@@ -190,7 +190,7 @@ function MemberCard({ s, isSelf, online, admin, onEnter, onToggle, onProfile, bu
   const isOnline = online.has(s.auth_user_id)
   const available = s.available !== false
   return (
-    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid var(--border)' }}>
+    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '0.5px solid var(--border)' }}>
       <div className="flex items-center gap-3">
         <div className="relative flex-shrink-0">
           <div className="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: `${color}22` }}>

@@ -1,133 +1,175 @@
 @import "tailwindcss";
 
-/* Per-brand colors (white-label). store-context overrides these at runtime
-   from the resolved store; these defaults are Kross so nothing breaks before
-   the store loads or when no brand is resolved. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Paleta de marca — manual de marca v2.0 §4.
+   Estos tokens NO se usan directo en los componentes: alimentan a los
+   semánticos de más abajo. Si algún día cambia el lima, cambia acá y en
+   ningún otro lado.
+   ═══════════════════════════════════════════════════════════════════════════ */
 :root {
-  --brand: #55C8F5;
-  --brand-dark: #060C1A;
+  --k-ink: #0F1115;         /* fondo base de la interfaz */
+  --k-surface-1: #171A1F;   /* cards, paneles, filas activas */
+  --k-surface-2: #23262B;   /* pills de estado neutro, separadores */
+  --k-bone: #F2F2F0;        /* texto principal, módulos del símbolo */
+  --k-text-2: #C7CDD4;      /* tablas, texto de apoyo */
+  --k-text-3: #9BA1A9;      /* etiquetas, metadatos (mínimo bajo 13 px) */
+  --k-structural: #3D444C;  /* pines inactivos, bordes, vacíos */
+
+  --k-lime: #D4FF4F;        /* acento único: dinero que entró, entrega cerrada */
+  --k-lime-light: #7BA512;  /* el mismo acento sobre fondo claro */
+  --k-lime-dim: #5C6B33;    /* tramo pendiente, ruta no recorrida */
+  --k-on-lime: #2C3A00;     /* ÚNICO color de texto válido sobre el lima */
+
+  --k-alert-bg: #3A2424;
+  --k-alert-fg: #F0B2B2;
+
+  /* Símbolo (§3.3): en fondo oscuro va hueso + lima; en claro, ink + lima
+     oscuro — el lima brillante desaparece sobre blanco. */
+  --k-module: var(--k-ink);
+  --k-joint: var(--k-lime-light);
 }
 
-/* ─── Tema del panel (claro / oscuro) ──────────────────────────────────────
-   El panel del vendedor pinta con estos tokens en vez de con colores fijos.
-   `data-theme="dark"` lo pone `usePanelTheme()` en <html> MIENTRAS hay una
-   pantalla de panel montada, y lo quita al salir: las páginas del comprador y
-   la web pública son de la marca, no del vendedor, y se quedan claras.
-   El tema por defecto es el del sistema operativo (ver `src/lib/theme.ts`). */
+/* ─── De quién es el acento ────────────────────────────────────────────────
+   Kross es white-label: la tienda del comprador se pinta con el color de la
+   MARCA (`--store-brand`, que escribe store-context al resolver el
+   subdominio). El panel del vendedor no: ahí la marca es Kross, y el acento
+   es el lima. Por eso `--brand` es derivado y no lo escribe nadie a mano. */
 :root {
-  --surface: #FFFFFF;        /* tarjetas, header, barra lateral */
-  --surface-2: #F9FAFB;      /* fondo detrás de las tarjetas */
-  --surface-3: #F0F0F0;      /* inputs y chips neutros */
-  --text: #060C1A;
-  --text-muted: #6B7280;
-  --text-faint: #9CA3AF;     /* horas, ayudas, texto de tercer nivel */
-  --border: #F0F0F0;
-  --border-strong: #E5E7EB;
-  --chat-bg: #FFFDF5;        /* el papel del chat del pedido */
-  --chat-header: #111111;    /* la cabecera oscura del chat del pedido */
-  --brand-tint: #EEF9FF;     /* item activo del menú, fondos de acento */
+  --brand: var(--store-brand, var(--k-lime-light));
+  --brand-dark: var(--store-brand-dark, var(--k-ink));
+  --structural: var(--k-structural);
+}
 
-  /* Estados. El fondo es el velo; el fg, el texto/ícono encima. Los botones
-     sólidos de color (verde de "confirmar", rojo de "cancelar") NO usan esto:
-     ahí el color ES el botón y funciona igual en los dos temas. */
-  --ok-bg: #DCFCE7;      --ok-bg-soft: #F0FDF4;      --ok-fg: #16A34A;      --ok-border: #BBF7D0;
-  --warn-bg: #FEF3C7;    --warn-bg-soft: #FFFBEB;    --warn-fg: #D97706;    --warn-border: #FDE68A;
-  --danger-bg: #FEE2E2;  --danger-bg-soft: #FEF2F2;  --danger-fg: #DC2626;  --danger-border: #FECACA;
-  --info-bg: #EFF6FF;    --info-fg: #2563EB;    --info-border: #BFDBFE;
-  --violet-bg: #F5F3FF;  --violet-fg: #742284;  --violet-border: #DDD6FE;
-  --invert: #111111;         /* botón principal: enviar */
-  --invert-fg: #FFFFFF;
+/* ═══════════════════════════════════════════════════════════════════════════
+   Tema del panel. `data-theme` lo pone usePanelTheme() en <html> mientras hay
+   una pantalla de panel montada (ver src/lib/theme.ts). El manual describe
+   una interfaz oscura: ese es el arranque. El claro es la variante clara del
+   manual (§3.3), disponible para quien la prefiera.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root[data-theme] {
+  --brand: var(--k-lime-light);   /* en el panel el acento es de Kross */
+}
+
+:root[data-theme="light"] {
+  --surface: #FFFFFF;
+  --surface-2: var(--k-bone);     /* hueso de fondo, cards en blanco */
+  --surface-3: #E7E7E3;
+  --text: var(--k-ink);
+  --text-muted: #4C535B;
+  --text-faint: #6E757D;
+  --border: rgba(15, 17, 21, 0.10);
+  --border-strong: rgba(15, 17, 21, 0.18);
+  --chat-bg: #FAFAF8;
+  --chat-header: var(--k-ink);
+  --brand-tint: rgba(123, 165, 18, 0.12);
+  --invert: var(--k-ink);
+  --invert-fg: var(--k-bone);
+
+  --k-module: var(--k-ink);
+  --k-joint: var(--k-lime-light);
+
+  /* Estados (§6.1). En claro el lima brillante no se lee, así que el estado
+     cerrado usa el lima oscuro sobre su propio velo. */
+  --ok-bg: rgba(123, 165, 18, 0.16);  --ok-on: #2C3A00;          --ok-fg: var(--k-lime-light);
+  --ok-bg-soft: rgba(123, 165, 18, 0.08);
+  --warn-bg: #EFEFEA;  --warn-bg-soft: #F5F5F1;  --warn-fg: #5B6169;
+  --danger-bg: #FBE9E9;  --danger-bg-soft: #FDF4F4;  --danger-fg: #B03A3A;
+  --ok-border: rgba(123, 165, 18, 0.30);
+  --warn-border: rgba(15, 17, 21, 0.10);
+  --danger-border: rgba(176, 58, 58, 0.25);
+  --info-bg: #EDEFF2;  --info-fg: #4C535B;  --info-border: rgba(15,17,21,0.10);
+  --violet-bg: #EDEFF2; --violet-fg: #4C535B; --violet-border: rgba(15,17,21,0.10);
 }
 
 :root[data-theme="dark"] {
-  color-scheme: dark;        /* scrollbars y controles nativos oscuros */
+  color-scheme: dark;
 
-  --surface: #12161F;
-  --surface-2: #0B0E14;
-  --surface-3: #1C2230;
-  --text: #EDF1F7;
-  --text-muted: #8A94A8;
-  --text-faint: #6B7688;
-  --border: #232A38;
-  --border-strong: #2A3242;
-  --chat-bg: #0E1219;
-  --chat-header: #161B24;    /* un punto más claro que el papel: la cabecera se sigue viendo */
-  --brand-tint: color-mix(in srgb, var(--brand) 18%, transparent);
+  --surface: var(--k-surface-1);
+  --surface-2: var(--k-ink);
+  --surface-3: var(--k-surface-2);
+  --text: var(--k-bone);
+  --text-muted: var(--k-text-2);
+  --text-faint: var(--k-text-3);
+  --border: rgba(255, 255, 255, 0.09);   /* §6: un solo grosor y un solo color */
+  --border-strong: var(--k-structural);
+  --chat-bg: var(--k-ink);
+  --chat-header: var(--k-surface-1);
+  --brand-tint: var(--k-surface-2);      /* lo genérico es gris; el lima se reserva */
+  --invert: var(--k-bone);
+  --invert-fg: var(--k-ink);
 
-  --ok-bg: rgb(74 222 128 / 0.18);      --ok-bg-soft: rgb(74 222 128 / 0.08);      --ok-fg: #86EFAC;      --ok-border: rgb(134 239 172 / 0.35);
-  --warn-bg: rgb(251 191 36 / 0.18);    --warn-bg-soft: rgb(251 191 36 / 0.08);    --warn-fg: #FCD34D;    --warn-border: rgb(252 211 77 / 0.35);
-  --danger-bg: rgb(248 113 113 / 0.18); --danger-bg-soft: rgb(248 113 113 / 0.08); --danger-fg: #FCA5A5;  --danger-border: rgb(252 165 165 / 0.35);
-  --info-bg: rgb(96 165 250 / 0.12);    --info-fg: #93C5FD;    --info-border: rgb(96 165 250 / 0.35);
-  --violet-bg: rgb(192 132 252 / 0.12); --violet-fg: #C4B5FD;  --violet-border: rgb(192 132 252 / 0.35);
-  --invert: #EDF1F7;         /* en oscuro el botón de enviar se invierte, como el texto */
-  --invert-fg: #12161F;
+  --brand: var(--k-lime);
+  --k-module: var(--k-bone);
+  --k-joint: var(--k-lime);
 
-  /* La rampa de grises de Tailwind, invertida. Así `text-gray-400`,
-     `bg-gray-100` o `border-gray-100` —que están en cientos de sitios del
-     panel— cambian de tema sin tocar una sola clase en los componentes.
-     `--color-white` NO se toca: `text-white` vive sobre botones y cabeceras
-     de color, que siguen siendo oscuros en los dos temas. */
-  --color-gray-50: #161B24;
-  --color-gray-100: #1C2230;
-  --color-gray-200: #2A3242;
-  --color-gray-300: #55607A;
-  --color-gray-400: #8A94A8;
-  --color-gray-500: #A7B0C2;
-  --color-gray-600: #BCC4D4;
-  --color-gray-700: #CFD6E3;
-  --color-gray-800: #DFE5EF;
-  --color-gray-900: #EDF1F7;
-  --color-gray-950: #F7F9FC;
+  /* Estados (§6.1): solo dos llevan color — el que cierra bien y el que exige
+     acción. Los intermedios son grises. Si todo tiene color, nada resalta. */
+  --ok-bg: var(--k-lime);              --ok-on: var(--k-on-lime);   --ok-fg: var(--k-lime);
+  --ok-bg-soft: rgba(212, 255, 79, 0.12);
+  --warn-bg: var(--k-surface-2);       --warn-bg-soft: rgba(255,255,255,0.04);  --warn-fg: var(--k-text-2);
+  --danger-bg: var(--k-alert-bg);      --danger-bg-soft: rgba(240, 178, 178, 0.07);  --danger-fg: var(--k-alert-fg);
+  --ok-border: rgba(212, 255, 79, 0.35);
+  --warn-border: var(--border);
+  --danger-border: rgba(240, 178, 178, 0.25);
+  --info-bg: var(--k-surface-2);   --info-fg: var(--k-text-2);   --info-border: var(--border);
+  --violet-bg: var(--k-surface-2); --violet-fg: var(--k-text-2); --violet-border: var(--border);
 
-  /* Los chips de estado (`bg-green-100 text-green-700` y compañía) son la
-     señal que el vendedor lee de un vistazo. En oscuro el pastel claro
-     encandila, así que el fondo pasa a un velo del mismo tono y el texto al
-     tono claro. Solo se tocan los extremos: 50/100 (fondos) y 700/800/900
-     (texto). Del 300 al 600 no se tocan — ahí viven los botones sólidos con
-     texto blanco (`bg-green-500 text-white`), que en oscuro siguen bien. */
-  --color-red-50: rgb(248 113 113 / 0.10);
-  --color-red-100: rgb(248 113 113 / 0.18);
-  --color-red-700: #FCA5A5;
-  --color-red-800: #FECACA;
-  --color-red-900: #FEE2E2;
+  /* La rampa de grises de Tailwind, mapeada a los neutros del manual. Así
+     `text-gray-400` o `bg-gray-100` —que están en cientos de sitios— hablan el
+     idioma de la marca sin tocar una sola clase en los componentes.
+     `--color-white` NO se toca: el `text-white` vive sobre botones de color. */
+  --color-gray-50: var(--k-surface-1);
+  --color-gray-100: var(--k-surface-2);
+  --color-gray-200: #2E323A;
+  --color-gray-300: var(--k-structural);
+  --color-gray-400: var(--k-text-3);
+  --color-gray-500: var(--k-text-2);
+  --color-gray-600: #D6DBE1;
+  --color-gray-700: #E4E8EC;
+  --color-gray-800: #EDEFF0;
+  --color-gray-900: var(--k-bone);
+  --color-gray-950: #FFFFFF;
 
-  --color-orange-50: rgb(251 146 60 / 0.10);
-  --color-orange-100: rgb(251 146 60 / 0.18);
-  --color-orange-700: #FDBA74;
-  --color-orange-800: #FED7AA;
-  --color-orange-900: #FFEDD5;
+  /* Chips de color de Tailwind. Verde = lo que cerró bien → lima. Rojo = lo
+     que exige acción → alerta. Todo lo demás es intermedio → gris. */
+  --color-green-50: rgb(212 255 79 / 0.10);
+  --color-green-100: rgb(212 255 79 / 0.16);
+  --color-green-700: var(--k-lime);
+  --color-green-800: var(--k-lime);
+  --color-green-900: var(--k-lime);
+  --color-emerald-50: rgb(212 255 79 / 0.10);
+  --color-emerald-100: rgb(212 255 79 / 0.16);
+  --color-emerald-700: var(--k-lime);
+  --color-emerald-800: var(--k-lime);
 
-  --color-amber-50: rgb(251 191 36 / 0.10);
-  --color-amber-100: rgb(251 191 36 / 0.18);
-  --color-amber-700: #FCD34D;
-  --color-amber-800: #FDE68A;
-  --color-amber-900: #FEF3C7;
+  --color-red-50: rgb(240 178 178 / 0.08);
+  --color-red-100: var(--k-alert-bg);
+  --color-red-700: var(--k-alert-fg);
+  --color-red-800: var(--k-alert-fg);
+  --color-red-900: var(--k-alert-fg);
 
-  --color-green-50: rgb(74 222 128 / 0.10);
-  --color-green-100: rgb(74 222 128 / 0.18);
-  --color-green-700: #86EFAC;
-  --color-green-800: #BBF7D0;
-  --color-green-900: #DCFCE7;
-
-  --color-emerald-50: rgb(52 211 153 / 0.10);
-  --color-emerald-100: rgb(52 211 153 / 0.18);
-  --color-emerald-700: #6EE7B7;
-  --color-emerald-800: #A7F3D0;
-
-  --color-blue-50: rgb(96 165 250 / 0.10);
-  --color-blue-100: rgb(96 165 250 / 0.18);
-  --color-blue-700: #93C5FD;
-  --color-blue-800: #BFDBFE;
-
-  --color-indigo-50: rgb(129 140 248 / 0.10);
-  --color-indigo-100: rgb(129 140 248 / 0.18);
-  --color-indigo-700: #A5B4FC;
-  --color-indigo-800: #C7D2FE;
-
-  --color-purple-50: rgb(192 132 252 / 0.10);
-  --color-purple-100: rgb(192 132 252 / 0.18);
-  --color-purple-700: #C4B5FD;
-  --color-purple-800: #DDD6FE;
+  --color-amber-50: rgb(255 255 255 / 0.04);
+  --color-amber-100: var(--k-surface-2);
+  --color-amber-700: var(--k-text-2);
+  --color-amber-800: var(--k-text-2);
+  --color-amber-900: var(--k-text-2);
+  --color-orange-50: rgb(255 255 255 / 0.04);
+  --color-orange-100: var(--k-surface-2);
+  --color-orange-700: var(--k-text-2);
+  --color-orange-800: var(--k-text-2);
+  --color-orange-900: var(--k-text-2);
+  --color-blue-50: rgb(255 255 255 / 0.04);
+  --color-blue-100: var(--k-surface-2);
+  --color-blue-700: var(--k-text-2);
+  --color-blue-800: var(--k-text-2);
+  --color-indigo-50: rgb(255 255 255 / 0.04);
+  --color-indigo-100: var(--k-surface-2);
+  --color-indigo-700: var(--k-text-2);
+  --color-indigo-800: var(--k-text-2);
+  --color-purple-50: rgb(255 255 255 / 0.04);
+  --color-purple-100: var(--k-surface-2);
+  --color-purple-700: var(--k-text-2);
+  --color-purple-800: var(--k-text-2);
 }
 
 :root[data-theme="dark"] body {
@@ -135,10 +177,52 @@
   color: var(--text);
 }
 
-/* `bg-white` en el panel significa "superficie de tarjeta", no el color
-   blanco: en oscuro tiene que seguir a --surface. */
+/* `bg-white` en el panel significa "superficie de tarjeta", no el color blanco. */
 :root[data-theme="dark"] .bg-white {
   background-color: var(--surface);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Tipografía del panel (§5). Inter, y solo dos pesos: 400 y 500 — el 600/700
+   se ve pesado contra el fondo oscuro. Como el panel está lleno de
+   `font-black` y `font-bold` heredados, se remapean acá en vez de tocar
+   cientos de className. Fuera del panel manda la tipografía de la marca.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root[data-theme], :root[data-theme] * {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+:root[data-theme] .font-black,
+:root[data-theme] .font-bold,
+:root[data-theme] .font-semibold,
+:root[data-theme] .font-medium {
+  font-weight: 500;
+}
+
+:root[data-theme] .font-normal { font-weight: 400; }
+
+/* ─── Geometría del sistema modular (§6) ──────────────────────────────────
+   Radios: 6 px en controles, 8 px en cards, 12 px en contenedores grandes.
+   Bordes: un solo grosor, 0.5 px. El panel viene de un diseño con esquinas
+   muy redondeadas y bordes de 1 px, así que se remapean las utilidades en vez
+   de reescribir cientos de className. `rounded-full` no se toca: avatares y
+   pills siguen siendo círculos. */
+:root[data-theme] .rounded-lg,
+:root[data-theme] .rounded-xl { border-radius: 6px; }
+:root[data-theme] .rounded-2xl { border-radius: 8px; }
+:root[data-theme] .rounded-3xl { border-radius: 12px; }
+:root[data-theme] .rounded-t-3xl { border-radius: 12px 12px 0 0; }
+
+:root[data-theme] .border,
+:root[data-theme] .border-t,
+:root[data-theme] .border-b,
+:root[data-theme] .border-l,
+:root[data-theme] .border-r { border-width: 0.5px; }
+
+/* Cifras: dinero y conteos siempre tabulares, para que no bailen al actualizar. */
+:root[data-theme] .tabular,
+:root[data-theme] .cifra {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Impresión. La Hoja de Reclamación es una constancia legal y el consumidor

@@ -2,18 +2,22 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
+import { NOTA_META, CERRADO_SUAVE, NEUTRO } from '../../lib/order-chips'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 // The 5 real stages of the value chain
-const ETAPAS: { key: string; label: string; emoji: string; color: string; bg: string }[] = [
-  { key: 'nuevo',      label: 'Pedido',     emoji: '📋', color: '#2563EB', bg: '#EFF6FF' },
-  { key: 'confirmado', label: 'Confirmado', emoji: '📞', color: '#16A34A', bg: '#F0FDF4' },
-  { key: 'preparando', label: 'Preparando', emoji: '📦', color: '#863bff', bg: '#F5F3FF' },
-  { key: 'en_camino',  label: 'En camino',  emoji: '🚚', color: '#EA580C', bg: '#FFF7ED' },
-  { key: 'entregado',  label: 'Entregado',  emoji: '✅', color: '#15803D', bg: '#DCFCE7' },
+// §6.1: la etapa la dice la columna, no el color. Solo la última lleva lima.
+const ETAPAS: { key: string; label: string; emoji: string }[] = [
+  { key: 'nuevo',      label: 'Pedido',     emoji: '📋' },
+  { key: 'confirmado', label: 'Confirmado', emoji: '📞' },
+  { key: 'preparando', label: 'Preparando', emoji: '📦' },
+  { key: 'en_camino',  label: 'En camino',  emoji: '🚚' },
+  { key: 'entregado',  label: 'Entregado',  emoji: '✅' },
 ]
+
+const etapaChip = (key: string) => (key === 'entregado' ? CERRADO_SUAVE : NEUTRO)
 
 interface Sess {
   id: string
@@ -29,12 +33,6 @@ interface Sess {
   seller_role?: string | null
 }
 
-const NOTA_META: Record<string, { label: string; color: string }> = {
-  no_contesta: { label: 'No contesta', color: '#F59E0B' },
-  recuperado: { label: 'Recuperado', color: '#16A34A' },
-  cancelado: { label: 'Cancelado', color: '#DC2626' },
-  anulado: { label: 'Anulado', color: '#6B7280' },
-}
 
 export default function CRMPage() {
   const navigate = useNavigate()
@@ -63,12 +61,12 @@ export default function CRMPage() {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-bold text-gray-800 text-sm truncate">{s.buyer_name || 'Comprador'}</p>
-          <p className="text-xs text-gray-400 truncate">{s.product_name} · {s.pack_name || `S/${s.product_price}`}</p>
+          <p className="text-xs text-gray-400 truncate">{s.product_name} · {s.pack_name || `S/ ${s.product_price}`}</p>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {s.seller_name && <span className="text-[10px] text-gray-400">Atiende: {s.seller_name.split(' ')[0]}</span>}
             {s.nota && NOTA_META[s.nota] && (
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                style={{ background: `${NOTA_META[s.nota].color}22`, color: NOTA_META[s.nota].color }}>
+                style={NOTA_META[s.nota].style}>
                 {NOTA_META[s.nota].label}
               </span>
             )}
@@ -101,7 +99,7 @@ export default function CRMPage() {
             return (
               <div key={etapa.key}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-black px-3 py-1 rounded-full" style={{ background: etapa.bg, color: etapa.color }}>
+                  <span className="text-xs font-black px-3 py-1 rounded-full" style={etapaChip(etapa.key)}>
                     {etapa.emoji} {etapa.label}
                   </span>
                   <span className="text-xs text-gray-400 font-semibold">{items.length}</span>
@@ -134,7 +132,7 @@ export default function CRMPage() {
             const items = sessions.filter(s => s.status !== 'cancelado' && s.stage === etapa.key)
             return (
               <div key={etapa.key} className="flex-shrink-0 w-56">
-                <div className="text-[11px] font-black px-3 py-1.5 rounded-xl mb-2 text-center" style={{ background: etapa.bg, color: etapa.color }}>
+                <div className="text-[11px] font-black px-3 py-1.5 rounded-xl mb-2 text-center" style={etapaChip(etapa.key)}>
                   {etapa.emoji} {etapa.label} ({items.length})
                 </div>
                 <div className="space-y-2">

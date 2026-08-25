@@ -13,8 +13,11 @@
     <title>Kross</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
+      /* Nunito es la tipografía de las pantallas de MARCA (tienda, checkout,
+         chat del comprador, web pública). El panel del vendedor va en Inter:
+         lo cambia index.css bajo `[data-theme]`, ver manual de marca §5. */
       * { font-family: 'Nunito', sans-serif; }
     </style>
     <script>
@@ -23,12 +26,12 @@
          a partir de ahí manda usePanelTheme(). */
       (function () {
         try {
-          var pref = localStorage.getItem('kross-theme') || 'system'
+          var pref = localStorage.getItem('kross-theme') || 'dark'
           var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
-          if (dark && /^\/(vendedor|comprador)(\/|$)/.test(location.pathname)) {
-            document.documentElement.setAttribute('data-theme', 'dark')
+          if (/^\/(vendedor|comprador)(\/|$)/.test(location.pathname)) {
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
           }
-        } catch (e) { /* sin storage: tema claro */ }
+        } catch (e) { /* sin storage: el panel se pinta al montar */ }
       })()
     </script>
   </head>

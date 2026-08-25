@@ -131,7 +131,7 @@ export default function ProductosPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-black text-sm text-gray-900 truncate">{p.nombre || 'Sin nombre'}</p>
-                <p className="text-xs text-gray-400">S/{p.precio} · {p.images.length} imagen(es) · {p.packs.length} pack(s)</p>
+                <p className="text-xs text-gray-400">S/ {p.precio} · {p.images.length} imagen(es) · {p.packs.length} pack(s)</p>
                 {/* Sin esto, el vendedor se entera de que falta configurar el envío
                     recién cuando un pedido no generó su guía. */}
                 {!(p.shalom_origin_branch_id && p.package_size && p.declared_content) && (
@@ -413,7 +413,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
               Vive en el producto y no en la marca porque lo decide la
               mercadería: dos productos de la misma tienda pueden salir de
               almacenes distintos y en cajas de otro tamaño. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '1px solid var(--warn-border)' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)' }}>
           <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
             <Truck size={14} /> Envío por agencia (Shalom)
           </span>

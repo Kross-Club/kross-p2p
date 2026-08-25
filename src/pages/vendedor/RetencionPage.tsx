@@ -15,7 +15,7 @@ interface Metrics {
 }
 interface WaTemplate { name: string; language: string; params: number }
 
-const soles = (n: number) => `S/${(n ?? 0).toLocaleString('es-PE', { maximumFractionDigits: 0 })}`
+const soles = (n: number) => `S/ ${(n ?? 0).toLocaleString('es-PE', { maximumFractionDigits: 0 })}`
 
 export default function RetencionPage() {
   const { real, effective, isAdmin } = useSeller()

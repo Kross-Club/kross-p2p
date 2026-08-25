@@ -30,13 +30,13 @@ export default function AdvancePanel({
   const matched = verification === 'MATCHED'
 
   return (
-    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid var(--border)' }}>
+    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '0.5px solid var(--border)' }}>
       <div className="flex items-center gap-2">
         {matched
           ? <Check size={15} className="flex-shrink-0" style={{ color: 'var(--ok-fg)' }} />
           : <Clock size={15} className="flex-shrink-0" style={{ color: '#F59E0B' }} />}
         <p className="flex-1 min-w-0 text-[9px] font-black uppercase tracking-wide text-gray-400 leading-tight">
-          Adelanto S/{advanceAmount}
+          Adelanto S/ {advanceAmount}
           <span className="ml-1 whitespace-nowrap" style={{ color: matched ? '#16A34A' : '#F59E0B' }}>
             {matched ? '✓ Verificado' : '· Sin cobrar'}
           </span>

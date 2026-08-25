@@ -45,6 +45,7 @@ comando, comparten organización pero **no** comparten esquema ni convenciones.
 | `docs/07-CONTRATO-360PAY.md` | Contrato de recaudación: quién es quién, flujo del dinero, tarifario, plazos y qué nos obliga en el código |
 | `docs/08-RECORDATORIOS-RECOJO.md` | 🔮 Cascada automática push+WA para recojo en agencia (diseño; por qué no robocall) |
 | `docs/09-PIXELS-CAPI.md` | Pixel de Meta/TikTok + CAPI por marca: embudo en el Events Manager del cliente y Purchase server-side de los que adelantaron |
+| `docs/10-MANUAL-DE-MARCA.md` | **Manual de marca v2.0** (ago-2026): símbolo modular, paleta ink/lima, tipografía, sistema de interfaz y voz. Reemplaza al manual de la etapa agencia |
 | `docs/ESTADO-OPERATIVO.md` | **Qué marca está viva, qué la bloquea y qué deuda hay abierta.** Léelo al empezar sesión |
 | `docs/GIT-FLOW.md` | Nomenclatura de ramas/commits y flujo de PR |
 | `docs/ICP Sales/` · `docs/ICP LTV/` | Capa estratégica (por qué / para quién) |

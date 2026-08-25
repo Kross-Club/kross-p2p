@@ -1,8 +1,11 @@
 import { useEffect, useSyncExternalStore } from 'react'
 
-// Tema del panel del vendedor. Tres preferencias, dos resultados:
-//  · 'system' (por defecto) → sigue al sistema operativo
-//  · 'light' / 'dark'       → el vendedor decidió, y se respeta
+// Tema del panel del vendedor.
+//  · 'dark' (por defecto)   → el manual de marca describe una interfaz oscura
+//  · 'light'                → la variante clara, para quien la prefiera
+//  · 'system'               → sigue al sistema operativo (valor heredado: ya no
+//                             es el default, pero si alguien lo tiene guardado
+//                             se respeta)
 //
 // El tema se aplica SOLO mientras hay una pantalla de panel montada
 // (`usePanelTheme`): las páginas del comprador y la web pública son de la
@@ -21,13 +24,13 @@ function systemTheme(): Theme {
 function readPref(): ThemePref {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'system'
+    return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'dark'
   } catch {
-    return 'system'   // modo incógnito o storage bloqueado: seguimos al sistema
+    return 'dark'   // modo incógnito o storage bloqueado: el panel es oscuro
   }
 }
 
-let pref: ThemePref = typeof window !== 'undefined' ? readPref() : 'system'
+let pref: ThemePref = typeof window !== 'undefined' ? readPref() : 'dark'
 const listeners = new Set<() => void>()
 
 export function getThemePref(): ThemePref { return pref }
@@ -50,13 +53,13 @@ function subscribe(onChange: () => void): () => void {
 
 const themeSnapshot = (): Theme => (pref === 'system' ? systemTheme() : pref)
 const prefSnapshot = (): ThemePref => pref
-const lightSnapshot = (): Theme => 'light'
-const systemPrefSnapshot = (): ThemePref => 'system'
+const darkSnapshot = (): Theme => 'dark'
+const darkPrefSnapshot = (): ThemePref => 'dark'
 
 /** El tema resuelto + la preferencia guardada, reactivos. */
 export function useTheme(): { theme: Theme; pref: ThemePref; setPref: (p: ThemePref) => void } {
-  const theme = useSyncExternalStore(subscribe, themeSnapshot, lightSnapshot)
-  const current = useSyncExternalStore(subscribe, prefSnapshot, systemPrefSnapshot)
+  const theme = useSyncExternalStore(subscribe, themeSnapshot, darkSnapshot)
+  const current = useSyncExternalStore(subscribe, prefSnapshot, darkPrefSnapshot)
   return { theme, pref: current, setPref: setThemePref }
 }
 
@@ -85,14 +88,7 @@ export function useNoPanelTheme(): void {
   useEffect(() => { document.documentElement.removeAttribute('data-theme') }, [])
 }
 
-/**
- * Cambia al tema contrario al que se está viendo.
- *
- * Si el tema elegido es el que ya pide el sistema, se guarda 'system' en vez
- * del valor fijo: así el panel vuelve solo a seguir al sistema operativo —el
- * estado por defecto— sin necesidad de un tercer botón que casi nadie usaría.
- */
+/** Cambia al tema contrario al que se está viendo, y lo deja fijo. */
 export function toggleTheme(current: Theme) {
-  const next: Theme = current === 'dark' ? 'light' : 'dark'
-  setThemePref(systemTheme() === next ? 'system' : next)
+  setThemePref(current === 'dark' ? 'light' : 'dark')
 }
