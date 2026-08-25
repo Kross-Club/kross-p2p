@@ -874,6 +874,22 @@ códigos de 9000 y una guía rechazada cuesta bastante más.
 **Lo que falta para prenderlo** ya no es el contrato: es configurar los productos
 de la marca y mirar uno o dos ensayos (`SIMULADO`) antes de mover el interruptor.
 
+### Ensayar un pedido concreto
+
+```
+npm run guia:ensayo -- <session_id>
+```
+
+`scripts/ensayo-guia.mjs` invoca `shalom-order` contra un pedido real y muestra
+el envío armado campo por campo. Con el interruptor de la marca apagado **no
+emite nada** — es la forma de ver el payload que recibiría Shalom antes de
+gastar una guía, y de saber exactamente qué falta cuando un pedido no aplica.
+La llave (`service_role`) va por variable de entorno, nunca por argumento.
+
+Para repetir el ensayo sobre el mismo pedido hay que soltar el candado
+(`shalom_order_status = null`): existe justamente para que un pedido no pueda
+emitir dos veces.
+
 **Comprobar el estado del pipeline en 3 segundos:**
 
 ```
