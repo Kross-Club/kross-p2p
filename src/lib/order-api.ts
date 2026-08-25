@@ -28,6 +28,8 @@ export interface OrderSession {
    *  tiene sentido pedir GPS — en agencia no lo tiene. */
   dispatch_type?: string | null
   agency_name?: string | null
+  /** Sede de recojo elegida (§27.b). Ver `pickupBranchIdOf`. */
+  agency_branch_id?: string | null
   delivery_reference?: string | null
   /** Contrato `shipment` (00-CORE): identificadores del comprobante del
    *  courier + fase reflejada por el job de tracking. */

@@ -16,6 +16,7 @@ import {
 // dos listas de tamaños, no el render.
 import panelSource from '../../pages/vendedor/ProductosPage.tsx?raw'
 import { mensajePanel } from '../panel-errors'
+import { pickupBranchIdOf } from '../session'
 
 const completo = () => ({
   originTerminalId: '404',
@@ -243,5 +244,26 @@ describe('el panel dice la causa real cuando no guarda', () => {
   it('sin error, cae al mensaje de siempre', () => {
     expect(mensajePanel(null, 'No se pudo guardar.')).toBe('No se pudo guardar.')
     expect(mensajePanel('  ', 'No se pudo guardar.')).toBe('No se pudo guardar.')
+  })
+})
+
+describe('la sede de recojo del pedido', () => {
+  it('la columna nueva manda', () => {
+    expect(pickupBranchIdOf({ agency_branch_id: '216', delivery_reference: '4' })).toBe('216')
+  })
+
+  it('los pedidos viejos la traen dentro de la referencia', () => {
+    // Antes de `agency_branch_id` el id viajaba ahí. Sin este respaldo, un
+    // pedido anterior mostraría el distrito del comprador en vez de su agencia
+    // —y el generador no sabría a dónde mandar el paquete.
+    expect(pickupBranchIdOf({ delivery_reference: '216' })).toBe('216')
+  })
+
+  it('una referencia de puerta NO es una sede', () => {
+    // `delivery_reference` es texto libre: ahí también caben "casa de rejas
+    // verdes" y el nombre escrito a mano de una agencia sin listado (OTRO).
+    expect(pickupBranchIdOf({ delivery_reference: 'Casa de rejas verdes' })).toBeNull()
+    expect(pickupBranchIdOf({ delivery_reference: 'Shalom Huaycán' })).toBeNull()
+    expect(pickupBranchIdOf({})).toBeNull()
   })
 })

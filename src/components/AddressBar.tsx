@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MapPin, Navigation, Copy } from 'lucide-react'
 import { isPickupDispatch } from '../lib/session'
+import { AgencyService } from '../lib/checkout/services/AgencyService'
+import type { AgencyBranch, AgencyName } from '../lib/checkout/types'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -9,7 +11,7 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 //  · Buyer: the ONLY one who sets/changes it — one tap captures GPS, reverse-
 //    geocodes and saves. When verified, "Verificar GPS" becomes "Cambiar".
 //  · Seller: read-only. Can open Google Maps / Waze and copy the coordinates.
-export default function AddressBar({ sessionId, address, verified, lat, lng, role, dispatchType, agencyName, onUpdated }: {
+export default function AddressBar({ sessionId, address, verified, lat, lng, role, dispatchType, agencyName, agencyBranchId, onUpdated }: {
   sessionId: string
   address: string | null
   verified: boolean
@@ -20,6 +22,10 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
    *  en agencia — ver el comentario de `isPickup`. */
   dispatchType?: string | null
   agencyName?: string | null
+  /** Sede de recojo elegida en el checkout. Con ella el chat dice A DÓNDE va el
+   *  paquete; sin ella cae al texto del pedido, que es el distrito del
+   *  comprador — otra cosa, y ya visible en su ficha. */
+  agencyBranchId?: string | null
   onUpdated: (address: string, verified: boolean, lat: number | null, lng: number | null) => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -91,6 +97,19 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
   const isPickup = isPickupDispatch(dispatchType)
   const hasCoords = !isPickup && typeof lat === 'number' && typeof lng === 'number'
 
+  // La sede, resuelta contra el MISMO catálogo que usó el comprador al elegirla
+  // (y el generador de guías al despachar): un solo listado para las dos puntas
+  // del envío. Es async porque el JSON de sedes se carga aparte del bundle.
+  const [branch, setBranch] = useState<AgencyBranch | null>(null)
+  useEffect(() => {
+    let vivo = true
+    const sede = isPickup && agencyBranchId && agencyName
+      ? AgencyService.getBranch(agencyName as AgencyName, agencyBranchId)
+      : Promise.resolve(null)
+    sede.then(b => { if (vivo) setBranch(b) })
+    return () => { vivo = false }
+  }, [isPickup, agencyBranchId, agencyName])
+
   return (
     <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid #F0F0F0' }}>
       {/* Row 1: icon + title + badge + button, all in one line */}
@@ -120,9 +139,21 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
         </p>
       ) : (
         <p className="text-xs font-semibold text-gray-700 mt-1.5 break-words">
-          {address || (isPickup
-            ? 'Agencia por confirmar'
-            : role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')}
+          {/* En agencia, lo que importa es a QUÉ mostrador va el paquete. El
+              `address` del pedido es el distrito del comprador —que ya se ve en
+              su ficha— y mandaba a Logística a la ciudad equivocada: un pedido
+              de Chaclacayo que se recoge en Huaycán se leía como "Chaclacayo". */}
+          {isPickup && branch ? (
+            <>
+              <span className="font-black">{branch.name}</span>
+              <span className="block font-semibold text-gray-500">{branch.address}</span>
+              <span className="block text-[11px] text-gray-400">{branch.district} · {branch.province}</span>
+            </>
+          ) : (
+            address || (isPickup
+              ? 'Agencia por confirmar'
+              : role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')
+          )}
         </p>
       )}
 

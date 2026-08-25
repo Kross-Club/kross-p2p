@@ -284,7 +284,13 @@ La máquina del checkout ya decidía bien (`needsLocationConfirmation` es false 
 agencia, ver `01-SALES-ENGINE.md`); lo que faltaba era que el chat se enterara.
 Ahora `get-session` devuelve `dispatch_type` / `agency_name` y `AddressBar`:
 
-- rotula **"Recojo en agencia · SHALOM"** en vez de "Dirección de entrega";
+- rotula **"Recojo en agencia · SHALOM"** en vez de "Dirección de entrega" y
+  muestra **la sede elegida** —nombre, dirección y distrito, resueltos contra el
+  mismo catálogo que usó el comprador— en vez del `address` del pedido, que es
+  el distrito del COMPRADOR: un pedido de Chaclacayo que se recoge en Huaycán se
+  leía como "Chaclacayo, Lima" y mandaba a Logística a la ciudad equivocada. Ese
+  dato ya se ve en la ficha del cliente; acá lo que importa es a qué mostrador
+  va el paquete (`pickupBranchIdOf`, §27.b);
 - no muestra el botón de GPS ni el "sin verificar" naranja —el pedido está
   completo, no hay nada pendiente que reclamarle a nadie;
 - no ofrece Maps/Waze sobre una coordenada que no corresponde al destino.
@@ -800,7 +806,12 @@ distintos y en cajas de otro tamaño.
 
 - **`supabase/functions/shalom-order`** — la que orquesta: guardas, candado,
   llamada y cierre del expediente (`shalom_order_status/_id/_at/_reason`, §27.c).
-  Es interna: la invoca `pay360-webhook` con la service role key.
+  Es interna **y lo exige**: rechaza con 401 cualquier llamada que no traiga la
+  service role key. El gateway de Supabase acepta cualquier JWT del proyecto y
+  la anon key es uno —vive en el bundle de la PWA, o sea en el navegador de
+  cualquiera—, así que sin esa comprobación un tercero podría disparar la
+  emisión de guías, que cuestan plata. La invoca `pay360-webhook`; para
+  probarla a mano, el mismo header con la service role key.
 - **`_shared/shalom-orders.ts`** — puro, sin Deno ni red: valida, **traduce** a
   los campos del proveedor, genera la clave de retiro, resuelve el `product_id`
   contra el catálogo de la cuenta y lee la respuesta. Único punto que conoce esa
@@ -868,6 +879,22 @@ códigos de 9000 y una guía rechazada cuesta bastante más.
 
 **Lo que falta para prenderlo** ya no es el contrato: es configurar los productos
 de la marca y mirar uno o dos ensayos (`SIMULADO`) antes de mover el interruptor.
+
+### Ensayar un pedido concreto
+
+```
+npm run guia:ensayo -- <session_id>
+```
+
+`scripts/ensayo-guia.mjs` invoca `shalom-order` contra un pedido real y muestra
+el envío armado campo por campo. Con el interruptor de la marca apagado **no
+emite nada** — es la forma de ver el payload que recibiría Shalom antes de
+gastar una guía, y de saber exactamente qué falta cuando un pedido no aplica.
+La llave (`service_role`) va por variable de entorno, nunca por argumento.
+
+Para repetir el ensayo sobre el mismo pedido hay que soltar el candado
+(`shalom_order_status = null`): existe justamente para que un pedido no pueda
+emitir dos veces.
 
 **Comprobar el estado del pipeline en 3 segundos:**
 

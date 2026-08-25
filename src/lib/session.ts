@@ -60,6 +60,10 @@ export interface MerchantCustomerSession {
     reference: string | null
     dispatchType: DispatchType
     agencyName?: AgencyName | null
+    /** Id de la sede de recojo dentro de `agencyName` (§27.b). Con él, el chat
+     *  puede decir A QUÉ agencia va el paquete en vez del distrito del
+     *  comprador — que es otra cosa y ya se ve en su ficha. */
+    agencyBranchId?: string | null
   }
   sale: {
     productId: string | null
@@ -102,6 +106,7 @@ export interface RawOrderSession {
   payment_method?: string | null
   dispatch_type?: string | null
   agency_name?: string | null
+  agency_branch_id?: string | null
   delivery_reference?: string | null
   closed_by?: string | null
   tracking_courier?: string | null
@@ -125,6 +130,23 @@ export interface RawBuyer {
 // ─── LECTOR ÚNICO ─────────────────────────────────────────────────────────────
 // Ensambla el estado central desde el pedido (+ opcionalmente el comprador). Todos
 // los módulos deben leer la sesión por aquí, no armando su propia forma.
+/**
+ * Id de la sede de recojo del pedido. Vive acá y no repetido en cada pantalla
+ * porque tiene una sutileza: los pedidos anteriores a `agency_branch_id` (§27.b
+ * del esquema) guardan ese id dentro de `delivery_reference`, que es un texto
+ * libre donde también caben referencias de puerta — por eso solo se acepta si
+ * son puros dígitos. Devuelve `null` para las agencias sin listado (`OTRO`),
+ * que es lo correcto: ahí no hay sede que resolver.
+ */
+export function pickupBranchIdOf(order: {
+  agency_branch_id?: string | null
+  delivery_reference?: string | null
+}): string | null {
+  if (order.agency_branch_id) return String(order.agency_branch_id)
+  const ref = String(order.delivery_reference ?? '')
+  return /^\d+$/.test(ref) ? ref : null
+}
+
 export function toCustomerSession(order: RawOrderSession, buyer?: RawBuyer | null): MerchantCustomerSession {
   const asStage = (s?: string | null): OrderStage =>
     toStage(s)
@@ -142,6 +164,7 @@ export function toCustomerSession(order: RawOrderSession, buyer?: RawBuyer | nul
       reference: order.delivery_reference ?? null,
       dispatchType: (order.dispatch_type as DispatchType) ?? 'MOTORIZADO_LIMA',
       agencyName: (order.agency_name as AgencyName) ?? null,
+      agencyBranchId: pickupBranchIdOf(order),
     },
     sale: {
       productId: order.product_id ?? null,
