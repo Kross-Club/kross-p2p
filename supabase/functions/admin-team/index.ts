@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'set_available' | 'set_role' | 'create' | 'set_avatar'
+    action: 'set_available' | 'set_role' | 'create' | 'set_avatar' | 'emails'
     admin_auth_id: string
     seller_id?: string          // sellers.auth_user_id of the target
     available?: boolean
@@ -90,6 +90,29 @@ Deno.serve(async (req) => {
     const { data: t } = await supabase
       .from('sellers').select('store_id').eq('auth_user_id', sellerAuthId).maybeSingle()
     return !!t && t.store_id === admin.store_id
+  }
+
+  // ─── EMAILS DEL EQUIPO ───────────────────────────────────────────────────────
+  // El correo de cada miembro vive en `auth.users`, que el panel no puede leer:
+  // hace falta el service role. Sin esto, un admin no tiene forma de saber con
+  // qué dirección creó una cuenta — y esa dirección es justo lo que hay que
+  // escribir para recuperar la contraseña. Se devuelven SOLO los del equipo que
+  // ese admin administra.
+  if (body.action === 'emails') {
+    const storeId = (admin.is_super_admin && body.store_id) ? body.store_id : admin.store_id
+    const { data: members } = await supabase
+      .from('sellers').select('auth_user_id').eq('store_id', storeId).not('auth_user_id', 'is', null)
+
+    const ids = [...new Set((members ?? []).map((m: any) => m.auth_user_id as string))]
+    const found = await Promise.all(ids.map(async id => {
+      const { data } = await supabase.auth.admin.getUserById(id)
+      return [id, data?.user?.email ?? null] as const
+    }))
+
+    const emails = Object.fromEntries(found.filter(([, email]) => email))
+    return new Response(JSON.stringify({ ok: true, emails }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 
   // ─── SET AVAILABILITY (+ hand off clients when going off-shift) ──────────────
