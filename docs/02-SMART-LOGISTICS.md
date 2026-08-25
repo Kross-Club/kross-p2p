@@ -738,3 +738,35 @@ Panel → Mi marca → **Envíos de la marca (Shalom Pro)**. Dos cosas viven ah�
   vigila solo apenas la API vuelva — el tracking degrada, no se rompe),
   consultar el estado a mano en shalom.pe → Rastrea, y avisar al comprador
   por el chat del pedido.
+
+### Conectar Shalom Pro **no** genera guías (todavía) ⚠️
+
+Vale la pena decirlo aparte porque se asume lo contrario: **una marca con la
+cuenta conectada no recibe su guía sola**. Hoy conectar solo guarda y valida
+credenciales; ningún archivo fuera de `manage-store` las lee. Un pedido de
+provincia corre idéntico con la cuenta conectada o sin ella:
+
+1. `register-buyer` cierra el pedido — sin tocar Shalom.
+2. `pay360-webhook` cobra el adelanto del flete — sin tocar Shalom.
+3. **La guía nace en el mostrador de Shalom**, cuando alguien lleva el paquete,
+   y entra a Kross **a mano**: Logística escribe numero + código en
+   `TrackingBar` → `order-manage` acción `set_tracking`. Es el ÚNICO camino que
+   escribe `tracking_numero` en un pedido.
+4. Recién ahí arranca lo automático: aviso al comprador, suscripción al webhook,
+   reflejo de fases y cobranza del saldo al llegar a destino.
+
+Lo que falta es el **pendiente #3** (generador de envíos): `POST /v1/orders` con
+las credenciales Shalom Pro de la marca. Va aparte porque crea guías **reales y
+cobrables**, sin sandbox ni idempotencia.
+
+**Comprobarlo en 3 segundos, sin creerle a este doc:**
+
+```
+npm run sim:shalom
+```
+
+`scripts/sim-shalom-guia.mjs` recorre el pipeline real archivo por archivo,
+reporta con `archivo:línea` qué le pide cada paso a Shalom y clasifica cada
+llamada (rastrear ≠ crear). Cuando el pendiente #3 exista, el script lo detecta
+solo y cambia su veredicto — por eso audita el código en vez de repetir esta
+sección.
