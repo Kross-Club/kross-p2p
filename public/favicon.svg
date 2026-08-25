@@ -1,21 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500">
-  <rect width="500" height="500" rx="90" fill="#020617"/>
-  <defs>
-    <linearGradient id="kg" gradientUnits="userSpaceOnUse" x1="100" y1="100" x2="400" y2="400">
-      <stop offset="0%" stop-color="#38BDF8"/>
-      <stop offset="100%" stop-color="#A5E9FF"/>
-    </linearGradient>
-  </defs>
-  <g stroke-linecap="square" stroke-linejoin="miter" fill="none">
-    <g stroke="url(#kg)" stroke-width="38">
-      <path d="M145 125 L145 300"/>
-      <path d="M365 125 L150 380"/>
-      <path d="M260 275 L365 378"/>
-    </g>
-    <g stroke="#020617" stroke-width="18">
-      <path d="M145 125 L145 300"/>
-      <path d="M365 125 L150 380"/>
-      <path d="M260 275 L365 378"/>
-    </g>
+<!-- Kross — variante simplificada (manual de marca §3.3). Sin junta: bajo 32 px
+     el módulo lima mide menos de 3 px y se lee como suciedad. Símbolo de 4M×5M
+     centrado en un canvas de 7M×7M, o sea 1M de resguardo arriba y abajo. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="196" height="196" viewBox="0 0 196 196">
+  <rect width="196" height="196" rx="20" fill="#0F1115"/>
+  <g fill="#F2F2F0" transform="translate(42 28)">
+    <rect x="0" y="0" width="28" height="140"/>
+    <rect x="56" y="28" width="28" height="28"/>
+    <rect x="84" y="0" width="28" height="28"/>
+    <rect x="56" y="84" width="28" height="28"/>
+    <rect x="84" y="112" width="28" height="28"/>
   </g>
 </svg>

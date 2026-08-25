@@ -4,6 +4,7 @@ import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { supabase } from '../../lib/supabase'
 import { useIsDesktop } from '../../lib/use-desktop'
+import { stageChip, stageLabel, NOTA_META } from '../../lib/order-chips'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -26,26 +27,6 @@ interface SupabaseSession {
   chat_messages: { id: string; sender_role: string; type: string; body: string | null; created_at: string; read_at: string | null }[]
 }
 
-const NOTA_META: Record<string, { label: string; color: string }> = {
-  no_contesta: { label: 'No contesta', color: '#F59E0B' },
-  recuperado: { label: 'Recuperado', color: '#16A34A' },
-  cancelado: { label: 'Cancelado', color: '#DC2626' },
-  anulado: { label: 'Anulado', color: '#6B7280' },
-}
-
-const stageColor: Record<string, string> = {
-  nuevo: 'bg-blue-100 text-blue-700',
-  validando: 'bg-purple-100 text-purple-700',
-  confirmado: 'bg-green-100 text-green-700',
-  preparando: 'bg-amber-100 text-amber-700',
-  en_camino: 'bg-indigo-100 text-indigo-700',
-  entregado: 'bg-green-100 text-green-700',
-  no_entregado: 'bg-red-100 text-red-700',
-}
-const stageLabel: Record<string, string> = {
-  nuevo: 'Nuevo', validando: 'Validando', confirmado: 'Confirmado', preparando: 'Preparando',
-  en_camino: 'En camino', entregado: 'Entregado', no_entregado: 'No entregado',
-}
 
 // Un pedido de la semana pasada mostrando solo "07:08 p. m." se lee como si
 // fuera de hoy. Hora para lo de hoy, fecha corta para lo demás.
@@ -155,7 +136,7 @@ export default function ChatsVendedorPage() {
       when: formatWhen(session.created_at),
       online: !!session.buyer_id && onlineBuyers.has(session.buyer_id),
       nota: session.nota ? NOTA_META[session.nota] : undefined,
-      pedido: `${session.product_name ?? 'Producto'} · ${session.pack_name || `S/${session.product_price}`}`,
+      pedido: `${session.product_name ?? 'Producto'} · ${session.pack_name || `S/ ${session.product_price}`}`,
     }
   })
 
@@ -163,10 +144,11 @@ export default function ChatsVendedorPage() {
   // chat — sobre TODO lo cargado, no sobre el filtro de búsqueda.
   const kpis = [
     { label: 'Pedidos', value: sessions.length, color: 'var(--text)' },
-    { label: 'Sin leer', value: sessions.filter(s => unreadOf(s) > 0).length, color: 'var(--brand)' },
-    { label: 'Nuevos', value: sessions.filter(s => s.stage === 'nuevo' || s.stage === 'validando').length, color: '#2563EB' },
-    { label: 'En proceso', value: sessions.filter(s => ['confirmado', 'preparando', 'en_camino'].includes(s.stage)).length, color: '#EA580C' },
-    { label: 'Entregados', value: sessions.filter(s => s.stage === 'entregado').length, color: '#16A34A' },
+    { label: 'Sin leer', value: sessions.filter(s => unreadOf(s) > 0).length, color: 'var(--text)' },
+    { label: 'Nuevos', value: sessions.filter(s => s.stage === 'nuevo' || s.stage === 'validando').length, color: 'var(--text)' },
+    { label: 'En proceso', value: sessions.filter(s => ['confirmado', 'preparando', 'en_camino'].includes(s.stage)).length, color: 'var(--text)' },
+    // Lo entregado es lo único que cierra bien: el único lima de la tabla (§4.2)
+    { label: 'Entregados', value: sessions.filter(s => s.stage === 'entregado').length, color: 'var(--ok-fg)' },
   ]
 
   const open = (token: string) => navigate(`/vendedor/pedido/${token}`)
@@ -174,18 +156,18 @@ export default function ChatsVendedorPage() {
   const Avatar = ({ name, online, size }: { name: string | null; online: boolean; size: number }) => (
     <div className="relative flex-shrink-0">
       <div className="rounded-2xl flex items-center justify-center font-black"
-        style={{ background: '#FFD400', color: '#111', width: size, height: size, fontSize: size >= 40 ? 18 : 13 }}>
+        style={{ background: 'var(--surface-3)', color: 'var(--text)', width: size, height: size, fontSize: size >= 40 ? 18 : 13 }}>
         {(name || 'C')[0]}
       </div>
       {online && (
         <div className={`absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white ${size >= 40 ? 'w-3.5 h-3.5' : 'w-3 h-3'}`}
-          style={{ background: '#4ADE80' }} />
+          style={{ background: 'var(--ok-fg)' }} />
       )}
     </div>
   )
 
   const StageChip = ({ stage }: { stage: string }) => (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${stageColor[stage] || 'bg-gray-100 text-gray-500'}`}>
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={stageChip(stage)}>
       {stageLabel[stage] || stage}
     </span>
   )
@@ -234,7 +216,7 @@ export default function ChatsVendedorPage() {
           {kpis.map(k => (
             <div key={k.label} className="bg-white border border-gray-100 rounded-2xl px-4 py-3">
               <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">{k.label}</p>
-              <p className="text-2xl font-black leading-tight mt-0.5" style={{ color: k.color }}>{k.value}</p>
+              <p className="text-2xl font-black leading-tight mt-0.5 tabular" style={{ color: k.color }}>{k.value}</p>
             </div>
           ))}
         </div>
@@ -272,8 +254,7 @@ export default function ChatsVendedorPage() {
               <div className="flex items-center gap-1 min-w-0">
                 <StageChip stage={r.session.stage} />
                 {r.nota && (
-                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                    style={{ background: `${r.nota.color}22`, color: r.nota.color }}>
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full whitespace-nowrap" style={r.nota.style}>
                     {r.nota.label}
                   </span>
                 )}
@@ -284,8 +265,8 @@ export default function ChatsVendedorPage() {
                   {r.preview}
                 </p>
                 {r.unread > 0 && (
-                  <span className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center flex-shrink-0"
-                    style={{ background: 'var(--brand)' }}>{r.unread}</span>
+                  <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'var(--text)', color: 'var(--surface)' }}>{r.unread}</span>
                 )}
               </div>
 
@@ -321,7 +302,7 @@ export default function ChatsVendedorPage() {
               key={r.session.id}
               onClick={() => open(r.session.token)}
               className="w-full bg-white border rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
-              style={{ borderColor: 'var(--brand)', borderWidth: '1.5px' }}
+              style={{ borderColor: 'var(--brand)', borderWidth: '0.5px' }}
             >
               <Avatar name={r.session.buyer_name} online={r.online} size={44} />
               <div className="flex-1 min-w-0">
@@ -329,12 +310,11 @@ export default function ChatsVendedorPage() {
                   <p className="font-semibold text-gray-800 text-sm truncate">{r.session.buyer_name || 'Comprador'}</p>
                   <div className="flex items-center gap-1 flex-shrink-0 ml-1">
                     {r.unread > 0 && (
-                      <span className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center"
-                        style={{ background: 'var(--brand)' }}>{r.unread}</span>
+                      <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center"
+                        style={{ background: 'var(--text)', color: 'var(--surface)' }}>{r.unread}</span>
                     )}
                     {r.nota && (
-                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                        style={{ background: `${r.nota.color}22`, color: r.nota.color }}>
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={r.nota.style}>
                         {r.nota.label}
                       </span>
                     )}

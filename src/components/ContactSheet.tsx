@@ -85,14 +85,14 @@ export default function ContactSheet({ session, onClose }: {
         {/* Cabecera: quién es */}
         <div className="flex items-center gap-3 pr-10">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl text-2xl font-black"
-            style={{ background: '#FFD400', color: '#111' }}>
+            style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
             {name[0]}
           </div>
           <div className="min-w-0">
             <p className="text-base font-black leading-tight text-gray-900">{name}</p>
             {paid && (
               <p className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-green-600">
-                <BadgeCheck size={13} /> Adelanto de S/{advance} verificado
+                <BadgeCheck size={13} /> Adelanto de S/ {advance} verificado
               </p>
             )}
           </div>

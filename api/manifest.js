@@ -16,8 +16,9 @@ function slugFromHost(host = '') {
   return null
 }
 
+// Manual de marca §4: el ink es el fondo de todo lo de Kross.
 const KROSS = {
-  nombre: 'Kross', color_primary: '#55C8F5', color_dark: '#060C1A', logo_url: null,
+  nombre: 'Kross', color_primary: '#D4FF4F', color_dark: '#0F1115', logo_url: null,
 }
 
 export default async function handler(req, res) {
@@ -45,8 +46,11 @@ export default async function handler(req, res) {
         { src: icon, sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
       ]
     : [
-        { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+        { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+        // El área segura circular de Android corta los brazos de la K, así que
+        // el maskable lleva el símbolo al 60% del canvas (manual §9).
+        { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
       ]
 
   const manifest = {
@@ -55,8 +59,8 @@ export default async function handler(req, res) {
     description: 'Sigue tu pedido y chatea con tu asesor',
     start_url: '/',
     display: 'standalone',
-    background_color: store.color_dark || '#060C1A',
-    theme_color: store.color_dark || '#060C1A',
+    background_color: store.color_dark || '#0F1115',
+    theme_color: store.color_dark || '#0F1115',
     orientation: 'portrait',
     icons,
     categories: ['shopping', 'utilities'],

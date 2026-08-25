@@ -23,7 +23,7 @@ export default function OfferCard({ offer, role, onAccept }: {
   return (
     <>
       <div className={`flex ${role === 'buyer' ? 'justify-start' : 'justify-end'} mb-3`}>
-        <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid var(--warn-border)', background: 'var(--warn-bg-soft)' }}>
+        <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '0.5px solid var(--warn-border)', background: 'var(--warn-bg-soft)' }}>
           {imgs[0] && (
             <button onClick={() => setViewer(0)} className="block w-full relative">
               <img src={imgs[0]} alt={offer.nombre} className="w-full h-32 object-cover" />
@@ -39,7 +39,7 @@ export default function OfferCard({ offer, role, onAccept }: {
               🎁 {role === 'buyer' ? 'Oferta especial para ti' : 'Oferta enviada'}
             </p>
             <p className="font-black text-gray-900 text-sm mt-0.5">{offer.nombre}</p>
-            <p className="font-black text-xl" style={{ color: 'var(--ok-fg)' }}>S/{offer.precio}</p>
+            <p className="font-black text-xl" style={{ color: 'var(--ok-fg)' }}>S/ {offer.precio}</p>
 
             {role === 'buyer' && (
               accepted ? (

@@ -16,13 +16,14 @@ const theme = await import('./theme')
 describe('tema del panel', () => {
   beforeEach(() => {
     localStorage.clear()
-    theme.setThemePref('system')
+    theme.setThemePref('dark')
     systemIsDark = false
   })
 
-  it('por defecto sigue al sistema', () => {
+  it('por defecto el panel es oscuro, diga lo que diga el sistema', () => {
     localStorage.clear()
-    expect(theme.getThemePref()).toBe('system')
+    systemIsDark = false
+    expect(theme.getThemePref()).toBe('dark')
   })
 
   it('la elección del vendedor se guarda', () => {
@@ -38,16 +39,12 @@ describe('tema del panel', () => {
     expect(theme.getThemePref()).toBe('dark')
   })
 
-  // …y cuando lo que eliges es lo que ya pide el sistema, el panel vuelve solo
-  // a seguirlo: sin esto haría falta un tercer botón "automático".
-  it('elegir el tema del sistema vuelve a "system"', () => {
-    theme.setThemePref('dark')
-    theme.toggleTheme('dark')                 // pide claro, y el sistema es claro
-    expect(theme.getThemePref()).toBe('system')
-
+  // 'system' ya no es el default, pero si alguien lo tiene guardado se respeta.
+  it('respeta un "system" heredado', () => {
+    theme.setThemePref('system')
     systemIsDark = true
-    theme.setThemePref('light')
-    theme.toggleTheme('light')                // pide oscuro, y el sistema es oscuro
     expect(theme.getThemePref()).toBe('system')
+    theme.toggleTheme('dark')                 // desde oscuro pide claro, y queda fijo
+    expect(theme.getThemePref()).toBe('light')
   })
 })

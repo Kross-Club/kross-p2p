@@ -11,6 +11,7 @@ import ContactSheet from '../../components/ContactSheet'
 import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
+import { stageChip } from '../../lib/order-chips'
 import { useSeller } from '../../lib/seller-session'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
@@ -189,7 +190,7 @@ function SellerCallModal({
           <div className="flex items-center justify-center gap-1 mb-8">
             {[10,18,26,18,10,26,14,22,10,18].map((h, i) => (
               <div key={i} className="w-1 rounded-full animate-pulse"
-                style={{ height: `${h}px`, background: '#4ADE80', animationDelay: `${i * 80}ms` }} />
+                style={{ height: `${h}px`, background: 'var(--text)', animationDelay: `${i * 80}ms` }} />
             ))}
           </div>
         )}
@@ -213,7 +214,7 @@ function SellerCallModal({
         {(callState === 'ended' || callState === 'error') && (
           <button onClick={onClose}
             className="w-full py-3 rounded-2xl font-black text-sm"
-            style={{ background: '#FFD400', color: '#111' }}>
+            style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
             Cerrar
           </button>
         )}
@@ -276,10 +277,7 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-white border-b border-gray-100">
       <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Estado:</span>
-      <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-        style={current === 'no_entregado'
-          ? { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }
-          : { background: 'var(--brand)', color: 'white' }}>
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={stageChip(current)}>
         {stageLabel[current] || current}
       </span>
       {canFail && (
@@ -292,7 +290,7 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
       {canWrite && !terminal && idx < STAGES.length - 1 && (
         <button onClick={advance} disabled={busy}
           className={`${canFail ? '' : 'ml-auto '}text-[10px] font-black px-3 py-1 rounded-full disabled:opacity-50`}
-          style={{ background: '#FFD400', color: '#111' }}>
+          style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
           {busy ? '…' : `→ ${stageLabel[STAGES[idx + 1]]}`}
         </button>
       )}
@@ -318,9 +316,9 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
   if (msg.type === 'status_update') {
     return (
       <div className="flex justify-center mb-3">
-        <div className="flex items-center gap-1.5 bg-white rounded-full px-3 py-1 shadow-sm" style={{ border: '1px solid var(--brand)' }}>
-          <Package size={11} style={{ color: 'var(--brand)' }} />
-          <p className="text-[11px] font-semibold" style={{ color: 'var(--brand)' }}>{msg.body}</p>
+        <div className="flex items-center gap-1.5 rounded-full px-3 py-1" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
+          <Package size={11} />
+          <p className="text-[11px] font-semibold">{msg.body}</p>
         </div>
       </div>
     )
@@ -343,8 +341,8 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
         </p>
         <div className="px-4 py-2.5 rounded-2xl text-sm"
           style={isSeller
-            ? { background: '#FFD400', color: '#111', fontWeight: 600, borderRadius: '18px 18px 4px 18px' }
-            : { background: 'var(--brand)', color: 'white', borderRadius: '18px 18px 18px 4px' }
+            ? { background: 'var(--invert)', color: 'var(--invert-fg)', fontWeight: 500, borderRadius: '18px 18px 4px 18px' }
+            : { background: 'var(--surface-3)', color: 'var(--text)', borderRadius: '18px 18px 18px 4px' }
           }>
           {(msg.body || '').split('\n').map((line, i, arr) => (
             <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
@@ -621,17 +619,17 @@ export default function VendedorPedidoPage() {
           <button onClick={() => setShowContact(true)} className="relative flex-shrink-0"
             aria-label="Ver datos de contacto del cliente">
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-black"
-              style={{ background: '#FFD400', color: '#111' }}>
+              style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
               {(session.buyer_name || 'C')[0]}
             </div>
             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
-              style={{ borderColor: 'var(--chat-header)', background: buyerOnline ? '#4ADE80' : '#6B7280' }} />
+              style={{ borderColor: 'var(--chat-header)', background: buyerOnline ? 'var(--text)' : 'var(--structural, #3D444C)' }} />
           </button>
 
           <button onClick={() => setShowDetail(true)} className="flex-1 min-w-0 text-left">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
-            <p className="text-xs" style={{ color: buyerOnline ? '#4ADE80' : 'rgba(255,255,255,0.6)' }}>
-              {buyerOnline ? 'En línea ahora' : ((session.items && session.items.length > 1) ? `${session.items.length} productos · S/${session.product_price}` : `${session.product_name} · S/${session.product_price}`)}
+            <p className="text-xs" style={{ color: buyerOnline ? 'var(--text)' : 'rgba(255,255,255,0.6)' }}>
+              {buyerOnline ? 'En línea ahora' : ((session.items && session.items.length > 1) ? `${session.items.length} productos · S/ ${session.product_price}` : `${session.product_name} · S/ ${session.product_price}`)}
             </p>
             <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><ShoppingCart size={11} /> Ver pedido</p>
           </button>
@@ -653,7 +651,7 @@ export default function VendedorPedidoPage() {
           {canWrite && (
             <button onClick={() => setShowCall(true)}
               className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: '#4ADE80' }}>
+              style={{ background: 'var(--text)' }}>
               <Phone size={16} className="text-white" />
             </button>
           )}
@@ -698,7 +696,7 @@ export default function VendedorPedidoPage() {
     <>
       {/* Cancelado */}
       {session.status === 'cancelado' && (
-        <div className="mx-4 mt-2 rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)' }}>
+        <div className="mx-4 mt-2 rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: 'var(--danger-bg)', border: '0.5px solid var(--danger-border)' }}>
           <span>❌</span>
           <p className="text-xs font-black" style={{ color: 'var(--danger-fg)' }}>Pedido cancelado — abre “Ver pedido” para reactivarlo</p>
         </div>
@@ -775,10 +773,10 @@ export default function VendedorPedidoPage() {
         {buyerTyping && (
           <div className="flex justify-start mb-3">
             <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl"
-              style={{ background: 'var(--brand)', borderRadius: '18px 18px 18px 4px' }}>
+              style={{ background: 'var(--surface-3)', borderRadius: '18px 18px 18px 4px' }}>
               {[0,1,2].map(i => (
                 <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce"
-                  style={{ background: 'white', animationDelay: `${i * 150}ms` }} />
+                  style={{ background: 'var(--text-muted)', animationDelay: `${i * 150}ms` }} />
               ))}
             </div>
           </div>
@@ -894,7 +892,7 @@ export default function VendedorPedidoPage() {
             try {
               const res = await fetch(`${BASE}/seller-send-message`, {
                 method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: session.id, seller_name: sellerName, seller_role: sellerRole, type: 'text', offer, body: `🎁 Oferta: ${offer.nombre} — S/${offer.precio}` }),
+                body: JSON.stringify({ session_id: session.id, seller_name: sellerName, seller_role: sellerRole, type: 'text', offer, body: `🎁 Oferta: ${offer.nombre} — S/ ${offer.precio}` }),
               })
               if (res.ok) {
                 const saved: OrderMessage = await res.json()
@@ -1132,7 +1130,7 @@ function OfferSheet({ storeId, onClose, onSend }: {
                     : <div className="w-full h-20 bg-gray-100" />}
                   <div className="p-1.5">
                     <p className="text-[10px] font-bold text-gray-800 truncate">{p.nombre}</p>
-                    <p className="text-[10px] font-black" style={{ color: 'var(--ok-fg)' }}>S/{p.precio}</p>
+                    <p className="text-[10px] font-black" style={{ color: 'var(--ok-fg)' }}>S/ {p.precio}</p>
                   </div>
                 </button>
               ))}

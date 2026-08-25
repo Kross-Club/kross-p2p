@@ -24,10 +24,12 @@ export default function BottomNav() {
           >
             {({ isActive }) => (
               <>
-                <div className="p-1.5 rounded-xl transition-colors" style={isActive ? { color: 'var(--brand)', background: 'var(--brand-tint)' } : {}}>
+                <div className="p-1.5 rounded-xl transition-colors" style={isActive ? { color: 'var(--text)' } : {}}>
                   <Icon size={20} />
                 </div>
-                <span className="text-[10px] font-medium truncate">{label}</span>
+                <span className="text-[10px] font-medium truncate" style={isActive ? { color: 'var(--text)' } : {}}>{label}</span>
+                {/* El mismo módulo del indicador lateral, tumbado (§6) */}
+                <span style={{ width: 14, height: 6, background: isActive ? 'var(--brand)' : 'transparent' }} />
               </>
             )}
           </NavLink>

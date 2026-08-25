@@ -138,7 +138,7 @@ export default function ClientesPage() {
           </div>
         ))}
       </div>
-      <div className="rounded-2xl p-3 mb-5 flex items-center gap-3" style={{ background: 'var(--ok-bg-soft)', border: '1px solid var(--ok-border)' }}>
+      <div className="rounded-2xl p-3 mb-5 flex items-center gap-3" style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
         <TrendingUp size={18} style={{ color: 'var(--ok-fg)' }} />
         <p className="text-xs font-black text-gray-800">{activationRate}% de tu base ya activó su app <span className="font-bold text-gray-500">— ese es tu canal de recompra sin ads.</span></p>
       </div>
@@ -156,7 +156,7 @@ export default function ClientesPage() {
         <label className="text-xs font-bold text-gray-500 mb-1 block">Valor del punto para canje (S/ por punto · 0 = desactivado)</label>
         <input value={rate || ''} onChange={e => setRate(Number(e.target.value.replace(/[^\d.]/g, '')) || 0)} inputMode="decimal" placeholder="Ej: 0.1"
           className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-1" />
-        {rate > 0 && <p className="text-[10px] text-gray-400 mb-2">Ej: 50 puntos = S/{(50 * rate).toFixed(2)} de descuento en su próxima compra.</p>}
+        {rate > 0 && <p className="text-[10px] text-gray-400 mb-2">Ej: 50 puntos = S/ {(50 * rate).toFixed(2)} de descuento en su próxima compra.</p>}
         <button onClick={saveReward} disabled={savingReward}
           className="w-full py-2.5 rounded-2xl font-black text-sm text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
           {savingReward ? 'Guardando…' : 'Guardar recompensa'}
