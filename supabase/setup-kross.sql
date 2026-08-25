@@ -1068,13 +1068,21 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_source_url text;
 -- 27.a Config de envío POR PRODUCTO. Es del producto y no de la tienda porque
 -- lo que decide el tamaño y de qué sede sale es la mercadería, no la marca:
 -- dos productos de la misma tienda pueden despacharse de almacenes distintos.
---   shalom_origin_branch_id: id de sede en src/data/agencies/shalom.json — la
---     MISMA lista que ve el comprador, para no mantener dos catálogos.
---   package_size: escala del proveedor (XXS…XL). Sin default en la columna a
---     propósito: un tamaño inventado se convierte en una tarifa equivocada, así
---     que un producto sin configurar NO genera guía (avisa a Logística).
+--   shalom_origin_branch_id: id de sede (`ter_id`) — el MISMO que guarda
+--     src/data/agencies/shalom.json, que es la lista que ve el comprador y sale
+--     del CSV de sedes de Shalom. Viaja como `origin_terminal_id`.
+--   package_size: SOBRE | XXS | XS | S | M | L | OTRA_MEDIDA. NO es un texto
+--     libre ni una escala nuestra: son los productos del catálogo de la cuenta
+--     Shalom Pro, y de cuál se elija sale la tarifa. El `product_id` real se
+--     resuelve al emitir contra GET /v1/products, porque los ids son POR CUENTA.
+--   declared_content: docs | ropa | art | electro. Shalom lo exige en toda
+--     orden (`declaracion_jurada`) y lo imprime en la guía.
+-- Los tres sin default a propósito: un envío mal declarado es una tarifa
+-- equivocada o un 400 con el paquete ya empacado. Un producto sin configurar NO
+-- genera guía — avisa a Logística y se hace a mano.
 ALTER TABLE products ADD COLUMN IF NOT EXISTS shalom_origin_branch_id text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS package_size            text;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS declared_content        text;
 
 -- 27.b El destino, ESTRUCTURADO. Hasta ahora la sede elegida por el comprador
 -- viajaba dentro de `delivery_reference` (texto libre, junto con referencias de
@@ -1089,7 +1097,7 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS agency_branch_id text;
 -- pago emiten dos guías cobrables para un solo paquete.
 --   PENDING   reclamado, llamada en curso
 --   CREATED   guía emitida (numero/codigo ya viven en las columnas tracking_*)
---   SIMULADO  se armó el payload y NO se llamó al proveedor (ver 27.d)
+--   SIMULADO  se armó el payload y NO se llamó al proveedor (ver 27.e)
 --   SKIPPED   no aplica o falta config (motivo en shalom_order_reason)
 --   FAILED    el proveedor rechazó o no respondió — Logística la hace a mano
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_status text;
@@ -1097,7 +1105,19 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_id     text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_at     timestamptz;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_reason text;
 
--- 27.d El interruptor POR MARCA, apagado por defecto. Emitir guías reales no
+-- 27.d ⚠️ LA CLAVE DE RETIRO. La elige Kross al crear la orden (`pickup_code`)
+-- y con ella el destinatario se lleva el paquete de la agencia. O sea: quien la
+-- tiene, tiene el pedido.
+--
+-- Por eso esta columna NO se expone por `get-session` ni viaja a ningún mensaje
+-- del chat, ni siquiera a los de `visibility: 'sellers'`: el viewer de vendedor
+-- se resuelve con el token del comprador (`?viewer=seller`), así que un mensaje
+-- "solo vendedores" con la clave adentro se la estaría regalando —y en Kross la
+-- clave se entrega recién contra el saldo pagado (02 §El saldo de agencia)—.
+-- Hasta entonces vive solo acá, al alcance del service role.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_pickup_code text;
+
+-- 27.e El interruptor POR MARCA, apagado por defecto. Emitir guías reales no
 -- puede ser algo que le empiece a pasar a una tienda porque se desplegó una
 -- función: con esto en false el generador corre entero —valida, arma el payload
 -- y lo deja en los logs y en el chat de vendedores— pero NO llama al proveedor

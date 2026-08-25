@@ -8,60 +8,161 @@
 //  2. Se puede probar sin llamar a nadie. Emitir una guía cuesta plata y no
 //     tiene sandbox; el payload, en cambio, se valida gratis en `npm test`.
 //
-// ⚠️ CONTRATO PROVISIONAL. `toProviderBody()` es la traducción a los nombres de
-// campo de `POST /v1/orders` de Shalom API Perú. Mientras no esté verificada
-// contra la doc del proveedor, `shalom-order` corre en modo SIMULADO y no
-// llama a nadie (ver `stores.shalom_auto_guide_enabled`, sección 27.d).
-// Lo que SÍ está verificado y no se toca al ajustar el contrato:
-//   · auth: X-API-Key (plataforma) + credenciales Shalom Pro de la marca
-//     (X-Shalom-Email / X-Shalom-Password), como documenta 02-SMART-LOGISTICS.
-//   · la guía que devuelve se rastrea con numero (8–10 dígitos) + codigo
-//     (4 alfanuméricos) juntos, o con el ose_id.
+// ✅ Contrato VERIFICADO contra la doc de Shalom API Perú (POST /v1/orders).
+// Lo que conviene tener presente al leer esto:
+//   · El REMITENTE no va en el body: Shalom lo toma de la cuenta autenticada
+//     (las credenciales Shalom Pro de la marca). Un `sender` suelto se ignora.
+//   · `origin_terminal_id` / `destiny_terminal_id` son ids de agencia
+//     (`GET /v1/agencies`) — el MISMO `ter_id` que ya guarda
+//     `src/data/agencies/shalom.json` (su fuente es el CSV de sedes de Shalom,
+//     cuya primera columna es literalmente `ter_id`).
+//   · `product_id` NO es un tamaño en texto: es el id del producto dentro de la
+//     cuenta del cliente (Sobre · Caja Paquete XXS…L · Otra Medida) y cambia de
+//     cuenta en cuenta. Por eso se guarda el TAMAÑO y se resuelve el id contra
+//     `GET /v1/products` al emitir.
+//   · `declaracion_jurada` es obligatorio y Shalom lo imprime en la guía.
+//   · `pickup_code` lo elegimos nosotros: es la clave con la que el comprador
+//     retira en agencia. Ojo con dónde termina — ver `nuevoPickupCode`.
 
-/** Escala de tamaño del proveedor. Enum CERRADO: un tamaño que la API no
- *  conoce no es un envío más caro, es un 400 con el paquete ya empacado. */
-export const PACKAGE_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL'] as const
-export type PackageSize = typeof PACKAGE_SIZES[number]
+// ─── Tamaño del paquete ──────────────────────────────────────────────────────
+// El catálogo real de la cuenta Shalom Pro. No es una escala inventada: son los
+// productos que la API lista, y el precio del envío sale de cuál se elige.
+export const SHALOM_SIZES = ['SOBRE', 'XXS', 'XS', 'S', 'M', 'L', 'OTRA_MEDIDA'] as const
+export type ShalomSize = typeof SHALOM_SIZES[number]
 
-export const isPackageSize = (v: unknown): v is PackageSize =>
-  typeof v === 'string' && (PACKAGE_SIZES as readonly string[]).includes(v)
+export const isShalomSize = (v: unknown): v is ShalomSize =>
+  typeof v === 'string' && (SHALOM_SIZES as readonly string[]).includes(v)
 
-/** Las mismas reglas con las que el tracking valida una guía real. */
-export const GUIA_NUMERO = /^\d{8,10}$/
-export const GUIA_CODIGO = /^[A-Z0-9]{4}$/
-const DNI = /^\d{8}$/
-const CELULAR = /^9\d{8}$/
-
-/** Todo lo que hace falta para pedir una guía. Sale del pedido (destino,
- *  comprador), del producto (origen, tamaño) y de la marca (remitente). */
-export interface GuideRequest {
-  /** Id del pedido en Kross. Viaja como referencia externa para poder cruzar
-   *  la guía con el pedido cuando alguien la busque desde el lado de Shalom. */
-  orderRef: string
-  /** Sede de la que SALE el paquete — configurada en el producto. */
-  origenBranchId: string
-  /** Sede donde el comprador RECOGE — la que eligió en el checkout. */
-  destinoBranchId: string
-  remitente: { nombre: string; telefono?: string | null }
-  destinatario: { nombre: string; dni: string; telefono: string }
-  /** `size` entra CRUDO (viene de una columna de texto) y lo valida el builder
-   *  contra la escala del proveedor: quien llama no tiene que saber la lista. */
-  paquete: { size: string | null | undefined; contenido: string; valorDeclarado: number }
+/** Cómo se llama cada tamaño en el catálogo del proveedor. Es la llave del
+ *  match: los ids son por cuenta, los títulos son del catálogo. */
+export const SIZE_TITLES: Record<ShalomSize, string> = {
+  SOBRE: 'Sobre',
+  XXS: 'Caja Paquete XXS',
+  XS: 'Caja Paquete XS',
+  S: 'Caja Paquete S',
+  M: 'Caja Paquete M',
+  L: 'Caja Paquete L',
+  OTRA_MEDIDA: 'Otra Medida',
 }
 
-/** Lo mismo, ya validado. Es lo único que ve el traductor de campos. */
-interface GuideChecked extends Omit<GuideRequest, 'paquete'> {
-  paquete: { size: PackageSize; contenido: string; valorDeclarado: number }
+/** Etiqueta para la gente, con el límite que hace elegir bien. */
+export const SIZE_HINTS: Record<ShalomSize, string> = {
+  SOBRE: 'Sobre · hasta 0.5 kg',
+  XXS: 'Caja XXS · lo más chico',
+  XS: 'Caja XS',
+  S: 'Caja S',
+  M: 'Caja M',
+  L: 'Caja L · lo más grande del catálogo',
+  OTRA_MEDIDA: 'Otra medida · fuera de catálogo',
+}
+
+const norm = (s: unknown): string =>
+  String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ').trim().toUpperCase()
+
+/**
+ * Resuelve el `product_id` de ESTA cuenta a partir del tamaño configurado en el
+ * producto, contra la respuesta de `GET /v1/products`. Se hace por título y no
+ * por posición porque los ids son por cuenta (en la doc, "Sobre" es 3 y "Otra
+ * Medida" 1098) y el orden del catálogo no está garantizado.
+ */
+export function resolveProductId(products: unknown, size: ShalomSize): number | null {
+  const lista = (products as { products?: unknown })?.products
+  if (!Array.isArray(lista)) return null
+  const buscado = norm(SIZE_TITLES[size])
+  for (const p of lista) {
+    const item = p as { id?: unknown; title?: unknown }
+    if (norm(item?.title) === buscado && Number.isFinite(Number(item?.id))) return Number(item.id)
+  }
+  return null
+}
+
+// ─── Declaración jurada ──────────────────────────────────────────────────────
+// Obligatoria en toda orden y sale impresa en la guía. Son los cuatro alias
+// cortos que acepta la API; el texto largo lo pone Shalom.
+export const DECLARED_CONTENTS = ['docs', 'ropa', 'art', 'electro'] as const
+export type DeclaredContent = typeof DECLARED_CONTENTS[number]
+
+export const isDeclaredContent = (v: unknown): v is DeclaredContent =>
+  typeof v === 'string' && (DECLARED_CONTENTS as readonly string[]).includes(v)
+
+export const CONTENT_LABELS: Record<DeclaredContent, string> = {
+  docs: 'Documentos',
+  ropa: 'Ropa',
+  art: 'Artículos de uso personal',
+  electro: 'Electrodomésticos',
+}
+
+// ─── Clave de retiro ─────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ La clave con la que el destinatario RETIRA el paquete en la agencia. Quien
+ * la tiene se lleva el pedido, así que **no puede viajar al chat**: en Kross la
+ * clave se entrega recién contra el saldo pagado (02 §El saldo de agencia), y
+ * `get-session?viewer=seller` es alcanzable con el token del comprador — un
+ * mensaje "solo vendedores" con la clave adentro se la estaría regalando.
+ *
+ * Shalom rechaza las repetidas (1111…9999) y las consecutivas (1234…6789). Se
+ * descartan también las consecutivas descendentes: no están en la doc, cuestan
+ * 8 códigos de 9000 y una guía rechazada cuesta mucho más que eso.
+ */
+export function esPickupCodeValido(code: string): boolean {
+  if (!/^\d{4}$/.test(code)) return false
+  const d = [...code].map(Number)
+  if (d.every(n => n === d[0])) return false
+  if (d.every((n, i) => i === 0 || n === d[i - 1] + 1)) return false
+  if (d.every((n, i) => i === 0 || n === d[i - 1] - 1)) return false
+  return true
+}
+
+/** Genera una clave válida. `rnd` entra por parámetro para poder probarlo. */
+export function nuevoPickupCode(rnd: () => number = Math.random): string {
+  for (let i = 0; i < 50; i++) {
+    const code = String(Math.floor(rnd() * 10000)).padStart(4, '0')
+    if (esPickupCodeValido(code)) return code
+  }
+  return '2415' // Inalcanzable en la práctica; válido y determinista por si acaso.
+}
+
+// ─── El pedido ───────────────────────────────────────────────────────────────
+
+export interface GuideReceiver {
+  /** `person_id` de Shalom Pro, si ya lo conocemos (`GET /v1/persons/search`).
+   *  Con él no hacen falta los nombres — y evita el 409 por documento repetido. */
+  id?: number | null
+  dni: string
+  /** Nombres y apellidos. Obligatorios SOLO si la persona aún no existe en la
+   *  cuenta; con `id` sobran. Vienen de RENIEC, no de partir un nombre en dos:
+   *  registrar mal a alguien en la cuenta del cliente no se deshace. */
+  name?: string | null
+  lastName?: string | null
+  surName?: string | null
+  phone: string
+}
+
+export interface GuideRequest {
+  /** Ids de agencia (`ter_id`): de dónde sale y dónde recoge el comprador. */
+  originTerminalId: string | number
+  destinyTerminalId: string | number
+  /** Id del producto EN ESTA CUENTA, ya resuelto con `resolveProductId`. */
+  productId: number | null
+  receiver: GuideReceiver
+  declaredContent: string | null | undefined
+  pickupCode: string
 }
 
 export type BuildResult =
   | { ok: true; body: Record<string, unknown> }
-  /** `faltan` se le muestra a Logística tal cual: son los campos que hay que
+  /** `faltan` se le muestra a Logística tal cual: son las cosas que hay que
    *  completar para que el pedido pueda generar su guía. */
   | { ok: false; faltan: string[] }
 
+const entero = (v: unknown): number | null => {
+  const n = Number(String(v ?? '').trim())
+  return Number.isInteger(n) && n > 0 ? n : null
+}
 const limpio = (v: unknown): string => String(v ?? '').replace(/\s+/g, ' ').trim()
-const soloDigitos = (v: unknown): string => String(v ?? '').replace(/\D/g, '')
+const digitos = (v: unknown): string => String(v ?? '').replace(/\D/g, '')
 
 /**
  * Valida y arma. Devuelve TODO lo que falta de una sola vez —no el primer
@@ -71,91 +172,81 @@ const soloDigitos = (v: unknown): string => String(v ?? '').replace(/\D/g, '')
 export function buildOrderPayload(r: GuideRequest): BuildResult {
   const faltan: string[] = []
 
-  const origen = limpio(r.origenBranchId)
-  const destino = limpio(r.destinoBranchId)
-  const remitente = limpio(r.remitente?.nombre)
-  const nombre = limpio(r.destinatario?.nombre)
-  const dni = soloDigitos(r.destinatario?.dni)
-  const telefono = soloDigitos(r.destinatario?.telefono).slice(-9)
-  const contenido = limpio(r.paquete?.contenido)
-  const valor = Number(r.paquete?.valorDeclarado)
+  const origen = entero(r.originTerminalId)
+  const destino = entero(r.destinyTerminalId)
+  const productId = entero(r.productId)
+  const dni = digitos(r.receiver?.dni)
+  const telefono = digitos(r.receiver?.phone).slice(-9)
+  const personId = entero(r.receiver?.id)
+  const name = limpio(r.receiver?.name).toUpperCase()
+  const lastName = limpio(r.receiver?.lastName).toUpperCase()
+  const surName = limpio(r.receiver?.surName).toUpperCase()
 
   if (!origen) faltan.push('agencia de origen del producto')
   if (!destino) faltan.push('sede de recojo del pedido')
-  if (!remitente) faltan.push('nombre de la marca (remitente)')
-  if (!nombre) faltan.push('nombre del destinatario')
-  if (!DNI.test(dni)) faltan.push('DNI del destinatario (8 dígitos)')
-  if (!CELULAR.test(telefono)) faltan.push('celular del destinatario (9 dígitos)')
-  if (!contenido) faltan.push('contenido del paquete')
-  if (!isPackageSize(r.paquete?.size)) faltan.push('tamaño del paquete en el producto (XXS…XL)')
-  // El valor declarado es el del seguro: 0 deja el paquete sin cobertura y un
-  // valor inventado infla la tarifa. Se exige positivo y se manda el real.
-  if (!Number.isFinite(valor) || valor <= 0) faltan.push('precio del producto (valor declarado)')
+  if (!productId) faltan.push('tamaño del paquete en el producto')
+  if (!isDeclaredContent(r.declaredContent)) faltan.push('contenido declarado del producto')
+  if (!/^\d{8}$/.test(dni)) faltan.push('DNI del destinatario (8 dígitos)')
+  if (!/^9\d{8}$/.test(telefono)) faltan.push('celular del destinatario (9 dígitos)')
+  if (!esPickupCodeValido(r.pickupCode)) faltan.push('clave de retiro válida')
+  // Sin person_id, Shalom REGISTRA a la persona con lo que le mandemos: los tres
+  // campos tienen que venir de RENIEC o no se manda nada.
+  if (!personId && !(name && lastName && surName)) {
+    faltan.push('nombre y apellidos del destinatario (RENIEC)')
+  }
 
   if (faltan.length) return { ok: false, faltan }
 
+  const receiver: Record<string, unknown> = {
+    document_type: 'DNI',
+    document: dni,
+    phone: Number(telefono),
+  }
+  if (personId) receiver.id = personId
+  else Object.assign(receiver, { name, last_name: lastName, sur_name: surName })
+
   return {
     ok: true,
-    body: toProviderBody({
-      ...r,
-      origenBranchId: origen,
-      destinoBranchId: destino,
-      remitente: { ...r.remitente, nombre: remitente },
-      destinatario: { nombre, dni, telefono },
-      paquete: { size: r.paquete.size as PackageSize, contenido, valorDeclarado: valor },
-    }),
+    body: {
+      origin_terminal_id: origen,
+      destiny_terminal_id: destino,
+      product_id: productId,
+      quantity: 1,
+      // Paga el remitente (la marca) al despachar. NUNCA "receiver": el saldo se
+      // cobra por la app, no en el mostrador (02 §El saldo de agencia), y una
+      // guía contra entrega pondría a Shalom a cobrar lo que ya cobramos.
+      payer: 'sender',
+      declaracion_jurada: r.declaredContent,
+      receiver,
+      pickup_code: r.pickupCode,
+      // Suscribe la guía al webhook en la misma llamada (best-effort del lado
+      // del proveedor): una llamada menos y el tracking arranca al instante.
+      track: true,
+    },
   }
 }
 
-/**
- * ⚠️ ÚNICO punto que conoce los nombres de campo del proveedor. Ajustar aquí
- * al confirmar la doc de `POST /v1/orders` — nada más en el repo depende de
- * esta forma.
- */
-function toProviderBody(r: GuideChecked): Record<string, unknown> {
-  return {
-    sede_origen: r.origenBranchId,
-    sede_destino: r.destinoBranchId,
-    remitente: {
-      nombre: r.remitente.nombre,
-      telefono: soloDigitos(r.remitente.telefono).slice(-9) || undefined,
-    },
-    destinatario: {
-      nombre: r.destinatario.nombre,
-      documento: r.destinatario.dni,
-      tipo_documento: 'DNI',
-      telefono: r.destinatario.telefono,
-    },
-    paquete: {
-      tamano: r.paquete.size,
-      contenido: r.paquete.contenido,
-      valor_declarado: r.paquete.valorDeclarado,
-    },
-    // Contra-entrega NO: el saldo se paga por la app, nunca en el mostrador
-    // (02 §El saldo de agencia). Que Shalom cobre en la agencia rompería esa
-    // regla y además nos dejaría la plata donde no la vemos.
-    pago_contra_entrega: false,
-    referencia_externa: r.orderRef,
-  }
-}
+// ─── La respuesta ────────────────────────────────────────────────────────────
 
 /** La guía tal como quedó, ya validada. */
 export interface GuideResult {
   numero: string | null
   codigo: string | null
   oseId: string | null
-  /** Id del pedido del lado del proveedor, para poder reclamar por él. */
-  orderId: string | null
+  /** Prefijo del talonario. Informativo: Shalom no lo pide para rastrear. */
+  serie: string | null
 }
 
+/** Las mismas reglas con las que el tracking valida una guía real. */
+export const GUIA_NUMERO = /^\d{8,10}$/
+export const GUIA_CODIGO = /^[A-Z0-9]{4}$/
+
 /**
- * Lee la respuesta SIN casarse con su forma: busca las llaves conocidas a
- * cualquier profundidad y valida lo que encuentra con las reglas del tracking.
- *
- * Tolerante a propósito. Si el proveedor anida la guía un nivel más abajo o la
- * llama `guia` en vez de `numero`, la alternativa a esto es una guía emitida
- * —cobrada— que el pedido no registra y nadie puede rastrear. Lo que NO se
- * tolera es escribir basura: un `numero` que no cumple el formato se descarta.
+ * Lee `{ guia, serie, codigo, ose_id }`. Busca esas llaves a cualquier
+ * profundidad en vez de asumir que vienen en la raíz: si el proveedor anida la
+ * respuesta un nivel, la alternativa es una guía emitida —cobrada— que el
+ * pedido no registra y nadie puede rastrear. Lo que NO se tolera es escribir
+ * basura: lo que no tiene forma de guía se descarta.
  */
 export function parseOrderResponse(json: unknown): GuideResult {
   const found = new Map<string, string>()
@@ -181,16 +272,12 @@ export function parseOrderResponse(json: unknown): GuideResult {
     return null
   }
 
-  const numero = first(['numero', 'guia', 'numeroguia', 'trackingnumero', 'nroguia'], GUIA_NUMERO)
-  const codigoRaw = first(['codigo', 'clave', 'codigoguia', 'trackingcodigo'], GUIA_CODIGO)
-  const oseId = first(['oseid', 'ose'], /^\d+$/)
-  const orderId = first(['orderid', 'pedidoid', 'id'])
-
+  const codigo = first(['codigo', 'clave', 'codigoguia'], GUIA_CODIGO)
   return {
-    numero,
-    codigo: codigoRaw ? codigoRaw.toUpperCase() : null,
-    oseId,
-    orderId,
+    numero: first(['guia', 'numero', 'numeroguia', 'nroguia'], GUIA_NUMERO),
+    codigo: codigo ? codigo.toUpperCase() : null,
+    oseId: first(['oseid', 'ose'], /^\d+$/),
+    serie: first(['serie']),
   }
 }
 
@@ -198,3 +285,26 @@ export function parseOrderResponse(json: unknown): GuideResult {
  *  Es la misma regla que exige `set_tracking`, escrita una sola vez. */
 export const esRastreable = (g: GuideResult): boolean =>
   !!((g.numero && g.codigo) || g.oseId)
+
+/**
+ * Busca en `GET /v1/orders` una guía ya emitida para este DNI. Es la respuesta
+ * a la advertencia más seria de la doc: un timeout NO significa que la orden no
+ * se creó, y la API no tiene clave de idempotencia. Antes de dar por perdido un
+ * envío —o peor, de emitir otro— se pregunta si ya está ahí.
+ */
+export function buscarOrdenPorDni(json: unknown, dni: string): (GuideResult & { orderId: string | null }) | null {
+  const lista = (json as { orders?: unknown })?.orders
+  if (!Array.isArray(lista)) return null
+  const buscado = digitos(dni)
+  for (const o of lista) {
+    const orden = o as Record<string, unknown>
+    const receiver = orden?.receiver as Record<string, unknown> | undefined
+    if (digitos(receiver?.document) !== buscado) continue
+    const g = parseOrderResponse(orden)
+    if (esRastreable(g)) {
+      const id = orden?.id
+      return { ...g, orderId: id == null ? null : String(id) }
+    }
+  }
+  return null
+}

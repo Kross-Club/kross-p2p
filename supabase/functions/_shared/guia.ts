@@ -98,6 +98,10 @@ export function normalizarGuia(t: GuiaInput, agencyName: string | null, now = Da
 export async function registrarGuia(
   session: GuiaSession,
   g: Extract<GuiaNormalizada, { ok: true }>,
+  /** `yaSuscrito`: la guía nació suscrita al webhook (el generador manda
+   *  `track: true` en la misma llamada que la emite). Suscribirla otra vez
+   *  gastaría una request del cupo para no cambiar nada. */
+  opts: { yaSuscrito?: boolean } = {},
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { error } = await supabase.from('order_sessions').update(g.tracking).eq('id', session.id)
   if (error) return { ok: false, error: error.message }
@@ -119,7 +123,7 @@ export async function registrarGuia(
     'all',
   )
   await broadcast(session.id, 'tracking_update', g.tracking)
-  await suscribirWebhook(g)
+  if (!opts.yaSuscrito) await suscribirWebhook(g)
   return { ok: true }
 }
 

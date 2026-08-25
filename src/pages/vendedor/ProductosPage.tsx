@@ -7,9 +7,19 @@ import AbTestPanel from './AbTestPanel'
 import { AgencyService } from '../../lib/checkout/services/AgencyService'
 import type { AgencyBranch } from '../../lib/checkout/types'
 
-/** La escala del proveedor. Misma lista que valida `manage-product` y que viaja
- *  en la guía — si acá dijera otra cosa, el pedido saldría con otra tarifa. */
-const PACKAGE_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL'] as const
+/** El catálogo REAL de la cuenta Shalom Pro (lo que devuelve GET /v1/products),
+ *  no una escala nuestra: de cuál se elija sale la tarifa del envío. Misma lista
+ *  que valida `manage-product` —hay una prueba que vigila que no se separen—. */
+const PACKAGE_SIZES = [
+  ['SOBRE', 'Sobre'], ['XXS', 'Caja XXS'], ['XS', 'Caja XS'], ['S', 'Caja S'],
+  ['M', 'Caja M'], ['L', 'Caja L'], ['OTRA_MEDIDA', 'Otra medida'],
+] as const
+
+/** La declaración jurada que Shalom exige en toda guía y sale impresa en ella. */
+const DECLARED_CONTENTS = [
+  ['art', 'Artículos de uso personal'], ['ropa', 'Ropa'],
+  ['docs', 'Documentos'], ['electro', 'Electrodomésticos'],
+] as const
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -25,10 +35,12 @@ interface Product {
   images: string[]
   packs: Pack[]
   active: boolean
-  /** Envío (sección 27.a del esquema): de qué sede Shalom sale este producto y
-   *  de qué tamaño es su paquete. Sin los dos, su pedido no genera guía solo. */
+  /** Envío (sección 27.a del esquema): de qué sede Shalom sale este producto,
+   *  de qué tamaño es su paquete y qué contenido declara. Sin los tres, su
+   *  pedido no genera guía solo. */
   shalom_origin_branch_id?: string | null
   package_size?: string | null
+  declared_content?: string | null
 }
 
 export default function ProductosPage() {
@@ -121,7 +133,7 @@ export default function ProductosPage() {
                 <p className="text-xs text-gray-400">S/{p.precio} · {p.images.length} imagen(es) · {p.packs.length} pack(s)</p>
                 {/* Sin esto, el vendedor se entera de que falta configurar el envío
                     recién cuando un pedido no generó su guía. */}
-                {!(p.shalom_origin_branch_id && p.package_size) && (
+                {!(p.shalom_origin_branch_id && p.package_size && p.declared_content) && (
                   <p className="text-[10px] font-bold mt-0.5" style={{ color: '#C2410C' }}>
                     Envío sin configurar — su guía se registra a mano
                   </p>
@@ -170,6 +182,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
   const packFileRef = useRef<HTMLInputElement>(null)
   // ─── Envío ─────────────────────────────────────────────────────────────────
   const [size, setSize] = useState<string | null>(product.package_size ?? null)
+  const [contenido, setContenido] = useState<string | null>(product.declared_content ?? null)
   const [origen, setOrigen] = useState<string | null>(product.shalom_origin_branch_id ?? null)
   const [origenBranch, setOrigenBranch] = useState<AgencyBranch | null>(null)
   const [buscarSede, setBuscarSede] = useState('')
@@ -279,7 +292,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
           action: 'save', admin_auth_id: adminId, store_id: storeId || undefined, id: product.id || undefined,
           nombre: nombre.trim(), precio: Number(precio) || 0, images,
           packs: packs.filter(p => p.nombre.trim()).map(p => ({ ...p, precio: Number(p.precio) || 0 })),
-          shalom_origin_branch_id: origen, package_size: size,
+          shalom_origin_branch_id: origen, package_size: size, declared_content: contenido,
         }),
       })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'No se pudo guardar.'); return }
@@ -402,13 +415,28 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
 
           <label className="text-[11px] font-bold text-gray-500 mb-1 block">Tamaño del paquete</label>
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {PACKAGE_SIZES.map(t => (
-              <button key={t} onClick={() => setSize(size === t ? null : t)}
+            {PACKAGE_SIZES.map(([valor, etiqueta]) => (
+              <button key={valor} onClick={() => setSize(size === valor ? null : valor)}
                 className="text-[11px] font-black px-3 py-1.5 rounded-xl border"
-                style={size === t
+                style={size === valor
                   ? { background: '#C2410C', color: '#fff', borderColor: '#C2410C' }
                   : { background: '#fff', color: '#9A3412', borderColor: '#FED7AA' }}>
-                {t}
+                {etiqueta}
+              </button>
+            ))}
+          </div>
+
+          <label className="text-[11px] font-bold text-gray-500 mb-1 block">
+            Contenido declarado <span className="font-bold text-gray-400">(sale impreso en la guía)</span>
+          </label>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {DECLARED_CONTENTS.map(([valor, etiqueta]) => (
+              <button key={valor} onClick={() => setContenido(contenido === valor ? null : valor)}
+                className="text-[11px] font-black px-3 py-1.5 rounded-xl border"
+                style={contenido === valor
+                  ? { background: '#C2410C', color: '#fff', borderColor: '#C2410C' }
+                  : { background: '#fff', color: '#9A3412', borderColor: '#FED7AA' }}>
+                {etiqueta}
               </button>
             ))}
           </div>
