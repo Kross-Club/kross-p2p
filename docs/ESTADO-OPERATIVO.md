@@ -70,6 +70,24 @@ TikTok** emite el embudo (landing → registro → etapa) al Events Manager del 
 - **Deuda anotada:** los tokens de CAPI viajan por el panel al guardarse (como el password de
   Shalom Pro y la llave de 360pay §2). Rotarlos si se exponen; nunca vuelven en las respuestas.
 
+### Recuperar contraseña del panel — construido, falta un ajuste en Auth (25-ago-2026)
+
+El equipo ya puede recuperar su contraseña solo, desde `/login → ¿Olvidaste tu contraseña?`
+(ver [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#recuperar-contraseña-del-panel--implementado)).
+Antes dependía de que otro admin le creara una cuenta nueva, y si el que olvidaba era el
+único admin de la marca, nadie adentro podía destrabarla.
+
+**Antes de anunciarlo al equipo, revisar tres cosas en el proyecto `ofdjghntvmrdfjhazfvz`:**
+
+- **Redirect URLs** (*Authentication → URL Configuration*): tiene que estar
+  `https://*.krossclub.app/**`. Sin eso Auth ignora el `redirectTo` y el vendedor de una
+  marca aterriza en el host de la plataforma, donde su cuenta ni siquiera puede entrar.
+- **SMTP.** El servicio de correo de cortesía de Supabase manda unos pocos correos por hora
+  y no garantiza entrega: si el panel se va a apoyar en esto, va SMTP propio.
+- **Los correos del equipo tienen que ser buzones reales.** `admin-team` crea los miembros
+  con `email_confirm: true`, o sea que nadie verificó la dirección: un miembro cargado con
+  un correo inventado no tiene a dónde recibir el enlace.
+
 ## Bloqueos abiertos
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |
