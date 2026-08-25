@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { KrossIcon } from '../components/KrossLogo'
 import { useStore, isPlatformHost } from '../lib/store-context'
+import { useNoPanelTheme } from '../lib/theme'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const { store } = useStore()
+  useNoPanelTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)

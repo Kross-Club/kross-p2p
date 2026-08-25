@@ -47,7 +47,7 @@ export default function ChatsPage() {
                 onClick={() => navigate(`/comprador/chat/${chat.id}`)}
                 className="w-full bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
               >
-                <div className="w-12 h-12 rounded-2xl bg-[#EEF9FF] flex items-center justify-center text-2xl flex-shrink-0">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0" style={{ background: 'var(--brand-tint)' }}>
                   {tienda?.logo || '🏪'}
                 </div>
                 <div className="flex-1 min-w-0">

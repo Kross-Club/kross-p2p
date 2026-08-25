@@ -129,7 +129,7 @@ export default function AbTestPanel({ storeId }: { storeId: string }) {
               focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--brand)]"
             style={mode === m.value
               ? { background: 'var(--brand)', color: '#fff' }
-              : { background: '#F3F4F6', color: '#6B7280' }}
+              : { background: 'var(--surface-3)', color: 'var(--text-muted)' }}
           >
             {m.label}
           </button>
@@ -154,7 +154,7 @@ export default function AbTestPanel({ storeId }: { storeId: string }) {
               const gana = ganadora === v
               return (
                 <div key={v} className="rounded-xl px-3 py-2.5"
-                  style={gana ? { background: '#F0FDF4', border: '1px solid #BBF7D0' } : { background: '#F9FAFB' }}>
+                  style={gana ? { background: 'var(--ok-bg-soft)', border: '1px solid var(--ok-border)' } : { background: 'var(--surface-3)' }}>
                   <p className="text-[10px] font-black uppercase tracking-wide"
                     style={{ color: gana ? '#15803D' : '#9CA3AF' }}>
                     Versión {v}{gana ? ' · va ganando' : ''}

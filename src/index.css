@@ -8,6 +8,139 @@
   --brand-dark: #060C1A;
 }
 
+/* ─── Tema del panel (claro / oscuro) ──────────────────────────────────────
+   El panel del vendedor pinta con estos tokens en vez de con colores fijos.
+   `data-theme="dark"` lo pone `usePanelTheme()` en <html> MIENTRAS hay una
+   pantalla de panel montada, y lo quita al salir: las páginas del comprador y
+   la web pública son de la marca, no del vendedor, y se quedan claras.
+   El tema por defecto es el del sistema operativo (ver `src/lib/theme.ts`). */
+:root {
+  --surface: #FFFFFF;        /* tarjetas, header, barra lateral */
+  --surface-2: #F9FAFB;      /* fondo detrás de las tarjetas */
+  --surface-3: #F0F0F0;      /* inputs y chips neutros */
+  --text: #060C1A;
+  --text-muted: #6B7280;
+  --text-faint: #9CA3AF;     /* horas, ayudas, texto de tercer nivel */
+  --border: #F0F0F0;
+  --border-strong: #E5E7EB;
+  --chat-bg: #FFFDF5;        /* el papel del chat del pedido */
+  --chat-header: #111111;    /* la cabecera oscura del chat del pedido */
+  --brand-tint: #EEF9FF;     /* item activo del menú, fondos de acento */
+
+  /* Estados. El fondo es el velo; el fg, el texto/ícono encima. Los botones
+     sólidos de color (verde de "confirmar", rojo de "cancelar") NO usan esto:
+     ahí el color ES el botón y funciona igual en los dos temas. */
+  --ok-bg: #DCFCE7;      --ok-bg-soft: #F0FDF4;      --ok-fg: #16A34A;      --ok-border: #BBF7D0;
+  --warn-bg: #FEF3C7;    --warn-bg-soft: #FFFBEB;    --warn-fg: #D97706;    --warn-border: #FDE68A;
+  --danger-bg: #FEE2E2;  --danger-bg-soft: #FEF2F2;  --danger-fg: #DC2626;  --danger-border: #FECACA;
+  --info-bg: #EFF6FF;    --info-fg: #2563EB;    --info-border: #BFDBFE;
+  --violet-bg: #F5F3FF;  --violet-fg: #742284;  --violet-border: #DDD6FE;
+  --invert: #111111;         /* botón principal: enviar */
+  --invert-fg: #FFFFFF;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;        /* scrollbars y controles nativos oscuros */
+
+  --surface: #12161F;
+  --surface-2: #0B0E14;
+  --surface-3: #1C2230;
+  --text: #EDF1F7;
+  --text-muted: #8A94A8;
+  --text-faint: #6B7688;
+  --border: #232A38;
+  --border-strong: #2A3242;
+  --chat-bg: #0E1219;
+  --chat-header: #161B24;    /* un punto más claro que el papel: la cabecera se sigue viendo */
+  --brand-tint: color-mix(in srgb, var(--brand) 18%, transparent);
+
+  --ok-bg: rgb(74 222 128 / 0.18);      --ok-bg-soft: rgb(74 222 128 / 0.08);      --ok-fg: #86EFAC;      --ok-border: rgb(134 239 172 / 0.35);
+  --warn-bg: rgb(251 191 36 / 0.18);    --warn-bg-soft: rgb(251 191 36 / 0.08);    --warn-fg: #FCD34D;    --warn-border: rgb(252 211 77 / 0.35);
+  --danger-bg: rgb(248 113 113 / 0.18); --danger-bg-soft: rgb(248 113 113 / 0.08); --danger-fg: #FCA5A5;  --danger-border: rgb(252 165 165 / 0.35);
+  --info-bg: rgb(96 165 250 / 0.12);    --info-fg: #93C5FD;    --info-border: rgb(96 165 250 / 0.35);
+  --violet-bg: rgb(192 132 252 / 0.12); --violet-fg: #C4B5FD;  --violet-border: rgb(192 132 252 / 0.35);
+  --invert: #EDF1F7;         /* en oscuro el botón de enviar se invierte, como el texto */
+  --invert-fg: #12161F;
+
+  /* La rampa de grises de Tailwind, invertida. Así `text-gray-400`,
+     `bg-gray-100` o `border-gray-100` —que están en cientos de sitios del
+     panel— cambian de tema sin tocar una sola clase en los componentes.
+     `--color-white` NO se toca: `text-white` vive sobre botones y cabeceras
+     de color, que siguen siendo oscuros en los dos temas. */
+  --color-gray-50: #161B24;
+  --color-gray-100: #1C2230;
+  --color-gray-200: #2A3242;
+  --color-gray-300: #55607A;
+  --color-gray-400: #8A94A8;
+  --color-gray-500: #A7B0C2;
+  --color-gray-600: #BCC4D4;
+  --color-gray-700: #CFD6E3;
+  --color-gray-800: #DFE5EF;
+  --color-gray-900: #EDF1F7;
+  --color-gray-950: #F7F9FC;
+
+  /* Los chips de estado (`bg-green-100 text-green-700` y compañía) son la
+     señal que el vendedor lee de un vistazo. En oscuro el pastel claro
+     encandila, así que el fondo pasa a un velo del mismo tono y el texto al
+     tono claro. Solo se tocan los extremos: 50/100 (fondos) y 700/800/900
+     (texto). Del 300 al 600 no se tocan — ahí viven los botones sólidos con
+     texto blanco (`bg-green-500 text-white`), que en oscuro siguen bien. */
+  --color-red-50: rgb(248 113 113 / 0.10);
+  --color-red-100: rgb(248 113 113 / 0.18);
+  --color-red-700: #FCA5A5;
+  --color-red-800: #FECACA;
+  --color-red-900: #FEE2E2;
+
+  --color-orange-50: rgb(251 146 60 / 0.10);
+  --color-orange-100: rgb(251 146 60 / 0.18);
+  --color-orange-700: #FDBA74;
+  --color-orange-800: #FED7AA;
+  --color-orange-900: #FFEDD5;
+
+  --color-amber-50: rgb(251 191 36 / 0.10);
+  --color-amber-100: rgb(251 191 36 / 0.18);
+  --color-amber-700: #FCD34D;
+  --color-amber-800: #FDE68A;
+  --color-amber-900: #FEF3C7;
+
+  --color-green-50: rgb(74 222 128 / 0.10);
+  --color-green-100: rgb(74 222 128 / 0.18);
+  --color-green-700: #86EFAC;
+  --color-green-800: #BBF7D0;
+  --color-green-900: #DCFCE7;
+
+  --color-emerald-50: rgb(52 211 153 / 0.10);
+  --color-emerald-100: rgb(52 211 153 / 0.18);
+  --color-emerald-700: #6EE7B7;
+  --color-emerald-800: #A7F3D0;
+
+  --color-blue-50: rgb(96 165 250 / 0.10);
+  --color-blue-100: rgb(96 165 250 / 0.18);
+  --color-blue-700: #93C5FD;
+  --color-blue-800: #BFDBFE;
+
+  --color-indigo-50: rgb(129 140 248 / 0.10);
+  --color-indigo-100: rgb(129 140 248 / 0.18);
+  --color-indigo-700: #A5B4FC;
+  --color-indigo-800: #C7D2FE;
+
+  --color-purple-50: rgb(192 132 252 / 0.10);
+  --color-purple-100: rgb(192 132 252 / 0.18);
+  --color-purple-700: #C4B5FD;
+  --color-purple-800: #DDD6FE;
+}
+
+:root[data-theme="dark"] body {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* `bg-white` en el panel significa "superficie de tarjeta", no el color
+   blanco: en oscuro tiene que seguir a --surface. */
+:root[data-theme="dark"] .bg-white {
+  background-color: var(--surface);
+}
+
 /* Impresión. La Hoja de Reclamación es una constancia legal y el consumidor
    tiene derecho a quedarse con ella: al imprimir (o "guardar como PDF") queda
    solo el documento, sin menú, sin pie ni botones. */

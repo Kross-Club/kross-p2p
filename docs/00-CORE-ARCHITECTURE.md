@@ -90,7 +90,40 @@ y `MisPedidosPage` son justamente las pantallas que lo justifican.
 ## Panel Admin ✅
 
 Edge Function `manage-store` (list/create/update/wa_usage/client_stats). El super admin
-crea marcas + su primer admin sin SQL. Navegación por rol en `src/components/BottomNav.tsx`.
+crea marcas + su primer admin sin SQL. Las secciones por rol viven en un solo lugar,
+`src/lib/seller-nav.ts`, y las pintan `BottomNav` (móvil) y `SideNav` (PC).
+
+**Dos formatos, un mismo panel** (`src/components/Layout.tsx`, decide `useIsDesktop()` de
+`src/lib/use-desktop.ts` → `min-width:1024px` + puntero de mouse):
+
+| | Móvil / tablet | PC del vendedor |
+|---|---|---|
+| Marco | columna de 430px, alto libre | ventana **16:9** centrada (`min(1440px, ancho, alto×16/9)`) — limitada por el alto, así que nunca se estira |
+| Navegación | barra abajo (íconos) | barra lateral con etiquetas; header y menú fijos, el scroll es del contenido |
+| Banner "Instala la app" | sí | **no**: instalar existe para recibir pedidos y llamadas con la pantalla apagada, o sea el celular; en escritorio solo tapaba la lista |
+
+En PC la lista de chats (`ChatsVendedorPage`) usa el ancho: KPIs de la tienda (pedidos, sin
+leer, nuevos, en proceso, entregados) y una tabla densa —cliente, pedido, etapa, último
+mensaje, cuándo entró— para responder *a quién le debo un mensaje* sin abrir un chat.
+En móvil sigue siendo la tarjeta de siempre; las dos pintan los mismos datos.
+
+**Tema claro / oscuro** (`src/lib/theme.ts` · `src/components/ThemeToggle.tsx`): el botón
+🌙/☀️ del header cambia el tema y la elección se guarda (`kross-theme` en localStorage).
+Por defecto **sigue al sistema operativo**, y si eliges justo el tema que el sistema ya
+pide, vuelve a `system` solo — así no hace falta un tercer botón "automático".
+
+- El tema se aplica **solo mientras hay una pantalla de panel montada** (`usePanelTheme()`
+  pone `data-theme` en `<html>` y lo quita al salir). La web pública y las páginas del
+  comprador son de la **marca**, no del vendedor: no se oscurecen. `index.html` lo aplica
+  además antes del primer pintado para que el panel no entre en blanco y salte a oscuro.
+- Los colores viven en tokens de `src/index.css` (`--surface`, `--text`, `--border`,
+  `--chat-bg`, `--ok/warn/danger/info/violet-*`…). **En oscuro también se invierte la rampa
+  de grises de Tailwind** (`--color-gray-*`) y se apagan los chips de estado
+  (`--color-green-100` y compañía), así que `text-gray-400` o `bg-green-100` cambian de tema
+  sin tocar los componentes. Lo que NO se toca: `--color-white` (el `text-white` de los
+  botones de color) ni los tonos 300–600 (los botones sólidos tipo `bg-green-500`).
+- Al escribir pantallas nuevas del panel: usa las clases `gray-*` de Tailwind y los tokens
+  de arriba. Un `#fff` o un `#111` a mano se queda fijo en los dos temas.
 
 **Notificaciones push del equipo** (Equipo → Notificaciones, `src/components/PushSettings.tsx`):
 cada miembro las activa/desactiva **por dispositivo** — el celular y la computadora se

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Download, X, Share, Plus } from 'lucide-react'
 import { useStore } from '../lib/store-context'
+import { useIsDesktop } from '../lib/use-desktop'
 
 // True when the app is already running as an installed PWA
 export function isInstalled() {
@@ -31,8 +32,14 @@ function IOSSteps({ dark }: { dark?: boolean }) {
 //  · floating (default): fixed bar, seller-oriented copy (Layout).
 //  · inline: a card the parent mounts inside the chat, buyer-oriented copy.
 // Fires onInstalled on a successful install so the caller can turn on push.
+//
+// La barra flotante NO se muestra en la PC: instalar la app existe para que el
+// vendedor reciba pedidos, mensajes y llamadas con la pantalla apagada — eso es
+// el celular. En escritorio solo tapaba la lista de chats con un aviso que no
+// resuelve nada.
 export default function InstallBanner({ inline = false, onInstalled }: { inline?: boolean; onInstalled?: () => void }) {
   const { store } = useStore()
+  const desktop = useIsDesktop()
   const [prompt, setPrompt] = useState<any>(() => (typeof window !== 'undefined' ? (window as any).__deferredInstallPrompt : null))
   const [isIOS, setIsIOS] = useState(false)
   const [show, setShow] = useState(false)
@@ -86,6 +93,7 @@ export default function InstallBanner({ inline = false, onInstalled }: { inline?
   }
 
   if (!show || isInstalled()) return null
+  if (!inline && desktop) return null
 
   const nombre = store.nombre
   const logo = store.logo_url || '/icon-192.png'
@@ -97,7 +105,7 @@ export default function InstallBanner({ inline = false, onInstalled }: { inline?
   if (inline) {
     return (
       <div className="mx-4 mt-2 rounded-2xl px-3 py-3 flex items-start gap-3"
-        style={{ background: '#fff', border: '1.5px solid var(--brand)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+        style={{ background: 'var(--surface)', border: '1.5px solid var(--brand)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
         <div className="w-11 h-11 rounded-2xl overflow-hidden flex-shrink-0" style={{ background: 'var(--brand)' }}>
           <img src={logo} alt={nombre} className="w-full h-full object-cover" />
         </div>

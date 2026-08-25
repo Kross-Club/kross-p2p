@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { LogOut, Eye, X } from 'lucide-react'
 import BottomNav from './BottomNav'
+import SideNav from './SideNav'
 import IncomingCallOverlay from './IncomingCallOverlay'
 import InstallBanner from './InstallBanner'
 import SellerPresenceTracker from './SellerPresenceTracker'
+import ThemeToggle from './ThemeToggle'
 import { KrossIcon } from './KrossLogo'
 import { subscribePush, notifPermission, getPushPrefs } from '../lib/push'
 import { playNotificationSound } from '../lib/notification-sounds'
 import { supabase } from '../lib/supabase'
 import { useSeller, clearSellerCache, setActingSeller } from '../lib/seller-session'
+import { sellerNavLinks, activeNavLink } from '../lib/seller-nav'
+import { useIsDesktop } from '../lib/use-desktop'
+import { usePanelTheme } from '../lib/theme'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -22,6 +27,9 @@ export default function Layout() {
   const [brand, setBrand] = useState<{ nombre: string; logo_url: string | null } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const desktop = useIsDesktop()
+  usePanelTheme()
 
   // Brand shown in the header follows WHO you're acting as (effective):
   //  · super admin on the platform → Kross (regardless of t1's name)
@@ -116,80 +124,143 @@ export default function Layout() {
     navigate('/login', { replace: true })
   }
 
+  // ── Piezas compartidas entre el panel móvil y el de escritorio ──
+  const links = sellerNavLinks(effective)
+  const section = activeNavLink(links, pathname)
+
+  const impersonationBar = impersonating && (
+    <div className="flex items-center justify-between px-4 py-2 text-white flex-shrink-0"
+      style={{ background: 'linear-gradient(90deg, #7C3AED, #4F46E5)' }}>
+      <div className="flex items-center gap-2 min-w-0">
+        <Eye size={14} className="flex-shrink-0" />
+        <p className="text-xs font-bold truncate">
+          {real?.is_super_admin
+            ? <>Estás en {brand?.nombre ?? 'la marca'}</>
+            : <>Viendo como {effective?.nombre.split(' ')[0]} · {effective?.role_label}</>}
+        </p>
+      </div>
+      <button onClick={stopActing}
+        className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
+        style={{ background: 'rgba(255,255,255,0.2)' }}>
+        <X size={12} /> {real?.is_super_admin ? 'Volver a Kross' : 'Volver a admin'}
+      </button>
+    </div>
+  )
+
+  const shiftChip = real && !impersonating && (
+    <span
+      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black"
+      style={{ background: available ? '#DCFCE7' : '#FEE2E2', color: available ? '#16A34A' : '#DC2626' }}
+      title="Tu turno (lo asigna el admin)">
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: available ? '#16A34A' : '#DC2626' }} />
+      {available ? 'En turno' : 'Fuera de turno'}
+    </span>
+  )
+
+  const userBlock = effective && (
+    <>
+      <div className="text-right">
+        <p className="text-xs font-black leading-none" style={{ color: 'var(--text)' }}>
+          {effective.nombre.split(' ')[0]}
+        </p>
+        <p className="text-xs leading-none mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          {effective.role_label}
+        </p>
+      </div>
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
+        style={{ border: '2px solid var(--brand)', opacity: uploading ? 0.5 : 1 }}
+        title="Cambiar foto">
+        {avatar ? (
+          <img src={avatar} alt={effective.nombre} className="w-full h-full object-cover" />
+        ) : (
+          <span className="font-black text-sm" style={{ color: 'var(--brand)' }}>
+            {effective.nombre.charAt(0).toUpperCase()}
+          </span>
+        )}
+      </button>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={uploadAvatar} />
+    </>
+  )
+
+  const headerActions = (
+    <>
+      <ThemeToggle />
+      <button onClick={logout} className="p-1.5 rounded-xl transition-colors hover:bg-gray-100"
+        style={{ color: 'var(--text-faint)' }} title="Cerrar sesión">
+        <LogOut size={17} />
+      </button>
+    </>
+  )
+
+  // ── Panel de escritorio: un marco 16:9 centrado ──────────────────────────
+  // En la PC el panel de 430px se veía como un recibo: angosto y larguísimo,
+  // con todo el ancho de la pantalla vacío. Acá el panel es una ventana 16:9
+  // (limitada por el alto de la pantalla, así que nunca se estira), con la
+  // navegación al costado y el contenido con scroll PROPIO adentro: la barra
+  // de arriba y el menú no se van cuando bajas en la lista.
+  if (desktop) {
+    return (
+      <div className="h-screen w-screen overflow-hidden flex items-center justify-center p-4"
+        style={{ background: 'var(--surface-2)' }}>
+        {effective && <IncomingCallOverlay storeId={effective.store_id} />}
+        <SellerPresenceTracker authUserId={real?.auth_user_id} />
+
+        <div
+          className="rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
+          style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9', background: 'var(--surface)' }}>
+          {impersonationBar}
+
+          <div className="flex-1 flex min-h-0">
+            <SideNav effective={effective} brand={brand} />
+
+            <div className="flex-1 flex flex-col min-w-0">
+              <header className="flex-shrink-0 border-b border-gray-100 px-6 py-3 flex items-center justify-between gap-4">
+                <p className="font-black text-base tracking-tight truncate" style={{ color: 'var(--text)' }}>
+                  {section?.label ?? brand?.nombre ?? 'kross'}
+                </p>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  {shiftChip}
+                  {userBlock}
+                  {headerActions}
+                </div>
+              </header>
+
+              <main className="flex-1 overflow-y-auto min-h-0" style={{ background: 'var(--surface-2)' }}>
+                <Outlet />
+              </main>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Panel móvil / tablet ─────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center">
-      <div className="w-full max-w-[430px] min-h-screen bg-white relative flex flex-col shadow-2xl">
+    <div className="min-h-screen flex justify-center" style={{ background: 'var(--surface-2)' }}>
+      <div className="w-full max-w-[430px] min-h-screen relative flex flex-col shadow-2xl"
+        style={{ background: 'var(--surface)' }}>
         {effective && <IncomingCallOverlay storeId={effective.store_id} />}
         <SellerPresenceTracker authUserId={real?.auth_user_id} />
         <InstallBanner />
 
-        {/* Impersonation banner */}
-        {impersonating && (
-          <div className="flex items-center justify-between px-4 py-2 text-white"
-            style={{ background: 'linear-gradient(90deg, #7C3AED, #4F46E5)' }}>
-            <div className="flex items-center gap-2 min-w-0">
-              <Eye size={14} className="flex-shrink-0" />
-              <p className="text-xs font-bold truncate">
-                {real?.is_super_admin
-                  ? <>Estás en {brand?.nombre ?? 'la marca'}</>
-                  : <>Viendo como {effective?.nombre.split(' ')[0]} · {effective?.role_label}</>}
-              </p>
-            </div>
-            <button onClick={stopActing}
-              className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
-              style={{ background: 'rgba(255,255,255,0.2)' }}>
-              <X size={12} /> {real?.is_super_admin ? 'Volver a Kross' : 'Volver a admin'}
-            </button>
-          </div>
-        )}
+        {impersonationBar}
 
-        <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+        <header className="sticky top-0 z-20 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between"
+          style={{ background: 'color-mix(in srgb, var(--surface) 90%, transparent)' }}>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center">
               {brand?.logo_url ? <img src={brand.logo_url} alt={brand.nombre} className="w-full h-full object-cover" /> : <KrossIcon size={32} />}
             </div>
-            <span className="font-black text-lg tracking-tight" style={{ color: '#060C1A' }}>{brand?.nombre ?? 'kross'}</span>
+            <span className="font-black text-lg tracking-tight" style={{ color: 'var(--text)' }}>{brand?.nombre ?? 'kross'}</span>
           </div>
           <div className="flex items-center gap-3">
-            {real && !impersonating && (
-              <span
-                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black"
-                style={{ background: available ? '#DCFCE7' : '#FEE2E2', color: available ? '#16A34A' : '#DC2626' }}
-                title="Tu turno (lo asigna el admin)">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: available ? '#16A34A' : '#DC2626' }} />
-                {available ? 'En turno' : 'Fuera de turno'}
-              </span>
-            )}
-            {effective && (
-              <>
-                <div className="text-right">
-                  <p className="text-xs font-black leading-none" style={{ color: '#111' }}>
-                    {effective.nombre.split(' ')[0]}
-                  </p>
-                  <p className="text-xs leading-none mt-0.5" style={{ color: '#888' }}>
-                    {effective.role_label}
-                  </p>
-                </div>
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
-                  className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
-                  style={{ border: '2px solid var(--brand)', opacity: uploading ? 0.5 : 1 }}
-                  title="Cambiar foto">
-                  {avatar ? (
-                    <img src={avatar} alt={effective.nombre} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="font-black text-sm" style={{ color: 'var(--brand)' }}>
-                      {effective.nombre.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                </button>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={uploadAvatar} />
-              </>
-            )}
-            <button onClick={logout} className="p-1.5 rounded-xl" style={{ color: '#ccc' }} title="Cerrar sesión">
-              <LogOut size={17} />
-            </button>
+            {shiftChip}
+            {userBlock}
+            {headerActions}
           </div>
         </header>
 

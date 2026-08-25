@@ -135,7 +135,7 @@ export default function ProductosPage() {
                 {/* Sin esto, el vendedor se entera de que falta configurar el envío
                     recién cuando un pedido no generó su guía. */}
                 {!(p.shalom_origin_branch_id && p.package_size && p.declared_content) && (
-                  <p className="text-[10px] font-bold mt-0.5" style={{ color: '#C2410C' }}>
+                  <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--warn-fg)' }}>
                     Envío sin configurar — su guía se registra a mano
                   </p>
                 )}
@@ -157,8 +157,8 @@ export default function ProductosPage() {
                   ))}
                 </div>
               </div>
-              <a href={`${landingBase}/landing/${p.id}`} target="_blank" rel="noreferrer" className="p-2 rounded-xl" style={{ background: '#F3F4F6', color: '#666' }}><ExternalLink size={14} /></a>
-              <button onClick={() => setEditing(p)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#EEF9FF', color: 'var(--brand)' }}>Editar</button>
+              <a href={`${landingBase}/landing/${p.id}`} target="_blank" rel="noreferrer" className="p-2 rounded-xl" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}><ExternalLink size={14} /></a>
+              <button onClick={() => setEditing(p)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>Editar</button>
             </div>
           ))}
         </div>
@@ -364,7 +364,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
         {/* Packs (opcional) */}
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs font-bold text-gray-500">Packs / ofertas (opcional)</label>
-          <button onClick={addPack} className="text-[11px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#EEF9FF', color: 'var(--brand)' }}>+ Pack</button>
+          <button onClick={addPack} className="text-[11px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>+ Pack</button>
         </div>
         <div className="space-y-2 mb-4">
           {packs.map((p, i) => (
@@ -413,8 +413,8 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
               Vive en el producto y no en la marca porque lo decide la
               mercadería: dos productos de la misma tienda pueden salir de
               almacenes distintos y en cajas de otro tamaño. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: '#FFF7ED', border: '1px solid #FED7AA' }}>
-          <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#C2410C' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '1px solid var(--warn-border)' }}>
+          <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
             <Truck size={14} /> Envío por agencia (Shalom)
           </span>
           <p className="text-[10px] text-gray-500 mt-1 mb-2 leading-snug">
@@ -429,8 +429,8 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
               <button key={valor} onClick={() => setSize(size === valor ? null : valor)}
                 className="text-[11px] font-black px-3 py-1.5 rounded-xl border"
                 style={size === valor
-                  ? { background: '#C2410C', color: '#fff', borderColor: '#C2410C' }
-                  : { background: '#fff', color: '#9A3412', borderColor: '#FED7AA' }}>
+                  ? { background: '#C2410C', color: '#fff', borderColor: 'var(--warn-fg)' }
+                  : { background: 'var(--surface)', color: 'var(--warn-fg)', borderColor: 'var(--warn-border)' }}>
                 {etiqueta}
               </button>
             ))}
@@ -444,8 +444,8 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
               <button key={valor} onClick={() => setContenido(contenido === valor ? null : valor)}
                 className="text-[11px] font-black px-3 py-1.5 rounded-xl border"
                 style={contenido === valor
-                  ? { background: '#C2410C', color: '#fff', borderColor: '#C2410C' }
-                  : { background: '#fff', color: '#9A3412', borderColor: '#FED7AA' }}>
+                  ? { background: '#C2410C', color: '#fff', borderColor: 'var(--warn-fg)' }
+                  : { background: 'var(--surface)', color: 'var(--warn-fg)', borderColor: 'var(--warn-border)' }}>
                 {etiqueta}
               </button>
             ))}
@@ -455,7 +455,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
             Agencia de origen (de dónde sale el paquete)
           </label>
           {origen ? (
-            <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 border" style={{ borderColor: '#FED7AA' }}>
+            <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 border" style={{ borderColor: 'var(--warn-border)' }}>
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-black text-gray-800 truncate">
                   {origenBranch ? origenBranch.name : `Sede ${origen}`}
@@ -472,11 +472,11 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
             <>
               <input value={buscarSede} onChange={e => setBuscarSede(e.target.value)}
                 placeholder="Busca por distrito o nombre (ej: Los Olivos)"
-                className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-1.5" style={{ borderColor: '#FED7AA' }} />
+                className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-1.5" style={{ borderColor: 'var(--warn-border)' }} />
               <div className="space-y-1">
                 {sedes.map(b => (
                   <button key={b.id} onClick={() => { setOrigen(b.id); setSedes([]) }}
-                    className="w-full text-left bg-white rounded-xl px-3 py-2 border" style={{ borderColor: '#FDE68A' }}>
+                    className="w-full text-left bg-white rounded-xl px-3 py-2 border" style={{ borderColor: 'var(--warn-border)' }}>
                     <p className="text-[11px] font-black text-gray-800 truncate">{b.name}</p>
                     <p className="text-[10px] text-gray-400 truncate">{b.district} · {b.department}</p>
                   </button>
