@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { mensajePanel } from '../../lib/panel-errors'
 import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck, BarChart3 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
@@ -47,6 +48,7 @@ interface StoreRow {
 }
 
 const ERR: Record<string, string> = {
+  sin_respuesta: 'El servidor no respondió. Revisa tu conexión (o si la función está desplegada) y reintenta.',
   slug_reservado: 'Ese subdominio está reservado. Elige otro.',
   slug_en_uso: 'Ese subdominio ya está en uso por otra marca.',
   faltan_nombre_slug: 'Completa el nombre y el subdominio.',
@@ -68,12 +70,21 @@ async function call(payload: Record<string, unknown>) {
   // admin_auth_id del body queda como compat mientras conviven versiones.
   const { data: authData } = await supabase.auth.getSession()
   const jwt = authData.session?.access_token ?? ANON
-  const res = await fetch(`${BASE}/manage-store`, {
-    method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  const data = await res.json().catch(() => ({}))
-  return { ok: res.ok, data }
+  // NUNCA lanza. Si `fetch` rechaza —sin red, CORS, una función que no arrancó—
+  // la excepción se comía el `setBusy(false)` del handler y el botón se quedaba
+  // en "…" para siempre, sin mensaje y sin forma de reintentar. Un fallo que no
+  // se puede ver es peor que uno que se explica.
+  try {
+    const res = await fetch(`${BASE}/manage-store`, {
+      method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await res.json().catch(() => ({}))
+    return { ok: res.ok, data }
+  } catch (e) {
+    console.error('[MarcaPage] manage-store no respondió', e)
+    return { ok: false, data: { error: 'sin_respuesta' } }
+  }
 }
 
 export default function MarcaPage() {
@@ -355,7 +366,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       shalom_pro: { email: shalomEmail.trim(), password: shalomPass },
     })
     setShalomBusy(false)
-    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo guardar las credenciales.'); return }
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? mensajePanel((data as { error?: string }).error, 'No se pudo guardar las credenciales.')); return }
     onSaved?.()
   }
 
@@ -367,7 +378,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       shalom_auto_guide_enabled: !autoGuia,
     })
     setShalomBusy(false)
-    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo cambiar la guía automática.'); return }
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? mensajePanel((data as { error?: string }).error, 'No se pudo cambiar la guía automática.')); return }
     onSaved?.()
   }
 
@@ -378,7 +389,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       action: 'update', admin_auth_id: adminId, store_id: store.id, shalom_pro: null,
     })
     setShalomBusy(false)
-    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo desconectar.'); return }
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? mensajePanel((data as { error?: string }).error, 'No se pudo desconectar.')); return }
     onSaved?.()
   }
 

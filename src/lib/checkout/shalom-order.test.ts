@@ -15,6 +15,7 @@ import {
 // El fuente del panel como texto (vite `?raw`): la última prueba compara las
 // dos listas de tamaños, no el render.
 import panelSource from '../../pages/vendedor/ProductosPage.tsx?raw'
+import { mensajePanel } from '../panel-errors'
 
 const completo = () => ({
   originTerminalId: '404',
@@ -223,5 +224,24 @@ describe('la escala de tamaños no se desincroniza', () => {
     expect(bloque, 'ProductosPage debe declarar PACKAGE_SIZES').toBeTruthy()
     const enElPanel = [...bloque![1].matchAll(/\['([A-Z_]+)',/g)].map(m => m[1])
     expect(enElPanel).toEqual([...SHALOM_SIZES])
+  })
+})
+
+describe('el panel dice la causa real cuando no guarda', () => {
+  it('una columna que falta se traduce en "corre el esquema", no en "no se pudo"', () => {
+    // Este es el caso que se vive al desplegar la PWA sin correr el SQL: el
+    // panel se veía roto y el motivo estaba a un mensaje de distancia.
+    const m = mensajePanel('column products.declared_content does not exist', 'No se pudo guardar.')
+    expect(m).toMatch(/setup-kross\.sql/)
+    expect(m).toMatch(/declared_content/)
+  })
+
+  it('un código desconocido se muestra tal cual: es un panel de admin', () => {
+    expect(mensajePanel('nada_que_guardar', 'No se pudo guardar.')).toBe('nada_que_guardar')
+  })
+
+  it('sin error, cae al mensaje de siempre', () => {
+    expect(mensajePanel(null, 'No se pudo guardar.')).toBe('No se pudo guardar.')
+    expect(mensajePanel('  ', 'No se pudo guardar.')).toBe('No se pudo guardar.')
   })
 })
