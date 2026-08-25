@@ -250,7 +250,9 @@ Corre **después** de los generadores de agencias, porque lee sus JSON ya constr
 1. 🔮 Pin arrastrable + campo referencia, en el chat del pedido (post-venta), no en el
    checkout.
 2. 🔮 Route-sheet del motorizado (Lima) con cobranza por parada.
-3. 🔮 Generador de envíos a provincia (Shalom/Olva).
+3. Generador de envíos — **Shalom 🟡** (construido; el payload espera la doc del
+   proveedor y cada marca arranca en modo ensayo — ver § *Generador de guías
+   Shalom*) · **Olva 🔮**.
 4. Tracking por API con disparo de cobranza al llegar a destino — **Shalom ✅**
    (ciclo completo, ver § *Tracking de envíos Shalom*) · **Olva ✅** (mismo
    ciclo, por barrido: su proveedor no tiene webhook — ver § *Tracking de guías
@@ -709,14 +711,12 @@ solo-vendedores: un envío tan viejo sin cerrar es para mirarlo).
 - Si el proveedor ya tuviera un webhook de otra URL, el bootstrap **no lo
   pisa**: avisa en logs y se rota a mano (`POST /v1/webhooks/rotate`).
 
-Sin usar todavía: `GET /v1/tracking/{ose_id}/events` (solo hitos, por
-`ose_id`), el comprobante por ose_id (⚠️ su doc lo declara **fuera de
-servicio**: responde 404 para toda orden — no depender de él), el GRT (exige
-credenciales Shalom Pro + `cap_id` del carguero) y toda la familia de **crear
-pedido** (`POST /v1/orders`, cotización, rótulo PDF) — esa exige credenciales
-de la cuenta Shalom Pro de la marca y es el candidato natural para el
-pendiente #3 (generador de envíos), decisión aparte porque crea guías reales
-y cobrables, sin sandbox ni idempotencia.
+De la familia de **crear pedido** usamos `POST /v1/orders` (ver § *Generador de
+guías Shalom*). Siguen sin usar: `GET /v1/tracking/{ose_id}/events` (solo
+hitos, por `ose_id`), el comprobante por ose_id (⚠️ su doc lo declara **fuera
+de servicio**: responde 404 para toda orden — no depender de él), el GRT (exige
+credenciales Shalom Pro + `cap_id` del carguero) y la cotización de tarifas +
+rótulo PDF.
 
 ### Cuenta Shalom Pro por marca + semáforo de la API ✅
 
@@ -739,27 +739,84 @@ Panel → Mi marca → **Envíos de la marca (Shalom Pro)**. Dos cosas viven ah�
   consultar el estado a mano en shalom.pe → Rastrea, y avisar al comprador
   por el chat del pedido.
 
-### Conectar Shalom Pro **no** genera guías (todavía) ⚠️
+## Generador de guías Shalom 🟡 · el pendiente #3
 
-Vale la pena decirlo aparte porque se asume lo contrario: **una marca con la
-cuenta conectada no recibe su guía sola**. Hoy conectar solo guarda y valida
-credenciales; ningún archivo fuera de `manage-store` las lee. Un pedido de
-provincia corre idéntico con la cuenta conectada o sin ella:
+Un pedido de recojo en agencia **SHALOM** con el adelanto **verificado** pide su
+propia guía a la cuenta Shalom Pro de la marca. Antes de esto la guía nacía en
+el mostrador y alguien la copiaba a mano en el pedido; ese camino **no se fue**
+—es el plan B de todo lo que sigue.
 
-1. `register-buyer` cierra el pedido — sin tocar Shalom.
-2. `pay360-webhook` cobra el adelanto del flete — sin tocar Shalom.
-3. **La guía nace en el mostrador de Shalom**, cuando alguien lleva el paquete,
-   y entra a Kross **a mano**: Logística escribe numero + código en
-   `TrackingBar` → `order-manage` acción `set_tracking`. Es el ÚNICO camino que
-   escribe `tracking_numero` en un pedido.
-4. Recién ahí arranca lo automático: aviso al comprador, suscripción al webhook,
-   reflejo de fases y cobranza del saldo al llegar a destino.
+```
+register-buyer ──► pay360-webhook ──► shalom-order ──► registrarGuia ──► el ciclo de siempre
+  cierra el       adelanto MATCHED     POST /v1/orders   guía al chat      webhook → fases → cobranza
+  pedido          (fire-and-forget)    (o ensayo)        + suscripción
+```
 
-Lo que falta es el **pendiente #3** (generador de envíos): `POST /v1/orders` con
-las credenciales Shalom Pro de la marca. Va aparte porque crea guías **reales y
-cobrables**, sin sandbox ni idempotencia.
+### Las tres defensas (por qué no es un fetch y ya)
 
-**Comprobarlo en 3 segundos, sin creerle a este doc:**
+Cada llamada exitosa **emite una guía real y cobrable**: el proveedor no tiene
+sandbox ni idempotencia. De ahí que el diseño sea casi todo protección:
+
+1. **Candado.** `shalom-order` reclama el pedido con un UPDATE condicional
+   (`shalom_order_status IS NULL`) **antes** de llamar a nadie. Dos webhooks del
+   mismo pago —360pay emite otro `PAYMENT_PAID` si se corrige el código
+   bancario— no pueden emitir dos guías para un paquete.
+2. **Interruptor por marca**, apagado por defecto
+   (`stores.shalom_auto_guide_enabled`, §26.d). Apagado, la función corre
+   entera, arma el envío completo y lo deja en los logs y en el chat de
+   vendedores (`status = SIMULADO`) **sin llamar al proveedor**. Es el ensayo
+   con un pedido real antes de gastar. Se prende en Panel → Mi marca → Envíos.
+3. **Nunca reintenta a ciegas.** Un 2xx, un timeout o una red caída dejan el
+   pedido en un estado que el código no vuelve a tomar solo: puede haber una
+   guía emitida del otro lado. Reintentar es decisión de una persona, con
+   pro.shalom.pe a la vista. El aviso a Logística lo dice con esas palabras.
+
+### Lo que hace falta configurar
+
+| Dónde | Qué | Sin eso |
+|---|---|---|
+| Panel → Mi marca → Envíos | Cuenta Shalom Pro **verificada** (`CONNECTED`) | `SKIPPED` + aviso a Logística |
+| Panel → Mi marca → Envíos | Interruptor de guía automática | `SIMULADO` (ensayo, no emite) |
+| Panel → Productos → el producto → Envío | **Agencia de origen** (sede Shalom de la que sale) y **tamaño** (XXS…XL) | `SKIPPED` diciendo qué falta |
+| Automático | Sede de recojo del pedido (`agency_branch_id`, §26.b) | `SKIPPED` |
+
+La agencia de origen sale del **mismo listado** que ve el comprador
+(`src/data/agencies/shalom.json`): un solo catálogo para las dos puntas del
+envío. La config es **por producto** y no por marca porque lo decide la
+mercadería — dos productos de la misma tienda pueden salir de almacenes
+distintos y en cajas de otro tamaño.
+
+### Las piezas
+
+- **`supabase/functions/shalom-order`** — la que orquesta: guardas, candado,
+  llamada y cierre del expediente (`shalom_order_status/_id/_at/_reason`, §26.c).
+  Es interna: la invoca `pay360-webhook` con la service role key.
+- **`_shared/shalom-orders.ts`** — puro, sin Deno ni red: valida y **traduce** a
+  los campos del proveedor. Único punto que conoce esa forma. Se prueba gratis
+  en `npm test` (`src/lib/checkout/shalom-order.test.ts`), que es todo lo que se
+  puede verificar sin emitir una guía.
+- **`_shared/guia.ts`** — registrar la guía en el pedido, **compartido** con el
+  camino manual (`order-manage` · `set_tracking`). Mismo mensaje al comprador y
+  misma suscripción al webhook venga de una persona o de la API: si el pedido
+  hablara dos idiomas según de dónde salió la guía, la mitad de los envíos
+  quedaría fuera de la cascada. Misma razón por la que el reflejo de fases vive
+  en `tracking.ts`.
+
+### ⚠️ Lo que falta para prenderlo
+
+**El contrato del payload no está verificado contra la doc del proveedor.**
+`toProviderBody()` en `_shared/shalom-orders.ts` traduce a nombres de campo
+asumidos (`sede_origen`, `destinatario.documento`, `paquete.tamano`…). Mientras
+eso no se confirme contra `shalom-api-peru.com/docs`, **toda marca va en modo
+ensayo**: el interruptor de §26.d es exactamente ese seguro. Confirmar el
+contrato es tocar **una función** y nada más del repo.
+
+Lo que sí está verificado y no cambia al ajustarlo: la auth (`X-API-Key` de la
+plataforma + credenciales Shalom Pro de la marca), que el primer login tarda
+~90 s (de ahí el timeout de 145 s) y que la guía se rastrea con numero (8–10
+dígitos) + codigo (4 alfanuméricos), o con el `ose_id`.
+
+**Comprobar el estado del pipeline en 3 segundos:**
 
 ```
 npm run sim:shalom
@@ -767,6 +824,5 @@ npm run sim:shalom
 
 `scripts/sim-shalom-guia.mjs` recorre el pipeline real archivo por archivo,
 reporta con `archivo:línea` qué le pide cada paso a Shalom y clasifica cada
-llamada (rastrear ≠ crear). Cuando el pendiente #3 exista, el script lo detecta
-solo y cambia su veredicto — por eso audita el código en vez de repetir esta
-sección.
+llamada (rastrear ≠ crear). Audita el código en vez de repetir esta sección:
+detectó solo el día que el generador entró y cambió su veredicto.

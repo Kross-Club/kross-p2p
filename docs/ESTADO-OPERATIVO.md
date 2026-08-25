@@ -74,6 +74,26 @@ sin tocar credenciales de pago, porque Kross Club es *partner* y cada marca es u
 bajo esa cuenta. Ver [`06-360PAY.md`](./06-360PAY.md) y
 [`07-CONTRATO-360PAY.md`](./07-CONTRATO-360PAY.md).
 
+## Guía automática de Shalom — encendida en ninguna marca todavía
+
+El generador de envíos existe (ver [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md)
+§ *Generador de guías Shalom*), pero **`stores.shalom_auto_guide_enabled` arranca en
+`false` para todas**: un pedido de agencia Shalom con el adelanto verificado arma su
+envío completo y lo deja como **ensayo** en el chat de vendedores, sin emitir nada.
+
+Para encenderlo en una marca faltan tres cosas, en este orden:
+
+1. **Confirmar el contrato** de `POST /v1/orders` contra la doc del proveedor y
+   ajustar `toProviderBody()` en `supabase/functions/_shared/shalom-orders.ts`.
+   Es el único punto del repo que conoce esos nombres de campo.
+2. **Configurar cada producto**: agencia de origen y tamaño (Panel → Productos →
+   el producto → Envío). El panel marca los que faltan.
+3. **Prender el interruptor** en Panel → Mi marca → Envíos, después de mirar uno o
+   dos ensayos completos en el chat.
+
+Mientras tanto la guía se registra a mano como siempre y **nada se rompe**: el
+generador avisa a Logística cuándo no aplicó y por qué.
+
 ## Deuda técnica conocida
 
 Anotada donde vive, para que no haya que redescubrirla:
@@ -86,6 +106,7 @@ Anotada donde vive, para que no haya que redescubrirla:
 | `manage-store` mantiene vivo el camino legacy `admin_auth_id` para branding. | `01-SALES-ENGINE.md` §3.3 · `manage-store/index.ts:82` | Doble superficie de auth. Los campos de cobro ya exigen JWT verificado; falta retirar el resto. |
 | Catálogo de distritos incompleto 🟡 | `02-SMART-LOGISTICS.md` § Deuda conocida | Afecta la cobertura de reparto. |
 | La key de prueba de Olva API Perú viajó por el chat al recibirse. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Rotarla al pasar a producción (se pide por el WhatsApp del proveedor) y recargar Vault/secret. Misma familia que el bloqueo #2. |
+| El payload de `POST /v1/orders` de Shalom está **asumido**, no verificado contra la doc del proveedor. | `_shared/shalom-orders.ts` · `toProviderBody()` | Es lo único que separa la guía automática de estar prendida. Emite guías reales y cobrables, así que hasta confirmarlo toda marca corre en modo ensayo. |
 | `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. |
 
 ## Limpieza pendiente

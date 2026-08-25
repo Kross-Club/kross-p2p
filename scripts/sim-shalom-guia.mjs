@@ -100,17 +100,22 @@ const PASOS = [
   {
     titulo: 'El checkout guiado cierra el pedido',
     archivo: 'supabase/functions/register-buyer/index.ts',
-    hace: 'crea el order_session con dispatch_type de agencia y agency_name (SHALOM/OLVA)',
+    hace: 'crea el order_session con dispatch_type de agencia, agency_name (SHALOM/OLVA) y la sede de recojo',
   },
   {
     titulo: 'El comprador paga el adelanto del flete',
     archivo: 'supabase/functions/pay360-webhook/index.ts',
-    hace: 'marca payment_verification=MATCHED y lo acusa por el chat del pedido',
+    hace: 'marca payment_verification=MATCHED, lo acusa por el chat y le pide la guía al generador (fire-and-forget)',
   },
   {
-    titulo: 'Se despacha: alguien REGISTRA la guía en el pedido',
+    titulo: 'El generador pide la guía a Shalom',
+    archivo: 'supabase/functions/shalom-order/index.ts',
+    hace: 'reclama el pedido (candado), arma el envío con la config del producto y emite —o ensaya, si la marca tiene apagada la guía automática',
+  },
+  {
+    titulo: 'Plan B: alguien registra la guía a mano',
     archivo: 'supabase/functions/order-manage/index.ts',
-    hace: 'acción set_tracking: valida numero+codigo, se los manda al comprador por el chat y suscribe el envío al webhook',
+    hace: 'acción set_tracking: la misma vía de siempre, para cuando el generador no aplica o falla',
     entrada: 'src/components/TrackingBar.tsx',
   },
   {
@@ -197,15 +202,26 @@ if (usos.length) {
 console.log(T.h('¿Quién escribe el número de guía en el pedido?'))
 // Solo escrituras: una declaración de tipo (`tracking_numero: string | null`)
 // no escribe nada en el pedido.
-const escritores = buscar(/tracking_numero:/).filter(m => !/:\s*(string|number|boolean)\b/.test(m.texto))
+const escritores = buscar(/tracking_numero:/)
+  .filter(m => !/:\s*(string|number|boolean)\b/.test(m.texto) && !/const\s*\{/.test(m.texto))
 for (const m of escritores) console.log(`  ${T.gris(cita(m))}  ${m.texto}`)
 
 // ─── Veredicto ───────────────────────────────────────────────────────────────
 
 console.log(T.h('VEREDICTO'))
 if (creaGuia.length) {
-  console.log(T.ok('El generador de envíos EXISTE en el código: revisa las llamadas de arriba'))
-  console.log(T.ok('y vuelve a correr la simulación contra el paso que las hace.'))
+  console.log(`${T.ok('SÍ se genera la guía en automático')} — el generador existe (pendiente #3, ya construido).`)
+  console.log('')
+  console.log('  · Dispara cuando el adelanto queda verificado, si el pedido es de agencia SHALOM.')
+  console.log('  · Necesita la cuenta Shalom Pro conectada y, en el producto, agencia de origen')
+  console.log('    y tamaño de paquete. Sin eso avisa a Logística y la guía se hace a mano.')
+  console.log('  · Emite de verdad SOLO con stores.shalom_auto_guide_enabled = true; apagado')
+  console.log('    arma el envío y lo deja como ensayo (status SIMULADO), sin gastar.')
+  console.log('  · Nunca reintenta solo: cada llamada exitosa es una guía cobrada.')
+  console.log('')
+  console.log(T.gris('  Para ver el estado real de una marca:'))
+  console.log(T.gris("    select id, slug, shalom_auto_guide_enabled from stores;"))
+  console.log(T.gris("    select shalom_order_status, count(*) from order_sessions group by 1;"))
 } else {
   console.log(`${T.no('NO se genera la guía en automático')}, con Shalom Pro conectado o sin conectar.`)
   console.log('')

@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, X, Trash2, Copy, Image as ImageIcon, ExternalLink, GripVertical } from 'lucide-react'
+import { Plus, X, Trash2, Copy, Image as ImageIcon, ExternalLink, GripVertical, Truck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 import { IMAGE_PRESETS, downscaleImage } from '../../lib/images/downscale'
 import AbTestPanel from './AbTestPanel'
+import { AgencyService } from '../../lib/checkout/services/AgencyService'
+import type { AgencyBranch } from '../../lib/checkout/types'
+
+/** La escala del proveedor. Misma lista que valida `manage-product` y que viaja
+ *  en la guía — si acá dijera otra cosa, el pedido saldría con otra tarifa. */
+const PACKAGE_SIZES = ['XXS', 'XS', 'S', 'M', 'L', 'XL'] as const
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -19,6 +25,10 @@ interface Product {
   images: string[]
   packs: Pack[]
   active: boolean
+  /** Envío (sección 26.a del esquema): de qué sede Shalom sale este producto y
+   *  de qué tamaño es su paquete. Sin los dos, su pedido no genera guía solo. */
+  shalom_origin_branch_id?: string | null
+  package_size?: string | null
 }
 
 export default function ProductosPage() {
@@ -109,6 +119,13 @@ export default function ProductosPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-black text-sm text-gray-900 truncate">{p.nombre || 'Sin nombre'}</p>
                 <p className="text-xs text-gray-400">S/{p.precio} · {p.images.length} imagen(es) · {p.packs.length} pack(s)</p>
+                {/* Sin esto, el vendedor se entera de que falta configurar el envío
+                    recién cuando un pedido no generó su guía. */}
+                {!(p.shalom_origin_branch_id && p.package_size) && (
+                  <p className="text-[10px] font-bold mt-0.5" style={{ color: '#C2410C' }}>
+                    Envío sin configurar — su guía se registra a mano
+                  </p>
+                )}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
                   <button onClick={() => copiar(`${landingBase}/landing/${p.id}`, p.id)}
                     className="text-[11px] font-bold flex items-center gap-1" style={{ color: 'var(--brand)' }}>
@@ -151,6 +168,34 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
   const [packTarget, setPackTarget] = useState<number | null>(null)
   const [packUploading, setPackUploading] = useState<number | null>(null)
   const packFileRef = useRef<HTMLInputElement>(null)
+  // ─── Envío ─────────────────────────────────────────────────────────────────
+  const [size, setSize] = useState<string | null>(product.package_size ?? null)
+  const [origen, setOrigen] = useState<string | null>(product.shalom_origin_branch_id ?? null)
+  const [origenBranch, setOrigenBranch] = useState<AgencyBranch | null>(null)
+  const [buscarSede, setBuscarSede] = useState('')
+  const [sedes, setSedes] = useState<AgencyBranch[]>([])
+
+  // La sede guardada es un id; para que el vendedor la reconozca hay que
+  // resolverla contra el listado (el mismo que ve el comprador al elegir dónde
+  // recoger — un solo catálogo para las dos puntas del envío).
+  useEffect(() => {
+    let vivo = true
+    const sede = origen ? AgencyService.getBranch('SHALOM', origen) : Promise.resolve(null)
+    sede.then(b => { if (vivo) setOrigenBranch(b) })
+    return () => { vivo = false }
+  }, [origen])
+
+  // Búsqueda con freno: 487 sedes filtradas en cada tecla se siente pegajoso en
+  // el celular, que es donde se usa este panel.
+  useEffect(() => {
+    const q = buscarSede.trim()
+    let vivo = true
+    const t = setTimeout(() => {
+      const r = q.length < 2 ? Promise.resolve([]) : AgencyService.search('SHALOM', q, 8)
+      r.then(lista => { if (vivo) setSedes(lista) })
+    }, 200)
+    return () => { vivo = false; clearTimeout(t) }
+  }, [buscarSede])
 
   // Devolvía `null` en silencio si Storage fallaba: la foto no aparecía y no
   // había forma de saber por qué. Ahora el error se muestra, y antes se descarta
@@ -234,6 +279,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
           action: 'save', admin_auth_id: adminId, store_id: storeId || undefined, id: product.id || undefined,
           nombre: nombre.trim(), precio: Number(precio) || 0, images,
           packs: packs.filter(p => p.nombre.trim()).map(p => ({ ...p, precio: Number(p.precio) || 0 })),
+          shalom_origin_branch_id: origen, package_size: size,
         }),
       })
       if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'No se pudo guardar.'); return }
@@ -337,6 +383,71 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
               todos, mejor no subas ninguna: no distingue nada y pesa en 4G. Sin foto propia
               se usa la primera imagen de la landing.
             </p>
+          )}
+        </div>
+
+        {/* ── Envío: lo que hace falta para que la guía se genere sola ──
+              Vive en el producto y no en la marca porque lo decide la
+              mercadería: dos productos de la misma tienda pueden salir de
+              almacenes distintos y en cajas de otro tamaño. ── */}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: '#FFF7ED', border: '1px solid #FED7AA' }}>
+          <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#C2410C' }}>
+            <Truck size={14} /> Envío por agencia (Shalom)
+          </span>
+          <p className="text-[10px] text-gray-500 mt-1 mb-2 leading-snug">
+            Con estos dos datos, un pedido de recojo en Shalom que ya pagó su adelanto
+            <b> genera su guía solo</b>. Sin ellos el pedido se cierra igual y Logística la
+            registra a mano, como siempre.
+          </p>
+
+          <label className="text-[11px] font-bold text-gray-500 mb-1 block">Tamaño del paquete</label>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {PACKAGE_SIZES.map(t => (
+              <button key={t} onClick={() => setSize(size === t ? null : t)}
+                className="text-[11px] font-black px-3 py-1.5 rounded-xl border"
+                style={size === t
+                  ? { background: '#C2410C', color: '#fff', borderColor: '#C2410C' }
+                  : { background: '#fff', color: '#9A3412', borderColor: '#FED7AA' }}>
+                {t}
+              </button>
+            ))}
+          </div>
+
+          <label className="text-[11px] font-bold text-gray-500 mb-1 block">
+            Agencia de origen (de dónde sale el paquete)
+          </label>
+          {origen ? (
+            <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 border" style={{ borderColor: '#FED7AA' }}>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-black text-gray-800 truncate">
+                  {origenBranch ? origenBranch.name : `Sede ${origen}`}
+                </p>
+                {origenBranch && (
+                  <p className="text-[10px] text-gray-400 truncate">{origenBranch.district} · {origenBranch.department}</p>
+                )}
+              </div>
+              <button onClick={() => { setOrigen(null); setBuscarSede('') }} className="text-[11px] font-bold text-gray-400 underline flex-shrink-0">
+                Cambiar
+              </button>
+            </div>
+          ) : (
+            <>
+              <input value={buscarSede} onChange={e => setBuscarSede(e.target.value)}
+                placeholder="Busca por distrito o nombre (ej: Los Olivos)"
+                className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-1.5" style={{ borderColor: '#FED7AA' }} />
+              <div className="space-y-1">
+                {sedes.map(b => (
+                  <button key={b.id} onClick={() => { setOrigen(b.id); setSedes([]) }}
+                    className="w-full text-left bg-white rounded-xl px-3 py-2 border" style={{ borderColor: '#FDE68A' }}>
+                    <p className="text-[11px] font-black text-gray-800 truncate">{b.name}</p>
+                    <p className="text-[10px] text-gray-400 truncate">{b.district} · {b.department}</p>
+                  </button>
+                ))}
+                {buscarSede.trim().length >= 2 && sedes.length === 0 && (
+                  <p className="text-[10px] text-gray-400">Ninguna sede coincide. Prueba con el distrito.</p>
+                )}
+              </div>
+            </>
           )}
         </div>
 

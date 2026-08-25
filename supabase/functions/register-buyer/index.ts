@@ -51,6 +51,7 @@ Deno.serve(async (req) => {
     // Costuras de ENTREGA del checkout guiado (Quiz). Ver docs/01-SALES-ENGINE.md.
     dispatch_type?: string        // MOTORIZADO_LIMA | MOTORIZADO_PROVINCIA | AGENCIA_PROVINCIA | AGENCIA_LIMA
     agency_name?: string          // SHALOM | OLVA | OTRO (solo provincia)
+    agency_branch_id?: string     // id de la sede de recojo dentro de ese courier
     delivery_reference?: string   // referencia de la dirección / agencia destino
     address_lat?: number          // pin GPS fijado en el checkout
     address_lng?: number
@@ -161,6 +162,11 @@ Deno.serve(async (req) => {
     ? body.dispatch_type!
     : 'MOTORIZADO_LIMA'
   const agencyName = ['SHALOM', 'OLVA', 'OTRO'].includes(body.agency_name ?? '') ? body.agency_name! : null
+  // La sede de recojo, ESTRUCTURADA (sección 26.b). Venía viajando solo dentro
+  // de `delivery_reference`, que es texto libre para que lo lea una persona; el
+  // generador de guías necesita el id, no una frase. Se sigue guardando en los
+  // dos lados: la referencia es lo que Logística ve en el chat.
+  const agencyBranchId = /^\d+$/.test(String(body.agency_branch_id ?? '')) ? String(body.agency_branch_id) : null
   const deliveryReference = body.delivery_reference?.trim() || null
   const pinLat = typeof body.address_lat === 'number' ? body.address_lat : null
   const pinLng = typeof body.address_lng === 'number' ? body.address_lng : null
@@ -380,6 +386,7 @@ Deno.serve(async (req) => {
       closed_by: closedBy,
       dispatch_type: dispatchType,
       agency_name: agencyName,
+      agency_branch_id: agencyBranchId,
       delivery_reference: deliveryReference,
       assigned_seller_id: assignedSellerId,
       involved_seller_ids: assignedSellerId ? [assignedSellerId] : [],
