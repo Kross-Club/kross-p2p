@@ -4,6 +4,8 @@ import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import BuyerLoginPage from './pages/comprador/BuyerLoginPage'
+import RecuperarPasswordPage from './pages/RecuperarPasswordPage'
+import NuevaPasswordPage from './pages/NuevaPasswordPage'
 import MisPedidosPage from './pages/comprador/MisPedidosPage'
 import ScorePage from './pages/comprador/ScorePage'
 import TiendaPage from './pages/comprador/TiendaPage'
@@ -106,6 +108,12 @@ export default function App() {
         {/* Auth pages */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/acceso" element={<BuyerLoginPage />} />
+        {/* Recuperar contraseña del panel. `/nueva-contrasena` es a donde
+            vuelve el enlace del correo — sin tilde a propósito: esa URL viaja
+            por correo, y la ñ se rompe al copiarla y al listarla en el
+            allowlist de redirects de Supabase. */}
+        <Route path="/recuperar" element={<RecuperarPasswordPage />} />
+        <Route path="/nueva-contrasena" element={<NuevaPasswordPage />} />
 
         {/* Buyer PWA pages */}
         <Route path="/mis-pedidos" element={<MisPedidosPage />} />
