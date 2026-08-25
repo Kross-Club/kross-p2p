@@ -142,6 +142,13 @@ type MerchantCustomerSession = {
              | 'no_entregado'               // terminal de fracaso: lo marca una persona;
                                             // tasa de entrega = entregado/(entregado+no_entregado)
   loyalty:   { pointsEarned: number; nextReorderDate: Date }
+  // Atribución del anuncio que trajo la venta. La captura Sales en el checkout y
+  // la guarda en la orden; el módulo de Pixels/CAPI la usa para reportar el
+  // Purchase a Meta/TikTok (server-side, cuando el navegador ya no está). El IP
+  // y el user-agent los captura el SERVIDOR de los headers, no del navegador.
+  // NUNCA sale hacia el comprador (get-session no la incluye). Ver 09-PIXELS-CAPI.
+  attribution?: { fbp?: string; fbc?: string; ttp?: string; ttclid?: string
+                  clientUserAgent?: string; clientIp?: string; sourceUrl?: string }
 }
 ```
 
@@ -178,6 +185,8 @@ Mapeo actual → objetivo:
 | `stage` | `order_sessions.stage` — orden en `src/lib/order-stages.ts` | ✅ |
 | `loyalty.points` | `buyers.puntos` | ✅ |
 | `loyalty.nextReorderDate` | derivado de `restock_days` en campañas | 🟡 |
+| `attribution.fbp/fbc/ttp/ttclid/sourceUrl` | `order_sessions.ad_fbp/ad_fbc/ad_ttp/ad_ttclid/ad_source_url` — los escribe `register-buyer` del body | ✅ |
+| `attribution.clientUserAgent/clientIp` | `order_sessions.ad_client_ua/ad_client_ip` — los captura `register-buyer` de los headers (server-only) | ✅ |
 
 ## Estándares del módulo
 
