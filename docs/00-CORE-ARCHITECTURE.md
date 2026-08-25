@@ -90,7 +90,22 @@ y `MisPedidosPage` son justamente las pantallas que lo justifican.
 ## Panel Admin ✅
 
 Edge Function `manage-store` (list/create/update/wa_usage/client_stats). El super admin
-crea marcas + su primer admin sin SQL. Navegación por rol en `src/components/BottomNav.tsx`.
+crea marcas + su primer admin sin SQL. Las secciones por rol viven en un solo lugar,
+`src/lib/seller-nav.ts`, y las pintan `BottomNav` (móvil) y `SideNav` (PC).
+
+**Dos formatos, un mismo panel** (`src/components/Layout.tsx`, decide `useIsDesktop()` de
+`src/lib/use-desktop.ts` → `min-width:1024px` + puntero de mouse):
+
+| | Móvil / tablet | PC del vendedor |
+|---|---|---|
+| Marco | columna de 430px, alto libre | ventana **16:9** centrada (`min(1440px, ancho, alto×16/9)`) — limitada por el alto, así que nunca se estira |
+| Navegación | barra abajo (íconos) | barra lateral con etiquetas; header y menú fijos, el scroll es del contenido |
+| Banner "Instala la app" | sí | **no**: instalar existe para recibir pedidos y llamadas con la pantalla apagada, o sea el celular; en escritorio solo tapaba la lista |
+
+En PC la lista de chats (`ChatsVendedorPage`) usa el ancho: KPIs de la tienda (pedidos, sin
+leer, nuevos, en proceso, entregados) y una tabla densa —cliente, pedido, etapa, último
+mensaje, cuándo entró— para responder *a quién le debo un mensaje* sin abrir un chat.
+En móvil sigue siendo la tarjeta de siempre; las dos pintan los mismos datos.
 
 **Notificaciones push del equipo** (Equipo → Notificaciones, `src/components/PushSettings.tsx`):
 cada miembro las activa/desactiva **por dispositivo** — el celular y la computadora se

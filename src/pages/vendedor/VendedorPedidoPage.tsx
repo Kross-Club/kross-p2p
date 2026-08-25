@@ -12,6 +12,7 @@ import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { useSeller } from '../../lib/seller-session'
+import { useIsDesktop } from '../../lib/use-desktop'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -272,7 +273,7 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
   // confirmado lo que corresponde es cancelar, no "no entregar".
   const canFail = canWrite && !terminal && ['confirmado', 'preparando', 'en_camino'].includes(current)
   return (
-    <div className="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-100">
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-white border-b border-gray-100">
       <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Estado:</span>
       <span className="text-xs font-bold px-2 py-0.5 rounded-full"
         style={current === 'no_entregado'
@@ -359,6 +360,7 @@ export default function VendedorPedidoPage() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
   const { effective, isAdmin } = useSeller()
+  const desktop = useIsDesktop()
   const sellerName = effective?.nombre ?? 'Kross'
   const sellerRole = effective?.role_label ?? null
 
@@ -592,12 +594,16 @@ export default function VendedorPedidoPage() {
     reloadSession()
   }
 
-  return (
-    <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
-
+  // ── Las piezas del pedido, montadas distinto según la pantalla ───────────
+  const overlay = (
+    <>
       {/* IncomingCallOverlay — disabled when seller already has a call open */}
       <IncomingCallOverlay storeId={effective?.store_id ?? session.store_id ?? undefined} disabled={showCall || !canWrite} />
+    </>
+  )
 
+  const headerBlock = (
+    <>
       {/* Header */}
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
         style={{ background: '#111', borderRadius: '0 0 24px 24px' }}>
@@ -683,7 +689,11 @@ export default function VendedorPedidoPage() {
           </div>
         )}
       </div>
+    </>
+  )
 
+  const cancelBanner = (
+    <>
       {/* Cancelado */}
       {session.status === 'cancelado' && (
         <div className="mx-4 mt-2 rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: '#FEE2E2', border: '1.5px solid #FECACA' }}>
@@ -691,7 +701,11 @@ export default function VendedorPedidoPage() {
           <p className="text-xs font-black" style={{ color: '#DC2626' }}>Pedido cancelado — abre “Ver pedido” para reactivarlo</p>
         </div>
       )}
+    </>
+  )
 
+  const contextPanel = (
+    <>
       {/* Stage selector */}
       {session.status !== 'cancelado' && (
       <StageSelector
@@ -740,7 +754,11 @@ export default function VendedorPedidoPage() {
         tracking={session}
         onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
       />
+    </>
+  )
 
+  const messagesBlock = (
+    <>
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
@@ -766,7 +784,11 @@ export default function VendedorPedidoPage() {
 
         <div ref={bottomRef} />
       </div>
+    </>
+  )
 
+  const composerBlock = (
+    <>
       {/* Input — only writers (current owner + invited) or admin can send */}
       <div className="flex-shrink-0 border-t border-gray-100 px-3 py-3 bg-white">
         {canWrite ? (
@@ -803,7 +825,11 @@ export default function VendedorPedidoPage() {
           </div>
         )}
       </div>
+    </>
+  )
 
+  const modals = (
+    <>
       {/* Invite modal */}
       {showInvite && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setShowInvite(false)}>
@@ -890,6 +916,52 @@ export default function VendedorPedidoPage() {
           onClose={() => setShowWa(false)}
         />
       )}
+    </>
+  )
+
+  // ── PC: el mismo marco 16:9 del panel ────────────────────────────────────
+  // El chat a la izquierda (con el ancho de línea acotado para que se siga
+  // leyendo) y el CONTEXTO del pedido —etapa, adelanto, dirección, tracking—
+  // fijo a la derecha: en escritorio no hay que hacer scroll para ver en qué
+  // etapa está lo que estás escribiendo.
+  if (desktop) {
+    return (
+      <div className="h-screen w-screen overflow-hidden bg-gray-100 flex items-center justify-center p-4">
+        {overlay}
+        <div
+          className="rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
+          style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9', background: '#FFFDF5' }}>
+          {headerBlock}
+          {cancelBanner}
+
+          <div className="flex-1 flex min-h-0">
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="flex-1 flex flex-col min-h-0 w-full max-w-[820px] mx-auto">
+                {messagesBlock}
+                {composerBlock}
+              </div>
+            </div>
+
+            <aside className="w-[400px] flex-shrink-0 border-l border-gray-100 overflow-y-auto py-2 bg-white/70">
+              {contextPanel}
+            </aside>
+          </div>
+        </div>
+        {modals}
+      </div>
+    )
+  }
+
+  // ── Móvil: la columna de siempre ─────────────────────────────────────────
+  return (
+    <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
+      {overlay}
+      {headerBlock}
+      {cancelBanner}
+      {contextPanel}
+      {messagesBlock}
+      {composerBlock}
+      {modals}
     </div>
   )
 }

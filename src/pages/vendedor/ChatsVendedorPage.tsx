@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { supabase } from '../../lib/supabase'
+import { useIsDesktop } from '../../lib/use-desktop'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -34,19 +35,33 @@ const NOTA_META: Record<string, { label: string; color: string }> = {
 
 const stageColor: Record<string, string> = {
   nuevo: 'bg-blue-100 text-blue-700',
+  validando: 'bg-purple-100 text-purple-700',
   confirmado: 'bg-green-100 text-green-700',
   preparando: 'bg-amber-100 text-amber-700',
   en_camino: 'bg-indigo-100 text-indigo-700',
   entregado: 'bg-green-200 text-green-800',
+  no_entregado: 'bg-red-100 text-red-700',
 }
 const stageLabel: Record<string, string> = {
-  nuevo: 'Nuevo', confirmado: 'Confirmado', preparando: 'Preparando',
-  en_camino: 'En camino', entregado: 'Entregado',
+  nuevo: 'Nuevo', validando: 'Validando', confirmado: 'Confirmado', preparando: 'Preparando',
+  en_camino: 'En camino', entregado: 'Entregado', no_entregado: 'No entregado',
+}
+
+// Un pedido de la semana pasada mostrando solo "07:08 p. m." se lee como si
+// fuera de hoy. Hora para lo de hoy, fecha corta para lo demás.
+function formatWhen(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+  return sameDay
+    ? d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })
 }
 
 export default function ChatsVendedorPage() {
   const navigate = useNavigate()
   const { effective, isAdmin } = useSeller()
+  const desktop = useIsDesktop()
   const [search, setSearch] = useState('')
   const [sessions, setSessions] = useState<SupabaseSession[]>([])
   const [loading, setLoading] = useState(true)
@@ -122,6 +137,168 @@ export default function ChatsVendedorPage() {
 
   const scopeLabel = onlyMine ? 'Tus pedidos asignados' : 'Todos los pedidos de la tienda'
 
+  // Todo lo que cada fila necesita, calculado una sola vez: la tarjeta de móvil
+  // y la fila de escritorio pintan EXACTAMENTE los mismos datos.
+  const meId = effective?.auth_user_id
+  const unreadOf = (s: SupabaseSession) =>
+    (s.chat_messages?.filter(m => m.sender_role === 'buyer' && !m.read_at).length ?? 0) + (bumps[s.id] ?? 0)
+
+  const rows = filtered.map(session => {
+    const lastMsg = session.chat_messages?.slice(-1)[0]
+    return {
+      session,
+      readOnly: !isAdmin
+        && session.assigned_seller_id !== meId
+        && !(session.writer_seller_ids ?? []).includes(meId ?? ''),
+      preview: lastMsg?.type === 'text' ? lastMsg.body : lastMsg?.type === 'audio' ? '🎵 Audio' : 'Sin mensajes',
+      unread: unreadOf(session),
+      when: formatWhen(session.created_at),
+      online: !!session.buyer_id && onlineBuyers.has(session.buyer_id),
+      nota: session.nota ? NOTA_META[session.nota] : undefined,
+      pedido: `${session.product_name ?? 'Producto'} · ${session.pack_name || `S/${session.product_price}`}`,
+    }
+  })
+
+  // Pulso de la tienda (escritorio): lo que un vendedor mira antes de abrir un
+  // chat — sobre TODO lo cargado, no sobre el filtro de búsqueda.
+  const kpis = [
+    { label: 'Pedidos', value: sessions.length, color: '#111827' },
+    { label: 'Sin leer', value: sessions.filter(s => unreadOf(s) > 0).length, color: 'var(--brand)' },
+    { label: 'Nuevos', value: sessions.filter(s => s.stage === 'nuevo' || s.stage === 'validando').length, color: '#2563EB' },
+    { label: 'En proceso', value: sessions.filter(s => ['confirmado', 'preparando', 'en_camino'].includes(s.stage)).length, color: '#EA580C' },
+    { label: 'Entregados', value: sessions.filter(s => s.stage === 'entregado').length, color: '#16A34A' },
+  ]
+
+  const open = (token: string) => navigate(`/vendedor/pedido/${token}`)
+
+  const Avatar = ({ name, online, size }: { name: string | null; online: boolean; size: number }) => (
+    <div className="relative flex-shrink-0">
+      <div className="rounded-2xl flex items-center justify-center font-black"
+        style={{ background: '#FFD400', color: '#111', width: size, height: size, fontSize: size >= 40 ? 18 : 13 }}>
+        {(name || 'C')[0]}
+      </div>
+      {online && (
+        <div className={`absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white ${size >= 40 ? 'w-3.5 h-3.5' : 'w-3 h-3'}`}
+          style={{ background: '#4ADE80' }} />
+      )}
+    </div>
+  )
+
+  const StageChip = ({ stage }: { stage: string }) => (
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${stageColor[stage] || 'bg-gray-100 text-gray-500'}`}>
+      {stageLabel[stage] || stage}
+    </span>
+  )
+
+  const spinner = (
+    <div className="flex justify-center py-12">
+      <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" />
+    </div>
+  )
+
+  const empty = (
+    <div className="text-center py-12">
+      <MessageCircle size={48} className="text-gray-200 mx-auto mb-3" />
+      <p className="text-gray-400 text-sm">
+        {onlyMine ? 'Aún no tienes pedidos asignados' : 'No hay pedidos que coincidan'}
+      </p>
+    </div>
+  )
+
+  // ── Escritorio: tabla densa, todo lo relevante en una línea ───────────────
+  // El ancho de la PC se paga mostrando cliente, pedido, etapa, último mensaje
+  // y cuándo entró SIN abrir el chat. Es lo que un CRM tiene que responder de
+  // un vistazo: a quién le debo un mensaje.
+  const COLS = 'minmax(200px,1.4fr) minmax(115px,1fr) 176px minmax(190px,1.6fr) 76px 18px'
+
+  if (desktop) {
+    return (
+      <div className="px-6 py-5">
+        <div className="flex items-end justify-between gap-6 mb-4">
+          <div className="min-w-0">
+            <h1 className="text-lg font-black text-gray-900 leading-tight">Chats de clientes</h1>
+            <p className="text-xs text-gray-400 mt-0.5">{scopeLabel}</p>
+          </div>
+          <div className="relative w-80 flex-shrink-0">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar por cliente o producto..."
+              className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-5 gap-3 mb-4">
+          {kpis.map(k => (
+            <div key={k.label} className="bg-white border border-gray-100 rounded-2xl px-4 py-3">
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">{k.label}</p>
+              <p className="text-2xl font-black leading-tight mt-0.5" style={{ color: k.color }}>{k.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+          <div className="grid items-center gap-3 px-4 py-2 border-b border-gray-100 bg-gray-50/70"
+            style={{ gridTemplateColumns: COLS }}>
+            {['Cliente', 'Pedido', 'Etapa', 'Último mensaje', 'Creado'].map(h => (
+              <p key={h} className="text-[10px] font-black text-gray-400 uppercase tracking-wide">{h}</p>
+            ))}
+            <span />
+          </div>
+
+          {loading ? spinner : rows.length === 0 ? empty : rows.map(r => (
+            <button
+              key={r.session.id}
+              onClick={() => open(r.session.token)}
+              className="w-full grid items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50 transition-colors"
+              style={{ gridTemplateColumns: COLS }}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Avatar name={r.session.buyer_name} online={r.online} size={34} />
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-800 text-sm truncate">{r.session.buyer_name || 'Comprador'}</p>
+                  {r.readOnly && (
+                    <p className="text-[10px] font-bold truncate" style={{ color: '#863bff' }}>
+                      👁 {r.session.seller_role || 'En otro rol'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500 truncate">{r.pedido}</p>
+
+              <div className="flex items-center gap-1 min-w-0">
+                <StageChip stage={r.session.stage} />
+                {r.nota && (
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                    style={{ background: `${r.nota.color}22`, color: r.nota.color }}>
+                    {r.nota.label}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 min-w-0">
+                <p className={`text-xs truncate flex-1 ${r.unread > 0 ? 'text-gray-800 font-semibold' : 'text-gray-500'}`}>
+                  {r.preview}
+                </p>
+                {r.unread > 0 && (
+                  <span className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center flex-shrink-0"
+                    style={{ background: 'var(--brand)' }}>{r.unread}</span>
+                )}
+              </div>
+
+              <p className="text-[11px] text-gray-400">{r.when}</p>
+              <ChevronRight size={15} className="text-gray-300" />
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Móvil: la tarjeta de siempre ──────────────────────────────────────────
   return (
     <div className="px-4 py-4">
       <h1 className="text-xl font-black text-gray-900 mb-1">Chats de clientes</h1>
@@ -137,83 +314,47 @@ export default function ChatsVendedorPage() {
         />
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12">
-          <MessageCircle size={48} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">
-            {onlyMine ? 'Aún no tienes pedidos asignados' : 'No hay pedidos que coincidan'}
-          </p>
-        </div>
-      ) : (
+      {loading ? spinner : rows.length === 0 ? empty : (
         <div className="space-y-3">
-          {filtered.map(session => {
-            const meId = effective?.auth_user_id
-            const readOnly = !isAdmin
-              && session.assigned_seller_id !== meId
-              && !(session.writer_seller_ids ?? []).includes(meId ?? '')
-            const lastMsg = session.chat_messages?.slice(-1)[0]
-            const preview = lastMsg?.type === 'text' ? lastMsg.body : lastMsg?.type === 'audio' ? '🎵 Audio' : 'Sin mensajes'
-            const baseUnread = session.chat_messages?.filter(m => m.sender_role === 'buyer' && !m.read_at).length ?? 0
-            const unread = baseUnread + (bumps[session.id] ?? 0)
-            const timeAgo = new Date(session.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
-            const online = !!session.buyer_id && onlineBuyers.has(session.buyer_id)
-
-            return (
-              <button
-                key={session.id}
-                onClick={() => navigate(`/vendedor/pedido/${session.token}`)}
-                className="w-full bg-white border rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
-                style={{ borderColor: 'var(--brand)', borderWidth: '1.5px' }}
-              >
-                <div className="relative flex-shrink-0">
-                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-lg font-black"
-                    style={{ background: '#FFD400', color: '#111' }}>
-                    {(session.buyer_name || 'C')[0]}
-                  </div>
-                  {online && (
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white"
-                      style={{ background: '#4ADE80' }} />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <p className="font-semibold text-gray-800 text-sm truncate">{session.buyer_name || 'Comprador'}</p>
-                    <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-                      {unread > 0 && (
-                        <span className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center"
-                          style={{ background: 'var(--brand)' }}>{unread}</span>
-                      )}
-                      {session.nota && NOTA_META[session.nota] && (
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                          style={{ background: `${NOTA_META[session.nota].color}22`, color: NOTA_META[session.nota].color }}>
-                          {NOTA_META[session.nota].label}
-                        </span>
-                      )}
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${stageColor[session.stage] || 'bg-gray-100 text-gray-500'}`}>
-                        {stageLabel[session.stage] || session.stage}
+          {rows.map(r => (
+            <button
+              key={r.session.id}
+              onClick={() => open(r.session.token)}
+              className="w-full bg-white border rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
+              style={{ borderColor: 'var(--brand)', borderWidth: '1.5px' }}
+            >
+              <Avatar name={r.session.buyer_name} online={r.online} size={44} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-0.5">
+                  <p className="font-semibold text-gray-800 text-sm truncate">{r.session.buyer_name || 'Comprador'}</p>
+                  <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+                    {r.unread > 0 && (
+                      <span className="w-4 h-4 rounded-full text-white text-[9px] font-black flex items-center justify-center"
+                        style={{ background: 'var(--brand)' }}>{r.unread}</span>
+                    )}
+                    {r.nota && (
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                        style={{ background: `${r.nota.color}22`, color: r.nota.color }}>
+                        {r.nota.label}
                       </span>
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-gray-400 truncate">
-                    {readOnly && <span className="font-bold" style={{ color: '#863bff' }}>👁 {session.seller_role || 'En otro rol'} · </span>}
-                    {session.product_name} · {session.pack_name || `S/${session.product_price}`}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-gray-500 truncate flex-1">{preview}</p>
-                    <span className="text-[10px] text-gray-300 flex-shrink-0 ml-1">{timeAgo}</span>
+                    )}
+                    <StageChip stage={r.session.stage} />
                   </div>
                 </div>
-                <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
-              </button>
-            )
-          })}
+                <p className="text-[11px] text-gray-400 truncate">
+                  {r.readOnly && <span className="font-bold" style={{ color: '#863bff' }}>👁 {r.session.seller_role || 'En otro rol'} · </span>}
+                  {r.pedido}
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500 truncate flex-1">{r.preview}</p>
+                  <span className="text-[10px] text-gray-300 flex-shrink-0 ml-1">{r.when}</span>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
+            </button>
+          ))}
         </div>
       )}
-
     </div>
   )
 }

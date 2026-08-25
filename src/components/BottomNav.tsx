@@ -1,36 +1,12 @@
 import { NavLink } from 'react-router-dom'
-import { MessageCircle, ShoppingBag, BarChart2, Users, Package, Store, Phone, UserPlus, TrendingUp } from 'lucide-react'
 import { useSeller } from '../lib/seller-session'
+import { sellerNavLinks } from '../lib/seller-nav'
 
+// Barra de abajo: SOLO móvil/tablet. En la PC del vendedor la navegación vive
+// al costado (SideNav), dentro del marco 16:9 — ver Layout.
 export default function BottomNav() {
   const { effective } = useSeller()
-  // Nav follows WHO you're acting as:
-  //  · super admin (Kross platform, not inside a store) → only Marcas
-  //  · store admin (or super admin who entered a store) → full store toolset
-  //  · team member → Chats, CRM, Stats
-  const platform = !!effective?.is_super_admin
-  const storeAdmin = !!effective?.is_admin && !effective?.is_super_admin
-
-  const platformLinks = [
-    { to: '/vendedor/marca', icon: Store, label: 'Marcas' },
-  ]
-  const memberLinks = [
-    { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
-    { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
-    { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
-  ]
-  const adminLinks = [
-    { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
-    { to: '/vendedor/clientes', icon: UserPlus, label: 'Clientes' },
-    { to: '/vendedor/retencion', icon: TrendingUp, label: 'Retención' },
-    { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
-    { to: '/vendedor/productos', icon: Package, label: 'Productos' },
-    { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
-    { to: '/vendedor/llamadas', icon: Phone, label: 'Llamadas' },
-    { to: '/vendedor/marca', icon: Store, label: 'Marca' },
-    { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
-  ]
-  const links = platform ? platformLinks : storeAdmin ? adminLinks : memberLinks
+  const links = sellerNavLinks(effective)
 
   return (
     <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-gray-100 z-30 safe-area-inset-bottom">
