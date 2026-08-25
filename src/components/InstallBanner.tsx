@@ -105,7 +105,7 @@ export default function InstallBanner({ inline = false, onInstalled }: { inline?
   if (inline) {
     return (
       <div className="mx-4 mt-2 rounded-2xl px-3 py-3 flex items-start gap-3"
-        style={{ background: '#fff', border: '1.5px solid var(--brand)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+        style={{ background: 'var(--surface)', border: '1.5px solid var(--brand)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
         <div className="w-11 h-11 rounded-2xl overflow-hidden flex-shrink-0" style={{ background: 'var(--brand)' }}>
           <img src={logo} alt={nombre} className="w-full h-full object-cover" />
         </div>

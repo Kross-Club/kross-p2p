@@ -124,7 +124,7 @@ function BotonesBubble({
 
       {/* Confirmación success */}
       {selected && selected.startsWith('✅') && contenido.respuestas[selected] && (
-        <div className="rounded-2xl px-4 py-3 mt-1 flex items-start gap-2" style={{ background: '#EEF9FF', border: '1.5px solid var(--brand)' }}>
+        <div className="rounded-2xl px-4 py-3 mt-1 flex items-start gap-2" style={{ background: 'var(--brand-tint)', border: '1.5px solid var(--brand)' }}>
           <CheckCircle2 size={16} style={{ color: 'var(--brand)', flexShrink: 0, marginTop: 2 }} />
           <p className="text-sm font-semibold" style={{ color: '#1a6a8a' }}>{contenido.respuestas[selected]}</p>
         </div>
@@ -237,7 +237,7 @@ export default function ChatView({ chat, isVendedor, lockedUntilChat }: ChatView
   return (
     <div className="flex flex-col h-full">
       {/* Fondo blanco amarillento muy suave */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ background: '#FFFDF5' }}>
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ background: 'var(--chat-bg)' }}>
         {chat.mensajes.map(msg => (
           <MensajeItem
             key={msg.id}
@@ -258,7 +258,7 @@ export default function ChatView({ chat, isVendedor, lockedUntilChat }: ChatView
               onKeyDown={e => e.key === 'Enter' && handleSend()}
               placeholder={isVendedor ? 'Responder al cliente...' : 'Escribe tu mensaje...'}
               className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
-              style={{ background: '#F0F0F0' }}
+              style={{ background: 'var(--surface-3)' }}
               autoFocus
             />
             <button

@@ -16,14 +16,14 @@ export default function SideNav({
   const links = sellerNavLinks(effective)
 
   return (
-    <nav className="w-[212px] flex-shrink-0 border-r border-gray-100 bg-white flex flex-col">
+    <nav className="w-[212px] flex-shrink-0 border-r border-gray-100 flex flex-col" style={{ background: 'var(--surface)' }}>
       <div className="px-4 py-4 flex items-center gap-2 border-b border-gray-100">
         <div className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0">
           {brand?.logo_url
             ? <img src={brand.logo_url} alt={brand.nombre} className="w-full h-full object-cover" />
             : <KrossIcon size={32} />}
         </div>
-        <span className="font-black text-base tracking-tight truncate" style={{ color: '#060C1A' }}>
+        <span className="font-black text-base tracking-tight truncate" style={{ color: 'var(--text)' }}>
           {brand?.nombre ?? 'kross'}
         </span>
       </div>
@@ -38,7 +38,7 @@ export default function SideNav({
                 isActive ? 'font-black' : 'font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-700'
               }`
             }
-            style={({ isActive }) => (isActive ? { color: 'var(--brand)', background: '#EEF9FF' } : {})}
+            style={({ isActive }) => (isActive ? { color: 'var(--brand)', background: 'var(--brand-tint)' } : {})}
           >
             <Icon size={17} className="flex-shrink-0" />
             <span className="truncate">{label}</span>

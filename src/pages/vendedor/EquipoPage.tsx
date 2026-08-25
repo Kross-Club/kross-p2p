@@ -190,7 +190,7 @@ function MemberCard({ s, isSelf, online, admin, onEnter, onToggle, onProfile, bu
   const isOnline = online.has(s.auth_user_id)
   const available = s.available !== false
   return (
-    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid #f0f0f0' }}>
+    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid var(--border)' }}>
       <div className="flex items-center gap-3">
         <div className="relative flex-shrink-0">
           <div className="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: `${color}22` }}>
@@ -206,7 +206,7 @@ function MemberCard({ s, isSelf, online, admin, onEnter, onToggle, onProfile, bu
           </div>
         </div>
         {admin && onProfile && !s.is_admin && (
-          <button onClick={onProfile} className="p-2 rounded-xl" style={{ background: '#F3F4F6', color: '#666' }} title="Editar"><Pencil size={14} /></button>
+          <button onClick={onProfile} className="p-2 rounded-xl" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }} title="Editar"><Pencil size={14} /></button>
         )}
       </div>
 
@@ -290,7 +290,7 @@ function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adm
             </div>
           )}
         </div>
-        {err && <p className="text-xs font-semibold text-center mt-2" style={{ color: '#DC2626' }}>{err}</p>}
+        {err && <p className="text-xs font-semibold text-center mt-2" style={{ color: 'var(--danger-fg)' }}>{err}</p>}
         <button onClick={submit} disabled={busy}
           className="w-full mt-4 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: '#fff' }}>
           {busy ? 'Creando…' : 'Crear miembro'}

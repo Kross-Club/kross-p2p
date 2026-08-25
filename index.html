@@ -17,6 +17,20 @@
     <style>
       * { font-family: 'Nunito', sans-serif; }
     </style>
+    <script>
+      /* El tema del panel, ANTES del primer pintado: sin esto la app entra en
+         blanco y salta a oscuro cuando React monta. Espejo de src/lib/theme.ts;
+         a partir de ahí manda usePanelTheme(). */
+      (function () {
+        try {
+          var pref = localStorage.getItem('kross-theme') || 'system'
+          var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark && /^\/(vendedor|comprador)(\/|$)/.test(location.pathname)) {
+            document.documentElement.setAttribute('data-theme', 'dark')
+          }
+        } catch (e) { /* sin storage: tema claro */ }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

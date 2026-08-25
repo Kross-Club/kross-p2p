@@ -13,6 +13,7 @@ import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { useSeller } from '../../lib/seller-session'
 import { useIsDesktop } from '../../lib/use-desktop'
+import { usePanelTheme } from '../../lib/theme'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -277,14 +278,14 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
       <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Estado:</span>
       <span className="text-xs font-bold px-2 py-0.5 rounded-full"
         style={current === 'no_entregado'
-          ? { background: '#FEE2E2', color: '#DC2626' }
+          ? { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }
           : { background: 'var(--brand)', color: 'white' }}>
         {stageLabel[current] || current}
       </span>
       {canFail && (
         <button onClick={markUndelivered} disabled={busy}
           className="ml-auto text-[10px] font-black px-2.5 py-1 rounded-full disabled:opacity-50"
-          style={{ background: '#FEE2E2', color: '#DC2626' }}>
+          style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
           ✕ No entregado
         </button>
       )}
@@ -335,7 +336,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
       <div className={`max-w-[80%] flex flex-col ${isSeller ? 'items-end' : 'items-start'}`}>
         {/* Sender distinction: who wrote it + their role */}
         <p className="text-[9px] mb-0.5 mx-1 font-bold flex items-center gap-1"
-          style={{ color: isSeller ? roleC : '#9CA3AF' }}>
+          style={{ color: isSeller ? roleC : 'var(--text-faint)' }}>
           {isSeller
             ? <>{msg.sender_name?.split(' ')[0] || 'Kross'}{msg.sender_role_label && <span className="px-1 rounded" style={{ background: `${roleC}22` }}>{msg.sender_role_label}</span>}</>
             : (msg.sender_name || 'Cliente')}
@@ -361,6 +362,7 @@ export default function VendedorPedidoPage() {
   const navigate = useNavigate()
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
+  usePanelTheme()
   const sellerName = effective?.nombre ?? 'Kross'
   const sellerRole = effective?.role_label ?? null
 
@@ -538,7 +540,7 @@ export default function VendedorPedidoPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col h-screen items-center justify-center" style={{ background: '#FFFDF5' }}>
+      <div className="flex flex-col h-screen items-center justify-center" style={{ background: 'var(--chat-bg)' }}>
         <div className="w-10 h-10 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" />
       </div>
     )
@@ -546,7 +548,7 @@ export default function VendedorPedidoPage() {
 
   if (!session) {
     return (
-      <div className="flex flex-col h-screen items-center justify-center px-8 text-center" style={{ background: '#FFFDF5' }}>
+      <div className="flex flex-col h-screen items-center justify-center px-8 text-center" style={{ background: 'var(--chat-bg)' }}>
         <Package size={40} className="text-gray-300 mb-4" />
         <p className="font-black text-gray-800">Sesión no encontrada</p>
         <button onClick={() => navigate('/vendedor/chats')} className="mt-4 text-sm text-[var(--brand)] font-semibold">
@@ -606,7 +608,7 @@ export default function VendedorPedidoPage() {
     <>
       {/* Header */}
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
-        style={{ background: '#111', borderRadius: '0 0 24px 24px' }}>
+        style={{ background: 'var(--chat-header)', borderRadius: '0 0 24px 24px' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/vendedor/chats')}
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -623,7 +625,7 @@ export default function VendedorPedidoPage() {
               {(session.buyer_name || 'C')[0]}
             </div>
             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
-              style={{ borderColor: '#111', background: buyerOnline ? '#4ADE80' : '#6B7280' }} />
+              style={{ borderColor: 'var(--chat-header)', background: buyerOnline ? '#4ADE80' : '#6B7280' }} />
           </button>
 
           <button onClick={() => setShowDetail(true)} className="flex-1 min-w-0 text-left">
@@ -696,9 +698,9 @@ export default function VendedorPedidoPage() {
     <>
       {/* Cancelado */}
       {session.status === 'cancelado' && (
-        <div className="mx-4 mt-2 rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: '#FEE2E2', border: '1.5px solid #FECACA' }}>
+        <div className="mx-4 mt-2 rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: 'var(--danger-bg)', border: '1.5px solid var(--danger-border)' }}>
           <span>❌</span>
-          <p className="text-xs font-black" style={{ color: '#DC2626' }}>Pedido cancelado — abre “Ver pedido” para reactivarlo</p>
+          <p className="text-xs font-black" style={{ color: 'var(--danger-fg)' }}>Pedido cancelado — abre “Ver pedido” para reactivarlo</p>
         </div>
       )}
     </>
@@ -794,7 +796,7 @@ export default function VendedorPedidoPage() {
         {canWrite ? (
           <div className="flex items-center gap-2">
             <button onClick={() => setShowOffer(true)}
-              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FEF3C7', color: '#D97706' }}
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}
               title="Enviar oferta">
               <PackagePlus size={16} />
             </button>
@@ -804,13 +806,13 @@ export default function VendedorPedidoPage() {
               onKeyDown={e => e.key === 'Enter' && handleSend()}
               placeholder="Escribe al cliente…"
               className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
-              style={{ background: '#F0F0F0' }}
+              style={{ background: 'var(--surface-3)' }}
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || sending}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40"
-              style={{ background: '#111' }}>
+              className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm disabled:opacity-40"
+              style={{ background: 'var(--invert)', color: 'var(--invert-fg)' }}>
               <Send size={16} />
             </button>
           </div>
@@ -930,7 +932,7 @@ export default function VendedorPedidoPage() {
         {overlay}
         <div
           className="rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
-          style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9', background: '#FFFDF5' }}>
+          style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9', background: 'var(--chat-bg)' }}>
           {headerBlock}
           {cancelBanner}
 
@@ -942,7 +944,8 @@ export default function VendedorPedidoPage() {
               </div>
             </div>
 
-            <aside className="w-[400px] flex-shrink-0 border-l border-gray-100 overflow-y-auto py-2 bg-white/70">
+            <aside className="w-[400px] flex-shrink-0 border-l border-gray-100 overflow-y-auto py-2"
+              style={{ background: 'var(--surface)' }}>
               {contextPanel}
             </aside>
           </div>
@@ -954,7 +957,7 @@ export default function VendedorPedidoPage() {
 
   // ── Móvil: la columna de siempre ─────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
+    <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: 'var(--chat-bg)' }}>
       {overlay}
       {headerBlock}
       {cancelBanner}
@@ -1066,7 +1069,7 @@ function WaTemplatesSheet({ storeId, sessionId, sellerName, onClose }: {
                     style={{ borderColor: done === t.name ? '#25D366' : '#eee', borderWidth: 1.5 }}>
                     <div className="flex items-center justify-between">
                       <span className="font-black text-sm text-gray-900">{t.name}</span>
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#16A34A' }}>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
                         {done === t.name ? 'Enviado ✓' : `${t.params} var${t.params === 1 ? '' : 's'}`}
                       </span>
                     </div>
@@ -1129,7 +1132,7 @@ function OfferSheet({ storeId, onClose, onSend }: {
                     : <div className="w-full h-20 bg-gray-100" />}
                   <div className="p-1.5">
                     <p className="text-[10px] font-bold text-gray-800 truncate">{p.nombre}</p>
-                    <p className="text-[10px] font-black" style={{ color: '#16A34A' }}>S/{p.precio}</p>
+                    <p className="text-[10px] font-black" style={{ color: 'var(--ok-fg)' }}>S/{p.precio}</p>
                   </div>
                 </button>
               ))}

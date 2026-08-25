@@ -39,7 +39,7 @@ const stageColor: Record<string, string> = {
   confirmado: 'bg-green-100 text-green-700',
   preparando: 'bg-amber-100 text-amber-700',
   en_camino: 'bg-indigo-100 text-indigo-700',
-  entregado: 'bg-green-200 text-green-800',
+  entregado: 'bg-green-100 text-green-700',
   no_entregado: 'bg-red-100 text-red-700',
 }
 const stageLabel: Record<string, string> = {
@@ -162,7 +162,7 @@ export default function ChatsVendedorPage() {
   // Pulso de la tienda (escritorio): lo que un vendedor mira antes de abrir un
   // chat — sobre TODO lo cargado, no sobre el filtro de búsqueda.
   const kpis = [
-    { label: 'Pedidos', value: sessions.length, color: '#111827' },
+    { label: 'Pedidos', value: sessions.length, color: 'var(--text)' },
     { label: 'Sin leer', value: sessions.filter(s => unreadOf(s) > 0).length, color: 'var(--brand)' },
     { label: 'Nuevos', value: sessions.filter(s => s.stage === 'nuevo' || s.stage === 'validando').length, color: '#2563EB' },
     { label: 'En proceso', value: sessions.filter(s => ['confirmado', 'preparando', 'en_camino'].includes(s.stage)).length, color: '#EA580C' },

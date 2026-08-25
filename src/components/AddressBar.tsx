@@ -111,7 +111,7 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
   }, [isPickup, agencyBranchId, agencyName])
 
   return (
-    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid #F0F0F0' }}>
+    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid var(--border)' }}>
       {/* Row 1: icon + title + badge + button, all in one line */}
       <div className="flex items-center gap-2">
         <MapPin size={15} style={{ color: '#EF4444' }} className="flex-shrink-0" />
@@ -120,13 +120,13 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
           {/* En agencia no hay nada que verificar, así que tampoco hay por qué
               alarmar con un "sin verificar" naranja: el pedido está completo. */}
           {isPickup ? null : verified
-            ? <span className="ml-1 whitespace-nowrap" style={{ color: '#16A34A' }}>✓ Verificada</span>
+            ? <span className="ml-1 whitespace-nowrap" style={{ color: 'var(--ok-fg)' }}>✓ Verificada</span>
             : <span className="ml-1 whitespace-nowrap" style={{ color: '#F59E0B' }}>· Sin verificar</span>}
         </p>
         {role === 'buyer' && !isPickup && (
           <button onClick={verifyGps} disabled={busy}
             className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl flex-shrink-0 disabled:opacity-50"
-            style={verified ? { background: '#EEF9FF', color: 'var(--brand)' } : { background: '#FFF7ED', color: '#EA580C' }}>
+            style={verified ? { background: 'var(--brand-tint)', color: 'var(--brand)' } : { background: 'var(--warn-bg-soft)', color: 'var(--warn-fg)' }}>
             {busy ? `Ubicando… ${secs}s` : verified ? <><Navigation size={11} /> Cambiar</> : <><Navigation size={11} /> Verificar GPS</>}
           </button>
         )}
@@ -161,17 +161,17 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
       {hasCoords && (
         <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: '1px dashed #eee' }}>
           <a href={`https://www.google.com/maps?q=${lat},${lng}`} target="_blank" rel="noreferrer"
-            className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#E8F0FE', color: '#1A73E8' }}>
+            className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--info-bg)', color: 'var(--info-fg)' }}>
             <Navigation size={11} /> Google Maps
           </a>
           {role === 'seller' && (
             <a href={`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`} target="_blank" rel="noreferrer"
-              className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#E7FBFF', color: '#33CCFF' }}>
+              className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--brand-tint)', color: '#33CCFF' }}>
               <Navigation size={11} /> Waze
             </a>
           )}
           <button onClick={() => { navigator.clipboard?.writeText(`${lat},${lng}`); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
-            className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto" style={{ background: '#F3F4F6', color: '#555' }}>
+            className="flex items-center gap-1 text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
             <Copy size={11} /> {copied ? '¡Copiado!' : 'Coordenadas'}
           </button>
         </div>

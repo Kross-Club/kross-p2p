@@ -120,7 +120,7 @@ export default function CRMPage() {
             return (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-black px-3 py-1 rounded-full" style={{ background: '#FEE2E2', color: '#DC2626' }}>❌ Cancelados / notas</span>
+                  <span className="text-xs font-black px-3 py-1 rounded-full" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>❌ Cancelados / notas</span>
                   <span className="text-xs text-gray-400 font-semibold">{cancel.length}</span>
                 </div>
                 <div className="space-y-2">{cancel.map(s => <Card key={s.id} s={s} />)}</div>

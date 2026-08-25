@@ -135,7 +135,7 @@ export default function EstadisticasPage() {
           <h2 className="font-black text-sm text-gray-900 mb-2">Por miembro</h2>
           <div className="space-y-2">
             {members.map((m, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-white" style={{ border: '1.5px solid #f0f0f0' }}>
+              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-white" style={{ border: '1.5px solid var(--border)' }}>
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0" style={{ background: `${roleColor(m.role)}22`, color: roleColor(m.role) }}>{m.name.charAt(0).toUpperCase()}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm text-gray-900 truncate">{m.name}</p>

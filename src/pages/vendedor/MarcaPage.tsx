@@ -139,8 +139,8 @@ export default function MarcaPage() {
       </p>
 
       {isSuper && Object.values(waUsage).reduce((a, b) => a + b, 0) > 0 && (
-        <div className="rounded-2xl p-3 mb-4 flex items-center gap-3" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-          <MessageCircle size={18} style={{ color: '#16A34A' }} />
+        <div className="rounded-2xl p-3 mb-4 flex items-center gap-3" style={{ background: 'var(--ok-bg-soft)', border: '1px solid var(--ok-border)' }}>
+          <MessageCircle size={18} style={{ color: 'var(--ok-fg)' }} />
           <div className="flex-1">
             <p className="text-xs font-black text-gray-800">
               {Object.values(waUsage).reduce((a, b) => a + b, 0)} plantillas WhatsApp este mes
@@ -163,7 +163,7 @@ export default function MarcaPage() {
                 {s.slug}.{APEX} <ExternalLink size={10} />
               </a>
               {(waUsage[s.id] ?? 0) > 0 && (
-                <p className="text-[10px] font-bold mt-0.5 flex items-center gap-1" style={{ color: '#16A34A' }}>
+                <p className="text-[10px] font-bold mt-0.5 flex items-center gap-1" style={{ color: 'var(--ok-fg)' }}>
                   <MessageCircle size={10} /> {waUsage[s.id]} plantillas WhatsApp este mes
                 </p>
               )}
@@ -172,7 +172,7 @@ export default function MarcaPage() {
               <span className="w-5 h-5 rounded-full border border-gray-200" style={{ background: s.color_primary }} />
               <span className="w-5 h-5 rounded-full border border-gray-200" style={{ background: s.color_dark }} />
             </div>
-            <button onClick={() => setEditing(s)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#EEF9FF', color: '#55C8F5' }}>Editar</button>
+            <button onClick={() => setEditing(s)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>Editar</button>
             {isSuper && (
               <button onClick={() => enterStore(s.id)} className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: '#fff' }}>
                 <LogIn size={13} /> Entrar
@@ -479,10 +479,10 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             apaga el domicilio. Solo super admin: depende de si la marca tiene
             operación de última milla contratada. */}
         {isSuper && (
-          <div className="rounded-2xl p-3 mb-4" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+          <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '1px solid var(--info-border)' }}>
             <button onClick={() => setHomeDelivery(v => !v)}
               className="w-full flex items-center justify-between mb-2">
-              <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#1E40AF' }}>
+              <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--info-fg)' }}>
                 <Truck size={14} /> Entrega a domicilio
               </span>
               <span className="text-[10px] font-black px-2 py-1 rounded-full"
@@ -500,8 +500,8 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
         {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU cuenta
               de 360pay. El backend exige el JWT verificado para todo esto: son
               campos que redirigen dinero. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: '#FAF5FB', border: '1px solid #E9DDF9' }}>
-          <p className="text-xs font-black mb-2" style={{ color: '#742284' }}>💜 Cobros de la marca</p>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--violet-bg)', border: '1px solid var(--border)' }}>
+          <p className="text-xs font-black mb-2" style={{ color: 'var(--violet-fg)' }}>💜 Cobros de la marca</p>
 
           {/* 360pay: cobro EN el checkout con el botón de Yape. Sin esto, la
               marca no cobra adelantos en línea — el pedido se cierra igual y lo
@@ -510,7 +510,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             <button onClick={() => pay360Connected && setPay360On(v => !v)}
               className="w-full flex items-center justify-between mb-1"
               style={{ opacity: pay360Connected || pay360On ? 1 : 0.5 }}>
-              <span className="text-xs font-black" style={{ color: '#742284' }}>
+              <span className="text-xs font-black" style={{ color: 'var(--violet-fg)' }}>
                 Cobrar el adelanto con Yape (360pay)
               </span>
               <span className="text-[10px] font-black px-2 py-1 rounded-full"
@@ -524,8 +524,8 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             </p>
 
             {pay360Connected ? (
-              <div className="rounded-xl px-3 py-2 mb-2" style={{ background: '#F5F0FA' }}>
-                <p className="text-[10px] font-black" style={{ color: '#742284' }}>
+              <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--violet-bg)' }}>
+                <p className="text-[10px] font-black" style={{ color: 'var(--violet-fg)' }}>
                   ✓ Conectado · prefijo {store.pay360_payment_prefix}
                 </p>
                 {/* El ambiente se muestra siempre: una marca cobrando de verdad
@@ -536,7 +536,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
                 </p>
               </div>
             ) : (
-              <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: '#FFF8E1' }}>
+              <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: 'var(--warn-bg-soft)' }}>
                 <label className="text-[10px] font-bold text-gray-600 mb-1 block">
                   Nombre del comercio en 360pay
                 </label>
@@ -581,9 +581,9 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               Cobros: es SU cuenta. El backend exige JWT verificado y el password
               jamás vuelve al panel. El semáforo dice si la API del proveedor
               está viva; en rojo, se muestra el plan de contingencia manual. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: '#FFF7ED', border: '1px solid #FED7AA' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '1px solid var(--warn-border)' }}>
           <div className="w-full flex items-center justify-between mb-1">
-            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#C2410C' }}>
+            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
               <Truck size={14} /> Envíos de la marca (Shalom Pro)
             </span>
             <span className="text-[10px] font-black px-2 py-1 rounded-full"
@@ -596,8 +596,8 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
           </div>
 
           {apiUp === false && (
-            <div className="rounded-xl px-3 py-2 mb-2" style={{ background: '#FEE2E2' }}>
-              <p className="text-[10px] font-bold" style={{ color: '#DC2626' }}>
+            <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--danger-bg)' }}>
+              <p className="text-[10px] font-bold" style={{ color: 'var(--danger-fg)' }}>
                 Plan B mientras vuelve: registra la guía igual en el pedido (el sistema la
                 vigilará solo apenas la API regrese), consulta el estado a mano en
                 shalom.pe → Rastrea, y avísale al comprador por el chat del pedido.
@@ -612,7 +612,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
           </p>
 
           {shalomConnected && !shalomEditing ? (
-            <div className="rounded-xl px-3 py-2" style={{ background: '#FFFBEB' }}>
+            <div className="rounded-xl px-3 py-2" style={{ background: 'var(--warn-bg-soft)' }}>
               <p className="text-[10px] font-black" style={{
                 color: store.shalom_pro_status === 'CONNECTED' ? '#16A34A'
                   : store.shalom_pro_status === 'FAILED' ? '#DC2626' : '#B45309',
@@ -626,23 +626,23 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               <div className="flex gap-2 mt-1.5">
                 {store.shalom_pro_status === 'PENDING' && (
                   <button onClick={() => onSaved?.()} disabled={shalomBusy}
-                    className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#FEF3C7', color: '#B45309' }}>
+                    className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}>
                     Actualizar estado
                   </button>
                 )}
                 <button onClick={() => { setShalomEditing(true); setShalomEmail(store.shalom_pro_email ?? ''); setShalomPass('') }}
                   disabled={shalomBusy}
-                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#F3F4F6', color: '#555' }}>
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
                   Cambiar
                 </button>
                 <button onClick={disconnectShalom} disabled={shalomBusy}
-                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto" style={{ background: '#FEE2E2', color: '#DC2626' }}>
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                   {shalomBusy ? '…' : 'Desconectar'}
                 </button>
               </div>
             </div>
           ) : (
-            <div className="rounded-xl px-3 py-2.5" style={{ background: '#FFFBEB' }}>
+            <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--warn-bg-soft)' }}>
               <label className="text-[10px] font-bold text-gray-600 mb-1 block">Correo de pro.shalom.pe</label>
               <input value={shalomEmail} onChange={e => setShalomEmail(e.target.value)}
                 placeholder="cliente@empresa.com" type="email" autoComplete="off"
@@ -665,7 +665,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               </p>
               {shalomEditing && (
                 <button onClick={() => setShalomEditing(false)}
-                  className="text-[10px] font-black mt-1.5" style={{ color: '#6B7280' }}>
+                  className="text-[10px] font-black mt-1.5" style={{ color: 'var(--text-muted)' }}>
                   Cancelar
                 </button>
               )}
@@ -678,16 +678,16 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
                 envío completo y lo deja en el chat de vendedores (ensayo);
                 prendido, se emite de verdad al verificarse el adelanto. */}
           {shalomConnected && (
-            <div className="rounded-xl px-3 py-2.5 mt-2" style={{ background: '#FFFBEB' }}>
+            <div className="rounded-xl px-3 py-2.5 mt-2" style={{ background: 'var(--warn-bg-soft)' }}>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-black" style={{ color: '#9A3412' }}>
+                <span className="text-[11px] font-black" style={{ color: 'var(--warn-fg)' }}>
                   Generar la guía automáticamente
                 </span>
                 <button onClick={toggleAutoGuia} disabled={shalomBusy || store.shalom_pro_status !== 'CONNECTED'}
                   className="text-[10px] font-black px-2.5 py-1.5 rounded-lg disabled:opacity-40 flex-shrink-0"
                   style={autoGuia
-                    ? { background: '#DCFCE7', color: '#16A34A' }
-                    : { background: '#F3F4F6', color: '#6B7280' }}>
+                    ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
+                    : { background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
                   {shalomBusy ? '…' : autoGuia ? '● Encendida' : '○ Apagada'}
                 </button>
               </div>
@@ -706,9 +706,9 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               (Vault) y no existe una cuenta del cliente en Olva. La tarjeta
               existe para que el semáforo y el plan B vivan donde el equipo ya
               los busca. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: '#FFF7ED', border: '1px solid #FED7AA' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '1px solid var(--warn-border)' }}>
           <div className="w-full flex items-center justify-between mb-1">
-            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#C2410C' }}>
+            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
               <Truck size={14} /> Rastreo de guías (Olva)
             </span>
             <span className="text-[10px] font-black px-2 py-1 rounded-full"
@@ -721,8 +721,8 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
           </div>
 
           {olvaUp === false && (
-            <div className="rounded-xl px-3 py-2 mb-2" style={{ background: '#FEE2E2' }}>
-              <p className="text-[10px] font-bold" style={{ color: '#DC2626' }}>
+            <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--danger-bg)' }}>
+              <p className="text-[10px] font-bold" style={{ color: 'var(--danger-fg)' }}>
                 Plan B mientras vuelve: registra la guía igual en el pedido (el sistema la
                 vigilará solo apenas la API regrese), consulta el estado a mano en
                 olvacourier.com → Rastrea tu envío, y avísale al comprador por el chat del pedido.
@@ -742,9 +742,9 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               Envíos: es la cuenta publicitaria de la marca. Los IDs son
               públicos (van con el "Guardar cambios"); los tokens de CAPI son
               secretos y siguen el molde write-only de Shalom Pro. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '1px solid var(--info-border)' }}>
           <div className="w-full flex items-center justify-between mb-1">
-            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#4338CA' }}>
+            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--info-fg)' }}>
               <BarChart3 size={14} /> Pixel y anuncios (Meta / TikTok)
             </span>
           </div>
@@ -765,24 +765,24 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
 
           {/* Tokens de CAPI — secretos, write-only. */}
           {capiConnected && !adsEditing ? (
-            <div className="rounded-xl px-3 py-2" style={{ background: '#F5F3FF' }}>
-              <p className="text-[10px] font-black" style={{ color: '#6D28D9' }}>
+            <div className="rounded-xl px-3 py-2" style={{ background: 'var(--violet-bg)' }}>
+              <p className="text-[10px] font-black" style={{ color: 'var(--violet-fg)' }}>
                 ✓ CAPI activo{store.meta_capi_configured ? ' · Meta' : ''}{store.tiktok_capi_configured ? ' · TikTok' : ''}
               </p>
               <div className="flex gap-2 mt-1.5">
                 <button onClick={() => { setAdsEditing(true); setMetaToken(''); setTiktokToken(''); setMetaTestCode(''); setTiktokTestCode('') }}
                   disabled={adsBusy}
-                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#F3F4F6', color: '#555' }}>
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
                   Cambiar tokens
                 </button>
                 <button onClick={disconnectAdsCapi} disabled={adsBusy}
-                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto" style={{ background: '#FEE2E2', color: '#DC2626' }}>
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                   {adsBusy ? '…' : 'Desconectar CAPI'}
                 </button>
               </div>
             </div>
           ) : (
-            <div className="rounded-xl px-3 py-2.5" style={{ background: '#F5F3FF' }}>
+            <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--violet-bg)' }}>
               <label className="text-[10px] font-bold text-gray-600 mb-1 block">Token de CAPI de Meta</label>
               <input value={metaToken} onChange={e => setMetaToken(e.target.value)}
                 type="password" placeholder="EAAB… (Conversions API access token)" autoComplete="new-password"
@@ -812,7 +812,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               </p>
               {adsEditing && (
                 <button onClick={() => setAdsEditing(false)}
-                  className="text-[10px] font-black mt-1.5" style={{ color: '#6B7280' }}>
+                  className="text-[10px] font-black mt-1.5" style={{ color: 'var(--text-muted)' }}>
                   Cancelar
                 </button>
               )}
@@ -823,10 +823,10 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
         {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca
             ya tiene su número en WhatsApp Cloud API. */}
         {isSuper && (
-          <div className="rounded-2xl p-3 mb-4" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+          <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--ok-bg-soft)', border: '1px solid var(--ok-border)' }}>
             <button onClick={() => setWaEnabled(v => !v)}
               className="w-full flex items-center justify-between mb-2">
-              <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#166534' }}>
+              <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--ok-fg)' }}>
                 <MessageCircle size={14} /> Fallback por WhatsApp
               </span>
               <span className="text-[10px] font-black px-2 py-1 rounded-full"
@@ -844,7 +844,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
           </div>
         )}
 
-        {err && <p className="text-xs font-semibold text-center mb-2" style={{ color: '#DC2626' }}>{err}</p>}
+        {err && <p className="text-xs font-semibold text-center mb-2" style={{ color: 'var(--danger-fg)' }}>{err}</p>}
         <button onClick={save} disabled={busy || uploading}
           className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
           {busy ? 'Guardando…' : 'Guardar cambios'}
@@ -897,8 +897,8 @@ function CreateBrand({ adminId, onClose, onDone }: { adminId: string; onClose: (
 
         {done ? (
           <div className="text-center py-4">
-            <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: '#DCFCE7' }}>
-              <Check size={26} style={{ color: '#16A34A' }} />
+            <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: 'var(--ok-bg)' }}>
+              <Check size={26} style={{ color: 'var(--ok-fg)' }} />
             </div>
             <p className="font-black text-gray-900 mb-1">¡Marca creada!</p>
             <p className="text-sm text-gray-500 mb-1">Su app ya vive en</p>
@@ -931,7 +931,7 @@ function CreateBrand({ adminId, onClose, onDone }: { adminId: string; onClose: (
               <ColorRow label="Fondo oscuro" value={cd} onChange={setCd} />
             </div>
 
-            <div className="rounded-2xl p-3 mb-4" style={{ background: '#F8FAFF', border: '1px solid #EEF2FF' }}>
+            <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '1px solid var(--border)' }}>
               <p className="text-xs font-black text-gray-700 mb-2">Admin de la marca</p>
               <div className="space-y-2">
                 <input value={adminNombre} onChange={e => setAdminNombre(e.target.value)} placeholder="Nombre del dueño (opcional)"
@@ -943,7 +943,7 @@ function CreateBrand({ adminId, onClose, onDone }: { adminId: string; onClose: (
               </div>
             </div>
 
-            {err && <p className="text-xs font-semibold text-center mb-2" style={{ color: '#DC2626' }}>{err}</p>}
+            {err && <p className="text-xs font-semibold text-center mb-2" style={{ color: 'var(--danger-fg)' }}>{err}</p>}
             <button onClick={submit} disabled={busy || uploading}
               className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
               {busy ? 'Creando…' : 'Crear marca'}

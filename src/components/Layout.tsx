@@ -6,6 +6,7 @@ import SideNav from './SideNav'
 import IncomingCallOverlay from './IncomingCallOverlay'
 import InstallBanner from './InstallBanner'
 import SellerPresenceTracker from './SellerPresenceTracker'
+import ThemeToggle from './ThemeToggle'
 import { KrossIcon } from './KrossLogo'
 import { subscribePush, notifPermission, getPushPrefs } from '../lib/push'
 import { playNotificationSound } from '../lib/notification-sounds'
@@ -13,6 +14,7 @@ import { supabase } from '../lib/supabase'
 import { useSeller, clearSellerCache, setActingSeller } from '../lib/seller-session'
 import { sellerNavLinks, activeNavLink } from '../lib/seller-nav'
 import { useIsDesktop } from '../lib/use-desktop'
+import { usePanelTheme } from '../lib/theme'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -27,6 +29,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const desktop = useIsDesktop()
+  usePanelTheme()
 
   // Brand shown in the header follows WHO you're acting as (effective):
   //  · super admin on the platform → Kross (regardless of t1's name)
@@ -157,10 +160,10 @@ export default function Layout() {
   const userBlock = effective && (
     <>
       <div className="text-right">
-        <p className="text-xs font-black leading-none" style={{ color: '#111' }}>
+        <p className="text-xs font-black leading-none" style={{ color: 'var(--text)' }}>
           {effective.nombre.split(' ')[0]}
         </p>
-        <p className="text-xs leading-none mt-0.5" style={{ color: '#888' }}>
+        <p className="text-xs leading-none mt-0.5" style={{ color: 'var(--text-muted)' }}>
           {effective.role_label}
         </p>
       </div>
@@ -182,10 +185,14 @@ export default function Layout() {
     </>
   )
 
-  const logoutButton = (
-    <button onClick={logout} className="p-1.5 rounded-xl" style={{ color: '#ccc' }} title="Cerrar sesión">
-      <LogOut size={17} />
-    </button>
+  const headerActions = (
+    <>
+      <ThemeToggle />
+      <button onClick={logout} className="p-1.5 rounded-xl transition-colors hover:bg-gray-100"
+        style={{ color: 'var(--text-faint)' }} title="Cerrar sesión">
+        <LogOut size={17} />
+      </button>
+    </>
   )
 
   // ── Panel de escritorio: un marco 16:9 centrado ──────────────────────────
@@ -196,13 +203,14 @@ export default function Layout() {
   // de arriba y el menú no se van cuando bajas en la lista.
   if (desktop) {
     return (
-      <div className="h-screen w-screen overflow-hidden bg-gray-100 flex items-center justify-center p-4">
+      <div className="h-screen w-screen overflow-hidden flex items-center justify-center p-4"
+        style={{ background: 'var(--surface-2)' }}>
         {effective && <IncomingCallOverlay storeId={effective.store_id} />}
         <SellerPresenceTracker authUserId={real?.auth_user_id} />
 
         <div
-          className="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
-          style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9' }}>
+          className="rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
+          style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9', background: 'var(--surface)' }}>
           {impersonationBar}
 
           <div className="flex-1 flex min-h-0">
@@ -210,17 +218,17 @@ export default function Layout() {
 
             <div className="flex-1 flex flex-col min-w-0">
               <header className="flex-shrink-0 border-b border-gray-100 px-6 py-3 flex items-center justify-between gap-4">
-                <p className="font-black text-base tracking-tight truncate" style={{ color: '#060C1A' }}>
+                <p className="font-black text-base tracking-tight truncate" style={{ color: 'var(--text)' }}>
                   {section?.label ?? brand?.nombre ?? 'kross'}
                 </p>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   {shiftChip}
                   {userBlock}
-                  {logoutButton}
+                  {headerActions}
                 </div>
               </header>
 
-              <main className="flex-1 overflow-y-auto bg-gray-50/60 min-h-0">
+              <main className="flex-1 overflow-y-auto min-h-0" style={{ background: 'var(--surface-2)' }}>
                 <Outlet />
               </main>
             </div>
@@ -232,25 +240,27 @@ export default function Layout() {
 
   // ── Panel móvil / tablet ─────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center">
-      <div className="w-full max-w-[430px] min-h-screen bg-white relative flex flex-col shadow-2xl">
+    <div className="min-h-screen flex justify-center" style={{ background: 'var(--surface-2)' }}>
+      <div className="w-full max-w-[430px] min-h-screen relative flex flex-col shadow-2xl"
+        style={{ background: 'var(--surface)' }}>
         {effective && <IncomingCallOverlay storeId={effective.store_id} />}
         <SellerPresenceTracker authUserId={real?.auth_user_id} />
         <InstallBanner />
 
         {impersonationBar}
 
-        <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+        <header className="sticky top-0 z-20 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between"
+          style={{ background: 'color-mix(in srgb, var(--surface) 90%, transparent)' }}>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center">
               {brand?.logo_url ? <img src={brand.logo_url} alt={brand.nombre} className="w-full h-full object-cover" /> : <KrossIcon size={32} />}
             </div>
-            <span className="font-black text-lg tracking-tight" style={{ color: '#060C1A' }}>{brand?.nombre ?? 'kross'}</span>
+            <span className="font-black text-lg tracking-tight" style={{ color: 'var(--text)' }}>{brand?.nombre ?? 'kross'}</span>
           </div>
           <div className="flex items-center gap-3">
             {shiftChip}
             {userBlock}
-            {logoutButton}
+            {headerActions}
           </div>
         </header>
 

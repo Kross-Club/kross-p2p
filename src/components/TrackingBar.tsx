@@ -122,7 +122,7 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
   const showForm = role === 'seller' && (!registered || editing)
 
   return (
-    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid #F0F0F0' }}>
+    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid var(--border)' }}>
       <div className="flex items-center gap-2">
         <PackageCheck size={15} style={{ color: 'var(--brand)' }} className="flex-shrink-0" />
         <p className="flex-1 min-w-0 text-[9px] font-black uppercase tracking-wide text-gray-400 leading-tight">
@@ -134,7 +134,7 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
         {registered && !editing && isOlva && (
           <button onClick={refresh} disabled={refreshing}
             className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg flex-shrink-0 disabled:opacity-50"
-            style={{ background: '#EEF9FF', color: 'var(--brand)' }}>
+            style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>
             <RefreshCw size={10} className={refreshing ? 'animate-spin' : undefined} />
             {refreshing ? '…' : 'Actualizar'}
           </button>
@@ -142,7 +142,7 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
         {role === 'seller' && registered && !editing && (
           <button onClick={() => setEditing(true)}
             className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg flex-shrink-0"
-            style={{ background: '#F3F4F6', color: '#555' }}>
+            style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
             <Pencil size={10} /> Corregir
           </button>
         )}
@@ -187,12 +187,12 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
             <input value={numero} onChange={e => setNumero(e.target.value)} inputMode="numeric"
               placeholder={isOlva ? 'Guía (8 dígitos)' : 'Guía (8–10 dígitos)'} maxLength={isOlva ? 15 : 10}
               className="flex-1 min-w-0 text-xs font-semibold px-2.5 py-2 rounded-xl outline-none"
-              style={{ border: '1.5px solid #E5E7EB' }} />
+              style={{ border: '1.5px solid var(--border)' }} />
             {!isOlva && (
               <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())}
                 placeholder="Código" maxLength={4}
                 className="w-20 text-xs font-semibold px-2.5 py-2 rounded-xl outline-none uppercase"
-                style={{ border: '1.5px solid #E5E7EB' }} />
+                style={{ border: '1.5px solid var(--border)' }} />
             )}
             <button onClick={save} disabled={busy || !numeroOk || !codigoOk}
               className="text-[11px] font-black px-3 py-2 rounded-xl flex-shrink-0 disabled:opacity-40"
@@ -205,7 +205,7 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
               ? 'El número viene impreso en el comprobante de OLVA. La guía le llega al comprador por el chat.'
               : `Los dos vienen impresos en el comprobante de ${courier}. La guía le llega al comprador por el chat.`}
           </p>
-          {error && <p className="text-[10px] font-bold mt-1" style={{ color: '#DC2626' }}>{error}</p>}
+          {error && <p className="text-[10px] font-bold mt-1" style={{ color: 'var(--danger-fg)' }}>{error}</p>}
         </div>
       )}
     </div>

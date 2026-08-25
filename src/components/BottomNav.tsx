@@ -9,7 +9,8 @@ export default function BottomNav() {
   const links = sellerNavLinks(effective)
 
   return (
-    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-gray-100 z-30 safe-area-inset-bottom">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] border-t border-gray-100 z-30 safe-area-inset-bottom"
+      style={{ background: 'var(--surface)' }}>
       <div className={`flex items-center px-2 py-1 ${links.length > 6 ? 'overflow-x-auto gap-1' : 'justify-around'}`}>
         {links.map(({ to, icon: Icon, label }) => (
           <NavLink
@@ -23,7 +24,7 @@ export default function BottomNav() {
           >
             {({ isActive }) => (
               <>
-                <div className="p-1.5 rounded-xl transition-colors" style={isActive ? { color: 'var(--brand)', background: '#EEF9FF' } : {}}>
+                <div className="p-1.5 rounded-xl transition-colors" style={isActive ? { color: 'var(--brand)', background: 'var(--brand-tint)' } : {}}>
                   <Icon size={20} />
                 </div>
                 <span className="text-[10px] font-medium truncate">{label}</span>

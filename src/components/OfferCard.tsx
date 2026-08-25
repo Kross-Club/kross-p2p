@@ -23,7 +23,7 @@ export default function OfferCard({ offer, role, onAccept }: {
   return (
     <>
       <div className={`flex ${role === 'buyer' ? 'justify-start' : 'justify-end'} mb-3`}>
-        <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid #FDE68A', background: '#FFFBEB' }}>
+        <div className="max-w-[85%] rounded-2xl overflow-hidden" style={{ border: '1.5px solid var(--warn-border)', background: 'var(--warn-bg-soft)' }}>
           {imgs[0] && (
             <button onClick={() => setViewer(0)} className="block w-full relative">
               <img src={imgs[0]} alt={offer.nombre} className="w-full h-32 object-cover" />
@@ -35,15 +35,15 @@ export default function OfferCard({ offer, role, onAccept }: {
             </button>
           )}
           <div className="p-3">
-            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: '#D97706' }}>
+            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: 'var(--warn-fg)' }}>
               🎁 {role === 'buyer' ? 'Oferta especial para ti' : 'Oferta enviada'}
             </p>
             <p className="font-black text-gray-900 text-sm mt-0.5">{offer.nombre}</p>
-            <p className="font-black text-xl" style={{ color: '#16A34A' }}>S/{offer.precio}</p>
+            <p className="font-black text-xl" style={{ color: 'var(--ok-fg)' }}>S/{offer.precio}</p>
 
             {role === 'buyer' && (
               accepted ? (
-                <div className="w-full mt-2 py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-1.5" style={{ background: '#DCFCE7', color: '#16A34A' }}>
+                <div className="w-full mt-2 py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-1.5" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
                   <Check size={15} /> Oferta aceptada
                 </div>
               ) : (
@@ -53,7 +53,7 @@ export default function OfferCard({ offer, role, onAccept }: {
               )
             )}
             {role === 'seller' && accepted && (
-              <p className="text-[11px] font-black mt-1.5 flex items-center gap-1" style={{ color: '#16A34A' }}><Check size={12} /> Aceptada por el cliente</p>
+              <p className="text-[11px] font-black mt-1.5 flex items-center gap-1" style={{ color: 'var(--ok-fg)' }}><Check size={12} /> Aceptada por el cliente</p>
             )}
           </div>
         </div>

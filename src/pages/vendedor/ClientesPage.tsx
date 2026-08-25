@@ -128,7 +128,7 @@ export default function ClientesPage() {
       {/* Activation funnel */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         {[
-          { label: 'Total', value: stats?.total ?? 0, color: '#111' },
+          { label: 'Total', value: stats?.total ?? 0, color: 'var(--text)' },
           { label: 'Importados', value: stats?.imported ?? 0, color: '#863bff' },
           { label: 'Activados', value: stats?.activated ?? 0, color: '#16A34A' },
         ].map(s => (
@@ -138,8 +138,8 @@ export default function ClientesPage() {
           </div>
         ))}
       </div>
-      <div className="rounded-2xl p-3 mb-5 flex items-center gap-3" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-        <TrendingUp size={18} style={{ color: '#16A34A' }} />
+      <div className="rounded-2xl p-3 mb-5 flex items-center gap-3" style={{ background: 'var(--ok-bg-soft)', border: '1px solid var(--ok-border)' }}>
+        <TrendingUp size={18} style={{ color: 'var(--ok-fg)' }} />
         <p className="text-xs font-black text-gray-800">{activationRate}% de tu base ya activó su app <span className="font-bold text-gray-500">— ese es tu canal de recompra sin ads.</span></p>
       </div>
 
@@ -167,7 +167,7 @@ export default function ClientesPage() {
       <div className="bg-white border border-gray-100 rounded-2xl p-4 mb-4 shadow-sm">
         <p className="font-black text-sm text-gray-900 flex items-center gap-2 mb-1"><Upload size={16} style={{ color: '#863bff' }} /> Importar clientes</p>
         <p className="text-[11px] text-gray-400 mb-3">Sube un CSV con nombre, teléfono y DNI. Detectamos las columnas solas.</p>
-        <label className="block w-full text-center py-2.5 rounded-2xl font-black text-sm cursor-pointer" style={{ background: '#F3E8FF', color: '#863bff' }}>
+        <label className="block w-full text-center py-2.5 rounded-2xl font-black text-sm cursor-pointer" style={{ background: 'var(--violet-bg)', color: 'var(--violet-fg)' }}>
           {rows.length > 0 ? `${rows.length} clientes listos` : 'Elegir archivo CSV'}
           <input type="file" accept=".csv,text/csv" className="hidden" onChange={onFile} />
         </label>

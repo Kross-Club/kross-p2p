@@ -55,7 +55,7 @@ export default function PushSettings({ sellerAuthId }: { sellerAuthId: string })
 
   if (!supported) {
     return (
-      <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid #f0f0f0' }}>
+      <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid var(--border)' }}>
         <p className="font-black text-gray-900 text-sm flex items-center gap-2"><BellOff size={16} /> Notificaciones push</p>
         <p className="text-xs text-gray-400 mt-1">
           Este navegador no soporta notificaciones. En iPhone, instala la app en tu pantalla de inicio para activarlas.
@@ -65,7 +65,7 @@ export default function PushSettings({ sellerAuthId }: { sellerAuthId: string })
   }
 
   return (
-    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid #f0f0f0' }}>
+    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid var(--border)' }}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="font-black text-gray-900 text-sm flex items-center gap-2">
@@ -84,7 +84,7 @@ export default function PushSettings({ sellerAuthId }: { sellerAuthId: string })
       </div>
 
       {denied && !enabled && (
-        <p className="text-[11px] font-semibold mt-2 px-3 py-2 rounded-xl" style={{ background: '#FEF3C7', color: '#92400E' }}>
+        <p className="text-[11px] font-semibold mt-2 px-3 py-2 rounded-xl" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}>
           El navegador bloqueó las notificaciones para esta app. Desbloquéalas en la configuración del sitio y vuelve a activar.
         </p>
       )}
@@ -116,14 +116,14 @@ function EventRow({ icon, label, hint, on, onToggle, onPreview }: {
   on: boolean; onToggle: () => void; onPreview: () => void
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: '#F9FAFB' }}>
+    <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: 'var(--surface-3)' }}>
       <span style={{ color: on ? 'var(--brand)' : '#9CA3AF' }}>{icon}</span>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-black text-gray-800">{label}</p>
         <p className="text-[10px] text-gray-400 truncate">{hint}</p>
       </div>
       <button onClick={onPreview} className="p-1.5 rounded-lg" title="Escuchar el sonido"
-        style={{ background: '#EEF9FF', color: 'var(--brand)' }}>
+        style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>
         <Volume2 size={14} />
       </button>
       <button onClick={onToggle} aria-label={`Activar o desactivar aviso de ${label.toLowerCase()}`}
