@@ -800,7 +800,12 @@ distintos y en cajas de otro tamaño.
 
 - **`supabase/functions/shalom-order`** — la que orquesta: guardas, candado,
   llamada y cierre del expediente (`shalom_order_status/_id/_at/_reason`, §27.c).
-  Es interna: la invoca `pay360-webhook` con la service role key.
+  Es interna **y lo exige**: rechaza con 401 cualquier llamada que no traiga la
+  service role key. El gateway de Supabase acepta cualquier JWT del proyecto y
+  la anon key es uno —vive en el bundle de la PWA, o sea en el navegador de
+  cualquiera—, así que sin esa comprobación un tercero podría disparar la
+  emisión de guías, que cuestan plata. La invoca `pay360-webhook`; para
+  probarla a mano, el mismo header con la service role key.
 - **`_shared/shalom-orders.ts`** — puro, sin Deno ni red: valida, **traduce** a
   los campos del proveedor, genera la clave de retiro, resuelve el `product_id`
   contra el catálogo de la cuenta y lee la respuesta. Único punto que conoce esa

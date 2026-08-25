@@ -119,6 +119,19 @@ async function nombreReniec(dni: string): Promise<{ name: string; lastName: stri
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  // ─── Solo desde adentro ────────────────────────────────────────────────────
+  // El gateway de Supabase acepta cualquier JWT del proyecto, y la anon key es
+  // uno: sin esto, quien tenga esa llave —está en el bundle de la PWA, o sea
+  // en el navegador de cualquiera— podría disparar la emisión de guías, que
+  // CUESTAN PLATA. El candado por pedido limitaba el daño a una guía por
+  // pedido, pero "una guía por pedido que alguien de afuera decide cuándo" no
+  // es una defensa, es una factura con retraso. Esta función la llama
+  // `pay360-webhook` con la service role key; nadie más tiene por qué.
+  const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
+  if (!bearer || bearer !== Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+    return json({ error: 'no autorizado' }, 401)
+  }
+
   const body = await req.json().catch(() => ({})) as { session_id?: string }
   const sessionId = String(body.session_id ?? '')
   if (!sessionId) return json({ error: 'session_id requerido' }, 400)
