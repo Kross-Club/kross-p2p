@@ -762,7 +762,7 @@ sandbox ni idempotencia. De ahí que el diseño sea casi todo protección:
    mismo pago —360pay emite otro `PAYMENT_PAID` si se corrige el código
    bancario— no pueden emitir dos guías para un paquete.
 2. **Interruptor por marca**, apagado por defecto
-   (`stores.shalom_auto_guide_enabled`, §26.d). Apagado, la función corre
+   (`stores.shalom_auto_guide_enabled`, §27.d). Apagado, la función corre
    entera, arma el envío completo y lo deja en los logs y en el chat de
    vendedores (`status = SIMULADO`) **sin llamar al proveedor**. Es el ensayo
    con un pedido real antes de gastar. Se prende en Panel → Mi marca → Envíos.
@@ -778,7 +778,7 @@ sandbox ni idempotencia. De ahí que el diseño sea casi todo protección:
 | Panel → Mi marca → Envíos | Cuenta Shalom Pro **verificada** (`CONNECTED`) | `SKIPPED` + aviso a Logística |
 | Panel → Mi marca → Envíos | Interruptor de guía automática | `SIMULADO` (ensayo, no emite) |
 | Panel → Productos → el producto → Envío | **Agencia de origen** (sede Shalom de la que sale) y **tamaño** (XXS…XL) | `SKIPPED` diciendo qué falta |
-| Automático | Sede de recojo del pedido (`agency_branch_id`, §26.b) | `SKIPPED` |
+| Automático | Sede de recojo del pedido (`agency_branch_id`, §27.b) | `SKIPPED` |
 
 La agencia de origen sale del **mismo listado** que ve el comprador
 (`src/data/agencies/shalom.json`): un solo catálogo para las dos puntas del
@@ -789,7 +789,7 @@ distintos y en cajas de otro tamaño.
 ### Las piezas
 
 - **`supabase/functions/shalom-order`** — la que orquesta: guardas, candado,
-  llamada y cierre del expediente (`shalom_order_status/_id/_at/_reason`, §26.c).
+  llamada y cierre del expediente (`shalom_order_status/_id/_at/_reason`, §27.c).
   Es interna: la invoca `pay360-webhook` con la service role key.
 - **`_shared/shalom-orders.ts`** — puro, sin Deno ni red: valida y **traduce** a
   los campos del proveedor. Único punto que conoce esa forma. Se prueba gratis
@@ -808,7 +808,7 @@ distintos y en cajas de otro tamaño.
 `toProviderBody()` en `_shared/shalom-orders.ts` traduce a nombres de campo
 asumidos (`sede_origen`, `destinatario.documento`, `paquete.tamano`…). Mientras
 eso no se confirme contra `shalom-api-peru.com/docs`, **toda marca va en modo
-ensayo**: el interruptor de §26.d es exactamente ese seguro. Confirmar el
+ensayo**: el interruptor de §27.d es exactamente ese seguro. Confirmar el
 contrato es tocar **una función** y nada más del repo.
 
 Lo que sí está verificado y no cambia al ajustarlo: la auth (`X-API-Key` de la

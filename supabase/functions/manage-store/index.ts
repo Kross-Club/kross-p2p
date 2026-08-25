@@ -67,12 +67,20 @@ Deno.serve(async (req) => {
     // (mismo trato que los cobros). `null` = desconectar. El password se
     // guarda en `store_secrets` y jamás vuelve en ninguna respuesta.
     shalom_pro?: { email?: string; password?: string } | null
-    // Interruptor de la guía automática (sección 26.d). Emite envíos REALES y
+    // Interruptor de la guía automática (sección 27.d). Emite envíos REALES y
     // cobrables: mismo trato que los campos de cobro (JWT verificado).
     shalom_auto_guide_enabled?: boolean
     // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
     // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
     checkout_ab_mode?: string
+    // ─── Pixel y anuncios (Meta / TikTok) ────────────────────────────────────
+    // Los IDs de pixel son PÚBLICOS (viajan al navegador): cualquier admin de la
+    // marca los edita. Los tokens de CAPI son SECRETOS: van en `store_secrets`,
+    // SOLO por JWT verificado (mismo trato que Shalom Pro), y jamás vuelven.
+    // `null` en `ads_capi` los limpia. Ver docs/09-PIXELS-CAPI.md.
+    meta_pixel_id?: string
+    tiktok_pixel_id?: string
+    ads_capi?: { meta_token?: string; tiktok_token?: string; meta_test_code?: string; tiktok_test_code?: string } | null
     // create: first admin login for the new brand
     admin_email?: string
     admin_password?: string
@@ -113,7 +121,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, shalom_auto_guide_enabled')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -125,7 +133,7 @@ Deno.serve(async (req) => {
     const stores = data ?? []
     if (stores.length > 0) {
       const { data: secs } = await supabase.from('store_secrets')
-        .select('store_id, shalom_pro_email, shalom_pro_status, shalom_pro_checked_at')
+        .select('store_id, shalom_pro_email, shalom_pro_status, shalom_pro_checked_at, meta_capi_token, tiktok_capi_token')
         .in('store_id', stores.map((s: { id: string }) => s.id))
       const byId = new Map((secs ?? []).map((s: Record<string, unknown>) => [s.store_id, s]))
       for (const s of stores as Record<string, unknown>[]) {
@@ -133,6 +141,10 @@ Deno.serve(async (req) => {
         s.shalom_pro_email = sec?.shalom_pro_email ?? null
         s.shalom_pro_status = sec?.shalom_pro_status ?? null
         s.shalom_pro_checked_at = sec?.shalom_pro_checked_at ?? null
+        // CAPI: solo PRESENCIA del token, jamás el token. Igual que el password
+        // de Shalom Pro, el secreto se escribe pero nunca vuelve al panel.
+        s.meta_capi_configured = !!sec?.meta_capi_token
+        s.tiktok_capi_configured = !!sec?.tiktok_capi_token
       }
     }
 
@@ -378,6 +390,39 @@ Deno.serve(async (req) => {
       patch.checkout_ab_mode = body.checkout_ab_mode
     }
 
+    // ─── Pixel IDs (públicos) ─────────────────────────────────────────────────
+    // Son la cuenta publicitaria de la marca: cualquier admin de la tienda los
+    // edita. Viajan al navegador dentro del snippet del pixel, así que no hay
+    // secreto que cuidar aquí. Vaciar el campo pausa el pixel (null).
+    if (typeof body.meta_pixel_id === 'string') patch.meta_pixel_id = body.meta_pixel_id.trim() || null
+    if (typeof body.tiktok_pixel_id === 'string') patch.tiktok_pixel_id = body.tiktok_pixel_id.trim() || null
+
+    // ─── Tokens de CAPI (secretos, en store_secrets) ─────────────────────────
+    // Mismo trato que Shalom Pro y los campos de cobro: SOLO por JWT verificado.
+    // `null` limpia todo; un objeto setea lo que traiga. Jamás vuelven al panel.
+    if (body.ads_capi !== undefined && !trusted) return json({ error: 'auth_requerida' }, 403)
+    let wroteAdsCapi = false
+    if (body.ads_capi === null) {
+      const { error: clrErr } = await supabase.from('store_secrets').upsert({
+        store_id: targetId,
+        meta_capi_token: null, tiktok_capi_token: null,
+        meta_test_event_code: null, tiktok_test_event_code: null,
+        ads_secrets_updated_at: new Date().toISOString(),
+      }, { onConflict: 'store_id' })
+      if (clrErr) return json({ error: clrErr.message }, 400)
+      wroteAdsCapi = true
+    } else if (body.ads_capi) {
+      const a = body.ads_capi
+      const patchSec: Record<string, unknown> = { store_id: targetId, ads_secrets_updated_at: new Date().toISOString() }
+      if (typeof a.meta_token === 'string') patchSec.meta_capi_token = a.meta_token.trim() || null
+      if (typeof a.tiktok_token === 'string') patchSec.tiktok_capi_token = a.tiktok_token.trim() || null
+      if (typeof a.meta_test_code === 'string') patchSec.meta_test_event_code = a.meta_test_code.trim() || null
+      if (typeof a.tiktok_test_code === 'string') patchSec.tiktok_test_event_code = a.tiktok_test_code.trim() || null
+      const { error: upErr } = await supabase.from('store_secrets').upsert(patchSec, { onConflict: 'store_id' })
+      if (upErr) return json({ error: upErr.message }, 400)
+      wroteAdsCapi = true
+    }
+
     let wroteSecretsPay360 = false
     if (typeof body.pay360_enabled === 'boolean') patch.pay360_enabled = body.pay360_enabled
     if (body.pay360_env === 'sandbox' || body.pay360_env === 'live') patch.pay360_env = body.pay360_env
@@ -467,7 +512,7 @@ Deno.serve(async (req) => {
       if (!connected) return json({ error: 'pay360_sin_conectar' }, 400)
     }
 
-    if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom) return json({ error: 'nada_que_guardar' }, 400)
+    if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom && !wroteAdsCapi) return json({ error: 'nada_que_guardar' }, 400)
     if (Object.keys(patch).length > 0) {
       const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
       if (error) return json({ error: error.message }, 400)

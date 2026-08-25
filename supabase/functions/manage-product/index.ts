@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     // `images[0]` cuando no está. `packs` es jsonb: no hace falta migración.
     packs?: { nombre: string; descripcion?: string; precio: number; image?: string }[]
     active?: boolean
-    // Envío (sección 26.a): de qué sede Shalom sale el paquete y de qué tamaño
+    // Envío (sección 27.a): de qué sede Shalom sale el paquete y de qué tamaño
     // es. Los usa el generador de guías; sin ellos el pedido no se emite solo.
     shalom_origin_branch_id?: string | null
     package_size?: string | null

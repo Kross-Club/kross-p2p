@@ -54,6 +54,22 @@ fecha de arriba.
   mostrarle a ningún comprador.
 - WhatsApp activo. Entrega a domicilio apagada.
 
+### Pixels de anuncios + CAPI — construido, sin configurar por marca (25-ago-2026)
+
+Ya se puede medir la rentabilidad de los anuncios de cada marca: el **pixel de Meta y
+TikTok** emite el embudo (landing → registro → etapa) al Events Manager del cliente, y el
+**CAPI server-side** reporta el **Purchase** de quien adelanta el pago —para armar el público
+"de los que pagan"—. Ver [`09-PIXELS-CAPI.md`](./09-PIXELS-CAPI.md).
+
+- **Ninguna marca lo tiene configurado todavía.** Cada marca pega sus pixel IDs y sus tokens
+  de CAPI desde el panel (*Marcas → editar → 📊 Pixel y anuncios*). Sin eso no emite nada y
+  nada se rompe.
+- **Falta desplegar:** correr `setup-kross.sql` (bloque §26) y redeploy de `register-buyer`,
+  `manage-store` y `pay360-webhook` (`--no-verify-jwt`). No hay secretos de plataforma: los
+  tokens son por tienda, en `store_secrets`.
+- **Deuda anotada:** los tokens de CAPI viajan por el panel al guardarse (como el password de
+  Shalom Pro y la llave de 360pay §2). Rotarlos si se exponen; nunca vuelven en las respuestas.
+
 ## Bloqueos abiertos
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |

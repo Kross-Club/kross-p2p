@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck } from 'lucide-react'
+import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck, BarChart3 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
 
@@ -36,8 +36,14 @@ interface StoreRow {
   shalom_pro_email?: string | null
   /** PENDING | CONNECTED | FAILED | UNVERIFIED (ver setup-kross.sql §25). */
   shalom_pro_status?: string | null
-  /** Guía automática (§26.d). Apagado = el generador ensaya sin emitir. */
+  /** Guía automática (§27.d). Apagado = el generador ensaya sin emitir. */
   shalom_auto_guide_enabled?: boolean
+  // Pixel y anuncios — los IDs son públicos; de los tokens de CAPI el backend
+  // solo manda la PRESENCIA (nunca el token). Ver docs/09-PIXELS-CAPI.md.
+  meta_pixel_id?: string | null
+  tiktok_pixel_id?: string | null
+  meta_capi_configured?: boolean
+  tiktok_capi_configured?: boolean
 }
 
 const ERR: Record<string, string> = {
@@ -250,6 +256,19 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   // Guía automática: emite envíos REALES y cobrables, así que se guarda sola
   // (no viaja de polizón en el botón que guarda un logo) y arranca apagada.
   const autoGuia = store.shalom_auto_guide_enabled === true
+
+  // Pixel y anuncios — los IDs son públicos (van en el `save`); los tokens de
+  // CAPI son secretos y siguen el molde write-only de Shalom Pro: se escriben
+  // pero nunca vuelven, solo su presencia (`*_configured`).
+  const [metaPixel, setMetaPixel] = useState(store.meta_pixel_id ?? '')
+  const [tiktokPixel, setTiktokPixel] = useState(store.tiktok_pixel_id ?? '')
+  const [metaToken, setMetaToken] = useState('')
+  const [tiktokToken, setTiktokToken] = useState('')
+  const [metaTestCode, setMetaTestCode] = useState('')
+  const [tiktokTestCode, setTiktokTestCode] = useState('')
+  const [adsBusy, setAdsBusy] = useState(false)
+  const [adsEditing, setAdsEditing] = useState(false)
+  const capiConnected = !!store.meta_capi_configured || !!store.tiktok_capi_configured
   // Semáforo de cada proveedor (healthz vía manage-store). null = verificando.
   // Son chips separados a propósito: son proveedores distintos y uno puede
   // estar caído con el otro vivo.
@@ -282,6 +301,9 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
       // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
       // verificado para estos campos — redirigen dinero, no un logo).
       pay360_enabled: pay360On, pay360_env: pay360Env,
+      // Pixel IDs (públicos): son la cuenta publicitaria de la marca. Vacío
+      // pausa el pixel. Los tokens de CAPI van aparte (connectAdsCapi).
+      meta_pixel_id: metaPixel.trim(), tiktok_pixel_id: tiktokPixel.trim(),
     }
     if (isSuper) {
       payload.slug = slug; payload.active = active
@@ -357,6 +379,38 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
     })
     setShalomBusy(false)
     if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo desconectar.'); return }
+    onSaved?.()
+  }
+
+  // Tokens de CAPI. Aparte del guardado (como Shalom Pro): son secretos y solo
+  // se mandan los que se escriban. Se guarda también el pixel ID que esté en el
+  // campo, para que "conectar CAPI" no exija guardar en dos pasos.
+  const connectAdsCapi = async () => {
+    if (adsBusy) return
+    setAdsBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id,
+      meta_pixel_id: metaPixel.trim(), tiktok_pixel_id: tiktokPixel.trim(),
+      ads_capi: {
+        meta_token: metaToken.trim() || undefined,
+        tiktok_token: tiktokToken.trim() || undefined,
+        meta_test_code: metaTestCode.trim() || undefined,
+        tiktok_test_code: tiktokTestCode.trim() || undefined,
+      },
+    })
+    setAdsBusy(false)
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudieron guardar los tokens.'); return }
+    onSaved?.()
+  }
+
+  const disconnectAdsCapi = async () => {
+    if (adsBusy) return
+    setAdsBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id, ads_capi: null,
+    })
+    setAdsBusy(false)
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo desconectar CAPI.'); return }
     onSaved?.()
   }
 
@@ -671,6 +725,88 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             con Shalom Pro). La guía se registra en el chat del pedido y las fases se
             reflejan solas.
           </p>
+        </div>
+
+        {/* ── Pixel y anuncios (Meta / TikTok). Sin gate isSuper, como Cobros y
+              Envíos: es la cuenta publicitaria de la marca. Los IDs son
+              públicos (van con el "Guardar cambios"); los tokens de CAPI son
+              secretos y siguen el molde write-only de Shalom Pro. ── */}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: '#EEF2FF', border: '1px solid #C7D2FE' }}>
+          <div className="w-full flex items-center justify-between mb-1">
+            <span className="text-xs font-black flex items-center gap-1.5" style={{ color: '#4338CA' }}>
+              <BarChart3 size={14} /> Pixel y anuncios (Meta / TikTok)
+            </span>
+          </div>
+          <p className="text-[10px] text-gray-500 mb-2">
+            Con esto la marca ve en su Events Manager si su publicidad es rentable: quién
+            llega a la landing, quién se registra y en qué etapa se queda. El adelanto pagado
+            se reporta por CAPI para armar el público de "los que sí pagan".
+          </p>
+
+          <label className="text-[10px] font-bold text-gray-600 mb-1 block">Meta Pixel ID</label>
+          <input value={metaPixel} onChange={e => setMetaPixel(e.target.value)}
+            placeholder="Ej: 1234567890123456" autoComplete="off"
+            className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2 font-mono" />
+          <label className="text-[10px] font-bold text-gray-600 mb-1 block">TikTok Pixel ID</label>
+          <input value={tiktokPixel} onChange={e => setTiktokPixel(e.target.value)}
+            placeholder="Ej: CG1A2B3C4D5E6F7G8H9I" autoComplete="off"
+            className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-3 font-mono" />
+
+          {/* Tokens de CAPI — secretos, write-only. */}
+          {capiConnected && !adsEditing ? (
+            <div className="rounded-xl px-3 py-2" style={{ background: '#F5F3FF' }}>
+              <p className="text-[10px] font-black" style={{ color: '#6D28D9' }}>
+                ✓ CAPI activo{store.meta_capi_configured ? ' · Meta' : ''}{store.tiktok_capi_configured ? ' · TikTok' : ''}
+              </p>
+              <div className="flex gap-2 mt-1.5">
+                <button onClick={() => { setAdsEditing(true); setMetaToken(''); setTiktokToken(''); setMetaTestCode(''); setTiktokTestCode('') }}
+                  disabled={adsBusy}
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg" style={{ background: '#F3F4F6', color: '#555' }}>
+                  Cambiar tokens
+                </button>
+                <button onClick={disconnectAdsCapi} disabled={adsBusy}
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg ml-auto" style={{ background: '#FEE2E2', color: '#DC2626' }}>
+                  {adsBusy ? '…' : 'Desconectar CAPI'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl px-3 py-2.5" style={{ background: '#F5F3FF' }}>
+              <label className="text-[10px] font-bold text-gray-600 mb-1 block">Token de CAPI de Meta</label>
+              <input value={metaToken} onChange={e => setMetaToken(e.target.value)}
+                type="password" placeholder="EAAB… (Conversions API access token)" autoComplete="new-password"
+                className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
+              <label className="text-[10px] font-bold text-gray-600 mb-1 block">Token de CAPI de TikTok</label>
+              <input value={tiktokToken} onChange={e => setTiktokToken(e.target.value)}
+                type="password" placeholder="Events API access token" autoComplete="new-password"
+                className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
+              <label className="text-[10px] font-bold text-gray-500 mb-1 block">Códigos de prueba (opcionales, para Test Events)</label>
+              <div className="flex gap-2 mb-2">
+                <input value={metaTestCode} onChange={e => setMetaTestCode(e.target.value)}
+                  placeholder="Meta TEST####" autoComplete="off"
+                  className="flex-1 min-w-0 bg-white border rounded-xl px-3 py-2 text-xs outline-none font-mono" />
+                <input value={tiktokTestCode} onChange={e => setTiktokTestCode(e.target.value)}
+                  placeholder="TikTok test_event_code" autoComplete="off"
+                  className="flex-1 min-w-0 bg-white border rounded-xl px-3 py-2 text-xs outline-none font-mono" />
+              </div>
+              <button onClick={connectAdsCapi}
+                disabled={adsBusy || (!metaToken.trim() && !tiktokToken.trim())}
+                className="w-full rounded-xl px-3 py-2 text-xs font-black text-white disabled:opacity-40"
+                style={{ background: '#4338CA' }}>
+                {adsBusy ? 'Guardando…' : 'Conectar CAPI'}
+              </button>
+              <p className="text-[10px] text-gray-500 mt-1.5">
+                Los tokens se guardan en el servidor y no vuelven a mostrarse aquí. Guardar el
+                Pixel ID también persiste con "Guardar cambios".
+              </p>
+              {adsEditing && (
+                <button onClick={() => setAdsEditing(false)}
+                  className="text-[10px] font-black mt-1.5" style={{ color: '#6B7280' }}>
+                  Cancelar
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca

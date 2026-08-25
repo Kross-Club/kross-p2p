@@ -696,8 +696,14 @@ siguiente nacería sesgado sin que nadie lo note. Hay un test que protege la reg
 **El denominador es `checkout_drafts.checkout_variant`** (19.b): el lead parcial
 ya se guarda apenas el WhatsApp es válido, así que marcarlo con su versión da la
 tasa *empezó a llenar → compró* sin pedirle un dato más al comprador. La analítica
-de front no sirve para esto: `setAnalyticsSink` no se llama en ningún sitio, así
-que en producción los `trackEvent` caen en un sink vacío.
+de front no sirve para esto: en la landing `setAnalyticsSink` ahora enchufa el
+**pixel de Meta/TikTok** (`src/lib/pixels/`, ver [09-PIXELS-CAPI](./09-PIXELS-CAPI.md)),
+que manda los eventos al Events Manager del anunciante — no a un almacén interno
+consultable. Para el denominador del A/B sigue mandando `checkout_drafts`.
+
+> El bus `trackEvent` de `checkout/analytics.ts` es la costura: alimenta el pixel
+> sin que ningún paso conozca `fbq`/`ttq`. El Purchase NO sale de aquí —lo dispara
+> el webhook por CAPI cuando el comprador ya se fue a Yape—.
 
 `manage-store` acción **`ab_stats`** hace las cuentas con dos precauciones:
 

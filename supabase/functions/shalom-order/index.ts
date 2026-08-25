@@ -129,7 +129,7 @@ Deno.serve(async (req: Request) => {
     ])
 
     // La sede de recojo: la columna nueva manda, y los pedidos anteriores a ella
-    // guardan su id dentro de `delivery_reference` (ver sección 26.b).
+    // guardan su id dentro de `delivery_reference` (ver sección 27.b).
     const destino = String(session.agency_branch_id ?? session.delivery_reference ?? '').trim()
 
     const armado = buildOrderPayload({

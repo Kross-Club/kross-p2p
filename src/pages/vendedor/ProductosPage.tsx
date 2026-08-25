@@ -25,7 +25,7 @@ interface Product {
   images: string[]
   packs: Pack[]
   active: boolean
-  /** Envío (sección 26.a del esquema): de qué sede Shalom sale este producto y
+  /** Envío (sección 27.a del esquema): de qué sede Shalom sale este producto y
    *  de qué tamaño es su paquete. Sin los dos, su pedido no genera guía solo. */
   shalom_origin_branch_id?: string | null
   package_size?: string | null

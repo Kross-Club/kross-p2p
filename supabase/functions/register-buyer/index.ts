@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push'
 import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
+import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -62,7 +63,22 @@ Deno.serve(async (req) => {
     // la piscina del cruce manual: sin esto, un yape ajeno del mismo monto lo
     // daría por pagado y el cobro real nunca ocurriría. Ver §16.d del esquema.
     payment_provider?: string
+    // ─── Atribución del anuncio (para CAPI) ──────────────────────────────────
+    // Cookies/click ids del pixel. Se guardan en la orden para que el Purchase
+    // de CAPI (pay360-webhook) pueda atar la venta al anuncio. El IP y el
+    // user-agent NO se leen de aquí: se capturan de los headers (el IP es
+    // spoofeable). Ver docs/09-PIXELS-CAPI.md.
+    ad_fbp?: string
+    ad_fbc?: string
+    ad_ttp?: string
+    ad_ttclid?: string
+    ad_source_url?: string
   }
+
+  // IP y user-agent del comprador, de los headers de ESTA petición — no del
+  // body. Solo para el match de CAPI; nunca se exponen por get-session.
+  const adClientUa = req.headers.get('user-agent') ?? null
+  const adClientIp = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || null
 
   // ─── Idempotencia ──────────────────────────────────────────────────────────
   // Un doble tap en "Terminar pedido" con 4G lenta manda dos veces. Sin esto se
@@ -162,7 +178,7 @@ Deno.serve(async (req) => {
     ? body.dispatch_type!
     : 'MOTORIZADO_LIMA'
   const agencyName = ['SHALOM', 'OLVA', 'OTRO'].includes(body.agency_name ?? '') ? body.agency_name! : null
-  // La sede de recojo, ESTRUCTURADA (sección 26.b). Venía viajando solo dentro
+  // La sede de recojo, ESTRUCTURADA (sección 27.b). Venía viajando solo dentro
   // de `delivery_reference`, que es texto libre para que lo lea una persona; el
   // generador de guías necesita el id, no una frase. Se sigue guardando en los
   // dos lados: la referencia es lo que Logística ve en el chat.
@@ -395,6 +411,14 @@ Deno.serve(async (req) => {
       checkout_variant: ['A', 'B'].includes(body.checkout_variant ?? '') ? body.checkout_variant : null,
       advance_amount: advanceAmount,
       payment_verification: paymentVerification,
+      // Atribución del anuncio — la lee el webhook para el Purchase de CAPI.
+      ad_fbp: body.ad_fbp ?? null,
+      ad_fbc: body.ad_fbc ?? null,
+      ad_ttp: body.ad_ttp ?? null,
+      ad_ttclid: body.ad_ttclid ?? null,
+      ad_client_ua: adClientUa,
+      ad_client_ip: adClientIp,
+      ad_source_url: body.ad_source_url ?? null,
     })
     .select('id, token')
     .single()
@@ -520,6 +544,47 @@ Deno.serve(async (req) => {
   if (checkoutId) {
     await supabase.from('checkout_drafts')
       .update({ converted_at: new Date().toISOString() }).eq('order_id', checkoutId)
+  }
+
+  // ─── CAPI · Lead server-side ───────────────────────────────────────────────
+  // Reporta el registro a Meta/TikTok aunque el pixel del navegador se pierda
+  // (ad-blocker / iOS). Deduplicado con el Lead del navegador por el mismo
+  // event_id = checkout_id. Corre en segundo plano: no le suma latencia al
+  // registro ni puede tumbarlo. La config es la de la tienda del PRODUCTO
+  // (origin), que es la marca que corre los anuncios.
+  try {
+    const { data: adStore } = await supabase.from('stores')
+      .select('meta_pixel_id, tiktok_pixel_id').eq('id', body.store_id).maybeSingle()
+    const cfg: AdsConfig = {
+      metaPixelId: adStore?.meta_pixel_id ?? null,
+      tiktokPixelId: adStore?.tiktok_pixel_id ?? null,
+    }
+    if (cfg.metaPixelId || cfg.tiktokPixelId) {
+      const { data: adSec } = await supabase.from('store_secrets')
+        .select('meta_capi_token, tiktok_capi_token, meta_test_event_code, tiktok_test_event_code')
+        .eq('store_id', body.store_id).maybeSingle()
+      cfg.metaToken = adSec?.meta_capi_token ?? null
+      cfg.metaTestCode = adSec?.meta_test_event_code ?? null
+      cfg.tiktokToken = adSec?.tiktok_capi_token ?? null
+      cfg.tiktokTestCode = adSec?.tiktok_test_event_code ?? null
+      if (hasAnyCapi(cfg)) {
+        runInBackground(dispatchConversion('LEAD', cfg, {
+          eventId: checkoutId ?? data.id,          // = state.orderId en el navegador
+          sourceUrl: body.ad_source_url ?? null,
+          contentId: body.product_id ?? null,
+          user: {
+            phone: body.buyer_phone,
+            fullName: body.buyer_name,
+            externalId: buyer.id,
+            fbp: body.ad_fbp ?? null, fbc: body.ad_fbc ?? null,
+            ttp: body.ad_ttp ?? null, ttclid: body.ad_ttclid ?? null,
+            clientIp: adClientIp, clientUserAgent: adClientUa,
+          },
+        }))
+      }
+    }
+  } catch (e) {
+    console.error('[register-buyer] CAPI Lead falló:', String(e))
   }
 
   return new Response(

@@ -1009,7 +1009,53 @@ ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_password   text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_status     text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_checked_at timestamptz;
 
--- ─── 26. GENERADOR DE GUÍAS SHALOM (pendiente #3 de 02-SMART-LOGISTICS) ──────
+-- ─── 26. PIXEL DE META + TIKTOK Y CAPI (por marca) ──────────────────────────
+-- Cada marca corre sus propios anuncios con su propio pixel y su propia cuenta.
+-- El objetivo: que el cliente vea en SU Events Manager si su publicidad es
+-- rentable —llegan a la landing → se registran → en qué etapa se quedaron— y,
+-- vía CAPI (server-side), que Meta/TikTok reciban a los que SÍ adelantaron el
+-- pago para armar el público "de los que pagan" y traer más de esos.
+-- Ver docs/09-PIXELS-CAPI.md.
+
+-- 26.a Los IDs de pixel son PÚBLICOS por definición: viajan al navegador dentro
+-- del snippet de `fbq`/`ttq`. Por eso viven en `stores`, que ya tiene SELECT
+-- público (igual que `pay360_business_id`). Presencia = pixel encendido; vaciar
+-- el campo lo pausa sin borrar la configuración de CAPI.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS meta_pixel_id   text;   -- Meta/Facebook Pixel ID
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS tiktok_pixel_id text;   -- TikTok Pixel ID
+
+-- 26.b Los tokens de CAPI SÍ son secretos (dan de alta eventos server-side en
+-- nombre de la marca): van en `store_secrets`, que es service-role only. Los
+-- escribe manage-store SOLO por JWT verificado (mismo trato que Shalom Pro y los
+-- campos de cobro) y jamás vuelven en ninguna respuesta —el panel solo sabe si
+-- están presentes—. Los `*_test_event_code` son opcionales: sirven para ver los
+-- eventos en Test Events (Meta) / test_event_code (TikTok) sin ensuciar la data.
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS meta_capi_token         text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS tiktok_capi_token       text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS meta_test_event_code    text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS tiktok_test_event_code  text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS ads_secrets_updated_at  timestamptz;
+
+-- 26.c Atribución del clic, en la orden. El Purchase de CAPI lo dispara
+-- `pay360-webhook` cuando 360pay confirma el pago —de forma ASÍNCRONA, con el
+-- navegador del comprador ya cerrado—, así que los identificadores del clic que
+-- Meta/TikTok necesitan para atar la venta al anuncio tienen que quedar
+-- guardados en el pedido desde el registro:
+--   · ad_fbp / ad_fbc  — cookies `_fbp` / `_fbc` de Meta
+--   · ad_ttp / ad_ttclid — cookie `_ttp` y click id de TikTok
+--   · ad_client_ua / ad_client_ip — user-agent e IP, capturados SERVER-SIDE en
+--       register-buyer (de los headers, NO del body: el IP es spoofeable). Solo
+--       para el match de CAPI; nunca se exponen por get-session.
+--   · ad_source_url — la URL de la landing (`event_source_url`)
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_fbp        text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_fbc        text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_ttp        text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_ttclid     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_client_ua  text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_client_ip  text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_source_url text;
+
+-- ─── 27. GENERADOR DE GUÍAS SHALOM (pendiente #3 de 02-SMART-LOGISTICS) ──────
 -- Hasta aquí la guía nacía en el mostrador y alguien la escribía a mano en el
 -- pedido (`order-manage` · set_tracking). Con esto, un pedido de agencia SHALOM
 -- con el adelanto verificado pide su guía solo contra la cuenta Shalom Pro de
@@ -1019,7 +1065,7 @@ ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_checked_at timesta
 -- ⚠️ Esas guías son REALES y COBRABLES: el proveedor no tiene sandbox ni
 -- idempotencia. De ahí las tres defensas de este bloque.
 
--- 26.a Config de envío POR PRODUCTO. Es del producto y no de la tienda porque
+-- 27.a Config de envío POR PRODUCTO. Es del producto y no de la tienda porque
 -- lo que decide el tamaño y de qué sede sale es la mercadería, no la marca:
 -- dos productos de la misma tienda pueden despacharse de almacenes distintos.
 --   shalom_origin_branch_id: id de sede en src/data/agencies/shalom.json — la
@@ -1030,20 +1076,20 @@ ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_checked_at timesta
 ALTER TABLE products ADD COLUMN IF NOT EXISTS shalom_origin_branch_id text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS package_size            text;
 
--- 26.b El destino, ESTRUCTURADO. Hasta ahora la sede elegida por el comprador
+-- 27.b El destino, ESTRUCTURADO. Hasta ahora la sede elegida por el comprador
 -- viajaba dentro de `delivery_reference` (texto libre, junto con referencias de
 -- puerta): servía para que una persona la leyera, no para armar un envío. Los
 -- pedidos viejos siguen teniendo su id ahí y el generador lo usa de respaldo.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS agency_branch_id text;
 
--- 26.c El expediente del pedido contra el proveedor. `shalom_order_status` es
+-- 27.c El expediente del pedido contra el proveedor. `shalom_order_status` es
 -- además el CANDADO de idempotencia: la función lo reclama con un UPDATE
 -- condicional (… WHERE shalom_order_status IS NULL) antes de llamar a nadie, y
 -- solo la llamada que gana la carrera sigue. Sin esto, dos webhooks del mismo
 -- pago emiten dos guías cobrables para un solo paquete.
 --   PENDING   reclamado, llamada en curso
 --   CREATED   guía emitida (numero/codigo ya viven en las columnas tracking_*)
---   SIMULADO  se armó el payload y NO se llamó al proveedor (ver 26.d)
+--   SIMULADO  se armó el payload y NO se llamó al proveedor (ver 27.d)
 --   SKIPPED   no aplica o falta config (motivo en shalom_order_reason)
 --   FAILED    el proveedor rechazó o no respondió — Logística la hace a mano
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_status text;
@@ -1051,7 +1097,7 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_id     text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_at     timestamptz;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_reason text;
 
--- 26.d El interruptor POR MARCA, apagado por defecto. Emitir guías reales no
+-- 27.d El interruptor POR MARCA, apagado por defecto. Emitir guías reales no
 -- puede ser algo que le empiece a pasar a una tienda porque se desplegó una
 -- función: con esto en false el generador corre entero —valida, arma el payload
 -- y lo deja en los logs y en el chat de vendedores— pero NO llama al proveedor

@@ -11,7 +11,7 @@
 // ⚠️ CONTRATO PROVISIONAL. `toProviderBody()` es la traducción a los nombres de
 // campo de `POST /v1/orders` de Shalom API Perú. Mientras no esté verificada
 // contra la doc del proveedor, `shalom-order` corre en modo SIMULADO y no
-// llama a nadie (ver `stores.shalom_auto_guide_enabled`, sección 26.d).
+// llama a nadie (ver `stores.shalom_auto_guide_enabled`, sección 27.d).
 // Lo que SÍ está verificado y no se toca al ajustar el contrato:
 //   · auth: X-API-Key (plataforma) + credenciales Shalom Pro de la marca
 //     (X-Shalom-Email / X-Shalom-Password), como documenta 02-SMART-LOGISTICS.
