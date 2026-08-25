@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  MIN_PASSWORD, RECOVERY_PATH, linkFromLocation, normalizeEmail, parseRecoveryLink,
-  passwordProblem, recoveryRedirectUrl, sendErrorMessage,
+  MIN_PASSWORD, RECOVERY_PATH, isRecoveryHref, linkFromLocation, normalizeEmail,
+  parseRecoveryLink, passwordProblem, recoveryRedirectUrl, sendErrorMessage,
 } from './password-recovery'
 
 describe('a dónde vuelve el enlace del correo', () => {
@@ -88,6 +88,22 @@ describe('el enlace se lee solo en su pantalla', () => {
   it('en cualquier otra pantalla no hay enlace', () => {
     expect(linkFromLocation('/pago', 'https://x.krossclub.app/pago?code=PEDIDO-1'))
       .toEqual({ kind: 'none' })
+  })
+
+  // Lo que pasó de verdad: el `redirectTo` no estaba en la lista blanca de
+  // Auth, Supabase lo ignoró y devolvió al Site URL —la raíz, sin la ruta—.
+  // La sesión venía igual en el hash, y caía en la home sin que nadie la use.
+  it('reconoce el enlace aunque Auth lo haya devuelto a la raíz', () => {
+    const link = linkFromLocation('/',
+      'https://kross-shop.krossclub.app/#access_token=a&refresh_token=b&type=recovery')
+    expect(link).toEqual({ kind: 'tokens', accessToken: 'a', refreshToken: 'b' })
+  })
+
+  it('el `type` es lo que lo distingue de cualquier otro parámetro', () => {
+    expect(isRecoveryHref('https://x.app/#access_token=a&refresh_token=b&type=recovery')).toBe(true)
+    expect(isRecoveryHref('https://x.app/?token_hash=h&type=invite')).toBe(true)
+    expect(isRecoveryHref('https://x.app/?code=PEDIDO-1')).toBe(false)
+    expect(isRecoveryHref('https://x.app/#type=recovery')).toBe(false)   // dice ser, pero viene vacío
   })
 })
 
