@@ -55,7 +55,7 @@ export default function PushSettings({ sellerAuthId }: { sellerAuthId: string })
 
   if (!supported) {
     return (
-      <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid var(--border)' }}>
+      <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '0.5px solid var(--border)' }}>
         <p className="font-black text-gray-900 text-sm flex items-center gap-2"><BellOff size={16} /> Notificaciones push</p>
         <p className="text-xs text-gray-400 mt-1">
           Este navegador no soporta notificaciones. En iPhone, instala la app en tu pantalla de inicio para activarlas.
@@ -65,7 +65,7 @@ export default function PushSettings({ sellerAuthId }: { sellerAuthId: string })
   }
 
   return (
-    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '1.5px solid var(--border)' }}>
+    <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ border: '0.5px solid var(--border)' }}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="font-black text-gray-900 text-sm flex items-center gap-2">

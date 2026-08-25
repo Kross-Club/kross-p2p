@@ -7,7 +7,7 @@ import IncomingCallOverlay from './IncomingCallOverlay'
 import InstallBanner from './InstallBanner'
 import SellerPresenceTracker from './SellerPresenceTracker'
 import ThemeToggle from './ThemeToggle'
-import { KrossIcon } from './KrossLogo'
+import BrandMark from './BrandMark'
 import { subscribePush, notifPermission, getPushPrefs } from '../lib/push'
 import { playNotificationSound } from '../lib/notification-sounds'
 import { supabase } from '../lib/supabase'
@@ -31,27 +31,18 @@ export default function Layout() {
   const desktop = useIsDesktop()
   usePanelTheme()
 
-  // Brand shown in the header follows WHO you're acting as (effective):
-  //  · super admin on the platform → Kross (regardless of t1's name)
-  //  · inside a store (own, or a brand the super admin entered) → that store's brand
+  // Qué marca se muestra en el header sigue a QUIÉN estás actuando: el super
+  // admin ve Kross; dentro de una tienda, esa tienda (logo y nombre).
+  //
+  // El COLOR ya no: el panel es la herramienta de Kross y se pinta con la
+  // paleta del manual (ink + lima). El color de cada marca vive donde importa
+  // —lo que ve el comprador— y lo aplica store-context.
   useEffect(() => {
     if (!effective) return
-    if (effective.is_super_admin) {
-      setBrand({ nombre: 'Kross', logo_url: null })
-      const root = document.documentElement
-      root.style.setProperty('--brand', '#55C8F5')
-      root.style.setProperty('--brand-dark', '#060C1A')
-      return
-    }
+    if (effective.is_super_admin) { setBrand({ nombre: 'Kross', logo_url: null }); return }
     if (!effective.store_id) return
-    supabase.from('stores').select('nombre, logo_url, color_primary, color_dark').eq('id', effective.store_id).maybeSingle()
-      .then(({ data }) => {
-        if (!data) return
-        setBrand(data as { nombre: string; logo_url: string | null })
-        const root = document.documentElement
-        if (data.color_primary) root.style.setProperty('--brand', data.color_primary)
-        if (data.color_dark) root.style.setProperty('--brand-dark', data.color_dark)
-      })
+    supabase.from('stores').select('nombre, logo_url').eq('id', effective.store_id).maybeSingle()
+      .then(({ data }) => { if (data) setBrand(data as { nombre: string; logo_url: string | null }) })
   }, [effective?.store_id, effective?.is_super_admin])
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])
@@ -129,8 +120,8 @@ export default function Layout() {
   const section = activeNavLink(links, pathname)
 
   const impersonationBar = impersonating && (
-    <div className="flex items-center justify-between px-4 py-2 text-white flex-shrink-0"
-      style={{ background: 'linear-gradient(90deg, #7C3AED, #4F46E5)' }}>
+    <div className="flex items-center justify-between px-4 py-2 flex-shrink-0"
+      style={{ background: 'var(--surface-3)', color: 'var(--text)', borderBottom: '0.5px solid var(--border)' }}>
       <div className="flex items-center gap-2 min-w-0">
         <Eye size={14} className="flex-shrink-0" />
         <p className="text-xs font-bold truncate">
@@ -141,7 +132,7 @@ export default function Layout() {
       </div>
       <button onClick={stopActing}
         className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
-        style={{ background: 'rgba(255,255,255,0.2)' }}>
+        style={{ background: 'var(--surface)', color: 'var(--text)' }}>
         <X size={12} /> {real?.is_super_admin ? 'Volver a Kross' : 'Volver a admin'}
       </button>
     </div>
@@ -150,9 +141,11 @@ export default function Layout() {
   const shiftChip = real && !impersonating && (
     <span
       className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black"
-      style={{ background: available ? '#DCFCE7' : '#FEE2E2', color: available ? '#16A34A' : '#DC2626' }}
+      style={available
+        ? { background: 'var(--surface-3)', color: 'var(--text)' }
+        : { background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}
       title="Tu turno (lo asigna el admin)">
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: available ? '#16A34A' : '#DC2626' }} />
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} />
       {available ? 'En turno' : 'Fuera de turno'}
     </span>
   )
@@ -171,12 +164,12 @@ export default function Layout() {
         onClick={() => fileRef.current?.click()}
         disabled={uploading}
         className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
-        style={{ border: '2px solid var(--brand)', opacity: uploading ? 0.5 : 1 }}
+        style={{ border: '0.5px solid var(--border-strong)', opacity: uploading ? 0.5 : 1 }}
         title="Cambiar foto">
         {avatar ? (
           <img src={avatar} alt={effective.nombre} className="w-full h-full object-cover" />
         ) : (
-          <span className="font-black text-sm" style={{ color: 'var(--brand)' }}>
+          <span className="font-black text-sm" style={{ color: 'var(--text)' }}>
             {effective.nombre.charAt(0).toUpperCase()}
           </span>
         )}
@@ -219,7 +212,7 @@ export default function Layout() {
             <div className="flex-1 flex flex-col min-w-0">
               <header className="flex-shrink-0 border-b border-gray-100 px-6 py-3 flex items-center justify-between gap-4">
                 <p className="font-black text-base tracking-tight truncate" style={{ color: 'var(--text)' }}>
-                  {section?.label ?? brand?.nombre ?? 'kross'}
+                  {section?.label ?? brand?.nombre ?? 'Kross'}
                 </p>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   {shiftChip}
@@ -251,12 +244,7 @@ export default function Layout() {
 
         <header className="sticky top-0 z-20 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between"
           style={{ background: 'color-mix(in srgb, var(--surface) 90%, transparent)' }}>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center">
-              {brand?.logo_url ? <img src={brand.logo_url} alt={brand.nombre} className="w-full h-full object-cover" /> : <KrossIcon size={32} />}
-            </div>
-            <span className="font-black text-lg tracking-tight" style={{ color: 'var(--text)' }}>{brand?.nombre ?? 'kross'}</span>
-          </div>
+          <BrandMark brand={brand} size={30} />
           <div className="flex items-center gap-3">
             {shiftChip}
             {userBlock}

@@ -105,7 +105,7 @@ export default function InstallBanner({ inline = false, onInstalled }: { inline?
   if (inline) {
     return (
       <div className="mx-4 mt-2 rounded-2xl px-3 py-3 flex items-start gap-3"
-        style={{ background: 'var(--surface)', border: '1.5px solid var(--brand)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+        style={{ background: 'var(--surface)', border: '0.5px solid var(--brand)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
         <div className="w-11 h-11 rounded-2xl overflow-hidden flex-shrink-0" style={{ background: 'var(--brand)' }}>
           <img src={logo} alt={nombre} className="w-full h-full object-cover" />
         </div>
@@ -150,7 +150,7 @@ export default function InstallBanner({ inline = false, onInstalled }: { inline?
                 <>
                   <button onClick={install}
                     className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black"
-                    style={{ background: '#FFD400', color: '#111' }}>
+                    style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
                     <Download size={13} /> Instalar app
                   </button>
                   {help && <p className="text-[10px] mt-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Abre el menú ⋮ de tu navegador y elige "Instalar app".</p>}

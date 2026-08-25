@@ -91,6 +91,16 @@ Antes dependía de que otro admin le creara una cuenta nueva, y si el que olvida
   `admin-team`: `supabase functions deploy admin-team --project-ref ofdjghntvmrdfjhazfvz`.
   Hasta ese deploy, la pantalla se ve como antes (sin correos) y nada se rompe.
 
+### Marca v2.0 — el rediseño entró al panel (25-ago-2026)
+
+El manual nuevo ([`10-MANUAL-DE-MARCA.md`](./10-MANUAL-DE-MARCA.md)) reemplaza al de la etapa
+agencia. En el producto ya está aplicado el sistema: símbolo modular, paleta ink/lima,
+Inter, estados §6.1 y tema oscuro por defecto **en el panel del vendedor**. Lo que ve el
+comprador sigue con el color de cada marca — eso es el white-label y no cambia.
+
+Lo que falta está listado en §10.1 del manual: el barrido de acentos en las pantallas que
+no se tocaron, el chat del panel (`ChatView`), la web pública de Kross en ink, y los mapas.
+
 ## Bloqueos abiertos
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |

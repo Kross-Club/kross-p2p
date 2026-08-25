@@ -111,7 +111,7 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
   }, [isPickup, agencyBranchId, agencyName])
 
   return (
-    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid var(--border)' }}>
+    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '0.5px solid var(--border)' }}>
       {/* Row 1: icon + title + badge + button, all in one line */}
       <div className="flex items-center gap-2">
         <MapPin size={15} style={{ color: '#EF4444' }} className="flex-shrink-0" />

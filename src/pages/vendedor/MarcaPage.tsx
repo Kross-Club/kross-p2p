@@ -139,7 +139,7 @@ export default function MarcaPage() {
       </p>
 
       {isSuper && Object.values(waUsage).reduce((a, b) => a + b, 0) > 0 && (
-        <div className="rounded-2xl p-3 mb-4 flex items-center gap-3" style={{ background: 'var(--ok-bg-soft)', border: '1px solid var(--ok-border)' }}>
+        <div className="rounded-2xl p-3 mb-4 flex items-center gap-3" style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
           <MessageCircle size={18} style={{ color: 'var(--ok-fg)' }} />
           <div className="flex-1">
             <p className="text-xs font-black text-gray-800">
@@ -479,7 +479,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
             apaga el domicilio. Solo super admin: depende de si la marca tiene
             operación de última milla contratada. */}
         {isSuper && (
-          <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '1px solid var(--info-border)' }}>
+          <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '0.5px solid var(--info-border)' }}>
             <button onClick={() => setHomeDelivery(v => !v)}
               className="w-full flex items-center justify-between mb-2">
               <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--info-fg)' }}>
@@ -500,7 +500,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
         {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU cuenta
               de 360pay. El backend exige el JWT verificado para todo esto: son
               campos que redirigen dinero. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--violet-bg)', border: '1px solid var(--border)' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--violet-bg)', border: '0.5px solid var(--border)' }}>
           <p className="text-xs font-black mb-2" style={{ color: 'var(--violet-fg)' }}>💜 Cobros de la marca</p>
 
           {/* 360pay: cobro EN el checkout con el botón de Yape. Sin esto, la
@@ -581,7 +581,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               Cobros: es SU cuenta. El backend exige JWT verificado y el password
               jamás vuelve al panel. El semáforo dice si la API del proveedor
               está viva; en rojo, se muestra el plan de contingencia manual. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '1px solid var(--warn-border)' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)' }}>
           <div className="w-full flex items-center justify-between mb-1">
             <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
               <Truck size={14} /> Envíos de la marca (Shalom Pro)
@@ -706,7 +706,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               (Vault) y no existe una cuenta del cliente en Olva. La tarjeta
               existe para que el semáforo y el plan B vivan donde el equipo ya
               los busca. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '1px solid var(--warn-border)' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)' }}>
           <div className="w-full flex items-center justify-between mb-1">
             <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
               <Truck size={14} /> Rastreo de guías (Olva)
@@ -742,7 +742,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               Envíos: es la cuenta publicitaria de la marca. Los IDs son
               públicos (van con el "Guardar cambios"); los tokens de CAPI son
               secretos y siguen el molde write-only de Shalom Pro. ── */}
-        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '1px solid var(--info-border)' }}>
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '0.5px solid var(--info-border)' }}>
           <div className="w-full flex items-center justify-between mb-1">
             <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--info-fg)' }}>
               <BarChart3 size={14} /> Pixel y anuncios (Meta / TikTok)
@@ -823,7 +823,7 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
         {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca
             ya tiene su número en WhatsApp Cloud API. */}
         {isSuper && (
-          <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--ok-bg-soft)', border: '1px solid var(--ok-border)' }}>
+          <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
             <button onClick={() => setWaEnabled(v => !v)}
               className="w-full flex items-center justify-between mb-2">
               <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--ok-fg)' }}>
@@ -931,7 +931,7 @@ function CreateBrand({ adminId, onClose, onDone }: { adminId: string; onClose: (
               <ColorRow label="Fondo oscuro" value={cd} onChange={setCd} />
             </div>
 
-            <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '1px solid var(--border)' }}>
+            <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '0.5px solid var(--border)' }}>
               <p className="text-xs font-black text-gray-700 mb-2">Admin de la marca</p>
               <div className="space-y-2">
                 <input value={adminNombre} onChange={e => setAdminNombre(e.target.value)} placeholder="Nombre del dueño (opcional)"

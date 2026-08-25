@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 import { BarChart2, Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
+import { NOTA_META, stageBar } from '../../lib/order-chips'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 const STAGES = [
-  { key: 'nuevo', label: 'Pedido', emoji: '📋', color: '#2563EB' },
-  { key: 'confirmado', label: 'Confirmado', emoji: '📞', color: '#16A34A' },
-  { key: 'preparando', label: 'Preparando', emoji: '📦', color: '#863bff' },
-  { key: 'en_camino', label: 'En camino', emoji: '🚚', color: '#EA580C' },
-  { key: 'entregado', label: 'Entregado', emoji: '✅', color: '#15803D' },
+  { key: 'nuevo', label: 'Pedido', emoji: '📋' },
+  { key: 'confirmado', label: 'Confirmado', emoji: '📞' },
+  { key: 'preparando', label: 'Preparando', emoji: '📦' },
+  { key: 'en_camino', label: 'En camino', emoji: '🚚' },
+  { key: 'entregado', label: 'Entregado', emoji: '✅' },
 ]
 
 function roleColor(role: string) {
@@ -32,12 +33,6 @@ function roleCat(role: string) {
 
 interface Sess { id: string; stage: string; status?: string; nota?: string | null; assigned_seller_id: string | null; seller_name?: string | null; seller_role?: string | null }
 
-const NOTA_META: Record<string, { label: string; color: string }> = {
-  no_contesta: { label: 'No contesta', color: '#F59E0B' },
-  recuperado: { label: 'Recuperado', color: '#16A34A' },
-  cancelado: { label: 'Cancelado', color: '#DC2626' },
-  anulado: { label: 'Anulado', color: '#6B7280' },
-}
 
 export default function EstadisticasPage() {
   const { effective, isAdmin, impersonating } = useSeller()
@@ -96,9 +91,9 @@ export default function EstadisticasPage() {
       <div className="space-y-2 mb-6">
         {byStage.map(s => (
           <div key={s.key} className="flex items-center gap-2">
-            <span className="text-xs w-24 flex-shrink-0" style={{ color: s.color }}>{s.emoji} {s.label}</span>
+            <span className="text-xs w-24 flex-shrink-0" style={{ color: 'var(--text-muted)' }}>{s.emoji} {s.label}</span>
             <div className="flex-1 h-5 rounded-full bg-gray-100 overflow-hidden">
-              <div className="h-full rounded-full flex items-center justify-end px-2" style={{ width: `${(s.count / maxStage) * 100}%`, background: s.color, minWidth: s.count > 0 ? 24 : 0 }}>
+              <div className="h-full rounded-full flex items-center justify-end px-2" style={{ width: `${(s.count / maxStage) * 100}%`, background: stageBar(s.key), minWidth: s.count > 0 ? 24 : 0 }}>
                 {s.count > 0 && <span className="text-[10px] font-black text-white">{s.count}</span>}
               </div>
             </div>
@@ -111,9 +106,9 @@ export default function EstadisticasPage() {
           <h2 className="font-black text-sm text-gray-900 mb-2">Notas / seguimiento</h2>
           <div className="flex flex-wrap gap-2 mb-6">
             {notaKeys.map(k => (
-              <div key={k} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={{ background: `${NOTA_META[k].color}18` }}>
-                <span className="font-black text-lg" style={{ color: NOTA_META[k].color }}>{notaMap[k]}</span>
-                <span className="text-xs font-bold" style={{ color: NOTA_META[k].color }}>{NOTA_META[k].label}</span>
+              <div key={k} className="flex items-center gap-2 px-3 py-2 rounded-2xl" style={NOTA_META[k].style}>
+                <span className="font-black text-lg tabular">{notaMap[k]}</span>
+                <span className="text-xs font-bold">{NOTA_META[k].label}</span>
               </div>
             ))}
           </div>
@@ -135,7 +130,7 @@ export default function EstadisticasPage() {
           <h2 className="font-black text-sm text-gray-900 mb-2">Por miembro</h2>
           <div className="space-y-2">
             {members.map((m, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-white" style={{ border: '1.5px solid var(--border)' }}>
+              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-white" style={{ border: '0.5px solid var(--border)' }}>
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0" style={{ background: `${roleColor(m.role)}22`, color: roleColor(m.role) }}>{m.name.charAt(0).toUpperCase()}</div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm text-gray-900 truncate">{m.name}</p>

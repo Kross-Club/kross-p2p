@@ -122,7 +122,7 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
   const showForm = role === 'seller' && (!registered || editing)
 
   return (
-    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '1.5px solid var(--border)' }}>
+    <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '0.5px solid var(--border)' }}>
       <div className="flex items-center gap-2">
         <PackageCheck size={15} style={{ color: 'var(--brand)' }} className="flex-shrink-0" />
         <p className="flex-1 min-w-0 text-[9px] font-black uppercase tracking-wide text-gray-400 leading-tight">
@@ -187,12 +187,12 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
             <input value={numero} onChange={e => setNumero(e.target.value)} inputMode="numeric"
               placeholder={isOlva ? 'Guía (8 dígitos)' : 'Guía (8–10 dígitos)'} maxLength={isOlva ? 15 : 10}
               className="flex-1 min-w-0 text-xs font-semibold px-2.5 py-2 rounded-xl outline-none"
-              style={{ border: '1.5px solid var(--border)' }} />
+              style={{ border: '0.5px solid var(--border)' }} />
             {!isOlva && (
               <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())}
                 placeholder="Código" maxLength={4}
                 className="w-20 text-xs font-semibold px-2.5 py-2 rounded-xl outline-none uppercase"
-                style={{ border: '1.5px solid var(--border)' }} />
+                style={{ border: '0.5px solid var(--border)' }} />
             )}
             <button onClick={save} disabled={busy || !numeroOk || !codigoOk}
               className="text-[11px] font-black px-3 py-2 rounded-xl flex-shrink-0 disabled:opacity-40"

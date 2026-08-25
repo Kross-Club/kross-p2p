@@ -166,7 +166,7 @@ export default function IncomingCallOverlay({ storeId, disabled }: { storeId?: s
 
         {/* Bear avatar */}
         <div className="w-24 h-24 rounded-full overflow-hidden border-4 mx-auto mb-4"
-          style={{ borderColor: phase === 'connected' ? '#4ADE80' : phase === 'ringing' ? '#FFD400' : 'var(--brand)' }}>
+          style={{ borderColor: phase === 'connected' ? 'var(--text)' : phase === 'ringing' ? 'var(--text-faint)' : 'var(--brand)' }}>
           <svg viewBox="0 0 64 64" width="96" height="96" xmlns="http://www.w3.org/2000/svg">
             <circle cx="32" cy="32" r="32" fill="#FFF9E0"/>
             <ellipse cx="32" cy="48" rx="14" ry="11" fill="#D4A05A"/>
@@ -202,7 +202,7 @@ export default function IncomingCallOverlay({ storeId, disabled }: { storeId?: s
           <div className="flex items-center justify-center gap-1 mb-8">
             {[10,18,26,18,10,26,14,22,10,18].map((h, i) => (
               <div key={i} className="w-1 rounded-full animate-pulse"
-                style={{ height: `${h}px`, background: '#4ADE80', animationDelay: `${i * 80}ms` }} />
+                style={{ height: `${h}px`, background: 'var(--text)', animationDelay: `${i * 80}ms` }} />
             ))}
           </div>
         )}
@@ -222,7 +222,7 @@ export default function IncomingCallOverlay({ storeId, disabled }: { storeId?: s
             <div className="flex flex-col items-center gap-2">
               <button onClick={answer}
                 className="w-16 h-16 rounded-full flex items-center justify-center animate-pulse"
-                style={{ background: '#4ADE80' }}>
+                style={{ background: 'var(--text)' }}>
                 <Phone size={26} className="text-white" />
               </button>
               <p className="text-xs text-gray-400">Contestar</p>
@@ -257,7 +257,7 @@ export default function IncomingCallOverlay({ storeId, disabled }: { storeId?: s
         {phase === 'ended' && (
           <button onClick={() => setIncoming(null)}
             className="w-full py-3 rounded-2xl font-black text-sm"
-            style={{ background: '#FFD400', color: '#111' }}>
+            style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
             Cerrar
           </button>
         )}
