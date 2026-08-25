@@ -4,6 +4,20 @@ import './index.css'
 import App from './App.tsx'
 import { StoreProvider } from './lib/store-context'
 import { CarritoProvider } from './lib/carrito'
+import { RECOVERY_PATH, strayRecoveryLanding } from './lib/auth/password-recovery'
+
+// El enlace de recuperación tendría que aterrizar en `/nueva-contrasena`, pero
+// si su `redirectTo` no está en la lista blanca de Auth, Supabase lo ignora y
+// devuelve al *Site URL* —la raíz, sin la ruta—, con la sesión igual en el
+// hash. Ahí el enlace parecía no hacer nada: la home veía una sesión válida y
+// mandaba al panel, saltándose la pantalla de cambiar la contraseña.
+//
+// Se corrige la URL ANTES de montar React, no en un efecto: la home redirige
+// en cuanto resuelve la sesión y esa carrera se pierde. El token no se pierde
+// al limpiar la URL — la pantalla lo lee de la foto que guardó el módulo.
+if (strayRecoveryLanding(window.location.pathname)) {
+  window.history.replaceState(null, '', RECOVERY_PATH)
+}
 
 // Register the service worker globally (all pages, buyer + seller) so push
 // notifications are delivered and shown even when the PWA is in the background

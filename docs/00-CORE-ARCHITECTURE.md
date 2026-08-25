@@ -55,6 +55,13 @@ La lógica pura (leer el enlace, validar la contraseña, mapear errores) vive en
 `src/lib/auth/password-recovery.ts`, con tests en `password-recovery.test.ts`. Solo es
 para el **equipo**: el comprador no tiene contraseña que recuperar.
 
+**El panel muestra con qué correo entra cada miembro** (*Equipo*, solo para admins). Sin
+eso, recuperar la contraseña exigía adivinar la dirección con la que se creó la cuenta —y
+el formulario público no la puede confirmar sin volverse un verificador de correos
+válidos para cualquiera—. El correo vive en `auth.users`, que el panel no lee: lo
+devuelve la acción `emails` de `admin-team` (service role), y **solo** los del equipo que
+ese admin administra.
+
 Cuatro decisiones que no son obvias:
 
 1. **El enlace vuelve al subdominio desde el que se pidió.** El panel es multi-tenant por
@@ -68,6 +75,12 @@ Cuatro decisiones que no son obvias:
    panel con ella se saltaría la regla del host de plataforma que sí aplica `/login`.
 4. **La URL se limpia** (`history.replaceState`) apenas se canjea el enlace: el token va en
    el hash y si no, queda en el historial y en lo que se copia al compartir la dirección.
+5. **Si el enlace aterriza en otra ruta, se rescata.** Cuando el `redirectTo` no está en la
+   lista blanca de Auth, Supabase lo ignora y devuelve al *Site URL* —la raíz, sin la
+   ruta—, con la sesión igual en el hash. Ahí el enlace parecía no hacer nada: la home veía
+   la sesión y mandaba al panel, saltándose el cambio de contraseña. Se corrige en
+   `src/main.tsx`, **antes** de montar React: hacerlo en un efecto pierde la carrera contra
+   esa redirección.
 
 **Configuración en Supabase Auth (una vez, por proyecto).** En *Authentication →
 URL Configuration*, `https://*.krossclub.app/**` tiene que estar en **Additional Redirect

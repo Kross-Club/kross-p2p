@@ -86,7 +86,10 @@ Antes dependía de que otro admin le creara una cuenta nueva, y si el que olvida
   y no garantiza entrega: si el panel se va a apoyar en esto, va SMTP propio.
 - **Los correos del equipo tienen que ser buzones reales.** `admin-team` crea los miembros
   con `email_confirm: true`, o sea que nadie verificó la dirección: un miembro cargado con
-  un correo inventado no tiene a dónde recibir el enlace.
+  un correo inventado no tiene a dónde recibir el enlace. El panel ya los muestra
+  (*Equipo*, solo admins) para poder revisarlos de un vistazo — **requiere redesplegar**
+  `admin-team`: `supabase functions deploy admin-team --project-ref ofdjghntvmrdfjhazfvz`.
+  Hasta ese deploy, la pantalla se ve como antes (sin correos) y nada se rompe.
 
 ## Bloqueos abiertos
 

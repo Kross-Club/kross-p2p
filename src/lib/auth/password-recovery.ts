@@ -81,13 +81,35 @@ export function parseRecoveryLink(href: string): RecoveryLink {
   return { kind: 'none' }
 }
 
+function cleanPath(pathname: string): string {
+  return pathname.replace(/\/+$/, '') || '/'
+}
+
 /**
- * El enlace, pero solo si abrió **la pantalla de recuperación**. Otras páginas
- * llegan con su propio `?code=` en la URL y no tienen nada que ver con esto.
+ * ¿La URL dice, con todas sus letras, que es un enlace de recuperación?
+ *
+ * Es lo único que permite reconocerlo FUERA de `/nueva-contrasena` sin
+ * confundirlo con el `?code=` de otra pantalla: Auth siempre agrega
+ * `type=recovery` (o `type=invite`) al devolver.
+ */
+export function isRecoveryHref(href: string): boolean {
+  let url: URL
+  try { url = new URL(href) } catch { return false }
+  const hash = new URLSearchParams(url.hash.replace(/^#/, ''))
+  const type = hash.get('type') ?? url.searchParams.get('type')
+  return (type === 'recovery' || type === 'invite') && parseRecoveryLink(href).kind !== 'none'
+}
+
+/**
+ * El enlace, si abrió la pantalla de recuperación **o** si la URL se declara de
+ * recuperación aunque haya aterrizado en otra ruta. Lo segundo pasa de verdad:
+ * si el `redirectTo` no está en la lista blanca de Auth, Supabase lo ignora y
+ * manda al *Site URL* —la raíz, sin la ruta—, con la sesión igual en el hash.
  */
 export function linkFromLocation(pathname: string, href: string): RecoveryLink {
-  const clean = pathname.replace(/\/+$/, '') || '/'
-  return clean === RECOVERY_PATH ? parseRecoveryLink(href) : { kind: 'none' }
+  return cleanPath(pathname) === RECOVERY_PATH || isRecoveryHref(href)
+    ? parseRecoveryLink(href)
+    : { kind: 'none' }
 }
 
 // Foto de la URL al cargar el módulo. supabase-js limpia el hash apenas
@@ -100,6 +122,22 @@ const initialLink: RecoveryLink = typeof window === 'undefined'
 
 /** El enlace con el que se abrió la pestaña, ya sin depender de la URL actual. */
 export function openedWithLink(): RecoveryLink { return initialLink }
+
+let strayHandled = false
+
+/**
+ * El enlace del correo aterrizó fuera de su pantalla: hay que llevarlo ahí.
+ * Antes eso caía en la home y el enlace parecía no hacer nada.
+ *
+ * Responde `true` UNA sola vez: el enlace queda en memoria toda la sesión y sin
+ * este candado secuestraría cada navegación posterior.
+ */
+export function strayRecoveryLanding(pathname: string): boolean {
+  if (strayHandled || initialLink.kind === 'none') return false
+  if (cleanPath(pathname) === RECOVERY_PATH) return false
+  strayHandled = true
+  return true
+}
 
 /** Qué le falta a la contraseña nueva, o `null` si está bien. */
 export function passwordProblem(password: string, confirm: string): string | null {
