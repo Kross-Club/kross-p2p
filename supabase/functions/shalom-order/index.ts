@@ -225,31 +225,52 @@ Deno.serve(async (req: Request) => {
 
     // ─── Lo que hay que resolver contra el proveedor ─────────────────────────
     // El producto (su id es POR CUENTA) y la persona (para no chocar con el 409
-    // por documento ya registrado). Van juntos: la conexión con Shalom se
-    // reutiliza, así que el login caro se paga una sola vez.
-    const [productos, persona] = await Promise.all([
-      size ? llamar(`${SHALOM_API_BASE}/v1/products`, { headers: auth }) : Promise.resolve(null),
-      /^\d{8}$/.test(dni)
-        ? llamar(`${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth })
-        : Promise.resolve(null),
-    ])
+    // por documento ya registrado).
+    //
+    // SECUENCIAL, no en paralelo. La conexión con Shalom se reutiliza entre
+    // endpoints —lo dice su doc— pero solo si YA existe: dos llamadas al mismo
+    // tiempo con la sesión fría disparan dos logins simultáneos de ~90 s contra
+    // la misma cuenta, y el proveedor no sirve a los dos. Pasó en producción: el
+    // mismo pedido resolvió el catálogo en un intento y no en el siguiente.
+    // La primera llamada paga el login; la segunda entra caliente.
+    let productos = size ? await llamar(`${SHALOM_API_BASE}/v1/products`, { headers: auth }) : null
+    // Leer el catálogo no cuesta ni cambia nada, así que un tropiezo no puede
+    // costar una guía: se reintenta una vez, ya con la sesión establecida.
+    if (size && productos && !productos.ok && productos.status !== 401) {
+      console.error('[shalom-order] catálogo falló, reintentando', sessionId, productos.status)
+      productos = await llamar(`${SHALOM_API_BASE}/v1/products`, { headers: auth })
+    }
+    if (size && !productos) {
+      console.error('[shalom-order] catálogo sin respuesta, reintentando', sessionId)
+      productos = await llamar(`${SHALOM_API_BASE}/v1/products`, { headers: auth })
+    }
+
+    const persona = /^\d{8}$/.test(dni)
+      ? await llamar(`${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth })
+      : null
 
     if (productos?.status === 401 || persona?.status === 401) {
       await credencialesRechazadas()
       return json({ error: 'credenciales rechazadas' }, 502)
     }
 
-    const productId = productos?.ok && size ? resolveProductId(await leerJson(productos), size) : null
-    // El tamaño está configurado pero no se pudo resolver contra la cuenta: o el
-    // catálogo no respondió, o esa cuenta no ofrece ese producto. Se distingue
-    // del "producto sin configurar" porque se arregla en otro lado — y sin esto,
-    // Logística iría a completar un campo que ya estaba lleno.
+    const catalogo = productos?.ok ? await leerJson(productos) : null
+    const productId = catalogo && size ? resolveProductId(catalogo, size) : null
+    // El tamaño está configurado pero no se pudo resolver. Son dos problemas
+    // distintos y se arreglan en lugares distintos: uno se espera, el otro se
+    // corrige en el producto. Decirlos con la misma frase manda a Logística a
+    // completar un campo que ya estaba lleno.
     if (size && !productId) {
-      await cerrar(sessionId, 'SKIPPED', 'no se pudo resolver el tamaño contra el catálogo de Shalom')
-      await aLogistica(sessionId,
-        `📦 Guía automática no generada — Shalom no confirmó el tamaño "${size}" en el catálogo de la cuenta `
-        + '(puede estar caído, o esa cuenta no ofrece ese producto). Registra la guía a mano cuando despaches.')
-      return json({ skipped: 'catálogo sin resolver' })
+      const sinRespuesta = !productos?.ok
+      await cerrar(sessionId, 'SKIPPED', sinRespuesta
+        ? 'el catálogo de Shalom no respondió'
+        : `la cuenta Shalom Pro no ofrece el tamaño ${size}`)
+      await aLogistica(sessionId, sinRespuesta
+        ? '📦 Guía automática no generada — Shalom no respondió al pedirle su catálogo de paquetes. '
+          + 'Es del proveedor, no del pedido: registra la guía a mano y el siguiente pedido lo reintenta solo.'
+        : `📦 Guía automática no generada — la cuenta Shalom Pro de la marca no ofrece el tamaño "${size}". `
+          + 'Elige otro en Productos → el producto → Envío, y registra esta guía a mano.')
+      return json({ skipped: sinRespuesta ? 'el catálogo no respondió' : 'tamaño fuera del catálogo de la cuenta' })
     }
     // 404 = la persona no está registrada en la cuenta: hay que mandar sus
     // nombres. Cualquier otra cosa (500, timeout) se trata igual: sin id.
