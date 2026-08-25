@@ -250,7 +250,9 @@ Corre **después** de los generadores de agencias, porque lee sus JSON ya constr
 1. 🔮 Pin arrastrable + campo referencia, en el chat del pedido (post-venta), no en el
    checkout.
 2. 🔮 Route-sheet del motorizado (Lima) con cobranza por parada.
-3. 🔮 Generador de envíos a provincia (Shalom/Olva).
+3. Generador de envíos — **Shalom 🟡** (construido; el payload espera la doc del
+   proveedor y cada marca arranca en modo ensayo — ver § *Generador de guías
+   Shalom*) · **Olva 🔮**.
 4. Tracking por API con disparo de cobranza al llegar a destino — **Shalom ✅**
    (ciclo completo, ver § *Tracking de envíos Shalom*) · **Olva ✅** (mismo
    ciclo, por barrido: su proveedor no tiene webhook — ver § *Tracking de guías
@@ -709,14 +711,12 @@ solo-vendedores: un envío tan viejo sin cerrar es para mirarlo).
 - Si el proveedor ya tuviera un webhook de otra URL, el bootstrap **no lo
   pisa**: avisa en logs y se rota a mano (`POST /v1/webhooks/rotate`).
 
-Sin usar todavía: `GET /v1/tracking/{ose_id}/events` (solo hitos, por
-`ose_id`), el comprobante por ose_id (⚠️ su doc lo declara **fuera de
-servicio**: responde 404 para toda orden — no depender de él), el GRT (exige
-credenciales Shalom Pro + `cap_id` del carguero) y toda la familia de **crear
-pedido** (`POST /v1/orders`, cotización, rótulo PDF) — esa exige credenciales
-de la cuenta Shalom Pro de la marca y es el candidato natural para el
-pendiente #3 (generador de envíos), decisión aparte porque crea guías reales
-y cobrables, sin sandbox ni idempotencia.
+De la familia de **crear pedido** usamos `POST /v1/orders` (ver § *Generador de
+guías Shalom*). Siguen sin usar: `GET /v1/tracking/{ose_id}/events` (solo
+hitos, por `ose_id`), el comprobante por ose_id (⚠️ su doc lo declara **fuera
+de servicio**: responde 404 para toda orden — no depender de él), el GRT (exige
+credenciales Shalom Pro + `cap_id` del carguero) y la cotización de tarifas +
+rótulo PDF.
 
 ### Cuenta Shalom Pro por marca + semáforo de la API ✅
 
@@ -738,3 +738,144 @@ Panel → Mi marca → **Envíos de la marca (Shalom Pro)**. Dos cosas viven ah�
   vigila solo apenas la API vuelva — el tracking degrada, no se rompe),
   consultar el estado a mano en shalom.pe → Rastrea, y avisar al comprador
   por el chat del pedido.
+
+## Generador de guías Shalom ✅ · el pendiente #3
+
+Un pedido de recojo en agencia **SHALOM** con el adelanto **verificado** pide su
+propia guía a la cuenta Shalom Pro de la marca. Antes de esto la guía nacía en
+el mostrador y alguien la copiaba a mano en el pedido; ese camino **no se fue**
+—es el plan B de todo lo que sigue.
+
+```
+register-buyer ──► pay360-webhook ──► shalom-order ──► registrarGuia ──► el ciclo de siempre
+  cierra el       adelanto MATCHED     POST /v1/orders   guía al chat      webhook → fases → cobranza
+  pedido          (fire-and-forget)    (o ensayo)        (ya suscrita)
+```
+
+### Las cuatro defensas (por qué no es un fetch y ya)
+
+Cada llamada exitosa **emite una guía real y cobrable**: el proveedor no tiene
+sandbox ni idempotencia. De ahí que el diseño sea casi todo protección:
+
+1. **Candado.** `shalom-order` reclama el pedido con un UPDATE condicional
+   (`shalom_order_status IS NULL`) **antes** de llamar a nadie. Dos webhooks del
+   mismo pago —360pay emite otro `PAYMENT_PAID` si se corrige el código
+   bancario— no pueden emitir dos guías para un paquete.
+2. **Interruptor por marca**, apagado por defecto
+   (`stores.shalom_auto_guide_enabled`, §27.d). Apagado, la función corre
+   entera, arma el envío completo y lo deja en los logs y en el chat de
+   vendedores (`status = SIMULADO`) **sin llamar al proveedor**. Es el ensayo
+   con un pedido real antes de gastar. Se prende en Panel → Mi marca → Envíos.
+3. **Reconciliar antes que reintentar.** Si la llamada no responde, la guía
+   **puede haberse creado igual** — la doc del proveedor lo advierte con todas
+   sus letras. Antes de dar nada por perdido se le pregunta a `GET /v1/orders`
+   si ya existe una guía para ese DNI, y si está, se registra ESA. Es la
+   diferencia entre recuperar un envío y cobrarle dos al cliente.
+4. **Nunca reintenta a ciegas.** Si ni con eso se resuelve, el pedido queda en
+   un estado que el código no vuelve a tomar solo. Reintentar es decisión de una
+   persona, con pro.shalom.pe a la vista. El aviso a Logística lo dice con esas
+   palabras.
+
+Un caso más, que no es defensa sino cortesía con el cliente: si el destinatario
+**ya existe** en la cuenta Shalom Pro, Shalom responde `409`. No se fuerza nada
+— se busca su `person_id` (`GET /v1/persons/search`) y se reintenta con él. Ese
+reintento sí es seguro: un 409 significa que la orden **no** se creó.
+
+### Lo que hace falta configurar
+
+| Dónde | Qué | Sin eso |
+|---|---|---|
+| Panel → Mi marca → Envíos | Cuenta Shalom Pro **verificada** (`CONNECTED`) | `SKIPPED` + aviso a Logística |
+| Panel → Mi marca → Envíos | Interruptor de guía automática | `SIMULADO` (ensayo, no emite) |
+| Panel → Productos → el producto → Envío | **Agencia de origen**, **tamaño** (Sobre · Caja XXS…L · Otra medida) y **contenido declarado** (Artículos / Ropa / Documentos / Electrodomésticos) | `SKIPPED` diciendo qué falta |
+| Automático | Sede de recojo del pedido (`agency_branch_id`, §27.b) | `SKIPPED` |
+
+La agencia de origen sale del **mismo listado** que ve el comprador
+(`src/data/agencies/shalom.json`): un solo catálogo para las dos puntas del
+envío. La config es **por producto** y no por marca porque lo decide la
+mercadería — dos productos de la misma tienda pueden salir de almacenes
+distintos y en cajas de otro tamaño.
+
+### Las piezas
+
+- **`supabase/functions/shalom-order`** — la que orquesta: guardas, candado,
+  llamada y cierre del expediente (`shalom_order_status/_id/_at/_reason`, §27.c).
+  Es interna: la invoca `pay360-webhook` con la service role key.
+- **`_shared/shalom-orders.ts`** — puro, sin Deno ni red: valida, **traduce** a
+  los campos del proveedor, genera la clave de retiro, resuelve el `product_id`
+  contra el catálogo de la cuenta y lee la respuesta. Único punto que conoce esa
+  forma. Se prueba gratis en `npm test` (`src/lib/checkout/shalom-order.test.ts`,
+  21 pruebas), que es todo lo que se puede verificar sin emitir una guía.
+- **Nombres del destinatario**: si la persona no existe todavía en la cuenta,
+  Shalom la registra con lo que le mandemos, así que los apellidos salen de
+  **RENIEC** (Decolecta, el mismo proveedor del DNI del checkout) y no de partir
+  `buyer_name` por espacios — "Juan Pérez de la Cruz" no se separa en dos, y
+  registrar mal a alguien en la cuenta del cliente no se deshace desde acá. Sin
+  RENIEC disponible, el pedido queda `SKIPPED` y la guía se hace a mano.
+- **`_shared/guia.ts`** — registrar la guía en el pedido, **compartido** con el
+  camino manual (`order-manage` · `set_tracking`). Mismo mensaje al comprador y
+  misma suscripción al webhook venga de una persona o de la API: si el pedido
+  hablara dos idiomas según de dónde salió la guía, la mitad de los envíos
+  quedaría fuera de la cascada. Misma razón por la que el reflejo de fases vive
+  en `tracking.ts`.
+
+### El contrato, verificado ✅
+
+`POST /v1/orders` con `X-API-Key` (plataforma) **+** las credenciales Shalom Pro
+de la marca (`X-Shalom-Email` / `X-Shalom-Password`). Lo que conviene saber sin
+abrir el código:
+
+- **El remitente no va en el body.** Shalom lo toma de la cuenta autenticada; un
+  `sender` suelto se ignora. Para que la guía salga a nombre de la empresa hace
+  falta `shipment_type: "empresarial"` + RUC aprobado en la cuenta — es otro
+  producto, con otra tarifa. Hoy no lo usamos.
+- **`origin_terminal_id` / `destiny_terminal_id`** son ids de agencia. Son el
+  **mismo `ter_id`** que ya guarda `src/data/agencies/shalom.json`: su fuente es
+  el CSV de sedes de Shalom, cuya primera columna es literalmente `ter_id` (el
+  ejemplo de la doc, `404` → `7`, es Salas Ica → Av. Parra Arequipa en nuestro
+  catálogo). Un solo catálogo para las dos puntas del envío.
+- **`product_id` no es un tamaño en texto**: es el id del producto *dentro de la
+  cuenta del cliente* (Sobre · Caja Paquete XXS…L · Otra Medida) y cambia de
+  cuenta en cuenta. Por eso el producto guarda el **tamaño** y el id se resuelve
+  al emitir contra `GET /v1/products`.
+- **`declaracion_jurada` es obligatorio** (`docs` · `ropa` · `art` · `electro`) y
+  Shalom lo imprime en la guía. Sin él: 400.
+- **`payer: "sender"`** — paga la marca al despachar. Nunca `receiver`: el saldo
+  se cobra por la app, y una guía contra entrega pondría a Shalom a cobrar lo que
+  Kross ya cobró.
+- **`track: true`** deja la guía suscrita al webhook en la misma llamada, así que
+  `registrarGuia` no gasta otra request en suscribirla.
+- Respuesta: `{ guia, serie, codigo, ose_id }` — los mismos identificadores con
+  los que ya rastrea todo lo demás.
+
+### ⚠️ La clave de retiro (`pickup_code`)
+
+La orden **la elige Kross**, y con ella el destinatario se lleva el paquete de la
+agencia: quien la tiene, tiene el pedido. Vive en
+`order_sessions.shalom_pickup_code` y **no sale de ahí**:
+
+- no se expone por `get-session`;
+- no viaja a ningún mensaje del chat — **tampoco a los de `visibility: 'sellers'`**,
+  porque el viewer de vendedor se resuelve con el token del comprador
+  (`?viewer=seller`, la deuda anotada en `ESTADO-OPERATIVO`): un mensaje "solo
+  vendedores" con la clave adentro se la estaría regalando;
+- en Kross la clave se entrega **contra el saldo pagado** (§ *El saldo de
+  agencia*), que es justo lo que el checkout viene prometiendo.
+
+Shalom rechaza claves repetidas (`1111`…`9999`) y consecutivas (`1234`…`6789`);
+el generador también descarta las descendentes — no están en la doc, cuestan 8
+códigos de 9000 y una guía rechazada cuesta bastante más.
+
+**Lo que falta para prenderlo** ya no es el contrato: es configurar los productos
+de la marca y mirar uno o dos ensayos (`SIMULADO`) antes de mover el interruptor.
+
+**Comprobar el estado del pipeline en 3 segundos:**
+
+```
+npm run sim:shalom
+```
+
+`scripts/sim-shalom-guia.mjs` recorre el pipeline real archivo por archivo,
+reporta con `archivo:línea` qué le pide cada paso a Shalom y clasifica cada
+llamada (rastrear ≠ crear). Audita el código en vez de repetir esta sección:
+detectó solo el día que el generador entró y cambió su veredicto.

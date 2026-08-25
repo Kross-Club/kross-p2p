@@ -90,6 +90,28 @@ sin tocar credenciales de pago, porque Kross Club es *partner* y cada marca es u
 bajo esa cuenta. Ver [`06-360PAY.md`](./06-360PAY.md) y
 [`07-CONTRATO-360PAY.md`](./07-CONTRATO-360PAY.md).
 
+## Guía automática de Shalom — encendida en ninguna marca todavía
+
+El generador de envíos existe (ver [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md)
+§ *Generador de guías Shalom*), pero **`stores.shalom_auto_guide_enabled` arranca en
+`false` para todas**: un pedido de agencia Shalom con el adelanto verificado arma su
+envío completo y lo deja como **ensayo** en el chat de vendedores, sin emitir nada.
+
+El contrato de `POST /v1/orders` ya está **verificado contra la doc del proveedor**
+(25-ago-2026). Para encenderlo en una marca quedan dos cosas, en este orden:
+
+1. **Configurar cada producto**: agencia de origen, tamaño y contenido declarado
+   (Panel → Productos → el producto → Envío). El panel marca los que faltan.
+2. **Prender el interruptor** en Panel → Mi marca → Envíos, después de mirar uno o
+   dos ensayos completos en el chat.
+
+Nada de esto se probó todavía contra la API real: la primera guía emitida es el
+verdadero estreno, y conviene mirarla de cerca (y borrarla con
+`DELETE /v1/orders/{id}` si sale mal, mientras no la reciban en agencia).
+
+Mientras tanto la guía se registra a mano como siempre y **nada se rompe**: el
+generador avisa a Logística cuándo no aplicó y por qué.
+
 ## Deuda técnica conocida
 
 Anotada donde vive, para que no haya que redescubrirla:
@@ -102,6 +124,7 @@ Anotada donde vive, para que no haya que redescubrirla:
 | `manage-store` mantiene vivo el camino legacy `admin_auth_id` para branding. | `01-SALES-ENGINE.md` §3.3 · `manage-store/index.ts:82` | Doble superficie de auth. Los campos de cobro ya exigen JWT verificado; falta retirar el resto. |
 | Catálogo de distritos incompleto 🟡 | `02-SMART-LOGISTICS.md` § Deuda conocida | Afecta la cobertura de reparto. |
 | La key de prueba de Olva API Perú viajó por el chat al recibirse. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Rotarla al pasar a producción (se pide por el WhatsApp del proveedor) y recargar Vault/secret. Misma familia que el bloqueo #2. |
+| La **clave de retiro** que genera el envío (`shalom_pickup_code`) no tiene todavía quién se la entregue al comprador cuando paga el saldo. | `27.d` del esquema · `pay360-webhook` | El checkout la promete desde el día 1 ("apenas pagues te enviamos tu clave"). Hoy queda guardada en el pedido y la manda una persona; el paso natural es que el pago del saldo la suelte solo. **No puede ir por `visibility: 'sellers'`**: con el token del comprador se lee igual (`?viewer=seller`). |
 | `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. |
 
 ## Limpieza pendiente

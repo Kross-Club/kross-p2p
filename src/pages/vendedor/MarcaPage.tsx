@@ -36,6 +36,8 @@ interface StoreRow {
   shalom_pro_email?: string | null
   /** PENDING | CONNECTED | FAILED | UNVERIFIED (ver setup-kross.sql §25). */
   shalom_pro_status?: string | null
+  /** Guía automática (§27.d). Apagado = el generador ensaya sin emitir. */
+  shalom_auto_guide_enabled?: boolean
   // Pixel y anuncios — los IDs son públicos; de los tokens de CAPI el backend
   // solo manda la PRESENCIA (nunca el token). Ver docs/09-PIXELS-CAPI.md.
   meta_pixel_id?: string | null
@@ -251,6 +253,9 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [shalomBusy, setShalomBusy] = useState(false)
   const [shalomEditing, setShalomEditing] = useState(false)
   const shalomConnected = !!store.shalom_pro_email
+  // Guía automática: emite envíos REALES y cobrables, así que se guarda sola
+  // (no viaja de polizón en el botón que guarda un logo) y arranca apagada.
+  const autoGuia = store.shalom_auto_guide_enabled === true
 
   // Pixel y anuncios — los IDs son públicos (van en el `save`); los tokens de
   // CAPI son secretos y siguen el molde write-only de Shalom Pro: se escriben
@@ -351,6 +356,18 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
     })
     setShalomBusy(false)
     if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo guardar las credenciales.'); return }
+    onSaved?.()
+  }
+
+  const toggleAutoGuia = async () => {
+    if (shalomBusy) return
+    setShalomBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id,
+      shalom_auto_guide_enabled: !autoGuia,
+    })
+    setShalomBusy(false)
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No se pudo cambiar la guía automática.'); return }
     onSaved?.()
   }
 
@@ -641,6 +658,34 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
                   Cancelar
                 </button>
               )}
+            </div>
+          )}
+
+          {/* ── Guía automática ──
+                Aparte de las credenciales a propósito: conectar la cuenta es
+                gratis, emitir guías cuesta. Apagado, el pedido igual arma su
+                envío completo y lo deja en el chat de vendedores (ensayo);
+                prendido, se emite de verdad al verificarse el adelanto. */}
+          {shalomConnected && (
+            <div className="rounded-xl px-3 py-2.5 mt-2" style={{ background: '#FFFBEB' }}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-black" style={{ color: '#9A3412' }}>
+                  Generar la guía automáticamente
+                </span>
+                <button onClick={toggleAutoGuia} disabled={shalomBusy || store.shalom_pro_status !== 'CONNECTED'}
+                  className="text-[10px] font-black px-2.5 py-1.5 rounded-lg disabled:opacity-40 flex-shrink-0"
+                  style={autoGuia
+                    ? { background: '#DCFCE7', color: '#16A34A' }
+                    : { background: '#F3F4F6', color: '#6B7280' }}>
+                  {shalomBusy ? '…' : autoGuia ? '● Encendida' : '○ Apagada'}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1 leading-snug">
+                {autoGuia
+                  ? 'Cada pedido de recojo en Shalom con el adelanto verificado emite su guía real —y su costo— sin que nadie la pida. El comprador la recibe en el chat al instante.'
+                  : 'Apagada: el pedido arma su envío completo y lo deja como ensayo en el chat de vendedores, sin emitir nada. Enciéndela cuando el ensayo se vea bien.'}
+                {store.shalom_pro_status !== 'CONNECTED' && ' Necesita la cuenta verificada (✓ Conectado).'}
+              </p>
             </div>
           )}
         </div>

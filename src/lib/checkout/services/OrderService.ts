@@ -110,6 +110,9 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       delivery_reference: referenceOf(s) ?? undefined,
       dispatch_type: dispatchTypeFor(s),
       agency_name: usesAgency ? (s.pickup.agency ?? undefined) : undefined,
+      // La sede elegida, como id y no solo dentro de la referencia legible: con
+      // ella el pedido puede generar su guía solo (02 §Generador de envíos).
+      agency_branch_id: usesAgency ? (s.pickup.branchId ?? undefined) : undefined,
       payment_method: s.advanceAmount > 0 ? 'YAPE_PLIN' : 'CONTRAENTREGA',
       // El provider marca de dónde va a llegar el dinero. Para una tienda sin
       // cobro en línea el campo ni viaja: el adelanto lo coordina un asesor.

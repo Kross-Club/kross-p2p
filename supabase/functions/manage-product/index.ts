@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { isDeclaredContent, isShalomSize } from '../_shared/shalom-orders.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -24,6 +25,12 @@ Deno.serve(async (req) => {
     // `images[0]` cuando no está. `packs` es jsonb: no hace falta migración.
     packs?: { nombre: string; descripcion?: string; precio: number; image?: string }[]
     active?: boolean
+    // Envío (sección 27.a): de qué sede Shalom sale el paquete, de qué tamaño
+    // es y qué contenido se declara. Los usa el generador de guías; sin los
+    // tres, el pedido no emite solo.
+    shalom_origin_branch_id?: string | null
+    package_size?: string | null
+    declared_content?: string | null
     store_id?: string   // super admin: target store when managing a brand they entered
   }
 
@@ -41,6 +48,13 @@ Deno.serve(async (req) => {
   }
 
   // save (create or update)
+  //
+  // Los campos de envío se validan acá y no solo en el panel: son la entrada de
+  // una API que emite guías cobrables. Un id de sede con letras, un tamaño que
+  // no existe en el catálogo de Shalom o una declaración jurada inventada se
+  // guardan como NULL —el pedido no genera guía y Logística lo hace a mano— en
+  // vez de viajar al proveedor y volver 400 con el paquete ya empacado.
+  const origen = String(body.shalom_origin_branch_id ?? '').trim()
   const row = {
     store_id: targetStore,
     nombre: body.nombre ?? 'Producto',
@@ -48,6 +62,9 @@ Deno.serve(async (req) => {
     images: body.images ?? [],
     packs: body.packs ?? [],
     active: body.active ?? true,
+    shalom_origin_branch_id: /^\d+$/.test(origen) ? origen : null,
+    package_size: isShalomSize(body.package_size) ? body.package_size : null,
+    declared_content: isDeclaredContent(body.declared_content) ? body.declared_content : null,
   }
 
   let result

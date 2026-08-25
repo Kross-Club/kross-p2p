@@ -67,6 +67,9 @@ Deno.serve(async (req) => {
     // (mismo trato que los cobros). `null` = desconectar. El password se
     // guarda en `store_secrets` y jamás vuelve en ninguna respuesta.
     shalom_pro?: { email?: string; password?: string } | null
+    // Interruptor de la guía automática (sección 27.d). Emite envíos REALES y
+    // cobrables: mismo trato que los campos de cobro (JWT verificado).
+    shalom_auto_guide_enabled?: boolean
     // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
     // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
     checkout_ab_mode?: string
@@ -118,7 +121,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, meta_pixel_id, tiktok_pixel_id')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -316,6 +319,13 @@ Deno.serve(async (req) => {
     // credenciales del cliente en pro.shalom.pe. Se guardan en `store_secrets`
     // (stores es de SELECT público) y el password jamás vuelve al panel.
     if (body.shalom_pro !== undefined && !trusted) return json({ error: 'auth_requerida' }, 403)
+    // El interruptor de la guía automática. Cada guía que emite se cobra, así
+    // que exige el mismo JWT verificado que el dinero — y va en `stores` porque
+    // no es un secreto: el panel lo lee para pintar el switch.
+    if (body.shalom_auto_guide_enabled !== undefined) {
+      if (!trusted) return json({ error: 'auth_requerida' }, 403)
+      patch.shalom_auto_guide_enabled = body.shalom_auto_guide_enabled === true
+    }
     let wroteShalom = false
     if (body.shalom_pro === null) {
       const { error: clrErr } = await supabase.from('store_secrets').upsert({

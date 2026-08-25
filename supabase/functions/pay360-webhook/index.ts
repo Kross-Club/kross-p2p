@@ -260,6 +260,21 @@ Deno.serve(async (req) => {
     console.error('[pay360-webhook] CAPI Purchase falló:', String(e))
   }
 
+  // ─── Despachar: el adelanto verificado es lo que autoriza a generar la guía ─
+  // Fire-and-forget a propósito: cobrar no puede colgarse de despachar. Si el
+  // generador tarda o falla, 360pay ya recibió su 200 y el pedido sigue su
+  // curso — Logística registra la guía a mano, como siempre. La función decide
+  // sola si el pedido le toca (Shalom + agencia) y trae su propio candado
+  // contra dobles emisiones, así que acá no se filtra nada.
+  runInBackground(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/shalom-order`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+    },
+    body: JSON.stringify({ session_id: session.id }),
+  }))
+
   return ok({ received: true, matched: true })
 })
 
