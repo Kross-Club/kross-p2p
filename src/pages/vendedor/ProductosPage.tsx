@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 import { IMAGE_PRESETS, downscaleImage } from '../../lib/images/downscale'
 import AbTestPanel from './AbTestPanel'
+import { mensajePanel } from '../../lib/panel-errors'
 import { AgencyService } from '../../lib/checkout/services/AgencyService'
 import type { AgencyBranch } from '../../lib/checkout/types'
 
@@ -295,8 +296,17 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
           shalom_origin_branch_id: origen, package_size: size, declared_content: contenido,
         }),
       })
-      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'No se pudo guardar.'); return }
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}))
+        alert(mensajePanel(e.error, 'No se pudo guardar.'))
+        return
+      }
       onSaved()
+    } catch (e) {
+      // Un `fetch` que rechaza —sin red, CORS, una función que no arrancó— se
+      // iba en silencio: el modal se quedaba en "Guardando…" sin decir nada.
+      console.error('[ProductosPage] manage-product no respondió', e)
+      alert('El servidor no respondió. Revisa tu conexión (o si la función está desplegada) y reintenta.')
     } finally { setBusy(false) }
   }
 
