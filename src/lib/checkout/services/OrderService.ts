@@ -9,6 +9,7 @@
 
 import { pay360ActiveFor } from '../checkout.config'
 import type { CheckoutState, DispatchType } from '../types'
+import { captureAttribution, type Attribution } from '../../pixels/attribution'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -20,6 +21,10 @@ export interface SubmitContext {
   /** Precio del pack elegido, con el descuento de retención ya aplicado. */
   price: number
   packName: string | null
+  /** Atribución del clic de anuncio (cookies/click ids). Viaja con el pedido
+   *  para que el Purchase de CAPI —que dispara el webhook cuando el navegador ya
+   *  no está— pueda atar la venta al anuncio. Ver docs/09-PIXELS-CAPI.md. */
+  attribution?: Attribution | null
 }
 
 export interface SubmitResult {
@@ -80,6 +85,10 @@ export function dispatchTypeFor(s: CheckoutState): DispatchType {
 
 export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise<SubmitResult> {
   const usesAgency = s.deliveryMethod === 'AGENCIA'
+  // Se captura AL enviar: para entonces el pixel ya plantó `_fbp`/`_fbc` y la
+  // URL de la landing sigue con `fbclid`. El caller puede pasar una atribución
+  // fija (tests); si no, se lee del navegador — nunca lanza.
+  const attribution = ctx.attribution ?? captureAttribution()
 
   const res = await fetch(`${BASE}/register-buyer`, {
     method: 'POST',
@@ -111,6 +120,14 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       checkout_variant: s.variant,
       advance_amount: s.advanceAmount,
       advance_choice: s.advanceChoice,
+      // Atribución del anuncio: la guarda el servidor en la orden para el
+      // Purchase de CAPI (el IP y el user-agent los captura el server de los
+      // headers, no del body — el IP es spoofeable).
+      ad_fbp: attribution.fbp ?? undefined,
+      ad_fbc: attribution.fbc ?? undefined,
+      ad_ttp: attribution.ttp ?? undefined,
+      ad_ttclid: attribution.ttclid ?? undefined,
+      ad_source_url: attribution.sourceUrl ?? undefined,
     }),
   })
 

@@ -8,6 +8,9 @@ import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
 import type { CheckoutState } from '../lib/checkout/types'
+import { setAnalyticsSink } from '../lib/checkout/analytics'
+import { initPixels } from '../lib/pixels/pixels'
+import { PixelSink, trackLandingView } from '../lib/pixels/sink'
 
 // Landing de producto (Sales Engine). La imagen vende; el CTA abre el checkout.
 //
@@ -81,7 +84,7 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     supabase.from('stores')
-      .select('home_delivery_enabled, pay360_enabled, checkout_ab_mode')
+      .select('home_delivery_enabled, pay360_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         // Degradación POR CAMPO: si el select entero falla (p. ej. una columna
@@ -99,8 +102,21 @@ export default function LandingProductoPage() {
         // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
         // reparto por defecto nunca puede depender de un dato mal escrito.
         setAbMode(abModeOf(data.checkout_ab_mode))
+        // ─── Pixels de la marca ────────────────────────────────────────────
+        // Solo enciende los que la marca configuró (columnas públicas de
+        // `stores`). Enchufa el bus de eventos del checkout al pixel y dispara
+        // la vista del producto. Es el único punto donde la marca corre
+        // anuncios, así que ViewContent/PageView no ensucian otras páginas.
+        // Nunca puede tumbar la landing: initPixels/PixelSink tragan sus errores.
+        const metaPixelId = (data as { meta_pixel_id?: string | null }).meta_pixel_id ?? null
+        const tiktokPixelId = (data as { tiktok_pixel_id?: string | null }).tiktok_pixel_id ?? null
+        if (metaPixelId || tiktokPixelId) {
+          initPixels({ metaPixelId, tiktokPixelId })
+          setAnalyticsSink(new PixelSink({ contentId: product?.id ?? null }))
+          trackLandingView(product?.id ?? null)
+        }
       })
-  }, [product?.store_id])
+  }, [product?.store_id, product?.id])
 
   useEffect(() => { setLastOrder(loadLastOrder()) }, [])
 

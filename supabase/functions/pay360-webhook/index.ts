@@ -25,6 +25,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import {
   PAY360_HEADERS, getCoupon, isPaid, pay360BaseUrl, pickPartnerKey, verifySignature, type Pay360Env,
 } from '../_shared/pay360.ts'
+import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -109,7 +110,7 @@ Deno.serve(async (req) => {
   }
 
   // ─── El pedido ─────────────────────────────────────────────────────────────
-  const sessionCols = 'id, order_id, store_id, origin_store_id, buyer_name, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id'
+  const sessionCols = 'id, order_id, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
   const { data: session } = externalRef
     ? await supabase.from('order_sessions')
         .select(sessionCols)
@@ -136,8 +137,9 @@ Deno.serve(async (req) => {
   const id = session.pay360_coupon_id ?? couponId
   if (!id) return await ignore(storeId, dedupeKey, 'evento sin cupón identificable')
 
+  const originStoreId = String(session.origin_store_id ?? session.store_id)
   const { data: store } = await supabase.from('stores')
-    .select('pay360_env').eq('id', String(session.origin_store_id ?? session.store_id)).maybeSingle()
+    .select('pay360_env, meta_pixel_id, tiktok_pixel_id').eq('id', originStoreId).maybeSingle()
   const env = (store?.pay360_env === 'live' ? 'live' : 'sandbox') as Pay360Env
 
   const coupon = await getCoupon(pay360BaseUrl(env, 'partner'),
@@ -213,6 +215,50 @@ Deno.serve(async (req) => {
     type: 'status_update', visibility: 'all',
     body: `${buyerAck} Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.`,
   })
+
+  // ─── CAPI · Purchase server-side ───────────────────────────────────────────
+  // El evento que arma el público "de los que SÍ pagaron": se dispara SOLO aquí,
+  // desde el servidor, porque el pago se confirma por webhook cuando el
+  // comprador ya se fue a Yape y el navegador no puede reportarlo. `value` = el
+  // adelanto realmente pagado (dinero garantizado); el total va como propiedad
+  // extra. event_id = session.id (determinístico). Corre en segundo plano y va
+  // en try/catch: una falla de CAPI JAMÁS cambia el 2xx del webhook —el dinero
+  // ya está confirmado—. Ver docs/09-PIXELS-CAPI.md.
+  try {
+    const cfg: AdsConfig = {
+      metaPixelId: store?.meta_pixel_id ?? null,
+      tiktokPixelId: store?.tiktok_pixel_id ?? null,
+    }
+    if (cfg.metaPixelId || cfg.tiktokPixelId) {
+      const { data: adSec } = await supabase.from('store_secrets')
+        .select('meta_capi_token, tiktok_capi_token, meta_test_event_code, tiktok_test_event_code')
+        .eq('store_id', originStoreId).maybeSingle()
+      cfg.metaToken = adSec?.meta_capi_token ?? null
+      cfg.metaTestCode = adSec?.meta_test_event_code ?? null
+      cfg.tiktokToken = adSec?.tiktok_capi_token ?? null
+      cfg.tiktokTestCode = adSec?.tiktok_test_event_code ?? null
+      if (hasAnyCapi(cfg)) {
+        const orderValue = Number(session.product_price ?? 0)
+        runInBackground(dispatchConversion('PURCHASE', cfg, {
+          eventId: String(session.id),
+          sourceUrl: session.ad_source_url ?? null,
+          value: paid,
+          contentId: session.product_id ? String(session.product_id) : null,
+          custom: orderValue > 0 ? { order_value: orderValue } : undefined,
+          user: {
+            phone: session.buyer_phone ?? null,
+            fullName: session.buyer_name ?? null,
+            externalId: session.buyer_id ? String(session.buyer_id) : null,
+            fbp: session.ad_fbp ?? null, fbc: session.ad_fbc ?? null,
+            ttp: session.ad_ttp ?? null, ttclid: session.ad_ttclid ?? null,
+            clientIp: session.ad_client_ip ?? null, clientUserAgent: session.ad_client_ua ?? null,
+          },
+        }))
+      }
+    }
+  } catch (e) {
+    console.error('[pay360-webhook] CAPI Purchase falló:', String(e))
+  }
 
   return ok({ received: true, matched: true })
 })

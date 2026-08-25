@@ -1008,3 +1008,49 @@ ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_email      text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_password   text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_status     text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_checked_at timestamptz;
+
+-- ─── 26. PIXEL DE META + TIKTOK Y CAPI (por marca) ──────────────────────────
+-- Cada marca corre sus propios anuncios con su propio pixel y su propia cuenta.
+-- El objetivo: que el cliente vea en SU Events Manager si su publicidad es
+-- rentable —llegan a la landing → se registran → en qué etapa se quedaron— y,
+-- vía CAPI (server-side), que Meta/TikTok reciban a los que SÍ adelantaron el
+-- pago para armar el público "de los que pagan" y traer más de esos.
+-- Ver docs/09-PIXELS-CAPI.md.
+
+-- 26.a Los IDs de pixel son PÚBLICOS por definición: viajan al navegador dentro
+-- del snippet de `fbq`/`ttq`. Por eso viven en `stores`, que ya tiene SELECT
+-- público (igual que `pay360_business_id`). Presencia = pixel encendido; vaciar
+-- el campo lo pausa sin borrar la configuración de CAPI.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS meta_pixel_id   text;   -- Meta/Facebook Pixel ID
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS tiktok_pixel_id text;   -- TikTok Pixel ID
+
+-- 26.b Los tokens de CAPI SÍ son secretos (dan de alta eventos server-side en
+-- nombre de la marca): van en `store_secrets`, que es service-role only. Los
+-- escribe manage-store SOLO por JWT verificado (mismo trato que Shalom Pro y los
+-- campos de cobro) y jamás vuelven en ninguna respuesta —el panel solo sabe si
+-- están presentes—. Los `*_test_event_code` son opcionales: sirven para ver los
+-- eventos en Test Events (Meta) / test_event_code (TikTok) sin ensuciar la data.
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS meta_capi_token         text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS tiktok_capi_token       text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS meta_test_event_code    text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS tiktok_test_event_code  text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS ads_secrets_updated_at  timestamptz;
+
+-- 26.c Atribución del clic, en la orden. El Purchase de CAPI lo dispara
+-- `pay360-webhook` cuando 360pay confirma el pago —de forma ASÍNCRONA, con el
+-- navegador del comprador ya cerrado—, así que los identificadores del clic que
+-- Meta/TikTok necesitan para atar la venta al anuncio tienen que quedar
+-- guardados en el pedido desde el registro:
+--   · ad_fbp / ad_fbc  — cookies `_fbp` / `_fbc` de Meta
+--   · ad_ttp / ad_ttclid — cookie `_ttp` y click id de TikTok
+--   · ad_client_ua / ad_client_ip — user-agent e IP, capturados SERVER-SIDE en
+--       register-buyer (de los headers, NO del body: el IP es spoofeable). Solo
+--       para el match de CAPI; nunca se exponen por get-session.
+--   · ad_source_url — la URL de la landing (`event_source_url`)
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_fbp        text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_fbc        text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_ttp        text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_ttclid     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_client_ua  text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_client_ip  text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS ad_source_url text;
