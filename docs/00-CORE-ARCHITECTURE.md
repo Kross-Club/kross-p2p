@@ -40,6 +40,56 @@ y actualizan.
 - **Comprador:** identificado por DNI/teléfono (`buyers`), sin login de contraseña; entra
   por su subdominio (`/acceso`). NO hay login de comprador en el host de plataforma.
 
+### Recuperar contraseña del panel ✅ (implementado)
+
+Antes, quien olvidaba su contraseña dependía de que un admin de la marca le creara otra
+cuenta desde **Equipo** — y si el que la olvidaba era el único admin, la marca se quedaba
+fuera de su propio panel sin nadie adentro que pudiera destrabarla.
+
+| Pantalla | Ruta | Qué hace |
+|---|---|---|
+| Pedir el enlace | `/recuperar` | `supabase.auth.resetPasswordForEmail` con `redirectTo` al **mismo** origen |
+| Fijar la nueva | `/nueva-contrasena` | Canjea el enlace por sesión, `updateUser({ password })`, cierra sesión y vuelve a `/login?actualizada=1` |
+
+La lógica pura (leer el enlace, validar la contraseña, mapear errores) vive en
+`src/lib/auth/password-recovery.ts`, con tests en `password-recovery.test.ts`. Solo es
+para el **equipo**: el comprador no tiene contraseña que recuperar.
+
+**El panel muestra con qué correo entra cada miembro** (*Equipo*, solo para admins). Sin
+eso, recuperar la contraseña exigía adivinar la dirección con la que se creó la cuenta —y
+el formulario público no la puede confirmar sin volverse un verificador de correos
+válidos para cualquiera—. El correo vive en `auth.users`, que el panel no lee: lo
+devuelve la acción `emails` de `admin-team` (service role), y **solo** los del equipo que
+ese admin administra.
+
+Cuatro decisiones que no son obvias:
+
+1. **El enlace vuelve al subdominio desde el que se pidió.** El panel es multi-tenant por
+   host; mandar a todos a `krossclub.app` sacaría al vendedor de su marca — y ahí solo
+   entra el super admin.
+2. **Nunca decimos si el correo existe.** Pedir el enlace siempre muestra "revisa tu
+   correo": un formulario público que responde "ese correo no existe" es una lista de
+   correos válidos servida a cualquiera. El único error que sí se muestra es el límite de
+   envíos de Auth (429) y el fallo de red, porque reintentar al toque tampoco funcionaría.
+3. **Al guardar se cierra la sesión.** El enlace abre una sesión de recuperación; entrar al
+   panel con ella se saltaría la regla del host de plataforma que sí aplica `/login`.
+4. **La URL se limpia** (`history.replaceState`) apenas se canjea el enlace: el token va en
+   el hash y si no, queda en el historial y en lo que se copia al compartir la dirección.
+5. **Si el enlace aterriza en otra ruta, se rescata.** Cuando el `redirectTo` no está en la
+   lista blanca de Auth, Supabase lo ignora y devuelve al *Site URL* —la raíz, sin la
+   ruta—, con la sesión igual en el hash. Ahí el enlace parecía no hacer nada: la home veía
+   la sesión y mandaba al panel, saltándose el cambio de contraseña. Se corrige en
+   `src/main.tsx`, **antes** de montar React: hacerlo en un efecto pierde la carrera contra
+   esa redirección.
+
+**Configuración en Supabase Auth (una vez, por proyecto).** En *Authentication →
+URL Configuration*, `https://*.krossclub.app/**` tiene que estar en **Additional Redirect
+URLs**. Sin eso Auth ignora el `redirectTo` y manda todo al *Site URL*: el vendedor de una
+marca aterriza en el host de la plataforma y el enlace "no hace nada". La plantilla de
+*Reset Password* por defecto (`{{ .ConfirmationURL }}`) funciona tal cual; si alguien la
+cambia a `{{ .TokenHash }}`, la pantalla también lo soporta — es la única variante que
+sirve cuando el correo se abre en otro dispositivo.
+
 ### Identidad del comprador: DNI vs. teléfono ✅ (implementado)
 
 `buyers` tiene **dos** índices únicos por tienda: `(store_id, document_number)` y

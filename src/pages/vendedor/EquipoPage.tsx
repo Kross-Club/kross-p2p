@@ -35,6 +35,7 @@ export default function EquipoPage() {
   const [profile, setProfile] = useState<SellerProfile | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [emails, setEmails] = useState<Record<string, string>>({})
 
   const storeId = effective?.store_id
   const loadTeam = async () => {
@@ -63,6 +64,29 @@ export default function EquipoPage() {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId, sellerLoading])
+
+  // El correo de cada miembro vive en `auth.users` y solo lo puede leer el
+  // service role, así que lo trae la función. Es la única forma de que un admin
+  // sepa con qué dirección creó una cuenta — que es justo lo que hay que
+  // escribir para recuperar la contraseña. Si la función no responde, la página
+  // funciona igual: el correo es un dato de más, no la razón de esta pantalla.
+  useEffect(() => {
+    const adminId = real?.auth_user_id
+    if (!isAdmin || !adminId || !storeId) return
+    let vivo = true
+    ;(async () => {
+      try {
+        const res = await fetch(`${BASE}/admin-team`, {
+          method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'emails', admin_auth_id: adminId, store_id: storeId }),
+        })
+        if (!res.ok) return
+        const r = await res.json()
+        if (vivo) setEmails(r.emails ?? {})
+      } catch { /* sin correos se ve igual que antes */ }
+    })()
+    return () => { vivo = false }
+  }, [isAdmin, real?.auth_user_id, storeId])
 
   // Real connection presence
   useEffect(() => {
@@ -135,6 +159,7 @@ export default function EquipoPage() {
       <div className="space-y-3">
         {sorted.map(s => (
           <MemberCard key={s.id} s={s} isSelf={s.auth_user_id === real?.auth_user_id} online={online}
+            email={emails[s.auth_user_id]}
             admin onEnter={() => enterAs(s)} onToggle={(v) => setAvailable(s, v)} onProfile={() => setProfile(s)} busy={busy} />
         ))}
       </div>
@@ -146,7 +171,12 @@ export default function EquipoPage() {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setProfile(null)}>
           <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-black text-gray-900">{profile.nombre}</h3>
+              <div className="min-w-0">
+                <h3 className="font-black text-gray-900 truncate">{profile.nombre}</h3>
+                {emails[profile.auth_user_id] && (
+                  <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>{emails[profile.auth_user_id]}</p>
+                )}
+              </div>
               <button onClick={() => setProfile(null)}><X size={18} className="text-gray-400" /></button>
             </div>
             {profile.is_admin ? (
@@ -182,8 +212,8 @@ export default function EquipoPage() {
   )
 }
 
-function MemberCard({ s, isSelf, online, admin, onEnter, onToggle, onProfile, busy }: {
-  s: SellerProfile; isSelf?: boolean; online: Set<string>
+function MemberCard({ s, isSelf, online, email, admin, onEnter, onToggle, onProfile, busy }: {
+  s: SellerProfile; isSelf?: boolean; online: Set<string>; email?: string
   admin?: boolean; onEnter?: () => void; onToggle?: (v: boolean) => void; onProfile?: () => void; busy?: boolean
 }) {
   const color = roleColor(s.is_admin ? 'admin' : s.role_label)
@@ -200,6 +230,8 @@ function MemberCard({ s, isSelf, online, admin, onEnter, onToggle, onProfile, bu
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-black text-gray-900 text-sm truncate">{s.nombre}{isSelf && <span className="text-gray-400 font-bold"> · tú</span>}</p>
+          {/* Con qué correo entra: es lo que se escribe para recuperar la clave. */}
+          {email && <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }} title={email}>{email}</p>}
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: `${color}22`, color }}>{s.is_admin ? 'Admin' : s.role_label}</span>
             <span className="text-[10px] font-bold" style={{ color: isOnline ? '#16A34A' : '#9CA3AF' }}>{isOnline ? 'Conectado' : 'Desconectado'}</span>
