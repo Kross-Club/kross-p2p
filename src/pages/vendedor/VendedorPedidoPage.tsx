@@ -10,6 +10,7 @@ import OrderDetailModal from '../../components/OrderDetailModal'
 import ContactSheet from '../../components/ContactSheet'
 import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
+import { pickupBranchIdOf } from '../../lib/session'
 import { useSeller } from '../../lib/seller-session'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -725,6 +726,7 @@ export default function VendedorPedidoPage() {
         role="seller"
         dispatchType={session.dispatch_type}
         agencyName={session.agency_name}
+        agencyBranchId={pickupBranchIdOf(session)}
         onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
       />
 

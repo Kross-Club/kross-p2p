@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { stagesFor, stageIndex } from '../../lib/order-stages'
-import { isPickupDispatch } from '../../lib/session'
+import { isPickupDispatch, pickupBranchIdOf } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -825,6 +825,7 @@ export default function OrderChatPage() {
           role="buyer"
           dispatchType={session.dispatch_type}
           agencyName={session.agency_name}
+          agencyBranchId={pickupBranchIdOf(session)}
           onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
         />
       </div>

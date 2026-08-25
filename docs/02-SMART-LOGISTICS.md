@@ -284,7 +284,13 @@ La máquina del checkout ya decidía bien (`needsLocationConfirmation` es false 
 agencia, ver `01-SALES-ENGINE.md`); lo que faltaba era que el chat se enterara.
 Ahora `get-session` devuelve `dispatch_type` / `agency_name` y `AddressBar`:
 
-- rotula **"Recojo en agencia · SHALOM"** en vez de "Dirección de entrega";
+- rotula **"Recojo en agencia · SHALOM"** en vez de "Dirección de entrega" y
+  muestra **la sede elegida** —nombre, dirección y distrito, resueltos contra el
+  mismo catálogo que usó el comprador— en vez del `address` del pedido, que es
+  el distrito del COMPRADOR: un pedido de Chaclacayo que se recoge en Huaycán se
+  leía como "Chaclacayo, Lima" y mandaba a Logística a la ciudad equivocada. Ese
+  dato ya se ve en la ficha del cliente; acá lo que importa es a qué mostrador
+  va el paquete (`pickupBranchIdOf`, §27.b);
 - no muestra el botón de GPS ni el "sin verificar" naranja —el pedido está
   completo, no hay nada pendiente que reclamarle a nadie;
 - no ofrece Maps/Waze sobre una coordenada que no corresponde al destino.
