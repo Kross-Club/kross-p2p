@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { NOTA_META, CERRADO_SUAVE, NEUTRO, ALERTA } from '../../lib/order-chips'
-import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
+import { COLUMNAS, columnaDelPedido, antiguedad } from '../../lib/order-tracking'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -26,13 +26,17 @@ interface Sess {
   nota?: string | null
   seller_name?: string | null
   seller_role?: string | null
+  created_at?: string | null
   // Lo que la línea de vida necesita para saber si a este pedido le tocan los
   // pasos del courier y en cuál va. Sin esto el tablero cae al reloj interno.
   dispatch_type?: string | null
   agency_name?: string | null
   advance_amount?: number | string | null
   tracking_courier?: string | null
+  tracking_numero?: string | null
   tracking_phase?: string | null
+  tracking_phase_at?: string | null
+  tracking_demora_at?: string | null
 }
 
 
@@ -44,6 +48,10 @@ export default function CRMPage() {
   const [loading, setLoading] = useState(true)
 
   const onlyMine = !!effective && !(isAdmin && !impersonating)
+  // La antigüedad se mide contra el instante en que LLEGARON los datos, no
+  // contra cada pintada: así todas las tarjetas cuentan desde el mismo punto
+  // y el render se mantiene puro.
+  const [ahora, setAhora] = useState(() => Date.now())
 
   useEffect(() => {
     if (!effective) return
@@ -52,10 +60,36 @@ export default function CRMPage() {
     if (onlyMine) headers['x-seller-id'] = effective.auth_user_id
     fetch(`${BASE}/get-store-sessions`, { headers })
       .then(r => (r.ok ? r.json() : []))
-      .then((data: Sess[]) => setSessions(Array.isArray(data) ? data : []))
+      .then((data: Sess[]) => { setSessions(Array.isArray(data) ? data : []); setAhora(Date.now()) })
       .catch(() => setSessions([]))
       .finally(() => setLoading(false))
   }, [effective?.auth_user_id, effective?.store_id, onlyMine])
+
+  // Cuánto lleva parado. Con las columnas en el idioma del courier, el dato que
+  // decide es el tiempo, no el conteo: dos días en `registrado` es un paquete
+  // que nunca salió del almacén; cinco en `en destino` es plata esperando que
+  // el cliente vaya a recoger. El rojo lo reserva la demora que reporta el
+  // courier — el único atraso que no estamos infiriendo nosotros.
+  //
+  // Solo se pinta desde 1 día: "0d" en todo el tablero es ruido.
+  // Helper y no componente, igual que `grupoDeCierre`: declarar un componente
+  // dentro del render le cambia la identidad en cada pintada.
+  const chipAntiguedad = (s: Sess) => {
+    const a = antiguedad(s, ahora)
+    if (!a || (a.dias < 1 && !a.demorado)) return null
+    const courier = s.tracking_courier ?? s.agency_name ?? 'El courier'
+    return (
+      <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+        style={a.demorado ? ALERTA : NEUTRO}
+        title={a.demorado
+          ? `${courier} reporta demora en este envío`
+          : a.exacta
+            ? 'Tiempo en esta etapa'
+            : 'Desde que entró el pedido — esta etapa no tiene fecha propia'}>
+        {a.demorado && '⚠️ '}{a.exacta ? '' : '~'}{a.dias}d
+      </span>
+    )
+  }
 
   const Card = ({ s }: { s: Sess }) => (
     <button onClick={() => navigate(`/vendedor/pedido/${s.token}`)}
@@ -66,6 +100,7 @@ export default function CRMPage() {
           <p className="text-xs text-gray-400 truncate">{s.product_name} · {s.pack_name || `S/ ${s.product_price}`}</p>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {s.seller_name && <span className="text-[10px] text-gray-400">Atiende: {s.seller_name.split(' ')[0]}</span>}
+            {chipAntiguedad(s)}
             {s.nota && NOTA_META[s.nota] && (
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
                 style={NOTA_META[s.nota].style}>

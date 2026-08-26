@@ -24,7 +24,9 @@ const PHASE_RULES: [TrackingPhase, RegExp][] = [
   ['ENTREGADO', /ENTREGAD/],
   ['EN_DESTINO', /EN DESTINO|AGENCIA DESTINO|DISPONIBLE|RECOJO|REPARTO/],
   ['EN_TRANSITO', /TRANSITO|TRASLADO|RUTA|SALID/],
-  ['EN_ORIGEN', /ORIGEN|ADMITID|REGISTRAD|RECEPCIONAD/],
+  // Sin `REGISTRAD`: registrar la guía no es haberla entregado en la agencia
+  // (misma regla que Shalom). El pedido espera en la columna `registrado`.
+  ['EN_ORIGEN', /ORIGEN|ADMITID|RECEPCIONAD/],
 ]
 
 /**

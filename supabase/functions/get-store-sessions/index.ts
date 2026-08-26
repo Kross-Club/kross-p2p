@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       dispatch_type, agency_name, agency_branch_id, delivery_reference,
       address, address_lat, address_lng,
       advance_amount, payment_verification,
-      tracking_courier, tracking_phase,
+      tracking_courier, tracking_numero, tracking_phase, tracking_phase_at, tracking_demora_at,
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       chat_messages ( id, sender_role, type, body, created_at, read_at )
     `)

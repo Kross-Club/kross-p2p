@@ -218,6 +218,10 @@ type MerchantCustomerSession = {
                // Shalom rastrea por numero+codigo (u oseId); Olva por
                // numero+year (año de emisión en 2 dígitos, sin código).
                ref: { numero?: string; codigo?: string; oseId?: string; year?: string }
+               // NULL con guía escrita = REGISTRADO: la guía existe y el courier
+               // todavía no reporta, o sea el paquete sigue en el almacén. No es
+               // un valor del enum a propósito — es la AUSENCIA de reporte, y es
+               // el hueco donde se pierde la plata (ver 11-RELACIONES).
                phase: 'EN_ORIGEN' | 'EN_TRANSITO' | 'EN_DESTINO' | 'ENTREGADO' | null
                phaseAt?: Date
                demoraAt?: Date }              // alerta de demora del courier; NO es una fase

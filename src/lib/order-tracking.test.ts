@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pasosDelPedido, pasoActual, courierDelPedido, columnaDelPedido, COLUMNAS } from './order-tracking'
+import { pasosDelPedido, pasoActual, courierDelPedido, columnaDelPedido, COLUMNAS, antiguedad } from './order-tracking'
 import { isPickupDispatch } from './session'
 
 const claves = (p: Parameters<typeof pasosDelPedido>[0]) => pasosDelPedido(p).map(x => x.key)
@@ -10,9 +10,9 @@ describe('línea de vida del pedido', () => {
       .toEqual(['nuevo', 'confirmado', 'preparando', 'en_camino', 'entregado'])
   })
 
-  it('por agencia abre los tres pasos del courier', () => {
+  it('por agencia abre los cuatro pasos del envío', () => {
     expect(claves({ stage: 'preparando', dispatch_type: 'AGENCIA_PROVINCIA', agency_name: 'SHALOM' }))
-      .toEqual(['nuevo', 'confirmado', 'preparando', 'registrado', 'transito', 'en_agencia', 'entregado'])
+      .toEqual(['nuevo', 'confirmado', 'preparando', 'registrado', 'en_origen', 'transito', 'en_agencia', 'entregado'])
   })
 
   // Un punto que nunca se va a encender se lee como "algo se atascó".
@@ -94,7 +94,7 @@ describe('el tablero', () => {
   const claveColumnas = COLUMNAS.map(c => c.key)
 
   it('la columna la manda el courier cuando el courier reportó', () => {
-    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'EN_ORIGEN' })).toBe('registrado')
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'EN_ORIGEN' })).toBe('en_origen')
     expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'EN_TRANSITO' })).toBe('transito')
     expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'EN_DESTINO' })).toBe('en_agencia')
     expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'ENTREGADO' })).toBe('entregado')
@@ -132,5 +132,66 @@ describe('el tablero', () => {
   it('el fracaso no es una columna del tablero', () => {
     expect(columnaDelPedido({ ...AGENCIA, stage: 'no_entregado' })).toBe('no_entregado')
     expect(claveColumnas).not.toContain('no_entregado')
+  })
+})
+
+describe('registrado no es lo mismo que en origen', () => {
+  const AGENCIA = { dispatch_type: 'AGENCIA_LIMA', agency_name: 'SHALOM' }
+
+  it('la línea separa los dos pasos', () => {
+    const pasos = claves({ ...AGENCIA, stage: 'preparando' })
+    expect(pasos).toEqual([
+      'nuevo', 'confirmado', 'preparando', 'registrado', 'en_origen', 'transito', 'en_agencia', 'entregado',
+    ])
+  })
+
+  // Hay guía pero el courier todavía no reporta: el paquete sigue en nuestro
+  // almacén. Es el hueco donde se pierde la plata y ahora tiene columna.
+  it('con guía y sin reporte del courier el pedido queda en registrado', () => {
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_numero: '12345' }))
+      .toBe('registrado')
+  })
+
+  it('EN_ORIGEN significa que el courier YA lo tiene', () => {
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_numero: '12345', tracking_phase: 'EN_ORIGEN' }))
+      .toBe('en_origen')
+  })
+
+  it('sin guía no se adelanta a registrado', () => {
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando' })).toBe('preparando')
+  })
+
+  it('la guía nunca hace retroceder a un pedido que ya va más adelante', () => {
+    expect(columnaDelPedido({ ...AGENCIA, tracking_numero: '12345', tracking_phase: 'EN_DESTINO' }))
+      .toBe('en_agencia')
+  })
+})
+
+describe('cuánto lleva parado', () => {
+  it('mide desde que entró a la fase cuando el courier la fechó', () => {
+    const hace3d = new Date(Date.now() - 3 * 86400_000).toISOString()
+    const a = antiguedad({ tracking_phase_at: hace3d }, Date.now())
+    expect(a?.dias).toBe(3)
+    expect(a?.exacta).toBe(true)
+  })
+
+  // Sin fecha de fase, lo único que sabemos es la edad del pedido. Se devuelve
+  // igual pero marcada `exacta: false`: la pantalla no debe afirmar "3 días en
+  // esta columna" cuando lo que sabe es "3 días desde que entró el pedido".
+  it('sin fecha de fase cae a la edad del pedido y lo dice', () => {
+    const hace5d = new Date(Date.now() - 5 * 86400_000).toISOString()
+    const a = antiguedad({ created_at: hace5d }, Date.now())
+    expect(a?.dias).toBe(5)
+    expect(a?.exacta).toBe(false)
+  })
+
+  it('sin ninguna fecha no inventa nada', () => {
+    expect(antiguedad({}, Date.now())).toBeNull()
+  })
+
+  it('la demora del courier es una alerta, no una fase', () => {
+    const hoy = new Date().toISOString()
+    expect(antiguedad({ created_at: hoy, tracking_demora_at: hoy }, Date.now())?.demorado).toBe(true)
+    expect(antiguedad({ created_at: hoy }, Date.now())?.demorado).toBe(false)
   })
 })

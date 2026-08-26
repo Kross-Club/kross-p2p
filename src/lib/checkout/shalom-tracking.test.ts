@@ -42,7 +42,12 @@ describe('fase canónica del envío', () => {
     expect(derivePhase(entregado)).toBe('ENTREGADO')
     expect(derivePhase({ ...entregado, entregado: null })).toBe('EN_DESTINO')
     expect(derivePhase({ ...entregado, entregado: null, destino: null })).toBe('EN_TRANSITO')
-    expect(derivePhase({ registrado: { fecha: 'x' }, origen: null })).toBe('EN_ORIGEN')
+    // `registrado` NO es una fase: la guía existe, pero el paquete puede seguir
+    // en nuestro almacén. Decir EN_ORIGEN acá borraba el hueco más caro del
+    // contraentrega —"emití la guía y nunca fui a dejar el paquete"—, que es
+    // justo el que hay que poder ver.
+    expect(derivePhase({ registrado: { fecha: 'x' }, origen: null })).toBe(null)
+    expect(derivePhase({ registrado: { fecha: 'x' }, origen: { fecha: 'y' } })).toBe('EN_ORIGEN')
   })
 
   it('reparto (salió a puerta) también es EN_DESTINO', () => {

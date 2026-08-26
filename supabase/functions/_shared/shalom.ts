@@ -20,8 +20,14 @@ const PHASE_BY_MILESTONE: [string, Phase][] = [
   ['destino', 'EN_DESTINO'],
   ['transito', 'EN_TRANSITO'],
   ['origen', 'EN_ORIGEN'],
-  ['registrado', 'EN_ORIGEN'],
 ]
+
+// `registrado` NO está en esta tabla a propósito, y no es un olvido: la guía
+// existe pero el paquete puede seguir en nuestro almacén. Mapearlo a EN_ORIGEN
+// —como se hacía— borraba el hueco entre "emití la guía" y "la dejé en la
+// agencia", que es donde se pierde la plata en contraentrega. Sin fase, el
+// pedido se queda en la columna `registrado` del tablero hasta que el courier
+// diga `origen`, que es cuando el paquete de verdad ya salió de nuestras manos.
 
 export function derivePhase(status: Record<string, unknown>): Phase | null {
   for (const [milestone, phase] of PHASE_BY_MILESTONE) {

@@ -17,7 +17,7 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 // courier al toque y el servidor persiste lo que encuentre.
 
 const PHASES = [
-  { key: 'EN_ORIGEN', label: 'Registrado' },
+  { key: 'EN_ORIGEN', label: 'En origen' },
   { key: 'EN_TRANSITO', label: 'En camino' },
   { key: 'EN_DESTINO', label: 'En agencia' },
   { key: 'ENTREGADO', label: 'Entregado' },

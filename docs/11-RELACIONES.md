@@ -200,13 +200,29 @@ Pero no son lo mismo:
 - **En origen** = el paquete ya está físicamente en la agencia. Ya salió de nuestras manos.
 
 Entre los dos hay un hueco —"emití la guía y nunca fui a dejar el paquete"— que es una de las
-fugas más caras del contraentrega, y hoy **no tiene columna, así que no se puede medir ni
-alertar**. La línea de vida ya los trata como pasos separados (`registrado` y `transito`);
-lo que falta es que la fase no herede el hito `registrado`, y que `registrado` sea nuestro
-—lo escribe `order-manage` en `set_tracking`— y no del courier.
+fugas más caras del contraentrega, y no tenía columna.
 
-Son cinco pasos en la mitad de abajo, exactamente como los nombraste:
-`registrado · en origen · en tránsito · en destino · entregado`.
+**Resuelto (26-ago-2026), y la solución fue quitar, no agregar.** `registrado` **no es una
+fase del courier**: es la ausencia de una. El enum `Phase` sigue teniendo cuatro valores y
+significa una sola cosa —*dónde está el paquete según quien lo transporta*—; `registrado` es
+un hecho **nuestro**, y su señal es `tracking_numero`. De ahí sale el tercer reloj de la línea
+de vida:
+
+| Reloj | Quién lo mueve | Qué paso abre |
+|---|---|---|
+| `stage` | una persona del equipo | hasta `preparando` |
+| `tracking_numero` | nosotros, al emitir la guía | `registrado` |
+| `tracking_phase` | el courier | `en origen` → `en tránsito` → `en destino` → `entregado` |
+
+Gana el que va más adelante, la misma regla de siempre. El hito `registrado` de Shalom y el
+texto `REGISTRAD` de Olva ya **no** se mapean a `EN_ORIGEN`: sin reporte, el pedido espera en
+la columna Registrado. Son los cinco pasos que nombraste — solo que el primero no lo dice el
+courier.
+
+⚠️ **Las filas que ya estaban en producción** con `EN_ORIGEN` puesto por el hito `registrado`
+se quedan ahí: `applyTracking` nunca retrocede una fase. Se muestran un paso más optimistas de
+lo que están, y se corrigen solas en cuanto el courier reporte `origen`. Los pedidos nuevos
+nacen bien.
 
 ### CRM y En vivo son la misma función con distinta proyección
 
@@ -242,6 +258,13 @@ Las dos columnas ya existen: `tracking_phase_at` (cuándo entró a la fase) y `t
 (la alerta de demora del courier, que **no es una fase**: convive con cualquiera). Con eso:
 **columna = fase · chip = antigüedad · rojo = demora.** El CRM deja de ser una foto y pasa a
 ser un detector de atoros, que es lo único que un CRM de contraentrega tiene que hacer.
+
+**Construido (26-ago-2026).** `antiguedad()` en `order-tracking.ts` devuelve además un flag
+`exacta`: sale en `true` cuando mide desde `tracking_phase_at` (tiempo real en ESA etapa) y en
+`false` cuando solo hay `created_at`, porque las etapas de la mitad de arriba no guardan cuándo
+entraron. El chip pinta `~` delante en ese caso: la pantalla no debe afirmar "tres días en esta
+columna" cuando lo que sabe es "tres días desde que entró el pedido". El rojo lo reserva
+`tracking_demora_at` — el único atraso que no estamos infiriendo nosotros.
 
 ### Qué NO se borra
 
@@ -300,7 +323,7 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 | ~~0~~ | ✅ **`AGENCIA_LIMA` entra a "es recojo"** — una sola definición, la de `session.ts` | hecho (26-ago-2026) |
 | 1 | Un solo lector de pedidos con una sola definición de "activo" | `src/lib/` (hook nuevo) + las 4 pantallas |
 | ~~2~~ | ✅ **Columnas = fases del courier** en CRM, Stats y el chip de Chats | hecho (26-ago-2026) |
-| 3 | `registrado` deja de ser `EN_ORIGEN`; chip de antigüedad por `tracking_phase_at` | `_shared/shalom.ts`, `order-tracking.ts`, `CRMPage` |
+| ~~3~~ | ✅ **`registrado` deja de ser `EN_ORIGEN`** + chip de antigüedad en el CRM | hecho (26-ago-2026) |
 | 4 | Fusionar Chats/CRM/Mapa/Stats en **Pedidos** con selector de modo | `seller-nav.ts`, las 4 páginas → una |
 | 5 | La llamada como evento del hilo (`call_log` en `seller-call-token`, burbuja en el panel) y borrar **Llamadas** | `seller-call-token`, `VendedorPedidoPage`, `LlamadasPage` |
 | 6 | **Clientes** de verdad: lista + ficha con historial; Retención adentro | pantalla nueva + `ClientesPage`, `RetencionPage` |

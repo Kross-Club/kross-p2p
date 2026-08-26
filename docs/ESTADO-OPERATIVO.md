@@ -136,17 +136,37 @@ vacío igual, porque no recibe los campos que dibuja.
 `payment_verification` ni `tracking_*`:
 
 ```bash
-supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+REF=ofdjghntvmrdfjhazfvz
+supabase functions deploy get-store-sessions --project-ref $REF
 ```
 
-Sin ese deploy, y sin romper nada:
+Y el 26-ago-2026 se le sumó otro grupo: **`registrado` dejó de mapearse a `EN_ORIGEN`** en el
+mapeo de hitos de los dos couriers (ver [`11-RELACIONES.md`](./11-RELACIONES.md)). Ese mapeo
+vive en `_shared/`, que se **empaqueta dentro de cada función**, así que hay que redesplegar
+todas las que lo importan:
+
+```bash
+for f in shalom-tracking-sync shalom-order olva-tracking olva-tracking-sync manage-store; do
+  supabase functions deploy $f --project-ref $REF
+done
+supabase functions deploy shalom-webhook --project-ref $REF --no-verify-jwt
+```
+
+Hasta ese deploy, el backend sigue marcando `EN_ORIGEN` en cuanto Shalom registra la guía: el
+frontend ya distingue las dos columnas, pero el dato que le llega no. **Nada se rompe** — es
+la conducta de antes.
+
+Sin el deploy de `get-store-sessions`, y sin romper nada:
 
 - **`/vendedor/mapa`** carga pero sale vacía: no tiene qué dibujar.
 - **El CRM y Stats** ya usan las columnas del courier, pero se quedan en la mitad de arriba
-  del eje: `registrado` y `en destino` salen vacías porque nadie reporta, y un pedido en
-  `validando` cae en la columna **"Pedido"** en vez de en "Validando" (la línea de vida no
-  incluye ese paso si no ve `advance_amount`). Ya no desaparece, que es lo que hacía antes;
-  simplemente todavía no se etiqueta bien.
+  del eje: `registrado`, `en origen` y `en destino` salen vacías porque no llegan ni la guía
+  ni las fases, y un pedido en `validando` cae en la columna **"Pedido"** en vez de en
+  "Validando" (la línea de vida no incluye ese paso si no ve `advance_amount`). Ya no
+  desaparece, que es lo que hacía antes; simplemente todavía no se etiqueta bien.
+- **El chip de antigüedad del CRM** sale con `~` en todos los pedidos: sin `tracking_phase_at`
+  solo puede medir desde `created_at`, y lo dice en vez de fingir precisión. La alerta de
+  demora (⚠️ rojo) no aparece hasta que llegue `tracking_demora_at`.
 
 Con el deploy, las columnas del courier se llenan solas y `validando` cae donde debe.
 
