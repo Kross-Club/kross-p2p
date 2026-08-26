@@ -28,6 +28,7 @@ import ChatsVendedorPage from './pages/vendedor/ChatsVendedorPage'
 import ChatDetalleVendedor from './pages/vendedor/ChatDetalleVendedor'
 import ProductosPage from './pages/vendedor/ProductosPage'
 import CRMPage from './pages/vendedor/CRMPage'
+import MapaVivoPage from './pages/vendedor/MapaVivoPage'
 import BotIAPage from './pages/vendedor/BotIAPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
@@ -157,6 +158,7 @@ export default function App() {
           <Route path="/vendedor/chat/:chatId" element={<ChatDetalleVendedor />} />
           <Route path="/vendedor/productos" element={<ProductosPage />} />
           <Route path="/vendedor/crm" element={<CRMPage />} />
+          <Route path="/vendedor/mapa" element={<MapaVivoPage />} />
           <Route path="/vendedor/bots" element={<BotIAPage />} />
           <Route path="/vendedor/equipo" element={<EquipoPage />} />
           <Route path="/vendedor/marca" element={<MarcaPage />} />

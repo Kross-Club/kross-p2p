@@ -108,6 +108,21 @@ llamadas y facturas". **La facturación todavía no existe en el producto**: va 
 está por construirse. La promesa entró antes que la función a propósito; si el plan cambia,
 la línea vive en `src/components/AuthShell.tsx`.
 
+### El mapa de pedidos en vivo necesita un deploy (26-ago-2026)
+
+`/vendedor/mapa` lee campos que `get-store-sessions` **todavía no devuelve en producción**:
+`product_id`, `dispatch_type`, `agency_name`, `agency_branch_id`, `address_lat/lng`,
+`advance_amount`, `payment_verification` y `tracking_*`. Hasta que se despliegue, la pantalla
+carga pero sale vacía — no rompe nada, simplemente no tiene qué dibujar:
+
+```bash
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+```
+
+El otro requisito es de datos, no de código: un pedido solo aparece con su línea completa si
+su **producto tiene sede de origen** configurada (*Productos → editar → sede Shalom*). Sin
+eso se dibuja el destino, pero no de dónde sale.
+
 ## Bloqueos abiertos
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |

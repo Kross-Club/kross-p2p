@@ -18,11 +18,19 @@ Deno.serve(async (req) => {
   const includeCancelled = req.headers.get('x-include-cancelled') === '1'
   if (!storeId) return new Response('Missing store id', { status: 400, headers: corsHeaders })
 
+  // El bloque geográfico y de pago (dispatch_type … tracking_phase) alimenta el
+  // mapa de pedidos en vivo: de dónde sale el paquete, a dónde va, cómo va el
+  // dinero y qué reporta el courier. No agrega datos personales — el nombre y
+  // el teléfono del comprador ya viajaban en esta misma respuesta.
   let query = supabase
     .from('order_sessions')
     .select(`
       id, order_id, store_id, token, buyer_id, buyer_name, buyer_phone,
-      product_name, product_price, pack_name, status, stage, nota,
+      product_id, product_name, product_price, pack_name, status, stage, nota,
+      dispatch_type, agency_name, agency_branch_id, delivery_reference,
+      address, address_lat, address_lng,
+      advance_amount, payment_verification,
+      tracking_courier, tracking_phase,
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       chat_messages ( id, sender_role, type, body, created_at, read_at )
     `)
