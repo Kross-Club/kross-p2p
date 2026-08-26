@@ -299,7 +299,7 @@ y no se toca. Por eso `--brand` es derivado y nadie lo escribe a mano:
 
 | Regla del manual | Dónde vive |
 |---|---|
-| §3 Símbolo, variantes y lockup | **Archivos de diseño en `public/`**: `logo-kross.svg` (lockup) y `simbolo-kross.svg` (solo el símbolo). Para fondo claro, `logo-kross-claro.svg` y `simbolo-kross-claro.svg`. Los pide `src/components/KrossLogo.tsx`; si un archivo no está, dibuja la versión de respaldo con los tokens |
+| §3 Símbolo, variantes y lockup | **Archivos de diseño en `public/`**: `logo-kross.svg` (lockup **con bajada**) y `simbolo-kross.svg` (solo el símbolo). Para fondo claro, `logo-kross-claro.svg` y `simbolo-kross-claro.svg`. Los pide `src/components/KrossLogo.tsx`; si un archivo no está, dibuja la versión de respaldo con los tokens |
 | §3.6 Bajo 32 px va la simplificada | El propio `KrossIcon`: apaga la junta solo, no hay que acordarse |
 | Firma del panel (marca operada) | `src/components/BrandMark.tsx` |
 | §4 Paleta | `src/index.css`, tokens `--k-*`; los componentes usan los semánticos (`--surface`, `--text`, `--border`, `--ok-*`…) |
@@ -328,6 +328,15 @@ y no se toca. Por eso `--brand` es derivado y nadie lo escribe a mano:
 - **Excepción anotada:** §4.2 pide máximo tres apariciones de lima por pantalla. En una lista
   de pedidos, cada entregado pinta su chip: son varias apariciones del *mismo* significado.
   Se aceptó para listas; en pantallas de detalle la regla se cumple tal cual.
+- **Falta un lockup sin bajada.** `logo-kross.svg` trae la bajada dentro del mismo archivo,
+  y a menos de ~60 px de alto esa bajada baja de los 11 px que el §3.4 fija como mínimo. Por
+  eso el archivo se usa en el acceso (a 64 px, donde se lee) y en el resto —barra lateral,
+  header del panel— se dibuja el lockup sin bajada. Con un `logo-kross-simple.svg` sin
+  bajada se enchufa y desaparece el dibujo.
+- **El favicon es un módulo lima sólido**, subido por la marca. El §3.3 pide ahí la variante
+  simplificada (símbolo hueso sobre ink). Los iconos de la PWA (`icon-192/512`, maskable)
+  siguen con el símbolo, así que hoy el favicon y el ícono instalado no dicen lo mismo:
+  falta decidir cuál de los dos manda.
 - **La bajada del lockup no coincide.** El §3.4 dice `VENDE, COBRA Y DESPACHA`; el archivo
   de marca que se está usando trae `LA TECNOLOGÍA DE TU TIENDA`, y es la que quedó en el
   código (`KrossLogo.tsx`) y en el acceso al panel. Falta decidir cuál manda y alinear el

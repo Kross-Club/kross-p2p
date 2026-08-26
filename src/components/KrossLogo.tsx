@@ -4,7 +4,7 @@ import { useState } from 'react'
 //
 // El logo REAL es un archivo de diseño, no código:
 //
-//   public/logo-kross.svg      → el lockup (símbolo + KROSS + bajada)
+//   public/logo-kross.svg      → el lockup CON bajada (símbolo + KROSS + bajada)
 //   public/simbolo-kross.svg   → solo el símbolo (opcional)
 //
 // Sobre fondo claro el hueso desaparece, así que si existen estas variantes se
@@ -92,6 +92,15 @@ export function KrossIcon({
  */
 const BAJADA = 'LA TECNOLOGÍA DE TU TIENDA'
 
+/**
+ * El lockup.
+ *
+ * `logo-kross.svg` trae la bajada dentro del mismo archivo, y a tamaño chico
+ * esa bajada baja de 11 px, que es justo lo que el §3.4 prohíbe. Por eso el
+ * archivo se usa SOLO cuando se pide con bajada (arriba de ~60 px, donde se
+ * lee); para el resto se dibuja el lockup sin ella. El día que exista un
+ * `logo-kross-simple.svg` sin bajada, se enchufa acá y se acabó el dibujo.
+ */
 export function KrossLockup({
   size = 28,
   bajada = false,
@@ -108,7 +117,7 @@ export function KrossLockup({
 }) {
   const { src, fallar } = useArchivo('logo-kross')
 
-  if (src) {
+  if (bajada && src) {
     return <img src={src} alt="Kross" onError={fallar} className={className}
       style={{ height: size, width: 'auto', display: 'block' }} />
   }

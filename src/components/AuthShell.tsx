@@ -25,8 +25,8 @@ export default function AuthShell({ subtitle, children }: { subtitle: string; ch
       <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-16 py-10 min-w-0">
         <div className="w-full max-w-[420px] mx-auto lg:mx-0">
 
-          <div className="flex items-center justify-between gap-4 mb-10">
-            <KrossLockup size={30} bajada />
+          <div className="flex items-center justify-between gap-4 mb-9">
+            <KrossLockup size={64} bajada />
             {marca && (
               <span className="flex items-center gap-2 min-w-0">
                 {marca.logo_url && (
