@@ -38,6 +38,11 @@
   --brand: var(--store-brand, var(--k-lime-light));
   --brand-dark: var(--store-brand-dark, var(--k-ink));
   --structural: var(--k-structural);
+  /* Lo que se escribe ENCIMA del acento. En las pantallas de marca el acento
+     es el color de la tienda —casi siempre saturado— y el blanco funciona; en
+     el panel el acento es el lima, donde el blanco desaparece y el manual fija
+     un único color de texto (§4.1). Por eso es un token y no un literal. */
+  --on-brand: #FFFFFF;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -48,6 +53,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 :root[data-theme] {
   --brand: var(--k-lime-light);   /* en el panel el acento es de Kross */
+  --on-brand: var(--k-on-lime);   /* y encima del lima solo va este verde oscuro */
 }
 
 :root[data-theme="light"] {

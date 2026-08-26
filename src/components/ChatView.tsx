@@ -85,7 +85,7 @@ function BotonesBubble({
                 disabled={isDone}
                 className="w-full flex items-center justify-center gap-2 font-black py-3.5 rounded-2xl text-sm transition-all active:scale-95"
                 style={isDone
-                  ? { background: 'var(--brand)', color: 'white' }
+                  ? { background: 'var(--brand)', color: 'var(--on-brand)' }
                   : { background: '#FFD400', color: '#111111', border: '2px solid #111111' }
                 }
               >
@@ -102,9 +102,9 @@ function BotonesBubble({
               className="text-xs font-bold px-3 py-2 rounded-full border transition-all"
               style={
                 isChat
-                  ? { background: 'var(--brand)', color: 'white', borderColor: 'var(--brand)', display: 'flex', alignItems: 'center', gap: '4px' }
+                  ? { background: 'var(--brand)', color: 'var(--on-brand)', borderColor: 'var(--brand)', display: 'flex', alignItems: 'center', gap: '4px' }
                   : selected === op
-                  ? { background: 'var(--brand)', color: 'white', borderColor: 'var(--brand)' }
+                  ? { background: 'var(--brand)', color: 'var(--on-brand)', borderColor: 'var(--brand)' }
                   : { background: 'white', color: 'var(--brand)', borderColor: 'var(--brand)' }
               }
             >
@@ -198,7 +198,7 @@ function MensajeItem({
       <div className={`max-w-[80%] ${isClient ? 'items-end' : 'items-start'} flex flex-col`}>
         <div
           className={`px-4 py-2.5 rounded-2xl text-sm ${isClient ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
-          style={isClient ? { background: 'var(--brand)', color: 'white' } : { background: '#FFD400', color: '#111111', fontWeight: 600 }}
+          style={isClient ? { background: 'var(--brand)', color: 'var(--on-brand)' } : { background: '#FFD400', color: '#111111', fontWeight: 600 }}
         >
           {msg.contenido as string}
         </div>
@@ -264,7 +264,7 @@ export default function ChatView({ chat, isVendedor, lockedUntilChat }: ChatView
             <button
               onClick={handleSend}
               disabled={!input.trim()}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40 transition-opacity"
+              className="w-10 h-10 rounded-full flex items-center justify-center  shadow-sm disabled:opacity-40 transition-opacity"
               style={{ background: 'var(--brand)' }}
             >
               <Send size={16} />

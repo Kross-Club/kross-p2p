@@ -110,7 +110,7 @@ export default function ProductosPage() {
     <div className="px-4 py-4">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-black text-gray-900">Productos</h1>
-        <button onClick={() => setEditing(newProduct())} className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: '#fff' }}>
+        <button onClick={() => setEditing(newProduct())} className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
           <Plus size={14} /> Nuevo
         </button>
       </div>
@@ -342,7 +342,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs font-bold text-gray-500">Imágenes de la landing (en orden)</label>
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="text-[11px] font-black px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--brand)', color: '#fff' }}>
+            className="text-[11px] font-black px-2.5 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
             {uploading ? 'Subiendo…' : '+ Subir'}
           </button>
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={upload} />
@@ -429,7 +429,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
               <button key={valor} onClick={() => setSize(size === valor ? null : valor)}
                 className="text-[11px] font-black px-3 py-1.5 rounded-xl border"
                 style={size === valor
-                  ? { background: '#C2410C', color: '#fff', borderColor: 'var(--warn-fg)' }
+                  ? { background: 'var(--invert)', color: 'var(--invert-fg)', borderColor: 'var(--invert)' }
                   : { background: 'var(--surface)', color: 'var(--warn-fg)', borderColor: 'var(--warn-border)' }}>
                 {etiqueta}
               </button>
@@ -444,7 +444,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
               <button key={valor} onClick={() => setContenido(contenido === valor ? null : valor)}
                 className="text-[11px] font-black px-3 py-1.5 rounded-xl border"
                 style={contenido === valor
-                  ? { background: '#C2410C', color: '#fff', borderColor: 'var(--warn-fg)' }
+                  ? { background: 'var(--invert)', color: 'var(--invert-fg)', borderColor: 'var(--invert)' }
                   : { background: 'var(--surface)', color: 'var(--warn-fg)', borderColor: 'var(--warn-border)' }}>
                 {etiqueta}
               </button>
@@ -491,7 +491,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: { product: Prod
 
         <div className="flex gap-2">
           {product.id && <button onClick={del} disabled={busy} className="px-4 py-3 rounded-2xl font-black text-sm bg-red-50 text-red-600">Eliminar</button>}
-          <button onClick={save} disabled={busy} className="flex-1 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: '#fff' }}>
+          <button onClick={save} disabled={busy} className="flex-1 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
             {busy ? 'Guardando…' : 'Guardar producto'}
           </button>
         </div>

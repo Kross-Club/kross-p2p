@@ -128,7 +128,7 @@ export default function AbTestPanel({ storeId }: { storeId: string }) {
             className="flex-1 py-2.5 rounded-xl text-[11px] font-black transition-colors
               focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--brand)]"
             style={mode === m.value
-              ? { background: 'var(--brand)', color: '#fff' }
+              ? { background: 'var(--brand)', color: 'var(--on-brand)' }
               : { background: 'var(--surface-3)', color: 'var(--text-muted)' }}
           >
             {m.label}

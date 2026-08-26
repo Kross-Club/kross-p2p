@@ -7,6 +7,7 @@ import { pickupBranchIdOf } from '../../lib/session'
 import { estadoDePago, avanceDelPaquete, vaEnElMapa, proyector } from '../../lib/live-map'
 import type { Caja, PedidoEnVivo } from '../../lib/live-map'
 import { pasoActual, courierDelPedido } from '../../lib/order-tracking'
+import { escenaDemo } from '../../lib/live-map-demo'
 import type { AgencyName } from '../../lib/checkout/types'
 
 // ─── Los pedidos de la tienda, vivos, sobre el país ──────────────────────────
@@ -61,6 +62,10 @@ export default function MapaVivoPage() {
   const [sedes, setSedes] = useState<{ lat: number; lng: number }[]>([])
   const [puntos, setPuntos] = useState<EnMapa[]>([])
   const [elegido, setElegido] = useState<string | null>(null)
+  // El demo es un modo aparte, nunca una mezcla: o se ven los pedidos de la
+  // tienda o se ve el ejemplo, y cuando se ve el ejemplo la pantalla lo dice.
+  const [demo, setDemo] = useState(false)
+  const [escena, setEscena] = useState<{ pedidos: Pedido[]; origenPorProducto: Record<string, string> } | null>(null)
   const cargando = pedidos === null
 
   // ── El país: silueta y división territorial, en un import diferido ──
@@ -123,11 +128,16 @@ export default function MapaVivoPage() {
   }, [storeId])
 
   // ── Cada pedido, con sus dos sedes resueltas ──
+  const enPantalla = demo ? escena?.pedidos ?? null : pedidos
+  const origenes = useMemo(
+    () => (demo ? escena?.origenPorProducto ?? {} : origenPorProducto),
+    [demo, escena, origenPorProducto],
+  )
+
   useEffect(() => {
     let vivo = true
-    if (!pedidos || pedidos.length === 0) return
 
-    void Promise.all(pedidos.map(async (pedido): Promise<EnMapa | null> => {
+    void Promise.all((enPantalla ?? []).map(async (pedido): Promise<EnMapa | null> => {
       const courier = courierDelPedido(pedido)
       if (!courier) return null
       const idDestino = pickupBranchIdOf(pedido)
@@ -136,7 +146,7 @@ export default function MapaVivoPage() {
       const destino = await AgencyService.getBranch(courier as AgencyName, idDestino)
       if (!destino?.lat || !destino.lng) return null
 
-      const idOrigen = pedido.product_id ? origenPorProducto[pedido.product_id] : null
+      const idOrigen = pedido.product_id ? origenes[pedido.product_id] : null
       const origen = idOrigen ? await AgencyService.getBranch(courier as AgencyName, idOrigen) : null
 
       return {
@@ -149,7 +159,14 @@ export default function MapaVivoPage() {
     })).then(lista => { if (vivo) setPuntos(lista.filter((x): x is EnMapa => x !== null)) })
 
     return () => { vivo = false }
-  }, [pedidos, origenPorProducto])
+  }, [enPantalla, origenes])
+
+  useEffect(() => {
+    if (!demo || escena) return
+    let vivo = true
+    escenaDemo().then(e => { if (vivo) setEscena(e as unknown as { pedidos: Pedido[]; origenPorProducto: Record<string, string> }) })
+    return () => { vivo = false }
+  }, [demo, escena])
 
   const proyeccion = useMemo(
     () => (territorio ? proyector(territorio.caja, ANCHO, ALTO) : null),
@@ -185,8 +202,26 @@ export default function MapaVivoPage() {
           <Contador valor={conteo.vivos} etiqueta="En el mapa" />
           <Contador valor={conteo.ruta} etiqueta="En camino" />
           <Contador valor={conteo.pagados} etiqueta="Ya pagados" color="var(--ok-fg)" />
+          <button onClick={() => { setDemo(d => !d); setElegido(null) }}
+            className="px-3 py-2 rounded-xl text-xs"
+            style={demo
+              ? { background: 'var(--invert)', color: 'var(--invert-fg)', fontWeight: 500 }
+              : { background: 'var(--surface-3)', color: 'var(--text)', fontWeight: 500 }}>
+            {demo ? 'Salir del ejemplo' : 'Ver ejemplo'}
+          </button>
         </div>
       </div>
+
+      {demo && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl"
+          style={{ background: 'var(--surface-3)', border: '0.5px solid var(--border)' }}>
+          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--k-lime)' }} />
+          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            <b style={{ color: 'var(--text)' }}>Ejemplo</b> · pedidos inventados sobre sedes reales de Shalom y Olva.
+            Nada de esto está en tu tienda.
+          </p>
+        </div>
+      )}
 
       <div className="flex gap-4 items-start">
         <div className="flex-1 rounded-2xl overflow-hidden" style={{ background: 'var(--k-ink)', border: '0.5px solid var(--border)' }}>
@@ -229,12 +264,13 @@ export default function MapaVivoPage() {
         <aside className="w-[300px] flex-shrink-0 space-y-3">
           <Leyenda />
           {seleccionado
-            ? <FichaPedido envio={seleccionado} onAbrir={() => navigate(`/vendedor/pedido/${seleccionado.pedido.token}`)} />
+            ? <FichaPedido envio={seleccionado} demo={demo}
+                onAbrir={() => navigate(`/vendedor/pedido/${seleccionado.pedido.token}`)} />
             : (
               <div className="rounded-2xl px-4 py-4" style={{ background: 'var(--surface)', border: '0.5px solid var(--border)' }}>
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {cargando ? 'Cargando pedidos…'
-                    : puntos.length === 0 ? 'Ningún pedido por agencia en camino ahora mismo.'
+                  {cargando && !demo ? 'Cargando pedidos…'
+                    : puntos.length === 0 ? 'Ningún pedido por agencia en camino ahora mismo. Toca "Ver ejemplo" para ver cómo se verá.'
                     : 'Toca una caja para ver su pedido.'}
                 </p>
               </div>
@@ -342,7 +378,7 @@ function Leyenda() {
   )
 }
 
-function FichaPedido({ envio, onAbrir }: { envio: EnMapa; onAbrir: () => void }) {
+function FichaPedido({ envio, demo, onAbrir }: { envio: EnMapa; demo?: boolean; onAbrir: () => void }) {
   const { pedido, origen, destino } = envio
   const paso = pasoActual(pedido)
   const pago = estadoDePago(pedido)
@@ -362,10 +398,16 @@ function FichaPedido({ envio, onAbrir }: { envio: EnMapa; onAbrir: () => void })
         } />
       </div>
 
-      <button onClick={onAbrir} className="w-full mt-4 py-2 rounded-xl text-xs"
-        style={{ background: 'var(--surface-3)', color: 'var(--text)', fontWeight: 500 }}>
-        Abrir el pedido
-      </button>
+      {demo ? (
+        <p className="text-[10px] mt-4" style={{ color: 'var(--text-faint)' }}>
+          Pedido de ejemplo: no tiene chat que abrir.
+        </p>
+      ) : (
+        <button onClick={onAbrir} className="w-full mt-4 py-2 rounded-xl text-xs"
+          style={{ background: 'var(--surface-3)', color: 'var(--text)', fontWeight: 500 }}>
+          Abrir el pedido
+        </button>
+      )}
     </div>
   )
 }

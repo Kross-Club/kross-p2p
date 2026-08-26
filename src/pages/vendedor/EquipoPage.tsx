@@ -143,7 +143,7 @@ export default function EquipoPage() {
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-black text-gray-900 flex items-center gap-2"><Users size={20} /> Mi equipo</h1>
         <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: '#fff' }}>
+          className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
           <UserPlus size={13} /> Agregar
         </button>
       </div>
@@ -324,7 +324,7 @@ function AddMember({ storeId, adminId, onClose, onDone }: { storeId: string; adm
         </div>
         {err && <p className="text-xs font-semibold text-center mt-2" style={{ color: 'var(--danger-fg)' }}>{err}</p>}
         <button onClick={submit} disabled={busy}
-          className="w-full mt-4 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: '#fff' }}>
+          className="w-full mt-4 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
           {busy ? 'Creando…' : 'Crear miembro'}
         </button>
       </div>

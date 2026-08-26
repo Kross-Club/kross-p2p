@@ -113,7 +113,7 @@ export default function RetencionPage() {
               </div>
             </div>
             <button onClick={saveCfg} disabled={savingCfg || restock < 1 || winback <= restock}
-              className="w-full py-2.5 rounded-2xl font-black text-sm text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
+              className="w-full py-2.5 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
               {savingCfg ? 'Guardando…' : 'Guardar ventanas'}
             </button>
             {winback <= restock && <p className="text-[10px] text-red-500 mt-1.5">El umbral inactivo debe ser mayor que el de reposición.</p>}
