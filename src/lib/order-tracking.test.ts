@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { pasosDelPedido, pasoActual, courierDelPedido, esEnvioPorAgencia } from './order-tracking'
+import { pasosDelPedido, pasoActual, courierDelPedido } from './order-tracking'
+import { isPickupDispatch } from './session'
 
 const claves = (p: Parameters<typeof pasosDelPedido>[0]) => pasosDelPedido(p).map(x => x.key)
 
@@ -63,7 +64,27 @@ describe('línea de vida del pedido', () => {
     expect(courierDelPedido({ agency_name: 'shalom' })).toBe('SHALOM')
     expect(courierDelPedido({ tracking_courier: 'OLVA', agency_name: 'SHALOM' })).toBe('OLVA')
     expect(courierDelPedido({ agency_name: 'OTRO' })).toBeNull()
-    expect(esEnvioPorAgencia('AGENCIA_PROVINCIA')).toBe(true)
-    expect(esEnvioPorAgencia('MOTORIZADO_LIMA')).toBe(false)
+    expect(isPickupDispatch('AGENCIA_PROVINCIA')).toBe(true)
+    expect(isPickupDispatch('AGENCIA_LIMA')).toBe(true)
+    expect(isPickupDispatch('MOTORIZADO_LIMA')).toBe(false)
+  })
+
+  // Un recojo en Lima va por Shalom igual que uno de provincia: le tocan los
+  // pasos del courier, no el "en camino" del motorizado. Con la definición
+  // partida en dos, este pedido mostraba la línea de domicilio y las fases del
+  // courier no aparecían nunca — ni al vendedor ni al comprador.
+  it('el recojo en agencia de Lima recorre la línea del courier', () => {
+    const pasos = claves({ stage: 'preparando', dispatch_type: 'AGENCIA_LIMA', agency_name: 'SHALOM' })
+    expect(pasos).toContain('registrado')
+    expect(pasos).toContain('transito')
+    expect(pasos).toContain('en_agencia')
+    expect(pasos).not.toContain('en_camino')
+  })
+
+  it('la fase del courier avanza la línea de un recojo en Lima', () => {
+    expect(pasoActual({
+      stage: 'preparando', dispatch_type: 'AGENCIA_LIMA',
+      agency_name: 'SHALOM', tracking_phase: 'EN_TRANSITO',
+    })?.key).toBe('transito')
   })
 })

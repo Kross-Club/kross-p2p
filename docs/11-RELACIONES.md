@@ -253,9 +253,9 @@ falta un segundo modelo. Hoy `pasosDelPedido` colapsa ese tramo en un solo `en_c
 bien como paso intermedio — con la entrega a domicilio apagada en las dos marcas vivas, no
 bloquea nada.
 
-### ⚠️ El bug que hay que arreglar antes que todo lo demás
+### ✅ El bug que bloqueaba todo lo demás — corregido (26-ago-2026)
 
-`esEnvioPorAgencia()` en `src/lib/order-tracking.ts` **no incluye `AGENCIA_LIMA`**:
+`esEnvioPorAgencia()` en `src/lib/order-tracking.ts` **no incluía `AGENCIA_LIMA`**:
 
 ```ts
 const ES_AGENCIA = ['AGENCIA_PROVINCIA', 'AGENCIA', 'RECOJO_AGENCIA']   // falta AGENCIA_LIMA
@@ -272,9 +272,16 @@ es un valor real en producción. Consecuencias, las dos directas a este tema:
 Y Kross Shop vende hoy **solo recojo en agencia, con entrega a domicilio apagada**: un recojo
 en Lima es exactamente `AGENCIA_LIMA`. No es hipotético.
 
-Raíz: hay **dos definiciones de "es recojo"** en el repo — `isPickupDispatch()` en
-`src/lib/session.ts` (correcta) y `esEnvioPorAgencia()` en `order-tracking.ts` (incompleta).
-Tiene que quedar una.
+Y un tercer efecto, el peor, que solo se ve al reproducirlo: con `tracking_phase` en
+`EN_TRANSITO`, el paso activo se quedaba en `preparando`. **El reporte del courier se
+descartaba en silencio** — la mitad de abajo del eje no llegaba a existir.
+
+Raíz: había **dos definiciones de "es recojo"** — `isPickupDispatch()` en `src/lib/session.ts`
+(correcta) y `esEnvioPorAgencia()` en `order-tracking.ts` (incompleta).
+
+**Corregido:** quedó una sola, la de `session.ts`, que además normaliza mayúsculas y tolera
+los valores heredados; `esEnvioPorAgencia()` se eliminó y sus tres llamadas apuntan a la
+definición única. Con tests de regresión en `order-tracking.test.ts` y `live-map.test.ts`.
 
 ## Orden de ejecución
 
@@ -282,7 +289,7 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 
 | # | Paso | Toca |
 |---|---|---|
-| **0** | **`AGENCIA_LIMA` entra a "es recojo"** — una sola definición, la de `session.ts` | `order-tracking.ts` (`esEnvioPorAgencia`), `session.ts` |
+| ~~0~~ | ✅ **`AGENCIA_LIMA` entra a "es recojo"** — una sola definición, la de `session.ts` | hecho (26-ago-2026) |
 | 1 | Un solo lector de pedidos con una sola definición de "activo" | `src/lib/` (hook nuevo) + las 4 pantallas |
 | 2 | El CRM deja su array propio y usa `pasosDelPedido`: columnas = fases | `CRMPage`, `EstadisticasPage` |
 | 3 | `registrado` deja de ser `EN_ORIGEN`; chip de antigüedad por `tracking_phase_at` | `_shared/shalom.ts`, `order-tracking.ts`, `CRMPage` |
@@ -291,9 +298,8 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 | 6 | **Clientes** de verdad: lista + ficha con historial; Retención adentro | pantalla nueva + `ClientesPage`, `RetencionPage` |
 | 7 | Borrar las dos rutas mock del comprador | `App.tsx`, `src/pages/comprador/Chats*` |
 
-El paso 0 es una línea y desbloquea todo lo demás: sin él, los pedidos que Kross Shop vende
-hoy ni siquiera entran a En vivo. Los pasos 1 y 2 no cambian nada de lo que se ve y hacen
-baratos a los que siguen.
+El paso 0 ya está: sin él, los pedidos que Kross Shop vende hoy ni siquiera entraban a En
+vivo. Los pasos 1 y 2 no cambian nada de lo que se ve y hacen baratos a los que siguen.
 
 ## Ver también
 

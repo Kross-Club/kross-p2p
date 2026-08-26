@@ -1,5 +1,6 @@
 import { toStage } from './order-stages'
 import type { OrderStage } from './order-stages'
+import { isPickupDispatch } from './session'
 
 // ─── La línea de vida de un pedido ───────────────────────────────────────────
 //
@@ -46,12 +47,6 @@ export interface PedidoRastreable {
   tracking_phase?: string | null
 }
 
-const ES_AGENCIA = ['AGENCIA_PROVINCIA', 'AGENCIA', 'RECOJO_AGENCIA']
-
-export function esEnvioPorAgencia(dispatchType?: string | null): boolean {
-  return ES_AGENCIA.includes(String(dispatchType ?? '').toUpperCase())
-}
-
 /** El courier que mueve este pedido, si es uno de los que sabemos rastrear. */
 export function courierDelPedido(p: PedidoRastreable): 'SHALOM' | 'OLVA' | null {
   const c = String(p.tracking_courier ?? p.agency_name ?? '').toUpperCase()
@@ -69,7 +64,7 @@ const NOMBRE_COURIER: Record<string, string> = { SHALOM: 'Shalom', OLVA: 'Olva' 
  */
 export function pasosDelPedido(p: PedidoRastreable): Paso[] {
   const stage = toStage(p.stage)
-  const porAgencia = esEnvioPorAgencia(p.dispatch_type)
+  const porAgencia = isPickupDispatch(p.dispatch_type)
   const courier = courierDelPedido(p)
   const conAdelanto = Number(p.advance_amount ?? 0) > 0
 

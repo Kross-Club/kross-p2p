@@ -1,4 +1,4 @@
-import { esEnvioPorAgencia } from './order-tracking'
+import { isPickupDispatch } from './session'
 
 // ─── El mapa de pedidos en vivo ──────────────────────────────────────────────
 // Reglas de lo que se ve moverse por el país. Puro y testeable: la pantalla
@@ -59,7 +59,7 @@ export function avanceDelPaquete(p: PedidoEnVivo): number {
 /** Un pedido entra al mapa cuando hay algo que mirar moverse. */
 export function vaEnElMapa(p: PedidoEnVivo): boolean {
   const stage = String(p.stage ?? '').toLowerCase()
-  return stage !== 'no_entregado' && esEnvioPorAgencia(p.dispatch_type)
+  return stage !== 'no_entregado' && isPickupDispatch(p.dispatch_type)
 }
 
 export interface Caja { minLng: number; maxLng: number; minLat: number; maxLat: number }

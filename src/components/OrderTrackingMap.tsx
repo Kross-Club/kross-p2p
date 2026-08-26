@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { MapPin, Truck } from 'lucide-react'
 import { AgencyService } from '../lib/checkout/services/AgencyService'
-import { pickupBranchIdOf } from '../lib/session'
-import { pasosDelPedido, esEnvioPorAgencia, courierDelPedido } from '../lib/order-tracking'
+import { isPickupDispatch, pickupBranchIdOf } from '../lib/session'
+import { pasosDelPedido, courierDelPedido } from '../lib/order-tracking'
 import type { PedidoRastreable } from '../lib/order-tracking'
 import type { AgencyName, NearbyBranch } from '../lib/checkout/types'
 
@@ -46,7 +46,7 @@ export default function OrderTrackingMap({ order }: { order: PedidoEnMapa }) {
   const [vecinas, setVecinas] = useState<NearbyBranch[]>([])
   const [sede, setSede] = useState<string | null>(null)
 
-  const porAgencia = esEnvioPorAgencia(order.dispatch_type)
+  const porAgencia = isPickupDispatch(order.dispatch_type)
   const courier = courierDelPedido(order)
   const branchId = pickupBranchIdOf(order)
   const destinoLat = destino?.lat

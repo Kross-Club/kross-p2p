@@ -108,21 +108,26 @@ llamadas y facturas". **La facturación todavía no existe en el producto**: va 
 está por construirse. La promesa entró antes que la función a propósito; si el plan cambia,
 la línea vive en `src/components/AuthShell.tsx`.
 
-### Los recojos en Lima no aparecen en En vivo (26-ago-2026) ⚠️
+### Los recojos en Lima ya entran a En vivo ✅ (26-ago-2026)
 
-`esEnvioPorAgencia()` (`src/lib/order-tracking.ts`) no incluye `AGENCIA_LIMA` en su lista, pero
-el checkout sí escribe ese valor (`OrderService.ts`) y `register-buyer` lo acepta. Kross Shop
-vende **solo recojo en agencia con entrega a domicilio apagada**, así que un recojo en Lima es
-exactamente ese caso. Dos efectos, los dos silenciosos:
+Había **dos definiciones de "es recojo"** y una no conocía `AGENCIA_LIMA` — el valor que
+escribe el checkout para un recojo en agencia de Lima, que es lo único que vende Kross Shop
+hoy con el domicilio apagado. Tres efectos, los tres silenciosos:
 
-- El pedido recibe la línea de vida de **domicilio** (`… preparando → en camino → entregado`)
-  en vez de la del courier, así que las fases de Shalom no se muestran — ni al vendedor ni al
+- El pedido recibía la línea de vida de **domicilio** (`… preparando → en camino → entregado`)
+  en vez de la del courier, así que las fases de Shalom no se mostraban — ni al vendedor ni al
   comprador (`OrderTrackingMap`).
-- `vaEnElMapa()` devuelve `false` → **el pedido nunca entra a `/vendedor/mapa`.**
+- `vaEnElMapa()` devolvía `false` → el pedido **nunca entraba a `/vendedor/mapa`**.
+- Peor: con Shalom reportando `EN_TRANSITO`, el paso activo se quedaba en `preparando`. **El
+  reporte del courier se descartaba.**
 
-Raíz: hay dos definiciones de "es recojo" — `isPickupDispatch()` en `src/lib/session.ts`
-(correcta, incluye `AGENCIA_LIMA`) y `esEnvioPorAgencia()` (incompleta). Debe quedar una.
-Detalle y orden de ejecución en [`11-RELACIONES.md`](./11-RELACIONES.md).
+Corregido: `isPickupDispatch()` en `src/lib/session.ts` es la única definición, normaliza
+mayúsculas y tolera los valores heredados; `esEnvioPorAgencia()` se eliminó. Cubierto por
+tests de regresión en `order-tracking.test.ts` y `live-map.test.ts`.
+
+**No requiere deploy de Edge Functions** — es solo frontend, sale con el próximo build. Sí
+sigue pendiente el deploy de `get-store-sessions` de la nota de abajo: sin él el mapa carga
+vacío igual, porque no recibe los campos que dibuja.
 
 ### El mapa de pedidos en vivo necesita un deploy (26-ago-2026)
 
