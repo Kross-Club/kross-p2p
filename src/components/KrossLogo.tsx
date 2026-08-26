@@ -52,8 +52,14 @@ export function KrossIcon({
   )
 }
 
-/** La bajada del lockup. Nunca va sola ni bajo 11 px (§3.4). */
-const BAJADA = 'VENDE, COBRA Y DESPACHA'
+/**
+ * La bajada del lockup. Nunca va sola ni bajo 11 px (§3.4).
+ *
+ * OJO: el manual escrito dice "VENDE, COBRA Y DESPACHA", pero el archivo de
+ * marca que se está usando trae esta otra. Manda el archivo hasta que se
+ * decida cuál es la definitiva; está anotado en §10.1 del manual.
+ */
+const BAJADA = 'LA TECNOLOGÍA DE TU TIENDA'
 
 export function KrossLockup({
   size = 28,

@@ -120,7 +120,7 @@ export default function NuevaPasswordPage() {
       <AuthShell subtitle="Panel de vendedor">
         <div className="flex items-center justify-center py-6">
           <div className="w-8 h-8 rounded-full border-4 animate-spin"
-            style={{ borderColor: 'rgba(125,232,255,0.2)', borderTopColor: '#00BFFF' }} />
+            style={{ borderColor: 'var(--border)', borderTopColor: 'var(--k-lime)' }} />
         </div>
       </AuthShell>
     )
@@ -129,14 +129,14 @@ export default function NuevaPasswordPage() {
   if (estado === 'invalido') {
     return (
       <AuthShell subtitle="Panel de vendedor">
-        <h2 className="font-black text-xl mb-1 text-white">Este enlace ya no sirve</h2>
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>{linkError}</p>
+        <h2 className="text-2xl mb-1.5" style={{ color: 'var(--text)', fontWeight: 500 }}>Este enlace ya no sirve</h2>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{linkError}</p>
         <Link to="/recuperar" className="block text-center w-full py-3.5 rounded-2xl font-black text-sm mt-5"
-          style={{ background: 'linear-gradient(135deg, #00BFFF, #7DE8FF)', color: '#060C1A' }}>
+          style={{ background: 'var(--k-lime)', color: 'var(--k-on-lime)' }}>
           Pedir un enlace nuevo
         </Link>
         <p className="text-center text-xs mt-4">
-          <Link to="/login" className="font-bold" style={{ color: '#00BFFF' }}>Volver al ingreso</Link>
+          <Link to="/login" className="font-bold" style={{ color: 'var(--k-lime)' }}>Volver al ingreso</Link>
         </p>
       </AuthShell>
     )
@@ -146,8 +146,8 @@ export default function NuevaPasswordPage() {
 
   return (
     <AuthShell subtitle="Panel de vendedor">
-      <h2 className="font-black text-xl mb-1 text-white">Crea tu contraseña</h2>
-      <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.5)' }}>
+      <h2 className="text-2xl mb-1.5" style={{ color: 'var(--text)', fontWeight: 500 }}>Crea tu contraseña</h2>
+      <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
         Con esta contraseña vas a entrar al panel desde ahora. Mínimo {MIN_PASSWORD} caracteres.
       </p>
 
@@ -163,7 +163,7 @@ export default function NuevaPasswordPage() {
 
         {/* Se escribe a ciegas y dos veces: poder verla evita el tercer intento. */}
         <button type="button" onClick={() => setVer(v => !v)}
-          className="text-xs font-bold self-start" style={{ color: '#00BFFF' }}>
+          className="text-xs font-bold self-start" style={{ color: 'var(--k-lime)' }}>
           {ver ? 'Ocultar contraseña' : 'Ver contraseña'}
         </button>
 

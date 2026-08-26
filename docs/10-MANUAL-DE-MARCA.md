@@ -319,11 +319,18 @@ y no se toca. Por eso `--brand` es derivado y nadie lo escribe a mano:
   barrido pantalla por pantalla.
 - **`ChatView`** (el chat dentro del panel) conserva el amarillo del sistema viejo.
 - **Web pública** (`/servicios`, legales): comparte plantilla con las marcas, así que quedó
-  clara. Falta decidir la versión Kross en ink para `krossclub.app`.
+  clara. Falta decidir la versión Kross en ink para `krossclub.app` — la portada todavía
+  tiene el celeste del sistema viejo.
+- **Entrar con Google** aparece en el diseño del acceso pero no está implementado: hace
+  falta habilitar el proveedor en Supabase Auth antes de poner el botón.
 - **Mapas y tracking (§6.2)** y **vidrio esmerilado (§6.3)**: no hay implementación todavía.
 - **Excepción anotada:** §4.2 pide máximo tres apariciones de lima por pantalla. En una lista
   de pedidos, cada entregado pinta su chip: son varias apariciones del *mismo* significado.
   Se aceptó para listas; en pantallas de detalle la regla se cumple tal cual.
+- **La bajada del lockup no coincide.** El §3.4 dice `VENDE, COBRA Y DESPACHA`; el archivo
+  de marca que se está usando trae `LA TECNOLOGÍA DE TU TIENDA`, y es la que quedó en el
+  código (`KrossLogo.tsx`) y en el acceso al panel. Falta decidir cuál manda y alinear el
+  manual con el archivo, o al revés.
 - **El punto de "en línea"** quedó en hueso, no en lima: presencia no es dinero ni entrega.
 - Siguen abiertos los pendientes de §9 (íconos de interfaz, favicon 16/32 rasterizado,
   modo claro completo, Indecopi).

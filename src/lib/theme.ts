@@ -80,9 +80,26 @@ export function usePanelTheme(): Theme {
 }
 
 /**
+ * Pantallas que son de KROSS y no de la marca —el acceso al panel— y que van
+ * en ink pase lo que pase: acá todavía no hay vendedor, así que no hay
+ * preferencia de tema que respetar.
+ */
+export function useKrossTheme(): void {
+  useEffect(() => {
+    const root = document.documentElement
+    const previo = root.getAttribute('data-theme')
+    root.setAttribute('data-theme', 'dark')
+    return () => {
+      if (previo) root.setAttribute('data-theme', previo)
+      else root.removeAttribute('data-theme')
+    }
+  }, [])
+}
+
+/**
  * Lo contrario de `usePanelTheme`: garantiza tema claro en una pantalla de
- * marca (login, web pública). Hace falta porque el script de index.html puede
- * haber marcado <html> antes de saber a qué pantalla íbamos.
+ * marca (acceso del comprador, web pública). Hace falta porque el script de
+ * index.html puede haber marcado <html> antes de saber a qué pantalla íbamos.
  */
 export function useNoPanelTheme(): void {
   useEffect(() => { document.documentElement.removeAttribute('data-theme') }, [])
