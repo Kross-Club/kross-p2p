@@ -6,34 +6,12 @@ import { supabase } from '../../lib/supabase'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { stageChip, NOTA_META } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
+import { useStoreOrders } from '../../lib/store-orders'
+import type { StoreOrder } from '../../lib/store-orders'
 
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-interface SupabaseSession {
-  id: string
-  token: string
-  buyer_id: string | null
-  buyer_name: string | null
-  product_name: string | null
-  product_price: number | null
-  pack_name: string | null
-  stage: string
-  created_at: string
-  seller_name?: string | null
-  seller_role?: string | null
-  nota?: string | null
-  assigned_seller_id?: string | null
-  writer_seller_ids?: string[] | null
-  // El chip de etapa sale de la misma línea de vida que el tablero del CRM.
-  dispatch_type?: string | null
-  agency_name?: string | null
-  advance_amount?: number | string | null
-  tracking_courier?: string | null
-  tracking_phase?: string | null
-  chat_messages: { id: string; sender_role: string; type: string; body: string | null; created_at: string; read_at: string | null }[]
-}
 
+const VACIO: Record<string, number> = {}
 
 // La etiqueta de la etapa sale de `columnaDelPedido`, no del `stage` crudo: con
 // el chip leyendo el stage y el CRM leyendo la fase del courier, el mismo pedido
@@ -45,7 +23,8 @@ const ETIQUETA: Record<string, string> = {
 
 // Un pedido de la semana pasada mostrando solo "07:08 p. m." se lee como si
 // fuera de hoy. Hora para lo de hoy, fecha corta para lo demás.
-function formatWhen(iso: string): string {
+function formatWhen(iso: string | undefined): string {
+  if (!iso) return ''
   const d = new Date(iso)
   const now = new Date()
   const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
@@ -59,10 +38,9 @@ export default function ChatsVendedorPage() {
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
   const [search, setSearch] = useState('')
-  const [sessions, setSessions] = useState<SupabaseSession[]>([])
-  const [loading, setLoading] = useState(true)
   const [onlineBuyers, setOnlineBuyers] = useState<Set<string>>(new Set())
-  const [bumps, setBumps] = useState<Record<string, number>>({})
+  // `gen` = el `leidoEn` de la lista sobre la que se contaron estos bumps.
+  const [bumpsRef, setBumps] = useState<{ gen: number; por: Record<string, number> }>({ gen: 0, por: {} })
   const seenRef = useRef<Set<string>>(new Set())
 
   // The super admin (Kross platform) isn't a store → send them to Marcas.
@@ -81,49 +59,45 @@ export default function ChatsVendedorPage() {
     return () => { supabase.removeChannel(ch) }
   }, [])
 
-  // Each team member sees only the leads assigned to them (Ventas: new leads,
-  // Despacho: confirmed, Motorizado: en camino). The admin (not impersonating)
-  // sees every order in the store.
-  // Whoever you're acting AS decides scope: an admin (store admin, or the super
-  // admin who entered the store) sees all orders; a team member sees only theirs.
-  const onlyMine = !!effective && !effective.is_admin
+  // El alcance —quién ve qué— lo decide `useStoreOrders`, una sola vez para las
+  // cuatro pantallas: si eres admin de lo que miras ves la tienda entera, si no
+  // ves los pedidos en los que estás metido.
+  const { pedidos: sessions, cargando: loading, soloMios: onlyMine, leidoEn } =
+    useStoreOrders(effective)
 
-  useEffect(() => {
-    if (!effective) return
-    setLoading(true)
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${ANON}`,
-      'x-store-id': effective.store_id,
-    }
-    if (onlyMine) headers['x-seller-id'] = effective.auth_user_id
-
-    fetch(`${BASE}/get-store-sessions`, { headers })
-      .then(r => (r.ok ? r.json() : []))
-      .then((data: SupabaseSession[]) => {
-        setSessions(Array.isArray(data) ? data : [])
-        setBumps({}); seenRef.current.clear()
-      })
-      .catch(() => setSessions([]))
-      .finally(() => setLoading(false))
-  }, [effective?.auth_user_id, effective?.store_id, onlyMine])
+  // Los contadores de "sin leer" son de ESTA pantalla y se acumulan sobre la
+  // lista, así que una lista nueva tiene que soltarlos o seguirían sumando
+  // sobre pedidos que ya no están.
+  //
+  // El reseteo va DERIVADO —los bumps se guardan junto a la lectura que los
+  // originó y se descartan si no coinciden— y no en un efecto: un efecto los
+  // limpiaría un render tarde, y en ese render se verían contadores de la lista
+  // anterior sobre los pedidos de la nueva.
+  const bumps = bumpsRef.gen === leidoEn ? bumpsRef.por : VACIO
 
   // Live unread: listen to each order's channel and bump the counter in real time
   const sessionIds = sessions.map(s => s.id).join(',')
   useEffect(() => {
     if (sessions.length === 0) return
+    // Cada lectura empieza su propio conteo: los ids ya vistos de la lista
+    // anterior no deben silenciar mensajes de la nueva.
+    seenRef.current = new Set()
     const channels = sessions.map(s =>
       supabase.channel(`order:${s.id}`)
         .on('broadcast', { event: 'new_message' }, ({ payload }) => {
           const m = payload as { id: string; sender_role: string }
           if (m.sender_role !== 'buyer' || seenRef.current.has(m.id)) return
           seenRef.current.add(m.id)
-          setBumps(b => ({ ...b, [s.id]: (b[s.id] ?? 0) + 1 }))
+          setBumps(b => {
+            const por = b.gen === leidoEn ? b.por : {}
+            return { gen: leidoEn, por: { ...por, [s.id]: (por[s.id] ?? 0) + 1 } }
+          })
         })
         .subscribe()
     )
     return () => channels.forEach(c => supabase.removeChannel(c))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionIds])
+  }, [sessionIds, leidoEn])
 
   const filtered = sessions.filter(s =>
     !search ||
@@ -136,7 +110,7 @@ export default function ChatsVendedorPage() {
   // Todo lo que cada fila necesita, calculado una sola vez: la tarjeta de móvil
   // y la fila de escritorio pintan EXACTAMENTE los mismos datos.
   const meId = effective?.auth_user_id
-  const unreadOf = (s: SupabaseSession) =>
+  const unreadOf = (s: StoreOrder) =>
     (s.chat_messages?.filter(m => m.sender_role === 'buyer' && !m.read_at).length ?? 0) + (bumps[s.id] ?? 0)
 
   const rows = filtered.map(session => {
@@ -174,9 +148,11 @@ export default function ChatsVendedorPage() {
     { label: 'Entregados', value: cuantos('entregado'), color: 'var(--ok-fg)' },
   ]
 
-  const open = (token: string) => navigate(`/vendedor/pedido/${token}`)
+  // Un pedido sin token no tiene página a la que ir. No debería pasar, pero el
+  // tipo lo admite porque la respuesta del servidor manda, no nuestro deseo.
+  const open = (token?: string) => { if (token) navigate(`/vendedor/pedido/${token}`) }
 
-  const Avatar = ({ name, online, size }: { name: string | null; online: boolean; size: number }) => (
+  const Avatar = ({ name, online, size }: { name?: string | null; online: boolean; size: number }) => (
     <div className="relative flex-shrink-0">
       <div className="rounded-2xl flex items-center justify-center font-black"
         style={{ background: 'var(--surface-3)', color: 'var(--text)', width: size, height: size, fontSize: size >= 40 ? 18 : 13 }}>
@@ -189,7 +165,7 @@ export default function ChatsVendedorPage() {
     </div>
   )
 
-  const StageChip = ({ session }: { session: SupabaseSession }) => {
+  const StageChip = ({ session }: { session: StoreOrder }) => {
     const col = columnaDelPedido(session)
     return (
       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={stageChip(col)}>

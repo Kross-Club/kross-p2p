@@ -1,11 +1,8 @@
-import { useEffect, useState } from 'react'
 import { BarChart2, Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { NOTA_META, stageBar } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
-
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+import { useStoreOrders, estaVivo } from '../../lib/store-orders'
 
 function roleColor(role: string) {
   const r = (role ?? '').toLowerCase()
@@ -24,40 +21,16 @@ function roleCat(role: string) {
   return 'Otro'
 }
 
-interface Sess {
-  id: string; stage: string; status?: string; nota?: string | null
-  assigned_seller_id: string | null; seller_name?: string | null; seller_role?: string | null
-  // Igual que en el CRM: sin esto el conteo cae al reloj interno del equipo y
-  // "Por estado" deja de contar lo que el courier reporta.
-  dispatch_type?: string | null; agency_name?: string | null
-  advance_amount?: number | string | null
-  tracking_courier?: string | null; tracking_phase?: string | null
-}
-
-
 export default function EstadisticasPage() {
   const { effective, isAdmin, impersonating } = useSeller()
-  const [sessions, setSessions] = useState<Sess[]>([])
-  const [loading, setLoading] = useState(true)
 
+  // Los cancelados entran porque el desglose de notas los cuenta.
+  const { pedidos: sessions, cargando: loading } = useStoreOrders(effective, { incluirCancelados: true })
   const adminView = isAdmin && !impersonating
-  const onlyMine = !!effective && !adminView
-
-  useEffect(() => {
-    if (!effective) return
-    setLoading(true)
-    const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': effective.store_id, 'x-include-cancelled': '1' }
-    if (onlyMine) headers['x-seller-id'] = effective.auth_user_id
-    fetch(`${BASE}/get-store-sessions`, { headers })
-      .then(r => (r.ok ? r.json() : []))
-      .then((d: Sess[]) => setSessions(Array.isArray(d) ? d : []))
-      .catch(() => setSessions([]))
-      .finally(() => setLoading(false))
-  }, [effective?.auth_user_id, effective?.store_id, onlyMine])
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
-  const active = sessions.filter(s => s.status !== 'cancelado')
+  const active = sessions.filter(estaVivo)
   const total = active.length
   // Mismas columnas que el tablero del CRM, mismo `columnaDelPedido`: si acá se
   // contara por `stage` crudo, Stats y CRM darían números distintos del mismo

@@ -5,8 +5,10 @@ import { supabase } from '../../lib/supabase'
 import { AgencyService } from '../../lib/checkout/services/AgencyService'
 import { pickupBranchIdOf } from '../../lib/session'
 import { estadoDePago, avanceDelPaquete, vaEnElMapa, proyector } from '../../lib/live-map'
-import type { Caja, PedidoEnVivo } from '../../lib/live-map'
+import type { Caja } from '../../lib/live-map'
 import { pasoActual, courierDelPedido } from '../../lib/order-tracking'
+import { useStoreOrders } from '../../lib/store-orders'
+import type { StoreOrder } from '../../lib/store-orders'
 import { escenaDemo } from '../../lib/live-map-demo'
 import type { AgencyName } from '../../lib/checkout/types'
 
@@ -22,21 +24,12 @@ import type { AgencyName } from '../../lib/checkout/types'
 // (origen, ruta, destino) y CÓMO va el dinero (lima = pagado, mitad = adelanto
 // cruzado y saldo contraentrega, gris = todavía nada).
 
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
 const ANCHO = 700
 const ALTO = 880
 
-interface Pedido extends PedidoEnVivo {
-  id: string
-  token: string
-  buyer_name: string | null
-  product_id: string | null
-  product_name: string | null
-  agency_branch_id?: string | null
-  delivery_reference?: string | null
-}
+// El pedido del mapa es el pedido del lector único, sin recortes: la forma la
+// define `get-store-sessions`, no lo que esta pantalla alcanza a dibujar.
+type Pedido = StoreOrder
 
 interface Punto { lat: number; lng: number; nombre: string; courier: string }
 interface EnMapa { pedido: Pedido; origen: Punto | null; destino: Punto }
@@ -52,11 +45,10 @@ export default function MapaVivoPage() {
   const navigate = useNavigate()
   const { effective } = useSeller()
   const storeId = effective?.store_id
-  const sellerId = effective?.auth_user_id
-  const esAdmin = !!effective?.is_admin
-  // `null` = todavía no llegó la primera respuesta. Así el "cargando" se
-  // deriva del dato en vez de ser otro estado que sincronizar.
-  const [pedidos, setPedidos] = useState<Pedido[] | null>(null)
+  // El lector único trae los pedidos; acá solo se queda con los que tienen algo
+  // que mirarse mover. El `cargando` viene del mismo sitio que el dato.
+  const { pedidos: todos, cargando } = useStoreOrders(effective)
+  const pedidos = useMemo(() => todos.filter(vaEnElMapa), [todos])
   const [origenPorProducto, setOrigenPorProducto] = useState<Record<string, string>>({})
   const [territorio, setTerritorio] = useState<Territorio | null>(null)
   const [sedes, setSedes] = useState<{ lat: number; lng: number }[]>([])
@@ -66,7 +58,6 @@ export default function MapaVivoPage() {
   // tienda o se ve el ejemplo, y cuando se ve el ejemplo la pantalla lo dice.
   const [demo, setDemo] = useState(false)
   const [escena, setEscena] = useState<{ pedidos: Pedido[]; origenPorProducto: Record<string, string> } | null>(null)
-  const cargando = pedidos === null
 
   // ── El país: silueta y división territorial, en un import diferido ──
   useEffect(() => {
@@ -98,17 +89,6 @@ export default function MapaVivoPage() {
     return () => { vivo = false }
   }, [])
 
-  // ── Los pedidos de la tienda ──
-  useEffect(() => {
-    if (!storeId) return
-    const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': storeId }
-    if (!esAdmin && sellerId) headers['x-seller-id'] = sellerId
-
-    fetch(`${BASE}/get-store-sessions`, { headers })
-      .then(r => (r.ok ? r.json() : []))
-      .then((data: Pedido[]) => setPedidos(Array.isArray(data) ? data.filter(vaEnElMapa) : []))
-      .catch(() => setPedidos([]))
-  }, [storeId, sellerId, esAdmin])
 
   // ── De qué sede sale cada producto (la configura Logística en Productos) ──
   useEffect(() => {

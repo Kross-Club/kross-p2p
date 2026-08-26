@@ -27,6 +27,9 @@ pantallas: es que un vendedor que quiere saber *"¿a quién le debo algo?"* tien
 primero en cuál de las cuatro lo va a averiguar. El menú le hace responder una pregunta antes
 de dejarlo trabajar.
 
+**Los cuatro `fetch` ya son uno** (26-ago-2026): `useStoreOrders` en `src/lib/store-orders.ts`.
+Las pantallas siguen siendo cuatro —eso es el paso 4—, pero leen del mismo sitio.
+
 Y las otras tres del grupo no son lo que su nombre promete:
 
 - **Clientes** no lista clientes. Es importar un CSV, invitar por WhatsApp masivo y configurar
@@ -83,10 +86,32 @@ Cinco entradas para el admin. Para un miembro del equipo, **una**: Pedidos (sus 
 respetan el `x-seller-id`, que es el filtro que hoy hace `onlyMine` en cada pantalla por
 separado).
 
-Los cuatro modos comparten un solo `fetch` y un solo estado: se pide la lista una vez y cada
-modo la pinta distinto. Eso también arregla algo que hoy está mal por accidente — Chats pide
-sin cancelados, CRM y Stats con `x-include-cancelled: 1`, y el Mapa filtra por `vaEnElMapa`:
-tres definiciones de "los pedidos de la tienda" que no coinciden.
+Los cuatro modos comparten un solo `fetch` y un solo estado. Eso ya está construido
+(`useStoreOrders`), y al construirlo apareció algo peor que los cuatro spinners: **tres
+definiciones distintas de quién ve qué**.
+
+| Pantalla | Predicado que usaba |
+|---|---|
+| Chats · En vivo | `!effective.is_admin` |
+| CRM · Stats | `!(real.is_admin && !impersonating)` |
+
+Coinciden en todos los casos menos uno, y ese uno importa: el **super admin que entra a una
+marca**. `MarcaPage` le arma un perfil `is_admin: true` con su mismo `auth_user_id`, y como
+`impersonating` queda en `true`, CRM y Stats filtraban por ese id. El super admin no está en
+`involved_seller_ids` de ningún pedido, así que veía **la tienda completa en Chats y en el
+mapa, y cero pedidos en CRM y Stats** — justo lo contrario de lo que el comentario de
+`MarcaPage` promete ("el toolset completo funciona incluso en una marca sin equipo").
+
+La regla que quedó es una sola frase, sin `impersonating` de por medio:
+
+> Si eres admin **de lo que estás mirando**, ves esa tienda entera. Si no, ves los pedidos en
+> los que estás metido.
+
+Lo único que sigue siendo decisión por pantalla es `incluirCancelados`, y con razón: el CRM
+los agrupa aparte y Stats los cuenta en las notas, mientras que Chats y el mapa no tienen nada
+que hacer con un pedido muerto. No se unifica pidiéndolos siempre porque el `limit(80)` del
+servidor se aplica **antes** de filtrar: traerlos de más empujaría pedidos vivos fuera de la
+lista.
 
 ## Lo que falta de verdad #1: la ficha del cliente
 
@@ -321,7 +346,7 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 | # | Paso | Toca |
 |---|---|---|
 | ~~0~~ | ✅ **`AGENCIA_LIMA` entra a "es recojo"** — una sola definición, la de `session.ts` | hecho (26-ago-2026) |
-| 1 | Un solo lector de pedidos con una sola definición de "activo" | `src/lib/` (hook nuevo) + las 4 pantallas |
+| ~~1~~ | ✅ **Un solo lector de pedidos** (`useStoreOrders`) con una sola regla de alcance | hecho (26-ago-2026) |
 | ~~2~~ | ✅ **Columnas = fases del courier** en CRM, Stats y el chip de Chats | hecho (26-ago-2026) |
 | ~~3~~ | ✅ **`registrado` deja de ser `EN_ORIGEN`** + chip de antigüedad en el CRM | hecho (26-ago-2026) |
 | 4 | Fusionar Chats/CRM/Mapa/Stats en **Pedidos** con selector de modo | `seller-nav.ts`, las 4 páginas → una |
@@ -329,8 +354,8 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 | 6 | **Clientes** de verdad: lista + ficha con historial; Retención adentro | pantalla nueva + `ClientesPage`, `RetencionPage` |
 | 7 | Borrar las dos rutas mock del comprador | `App.tsx`, `src/pages/comprador/Chats*` |
 
-El paso 0 ya está: sin él, los pedidos que Kross Shop vende hoy ni siquiera entraban a En
-vivo. Los pasos 1 y 2 no cambian nada de lo que se ve y hacen baratos a los que siguen.
+Los pasos 0 a 3 están hechos. El paso 4 —fusionar las cuatro pantallas en una con selector
+de modo— ya es barato: comparten lector, tipo, alcance y vocabulario de etapas.
 
 ## Ver también
 

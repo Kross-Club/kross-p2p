@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { NOTA_META, CERRADO_SUAVE, NEUTRO, ALERTA } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido, antiguedad } from '../../lib/order-tracking'
-
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+import { useStoreOrders, estaVivo } from '../../lib/store-orders'
+import type { StoreOrder } from '../../lib/store-orders'
 
 // Las columnas son el eje del pedido (`COLUMNAS` en order-tracking), con la
 // mitad de abajo en el idioma del courier. Este archivo ya NO define etapas:
@@ -14,56 +13,19 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 // §6.1: la etapa la dice la columna, no el color. Solo la última lleva lima.
 const etapaChip = (key: string) => (key === 'entregado' ? CERRADO_SUAVE : NEUTRO)
 
-interface Sess {
-  id: string
-  token: string
-  buyer_name: string | null
-  product_name: string | null
-  product_price: number | null
-  pack_name: string | null
-  stage: string
-  status?: string
-  nota?: string | null
-  seller_name?: string | null
-  seller_role?: string | null
-  created_at?: string | null
-  // Lo que la línea de vida necesita para saber si a este pedido le tocan los
-  // pasos del courier y en cuál va. Sin esto el tablero cae al reloj interno.
-  dispatch_type?: string | null
-  agency_name?: string | null
-  advance_amount?: number | string | null
-  tracking_courier?: string | null
-  tracking_numero?: string | null
-  tracking_phase?: string | null
-  tracking_phase_at?: string | null
-  tracking_demora_at?: string | null
-}
 
 
 export default function CRMPage() {
   const navigate = useNavigate()
-  const { effective, isAdmin, impersonating } = useSeller()
+  const { effective } = useSeller()
   const [view, setView] = useState<'lista' | 'kanban'>('lista')
-  const [sessions, setSessions] = useState<Sess[]>([])
-  const [loading, setLoading] = useState(true)
 
-  const onlyMine = !!effective && !(isAdmin && !impersonating)
-  // La antigüedad se mide contra el instante en que LLEGARON los datos, no
-  // contra cada pintada: así todas las tarjetas cuentan desde el mismo punto
-  // y el render se mantiene puro.
-  const [ahora, setAhora] = useState(() => Date.now())
-
-  useEffect(() => {
-    if (!effective) return
-    setLoading(true)
-    const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': effective.store_id, 'x-include-cancelled': '1' }
-    if (onlyMine) headers['x-seller-id'] = effective.auth_user_id
-    fetch(`${BASE}/get-store-sessions`, { headers })
-      .then(r => (r.ok ? r.json() : []))
-      .then((data: Sess[]) => { setSessions(Array.isArray(data) ? data : []); setAhora(Date.now()) })
-      .catch(() => setSessions([]))
-      .finally(() => setLoading(false))
-  }, [effective?.auth_user_id, effective?.store_id, onlyMine])
+  // Los cancelados entran porque el tablero los muestra en su propio grupo.
+  // `leidoEn` es el instante en que llegaron los datos: medir la antigüedad
+  // contra eso —y no contra cada pintada— hace que todas las tarjetas cuenten
+  // desde el mismo punto y mantiene el render puro.
+  const { pedidos: sessions, cargando: loading, leidoEn: ahora, soloMios } =
+    useStoreOrders(effective, { incluirCancelados: true })
 
   // Cuánto lleva parado. Con las columnas en el idioma del courier, el dato que
   // decide es el tiempo, no el conteo: dos días en `registrado` es un paquete
@@ -74,7 +36,7 @@ export default function CRMPage() {
   // Solo se pinta desde 1 día: "0d" en todo el tablero es ruido.
   // Helper y no componente, igual que `grupoDeCierre`: declarar un componente
   // dentro del render le cambia la identidad en cada pintada.
-  const chipAntiguedad = (s: Sess) => {
+  const chipAntiguedad = (s: StoreOrder) => {
     const a = antiguedad(s, ahora)
     if (!a || (a.dias < 1 && !a.demorado)) return null
     const courier = s.tracking_courier ?? s.agency_name ?? 'El courier'
@@ -91,7 +53,7 @@ export default function CRMPage() {
     )
   }
 
-  const Card = ({ s }: { s: Sess }) => (
+  const Card = ({ s }: { s: StoreOrder }) => (
     <button onClick={() => navigate(`/vendedor/pedido/${s.token}`)}
       className="w-full bg-white border border-gray-100 rounded-2xl p-3 shadow-sm text-left">
       <div className="flex items-start justify-between gap-2">
@@ -117,9 +79,9 @@ export default function CRMPage() {
   // Se agrupa UNA vez y las dos vistas (lista y kanban) leen el mismo mapa: si
   // cada una filtrara por su cuenta volveríamos a poder mostrar dos verdades.
   // `columnaDelPedido` garantiza que cada pedido caiga en exactamente una.
-  const vivos = sessions.filter(s => s.status !== 'cancelado')
-  const porColumna = new Map<string, Sess[]>()
-  const caidos: Sess[] = []
+  const vivos = sessions.filter(estaVivo)
+  const porColumna = new Map<string, StoreOrder[]>()
+  const caidos: StoreOrder[] = []
   for (const s of vivos) {
     const col = columnaDelPedido(s)
     if (col === 'no_entregado') { caidos.push(s); continue }
@@ -127,7 +89,7 @@ export default function CRMPage() {
     if (lista) lista.push(s)
     else porColumna.set(col, [s])
   }
-  const cancelados = sessions.filter(s => s.status === 'cancelado')
+  const cancelados = sessions.filter(s => !estaVivo(s))
 
   // El kanban arrastra los dos grupos de cierre al final en vez de omitirlos:
   // en la vista de columnas, "no aparece" y "no existe" se leen igual, y un
@@ -142,7 +104,7 @@ export default function CRMPage() {
   // Grupo de cierre: ni el fracaso ni la cancelación son un paso del eje, así
   // que van aparte. Es un helper y no un componente a propósito — declarar un
   // componente dentro del render le cambia la identidad en cada pintada.
-  const grupoDeCierre = (titulo: string, style: typeof ALERTA, items: Sess[]) =>
+  const grupoDeCierre = (titulo: string, style: typeof ALERTA, items: StoreOrder[]) =>
     items.length === 0 ? null : (
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -162,7 +124,7 @@ export default function CRMPage() {
           <button onClick={() => setView('kanban')} className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${view === 'kanban' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>Kanban</button>
         </div>
       </div>
-      <p className="text-xs text-gray-400 mb-4">{onlyMine ? 'Tus pedidos por estado' : 'Todos los pedidos de la tienda'}</p>
+      <p className="text-xs text-gray-400 mb-4">{soloMios ? 'Tus pedidos por estado' : 'Todos los pedidos de la tienda'}</p>
 
       {loading ? (
         <div className="flex justify-center py-12">
