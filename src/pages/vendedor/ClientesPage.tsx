@@ -158,7 +158,7 @@ export default function ClientesPage() {
           className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-1" />
         {rate > 0 && <p className="text-[10px] text-gray-400 mb-2">Ej: 50 puntos = S/ {(50 * rate).toFixed(2)} de descuento en su próxima compra.</p>}
         <button onClick={saveReward} disabled={savingReward}
-          className="w-full py-2.5 rounded-2xl font-black text-sm text-white disabled:opacity-50" style={{ background: 'var(--brand)' }}>
+          className="w-full py-2.5 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
           {savingReward ? 'Guardando…' : 'Guardar recompensa'}
         </button>
       </div>

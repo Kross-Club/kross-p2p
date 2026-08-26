@@ -196,7 +196,7 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
             )}
             <button onClick={save} disabled={busy || !numeroOk || !codigoOk}
               className="text-[11px] font-black px-3 py-2 rounded-xl flex-shrink-0 disabled:opacity-40"
-              style={{ background: 'var(--brand)', color: '#fff' }}>
+              style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
               {busy ? 'Guardando…' : 'Registrar'}
             </button>
           </div>

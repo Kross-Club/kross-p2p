@@ -82,9 +82,9 @@ export default function EstadisticasPage() {
       <h1 className="text-xl font-black text-gray-900 flex items-center gap-2 mb-1"><BarChart2 size={20} /> Estadísticas</h1>
       <p className="text-xs text-gray-400 mb-4">{adminView ? 'Toda la tienda' : `Tus pedidos · ${effective?.role_label}`}</p>
 
-      <div className="rounded-2xl p-4 mb-4 text-white" style={{ background: 'linear-gradient(135deg, var(--brand), #863bff)' }}>
-        <p className="text-white/70 text-xs font-bold">Pedidos activos</p>
-        <p className="font-black text-4xl">{total}</p>
+      <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--surface)', border: '0.5px solid var(--border)' }}>
+        <p className="text-xs font-bold" style={{ color: 'var(--text-faint)' }}>Pedidos activos</p>
+        <p className="font-black text-4xl tabular" style={{ color: 'var(--text)' }}>{total}</p>
       </div>
 
       <h2 className="font-black text-sm text-gray-900 mb-2">Por estado</h2>
