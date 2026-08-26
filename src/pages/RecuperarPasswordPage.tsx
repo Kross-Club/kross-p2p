@@ -38,14 +38,14 @@ export default function RecuperarPasswordPage() {
   if (sentTo) {
     return (
       <AuthShell subtitle="Panel de vendedor">
-        <h2 className="font-black text-xl mb-1 text-white">Revisa tu correo</h2>
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>
+        <h2 className="text-2xl mb-1.5" style={{ color: 'var(--text)', fontWeight: 500 }}>Revisa tu correo</h2>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
           Si <b style={{ color: 'rgba(255,255,255,0.8)' }}>{sentTo}</b> tiene una cuenta de
           vendedor, ahí está el enlace para crear una contraseña nueva.
         </p>
 
         <div className="rounded-2xl px-4 py-3 mt-4"
-          style={{ background: 'rgba(0,191,255,0.10)', border: '1px solid rgba(125,232,255,0.25)' }}>
+          style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
           <p className="text-xs" style={{ color: 'rgba(125,232,255,0.85)' }}>
             El enlace vence en una hora y sirve una sola vez. Si no lo ves, mira en
             spam o correo no deseado.
@@ -53,13 +53,13 @@ export default function RecuperarPasswordPage() {
         </div>
 
         <button onClick={() => { setSentTo(''); setEmail('') }}
-          className="w-full mt-4 text-xs font-bold" style={{ color: '#00BFFF' }}>
+          className="w-full mt-4 text-xs font-bold" style={{ color: 'var(--k-lime)' }}>
           Probar con otro correo
         </button>
 
         <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
           <p className="text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            <Link to="/login" className="font-bold" style={{ color: '#00BFFF' }}>Volver al ingreso</Link>
+            <Link to="/login" className="font-bold" style={{ color: 'var(--k-lime)' }}>Volver al ingreso</Link>
           </p>
         </div>
       </AuthShell>
@@ -68,8 +68,8 @@ export default function RecuperarPasswordPage() {
 
   return (
     <AuthShell subtitle="Panel de vendedor">
-      <h2 className="font-black text-xl mb-1 text-white">Recuperar contraseña</h2>
-      <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.5)' }}>
+      <h2 className="text-2xl mb-1.5" style={{ color: 'var(--text)', fontWeight: 500 }}>Recuperar contraseña</h2>
+      <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
         Escribe el correo de tu cuenta y te mandamos un enlace para crear una nueva.
       </p>
 
@@ -86,13 +86,13 @@ export default function RecuperarPasswordPage() {
       </form>
 
       <p className="text-center text-xs mt-4">
-        <Link to="/login" className="font-bold" style={{ color: '#00BFFF' }}>Volver al ingreso</Link>
+        <Link to="/login" className="font-bold" style={{ color: 'var(--k-lime)' }}>Volver al ingreso</Link>
       </p>
 
       <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
         <p className="text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
           ¿Eres comprador? Tu app no usa contraseña:{' '}
-          <a href="/acceso" className="font-bold" style={{ color: '#00BFFF' }}>entra con tu DNI</a>
+          <a href="/acceso" className="font-bold" style={{ color: 'var(--k-lime)' }}>entra con tu DNI</a>
         </p>
       </div>
     </AuthShell>

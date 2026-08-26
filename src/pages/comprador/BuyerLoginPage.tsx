@@ -57,7 +57,7 @@ export default function BuyerLoginPage() {
             Para ver tus pedidos, entra desde el enlace que te compartió tu tienda
             (por ejemplo <b>tumarca.krossclub.app</b>), no desde krossclub.app.
           </p>
-          <a href="/login" className="inline-block mt-5 text-xs font-bold" style={{ color: '#00BFFF' }}>
+          <a href="/login" className="inline-block mt-5 text-xs font-bold" style={{ color: 'var(--brand)' }}>
             ¿Eres administrador de Kross? Ingresar aquí
           </a>
         </div>
@@ -94,7 +94,7 @@ export default function BuyerLoginPage() {
           <div className="mx-auto mb-4 w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: store.logo_url ? '#fff' : 'transparent' }}>
             {store.logo_url ? <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-cover" /> : <KrossIcon size={64} />}
           </div>
-          <h1 className="font-black text-3xl tracking-tight" style={{ color: '#7DE8FF' }}>{store.nombre}</h1>
+          <h1 className="font-black text-3xl tracking-tight" style={{ color: 'var(--brand)' }}>{store.nombre}</h1>
           <p className="text-sm mt-1" style={{ color: 'rgba(125,232,255,0.5)' }}>Mis pedidos</p>
         </div>
 
@@ -128,7 +128,8 @@ export default function BuyerLoginPage() {
             <button type="submit" disabled={loading || docNumber.length !== 8}
               className="w-full py-3.5 rounded-2xl font-black text-sm mt-1 transition-all"
               style={{
-                background: (loading || docNumber.length !== 8) ? 'rgba(0,191,255,0.3)' : 'linear-gradient(135deg, #00BFFF, #7DE8FF)',
+                background: 'var(--brand)',
+                opacity: (loading || docNumber.length !== 8) ? 0.5 : 1,
                 color: '#060C1A',
               }}>
               {loading ? 'Buscando…' : 'Ver mis pedidos'}
@@ -138,7 +139,7 @@ export default function BuyerLoginPage() {
           <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
             <p className="text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
               ¿Eres vendedor?{' '}
-              <a href="/login" className="font-bold" style={{ color: '#00BFFF' }}>Ingresar aquí</a>
+              <a href="/login" className="font-bold" style={{ color: 'var(--brand)' }}>Ingresar aquí</a>
             </p>
           </div>
         </div>

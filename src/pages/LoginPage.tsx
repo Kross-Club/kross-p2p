@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, setPersistSession } from '../lib/supabase'
 import AuthShell, { AuthButton, AuthError, AuthField } from '../components/AuthShell'
 import { isPlatformHost } from '../lib/store-context'
 
@@ -11,6 +11,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Marcada por defecto: el caso normal es el celular o la laptop del dueño.
+  // Desmarcarla manda la sesión a sessionStorage y se muere al cerrar la pestaña.
+  const [recordar, setRecordar] = useState(true)
 
   // Se vuelve acá después de fijar una contraseña nueva. Sin este aviso, la
   // pantalla de login es idéntica a la de un enlace que no hizo nada.
@@ -21,6 +24,7 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
+    setPersistSession(recordar)   // decide dónde se guarda ANTES de entrar
     const { data: auth, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setError('Correo o contraseña incorrectos')
@@ -45,47 +49,55 @@ export default function LoginPage() {
 
   return (
     <AuthShell subtitle="Panel de vendedor">
-      <h2 className="font-black text-xl mb-1 text-white">Bienvenido</h2>
-      <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.5)' }}>
-        Ingresa con tu cuenta de vendedor
+      <h2 className="text-3xl mb-1.5" style={{ color: 'var(--text)', fontWeight: 500 }}>Entra a tu tienda</h2>
+      <p className="text-sm mb-7" style={{ color: 'var(--text-muted)' }}>
+        Tus pedidos, cobros y entregas de hoy.
       </p>
 
       {justUpdated && (
-        <div className="rounded-2xl px-4 py-3 mb-4"
-          style={{ background: 'rgba(0,191,255,0.10)', border: '1px solid rgba(125,232,255,0.25)' }}>
-          <p className="text-xs font-bold" style={{ color: '#7DE8FF' }}>
+        <div className="rounded-xl px-4 py-3 mb-4" style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
+          <p className="text-xs" style={{ color: 'var(--ok-fg)', fontWeight: 500 }}>
             Contraseña actualizada. Ingresa con la nueva.
           </p>
         </div>
       )}
 
-      <form onSubmit={login} className="flex flex-col gap-3">
+      <form onSubmit={login} className="flex flex-col gap-4">
         <AuthField label="Correo" type="email" value={email} required
           placeholder="tu@correo.com" autoComplete="email"
           onChange={e => setEmail(e.target.value)} />
+
         <AuthField label="Contraseña" type="password" value={password} required
           placeholder="••••••••" autoComplete="current-password"
-          onChange={e => setPassword(e.target.value)} />
+          onChange={e => setPassword(e.target.value)}
+          action={
+            <Link to="/recuperar" className="text-xs underline underline-offset-2" style={{ color: 'var(--text-muted)' }}>
+              Olvidé mi contraseña
+            </Link>
+          } />
+
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" checked={recordar} onChange={e => setRecordar(e.target.checked)}
+            className="w-4 h-4 rounded" style={{ accentColor: 'var(--k-lime)' }} />
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Mantener sesión iniciada</span>
+        </label>
 
         {error && <AuthError>{error}</AuthError>}
 
         <AuthButton type="submit" loading={loading}>
-          {loading ? 'Ingresando…' : 'Ingresar'}
+          {loading ? 'Entrando…' : 'Entrar'}
         </AuthButton>
       </form>
 
-      <p className="text-center text-xs mt-4">
-        <Link to="/recuperar" className="font-bold" style={{ color: '#00BFFF' }}>
-          ¿Olvidaste tu contraseña?
-        </Link>
+      <p className="text-xs mt-7" style={{ color: 'var(--text-faint)' }}>
+        ¿Aún no tienes cuenta?{' '}
+        <a href="/contacto" className="underline underline-offset-2" style={{ color: 'var(--k-lime)' }}>Solicita tu demo</a>
       </p>
 
-      <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-        <p className="text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-          ¿Eres comprador?{' '}
-          <a href="/acceso" className="font-bold" style={{ color: '#00BFFF' }}>Ver mis pedidos</a>
-        </p>
-      </div>
+      <p className="text-xs mt-2" style={{ color: 'var(--text-faint)' }}>
+        ¿Eres comprador?{' '}
+        <a href="/acceso" className="underline underline-offset-2" style={{ color: 'var(--text-muted)' }}>Ver mis pedidos</a>
+      </p>
     </AuthShell>
   )
 }
