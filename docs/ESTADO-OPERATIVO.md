@@ -101,6 +101,13 @@ comprador sigue con el color de cada marca — eso es el white-label y no cambia
 Lo que falta está listado en §10.1 del manual: el barrido de acentos en las pantallas que
 no se tocaron, el chat del panel (`ChatView`), la web pública de Kross en ink, y los mapas.
 
+### El acceso ya promete facturas (26-ago-2026)
+
+La pantalla de acceso al panel dice "Productos, cobros con Yape, envíos con Shalom, chats,
+llamadas y facturas". **La facturación todavía no existe en el producto**: va con Nubefact y
+está por construirse. La promesa entró antes que la función a propósito; si el plan cambia,
+la línea vive en `src/components/AuthShell.tsx`.
+
 ## Bloqueos abiertos
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |
