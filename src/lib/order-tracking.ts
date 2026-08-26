@@ -103,6 +103,52 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
 
 const paso = (key: PasoKey, label: string, estado: Paso['estado']): Paso => ({ key, label, estado })
 
+// ─── El tablero: el mismo eje, en columnas ───────────────────────────────────
+//
+// El CRM y las estadísticas llevaban cada uno su propia lista de etapas, copiada
+// del `stage` crudo. Dos costos:
+//
+//  1. El tablero hablaba el idioma del pipeline de ventas (`en_camino`) mientras
+//     el courier reportaba el suyo (`EN_TRANSITO`), así que el mismo pedido
+//     salía en un paso distinto según la pantalla.
+//  2. Un pedido cuyo `stage` no estaba en la lista **desaparecía del tablero**:
+//     el filtro era `stage === columna.key` y nadie recogía lo que sobraba.
+//     `validando` —que `register-buyer` escribe en TODO pedido con adelanto— y
+//     `no_entregado` no estaban en la lista. Se caían sin dejar rastro.
+//
+// Acá la columna se deriva de `pasosDelPedido`, que siempre devuelve exactamente
+// un paso activo: por construcción, todo pedido cae en una columna y solo una.
+
+/** Las columnas del tablero, en orden. Es el eje canónico del pedido. */
+export const COLUMNAS: { key: PasoKey; label: string; emoji: string }[] = [
+  { key: 'nuevo',      label: 'Pedido',      emoji: '📋' },
+  { key: 'validando',  label: 'Validando',   emoji: '🔎' },
+  { key: 'confirmado', label: 'Confirmado',  emoji: '📞' },
+  { key: 'preparando', label: 'Preparando',  emoji: '📦' },
+  // De acá para abajo manda el courier (o el motorizado, que reporta a mano).
+  { key: 'registrado', label: 'Registrado',  emoji: '🧾' },
+  { key: 'transito',   label: 'En tránsito', emoji: '🚚' },
+  { key: 'en_agencia', label: 'En destino',  emoji: '📍' },
+  { key: 'entregado',  label: 'Entregado',   emoji: '✅' },
+]
+
+/**
+ * En qué columna del tablero está este pedido.
+ *
+ * `en_camino` (domicilio) y `transito` (agencia) son la misma casilla —"el
+ * paquete va en camino"— y comparten columna: el tablero mezcla los dos tipos
+ * de envío y una columna por cada uno los partiría en dos sin motivo.
+ *
+ * `no_entregado` sale acá también, pero NO está en `COLUMNAS`: es el cierre de
+ * fracaso y va en su propio grupo, igual que los cancelados. Un tablero donde
+ * la derrota es una columna más invita a arrastrar pedidos hacia ella.
+ */
+export function columnaDelPedido(p: PedidoRastreable): PasoKey {
+  const key = pasoActual(p)?.key ?? 'nuevo'
+  return key === 'en_camino' ? 'transito' : key
+}
+
+
 /** Dónde deja la línea el reloj interno del equipo. */
 function indicePorStage(stage: OrderStage, claves: PasoKey[]): number {
   const equivalente: Partial<Record<OrderStage, PasoKey>> = {

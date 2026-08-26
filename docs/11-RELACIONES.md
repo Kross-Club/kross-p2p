@@ -171,11 +171,19 @@ paquete salió, no que no salió.
 |---|---|
 | `OrderTrackingMap` (chat, comprador y vendedor) | ✅ `pasosDelPedido` |
 | **En vivo** (`MapaVivoPage`) | ✅ `pasoActual` + `courierDelPedido` |
-| **CRM** (`CRMPage`) | ⛔ array `ETAPAS` propio, hardcodeado, sin fases de courier |
-| **Stats** (`EstadisticasPage`) | ⛔ array `STAGES` propio, la misma copia |
+| **CRM** (`CRMPage`) | ✅ `COLUMNAS` + `columnaDelPedido` (26-ago-2026) |
+| **Stats** (`EstadisticasPage`) | ✅ el mismo `columnaDelPedido` |
+| **Chats** (`ChatsVendedorPage`) | ✅ chip y KPIs por la misma columna |
 
-O sea: **no hay que diseñar el modelo, ya existe. Hay que hacer que el CRM lo use.** En vivo
-ya habla el idioma correcto; el CRM sigue hablando el del pipeline de ventas genérico.
+No hubo que diseñar el modelo: ya existía. Solo faltaba que el CRM lo usara.
+
+**Lo que se arregló de paso.** El filtro del tablero era `stage === columna.key` y ninguna
+columna recogía lo que sobraba, así que **un pedido cuyo `stage` no estaba en la lista
+desaparecía del CRM**. No estaban `validando` —que `register-buyer` escribe en TODO pedido con
+adelanto, o sea todos los de 360pay— ni `no_entregado`. Ahora la columna se deriva de
+`pasosDelPedido`, que siempre devuelve exactamente un paso activo: por construcción, ningún
+pedido puede caerse del tablero. `no_entregado` y `cancelado` van en su propio grupo, porque
+el fracaso no es un paso del eje.
 
 ### Separar `registrado` de `en origen` — el hueco donde se pierde la plata
 
@@ -291,7 +299,7 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 |---|---|---|
 | ~~0~~ | ✅ **`AGENCIA_LIMA` entra a "es recojo"** — una sola definición, la de `session.ts` | hecho (26-ago-2026) |
 | 1 | Un solo lector de pedidos con una sola definición de "activo" | `src/lib/` (hook nuevo) + las 4 pantallas |
-| 2 | El CRM deja su array propio y usa `pasosDelPedido`: columnas = fases | `CRMPage`, `EstadisticasPage` |
+| ~~2~~ | ✅ **Columnas = fases del courier** en CRM, Stats y el chip de Chats | hecho (26-ago-2026) |
 | 3 | `registrado` deja de ser `EN_ORIGEN`; chip de antigüedad por `tracking_phase_at` | `_shared/shalom.ts`, `order-tracking.ts`, `CRMPage` |
 | 4 | Fusionar Chats/CRM/Mapa/Stats en **Pedidos** con selector de modo | `seller-nav.ts`, las 4 páginas → una |
 | 5 | La llamada como evento del hilo (`call_log` en `seller-call-token`, burbuja en el panel) y borrar **Llamadas** | `seller-call-token`, `VendedorPedidoPage`, `LlamadasPage` |

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pasosDelPedido, pasoActual, courierDelPedido } from './order-tracking'
+import { pasosDelPedido, pasoActual, courierDelPedido, columnaDelPedido, COLUMNAS } from './order-tracking'
 import { isPickupDispatch } from './session'
 
 const claves = (p: Parameters<typeof pasosDelPedido>[0]) => pasosDelPedido(p).map(x => x.key)
@@ -86,5 +86,51 @@ describe('línea de vida del pedido', () => {
       stage: 'preparando', dispatch_type: 'AGENCIA_LIMA',
       agency_name: 'SHALOM', tracking_phase: 'EN_TRANSITO',
     })?.key).toBe('transito')
+  })
+})
+
+describe('el tablero', () => {
+  const AGENCIA = { dispatch_type: 'AGENCIA_LIMA', agency_name: 'SHALOM' }
+  const claveColumnas = COLUMNAS.map(c => c.key)
+
+  it('la columna la manda el courier cuando el courier reportó', () => {
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'EN_ORIGEN' })).toBe('registrado')
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'EN_TRANSITO' })).toBe('transito')
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'EN_DESTINO' })).toBe('en_agencia')
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando', tracking_phase: 'ENTREGADO' })).toBe('entregado')
+  })
+
+  it('sin reporte del courier manda el reloj del equipo', () => {
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'nuevo' })).toBe('nuevo')
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'confirmado' })).toBe('confirmado')
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'preparando' })).toBe('preparando')
+  })
+
+  // Domicilio y agencia comparten la casilla "va en camino": partirla en dos
+  // dejaría media columna vacía en cada tablero sin decir nada nuevo.
+  it('el "en camino" del domicilio comparte columna con el tránsito del courier', () => {
+    expect(columnaDelPedido({ dispatch_type: 'MOTORIZADO_LIMA', stage: 'en_camino' })).toBe('transito')
+    expect(columnaDelPedido({ ...AGENCIA, tracking_phase: 'EN_TRANSITO' })).toBe('transito')
+  })
+
+  // El bug que este tablero elimina por construcción: antes el filtro era
+  // `stage === columna.key` y lo que no calzaba no salía en ninguna parte.
+  // `validando` lo escribe register-buyer en TODO pedido con adelanto.
+  it('ningún pedido se cae del tablero', () => {
+    const validando = { ...AGENCIA, stage: 'validando', advance_amount: 60 }
+    expect(claveColumnas).toContain(columnaDelPedido(validando))
+    expect(columnaDelPedido(validando)).toBe('validando')
+
+    // Cada stage real aterriza en una columna, o en el cierre de fracaso.
+    const stages = ['nuevo', 'validando', 'confirmado', 'preparando', 'en_camino', 'entregado', 'no_entregado']
+    for (const stage of stages) {
+      const col = columnaDelPedido({ ...AGENCIA, stage, advance_amount: 60 })
+      expect([...claveColumnas, 'no_entregado']).toContain(col)
+    }
+  })
+
+  it('el fracaso no es una columna del tablero', () => {
+    expect(columnaDelPedido({ ...AGENCIA, stage: 'no_entregado' })).toBe('no_entregado')
+    expect(claveColumnas).not.toContain('no_entregado')
   })
 })

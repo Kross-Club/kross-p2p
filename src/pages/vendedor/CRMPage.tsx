@@ -2,21 +2,16 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
-import { NOTA_META, CERRADO_SUAVE, NEUTRO } from '../../lib/order-chips'
+import { NOTA_META, CERRADO_SUAVE, NEUTRO, ALERTA } from '../../lib/order-chips'
+import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-// The 5 real stages of the value chain
+// Las columnas son el eje del pedido (`COLUMNAS` en order-tracking), con la
+// mitad de abajo en el idioma del courier. Este archivo ya NO define etapas:
+// tenerlas acá era lo que hacía que el CRM mostrara un paso y el chat otro.
 // §6.1: la etapa la dice la columna, no el color. Solo la última lleva lima.
-const ETAPAS: { key: string; label: string; emoji: string }[] = [
-  { key: 'nuevo',      label: 'Pedido',     emoji: '📋' },
-  { key: 'confirmado', label: 'Confirmado', emoji: '📞' },
-  { key: 'preparando', label: 'Preparando', emoji: '📦' },
-  { key: 'en_camino',  label: 'En camino',  emoji: '🚚' },
-  { key: 'entregado',  label: 'Entregado',  emoji: '✅' },
-]
-
 const etapaChip = (key: string) => (key === 'entregado' ? CERRADO_SUAVE : NEUTRO)
 
 interface Sess {
@@ -31,6 +26,13 @@ interface Sess {
   nota?: string | null
   seller_name?: string | null
   seller_role?: string | null
+  // Lo que la línea de vida necesita para saber si a este pedido le tocan los
+  // pasos del courier y en cuál va. Sin esto el tablero cae al reloj interno.
+  dispatch_type?: string | null
+  agency_name?: string | null
+  advance_amount?: number | string | null
+  tracking_courier?: string | null
+  tracking_phase?: string | null
 }
 
 
@@ -77,6 +79,45 @@ export default function CRMPage() {
     </button>
   )
 
+  // Se agrupa UNA vez y las dos vistas (lista y kanban) leen el mismo mapa: si
+  // cada una filtrara por su cuenta volveríamos a poder mostrar dos verdades.
+  // `columnaDelPedido` garantiza que cada pedido caiga en exactamente una.
+  const vivos = sessions.filter(s => s.status !== 'cancelado')
+  const porColumna = new Map<string, Sess[]>()
+  const caidos: Sess[] = []
+  for (const s of vivos) {
+    const col = columnaDelPedido(s)
+    if (col === 'no_entregado') { caidos.push(s); continue }
+    const lista = porColumna.get(col)
+    if (lista) lista.push(s)
+    else porColumna.set(col, [s])
+  }
+  const cancelados = sessions.filter(s => s.status === 'cancelado')
+
+  // El kanban arrastra los dos grupos de cierre al final en vez de omitirlos:
+  // en la vista de columnas, "no aparece" y "no existe" se leen igual, y un
+  // pedido caído que nadie ve es justamente el que hay que recuperar. No están
+  // en `COLUMNAS` porque no son pasos del eje — los agrega esta vista.
+  const columnasKanban = [
+    ...COLUMNAS.map(c => ({ ...c, style: etapaChip(c.key), items: porColumna.get(c.key) ?? [] })),
+    ...(caidos.length ? [{ key: 'no_entregado', label: 'No entregados', emoji: '⚠️', style: ALERTA, items: caidos }] : []),
+    ...(cancelados.length ? [{ key: 'cancelado', label: 'Cancelados', emoji: '❌', style: ALERTA, items: cancelados }] : []),
+  ]
+
+  // Grupo de cierre: ni el fracaso ni la cancelación son un paso del eje, así
+  // que van aparte. Es un helper y no un componente a propósito — declarar un
+  // componente dentro del render le cambia la identidad en cada pintada.
+  const grupoDeCierre = (titulo: string, style: typeof ALERTA, items: Sess[]) =>
+    items.length === 0 ? null : (
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-black px-3 py-1 rounded-full" style={style}>{titulo}</span>
+          <span className="text-xs text-gray-400 font-semibold">{items.length}</span>
+        </div>
+        <div className="space-y-2">{items.map(s => <Card key={s.id} s={s} />)}</div>
+      </div>
+    )
+
   return (
     <div className="px-4 py-4">
       <div className="flex items-center justify-between mb-1">
@@ -94,13 +135,13 @@ export default function CRMPage() {
         </div>
       ) : view === 'lista' ? (
         <div className="space-y-5">
-          {ETAPAS.map(etapa => {
-            const items = sessions.filter(s => s.status !== 'cancelado' && s.stage === etapa.key)
+          {COLUMNAS.map(col => {
+            const items = porColumna.get(col.key) ?? []
             return (
-              <div key={etapa.key}>
+              <div key={col.key}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-black px-3 py-1 rounded-full" style={etapaChip(etapa.key)}>
-                    {etapa.emoji} {etapa.label}
+                  <span className="text-xs font-black px-3 py-1 rounded-full" style={etapaChip(col.key)}>
+                    {col.emoji} {col.label}
                   </span>
                   <span className="text-xs text-gray-400 font-semibold">{items.length}</span>
                 </div>
@@ -112,40 +153,26 @@ export default function CRMPage() {
               </div>
             )
           })}
-          {(() => {
-            const cancel = sessions.filter(s => s.status === 'cancelado')
-            if (cancel.length === 0) return null
-            return (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-black px-3 py-1 rounded-full" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>❌ Cancelados / notas</span>
-                  <span className="text-xs text-gray-400 font-semibold">{cancel.length}</span>
-                </div>
-                <div className="space-y-2">{cancel.map(s => <Card key={s.id} s={s} />)}</div>
-              </div>
-            )
-          })()}
+          {grupoDeCierre('⚠️ No entregados', ALERTA, caidos)}
+          {grupoDeCierre('❌ Cancelados / notas', ALERTA, cancelados)}
         </div>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-4">
-          {ETAPAS.map(etapa => {
-            const items = sessions.filter(s => s.status !== 'cancelado' && s.stage === etapa.key)
-            return (
-              <div key={etapa.key} className="flex-shrink-0 w-56">
-                <div className="text-[11px] font-black px-3 py-1.5 rounded-xl mb-2 text-center" style={etapaChip(etapa.key)}>
-                  {etapa.emoji} {etapa.label} ({items.length})
-                </div>
-                <div className="space-y-2">
-                  {items.map(s => <Card key={s.id} s={s} />)}
-                  {items.length === 0 && (
-                    <div className="bg-gray-50 rounded-xl p-4 text-center text-[10px] text-gray-300 flex flex-col items-center gap-1">
-                      <Package size={16} className="opacity-40" /> vacío
-                    </div>
-                  )}
-                </div>
+          {columnasKanban.map(col => (
+            <div key={col.key} className="flex-shrink-0 w-56">
+              <div className="text-[11px] font-black px-3 py-1.5 rounded-xl mb-2 text-center" style={col.style}>
+                {col.emoji} {col.label} ({col.items.length})
               </div>
-            )
-          })}
+              <div className="space-y-2">
+                {col.items.map(s => <Card key={s.id} s={s} />)}
+                {col.items.length === 0 && (
+                  <div className="bg-gray-50 rounded-xl p-4 text-center text-[10px] text-gray-300 flex flex-col items-center gap-1">
+                    <Package size={16} className="opacity-40" /> vacío
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

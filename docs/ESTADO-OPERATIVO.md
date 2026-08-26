@@ -129,16 +129,26 @@ tests de regresión en `order-tracking.test.ts` y `live-map.test.ts`.
 sigue pendiente el deploy de `get-store-sessions` de la nota de abajo: sin él el mapa carga
 vacío igual, porque no recibe los campos que dibuja.
 
-### El mapa de pedidos en vivo necesita un deploy (26-ago-2026)
+### En vivo y el CRM esperan el mismo deploy (26-ago-2026)
 
-`/vendedor/mapa` lee campos que `get-store-sessions` **todavía no devuelve en producción**:
-`product_id`, `dispatch_type`, `agency_name`, `agency_branch_id`, `address_lat/lng`,
-`advance_amount`, `payment_verification` y `tracking_*`. Hasta que se despliegue, la pantalla
-carga pero sale vacía — no rompe nada, simplemente no tiene qué dibujar:
+`get-store-sessions` **todavía no devuelve en producción** `product_id`, `dispatch_type`,
+`agency_name`, `agency_branch_id`, `address_lat/lng`, `advance_amount`,
+`payment_verification` ni `tracking_*`:
 
 ```bash
 supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
 ```
+
+Sin ese deploy, y sin romper nada:
+
+- **`/vendedor/mapa`** carga pero sale vacía: no tiene qué dibujar.
+- **El CRM y Stats** ya usan las columnas del courier, pero se quedan en la mitad de arriba
+  del eje: `registrado` y `en destino` salen vacías porque nadie reporta, y un pedido en
+  `validando` cae en la columna **"Pedido"** en vez de en "Validando" (la línea de vida no
+  incluye ese paso si no ve `advance_amount`). Ya no desaparece, que es lo que hacía antes;
+  simplemente todavía no se etiqueta bien.
+
+Con el deploy, las columnas del courier se llenan solas y `validando` cae donde debe.
 
 El otro requisito es de datos, no de código: un pedido solo aparece con su línea completa si
 su **producto tiene sede de origen** configurada (*Productos → editar → sede Shalom*). Sin

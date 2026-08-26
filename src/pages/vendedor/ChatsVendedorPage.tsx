@@ -4,7 +4,8 @@ import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { supabase } from '../../lib/supabase'
 import { useIsDesktop } from '../../lib/use-desktop'
-import { stageChip, stageLabel, NOTA_META } from '../../lib/order-chips'
+import { stageChip, NOTA_META } from '../../lib/order-chips'
+import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -24,9 +25,23 @@ interface SupabaseSession {
   nota?: string | null
   assigned_seller_id?: string | null
   writer_seller_ids?: string[] | null
+  // El chip de etapa sale de la misma línea de vida que el tablero del CRM.
+  dispatch_type?: string | null
+  agency_name?: string | null
+  advance_amount?: number | string | null
+  tracking_courier?: string | null
+  tracking_phase?: string | null
   chat_messages: { id: string; sender_role: string; type: string; body: string | null; created_at: string; read_at: string | null }[]
 }
 
+
+// La etiqueta de la etapa sale de `columnaDelPedido`, no del `stage` crudo: con
+// el chip leyendo el stage y el CRM leyendo la fase del courier, el mismo pedido
+// decía "En camino" acá y "En destino" allá.
+const ETIQUETA: Record<string, string> = {
+  ...Object.fromEntries(COLUMNAS.map(c => [c.key, c.label])),
+  no_entregado: 'No entregado',
+}
 
 // Un pedido de la semana pasada mostrando solo "07:08 p. m." se lee como si
 // fuera de hoy. Hora para lo de hoy, fecha corta para lo demás.
@@ -142,13 +157,21 @@ export default function ChatsVendedorPage() {
 
   // Pulso de la tienda (escritorio): lo que un vendedor mira antes de abrir un
   // chat — sobre TODO lo cargado, no sobre el filtro de búsqueda.
+  //
+  // Se cuenta por la MISMA columna que pinta el chip. Contando `stage` crudo,
+  // un pedido que Shalom ya reportó ENTREGADO pero que nadie marcó a mano salía
+  // con el chip en "Entregado" y fuera del contador "Entregados", en la misma
+  // pantalla y a dos centímetros de distancia.
+  const columnaDe = new Map(sessions.map(s => [s.id, columnaDelPedido(s)]))
+  const cuantos = (...cols: string[]) =>
+    sessions.filter(s => cols.includes(columnaDe.get(s.id) ?? '')).length
   const kpis = [
     { label: 'Pedidos', value: sessions.length, color: 'var(--text)' },
     { label: 'Sin leer', value: sessions.filter(s => unreadOf(s) > 0).length, color: 'var(--text)' },
-    { label: 'Nuevos', value: sessions.filter(s => s.stage === 'nuevo' || s.stage === 'validando').length, color: 'var(--text)' },
-    { label: 'En proceso', value: sessions.filter(s => ['confirmado', 'preparando', 'en_camino'].includes(s.stage)).length, color: 'var(--text)' },
+    { label: 'Nuevos', value: cuantos('nuevo', 'validando'), color: 'var(--text)' },
+    { label: 'En proceso', value: cuantos('confirmado', 'preparando', 'registrado', 'transito', 'en_agencia'), color: 'var(--text)' },
     // Lo entregado es lo único que cierra bien: el único lima de la tabla (§4.2)
-    { label: 'Entregados', value: sessions.filter(s => s.stage === 'entregado').length, color: 'var(--ok-fg)' },
+    { label: 'Entregados', value: cuantos('entregado'), color: 'var(--ok-fg)' },
   ]
 
   const open = (token: string) => navigate(`/vendedor/pedido/${token}`)
@@ -166,11 +189,14 @@ export default function ChatsVendedorPage() {
     </div>
   )
 
-  const StageChip = ({ stage }: { stage: string }) => (
-    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={stageChip(stage)}>
-      {stageLabel[stage] || stage}
-    </span>
-  )
+  const StageChip = ({ session }: { session: SupabaseSession }) => {
+    const col = columnaDelPedido(session)
+    return (
+      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={stageChip(col)}>
+        {ETIQUETA[col] || col}
+      </span>
+    )
+  }
 
   const spinner = (
     <div className="flex justify-center py-12">
@@ -252,7 +278,7 @@ export default function ChatsVendedorPage() {
               <p className="text-xs text-gray-500 truncate">{r.pedido}</p>
 
               <div className="flex items-center gap-1 min-w-0">
-                <StageChip stage={r.session.stage} />
+                <StageChip session={r.session} />
                 {r.nota && (
                   <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full whitespace-nowrap" style={r.nota.style}>
                     {r.nota.label}
@@ -318,7 +344,7 @@ export default function ChatsVendedorPage() {
                         {r.nota.label}
                       </span>
                     )}
-                    <StageChip stage={r.session.stage} />
+                    <StageChip session={r.session} />
                   </div>
                 </div>
                 <p className="text-[11px] text-gray-400 truncate">

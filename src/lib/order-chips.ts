@@ -29,12 +29,6 @@ export function stageBar(stage: string): string {
   return stage === 'entregado' ? 'var(--ok-fg)' : 'var(--structural, #3D444C)'
 }
 
-export const stageLabel: Record<string, string> = {
-  nuevo: 'Nuevo', validando: 'Validando', confirmado: 'Confirmado',
-  preparando: 'Preparando', en_camino: 'En camino', entregado: 'Entregado',
-  no_entregado: 'No entregado',
-}
-
 /** Las notas que pone el equipo sobre un pedido, con la misma regla. */
 export const NOTA_META: Record<string, { label: string; style: CSSProperties }> = {
   no_contesta: { label: 'No contesta', style: NEUTRO },
