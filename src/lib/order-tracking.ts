@@ -1,5 +1,6 @@
 import { toStage } from './order-stages'
 import type { OrderStage } from './order-stages'
+import { isPickupDispatch } from './session'
 
 // ─── La línea de vida de un pedido ───────────────────────────────────────────
 //
@@ -23,7 +24,7 @@ import type { OrderStage } from './order-stages'
 
 export type PasoKey =
   | 'nuevo' | 'validando' | 'confirmado' | 'preparando'
-  | 'registrado' | 'transito' | 'en_agencia'   // solo envíos por agencia
+  | 'registrado' | 'en_origen' | 'transito' | 'en_agencia'   // solo envíos por agencia
   | 'en_camino'                                 // solo domicilio
   | 'entregado' | 'no_entregado'
 
@@ -43,13 +44,10 @@ export interface PedidoRastreable {
   agency_name?: string | null
   advance_amount?: number | string | null
   tracking_courier?: string | null
+  /** Hay guía emitida. Es el tercer reloj: ni el equipo ni el courier, un
+   *  hecho nuestro con fecha propia. Marca el paso `registrado`. */
+  tracking_numero?: string | null
   tracking_phase?: string | null
-}
-
-const ES_AGENCIA = ['AGENCIA_PROVINCIA', 'AGENCIA', 'RECOJO_AGENCIA']
-
-export function esEnvioPorAgencia(dispatchType?: string | null): boolean {
-  return ES_AGENCIA.includes(String(dispatchType ?? '').toUpperCase())
 }
 
 /** El courier que mueve este pedido, si es uno de los que sabemos rastrear. */
@@ -69,14 +67,14 @@ const NOMBRE_COURIER: Record<string, string> = { SHALOM: 'Shalom', OLVA: 'Olva' 
  */
 export function pasosDelPedido(p: PedidoRastreable): Paso[] {
   const stage = toStage(p.stage)
-  const porAgencia = esEnvioPorAgencia(p.dispatch_type)
+  const porAgencia = isPickupDispatch(p.dispatch_type)
   const courier = courierDelPedido(p)
   const conAdelanto = Number(p.advance_amount ?? 0) > 0
 
   const claves: PasoKey[] = ['nuevo']
   if (conAdelanto) claves.push('validando')
   claves.push('confirmado', 'preparando')
-  if (porAgencia) claves.push('registrado', 'transito', 'en_agencia')
+  if (porAgencia) claves.push('registrado', 'en_origen', 'transito', 'en_agencia')
   else claves.push('en_camino')
   claves.push('entregado')
 
@@ -84,6 +82,7 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
     nuevo: 'Pedido', validando: 'Validando pago', confirmado: 'Confirmado',
     preparando: 'Preparando',
     registrado: courier ? `Registrado en ${NOMBRE_COURIER[courier]}` : 'Registrado',
+    en_origen: courier ? `En agencia de ${NOMBRE_COURIER[courier]}` : 'En agencia de origen',
     transito: 'En tránsito', en_agencia: 'En agencia de destino',
     en_camino: 'En camino', entregado: 'Entregado', no_entregado: 'No entregado',
   }
@@ -97,7 +96,11 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
     ]
   }
 
-  const actual = Math.max(indicePorStage(stage, claves), indicePorFase(p.tracking_phase, claves))
+  const actual = Math.max(
+    indicePorStage(stage, claves),
+    indicePorFase(p.tracking_phase, claves),
+    indicePorGuia(p.tracking_numero, claves),
+  )
 
   return claves.map((key, i) => paso(
     key,
@@ -107,6 +110,55 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
 }
 
 const paso = (key: PasoKey, label: string, estado: Paso['estado']): Paso => ({ key, label, estado })
+
+// ─── El tablero: el mismo eje, en columnas ───────────────────────────────────
+//
+// El CRM y las estadísticas llevaban cada uno su propia lista de etapas, copiada
+// del `stage` crudo. Dos costos:
+//
+//  1. El tablero hablaba el idioma del pipeline de ventas (`en_camino`) mientras
+//     el courier reportaba el suyo (`EN_TRANSITO`), así que el mismo pedido
+//     salía en un paso distinto según la pantalla.
+//  2. Un pedido cuyo `stage` no estaba en la lista **desaparecía del tablero**:
+//     el filtro era `stage === columna.key` y nadie recogía lo que sobraba.
+//     `validando` —que `register-buyer` escribe en TODO pedido con adelanto— y
+//     `no_entregado` no estaban en la lista. Se caían sin dejar rastro.
+//
+// Acá la columna se deriva de `pasosDelPedido`, que siempre devuelve exactamente
+// un paso activo: por construcción, todo pedido cae en una columna y solo una.
+
+/** Las columnas del tablero, en orden. Es el eje canónico del pedido. */
+export const COLUMNAS: { key: PasoKey; label: string; emoji: string }[] = [
+  { key: 'nuevo',      label: 'Pedido',      emoji: '📋' },
+  { key: 'validando',  label: 'Validando',   emoji: '🔎' },
+  { key: 'confirmado', label: 'Confirmado',  emoji: '📞' },
+  { key: 'preparando', label: 'Preparando',  emoji: '📦' },
+  // `registrado` es nuestro: hay guía. De `en origen` para abajo manda el
+  // courier. El salto entre esos dos es el paquete saliendo del almacén, y es
+  // el que más plata cuesta cuando no ocurre.
+  { key: 'registrado', label: 'Registrado',  emoji: '🧾' },
+  { key: 'en_origen',  label: 'En origen',   emoji: '🏬' },
+  { key: 'transito',   label: 'En tránsito', emoji: '🚚' },
+  { key: 'en_agencia', label: 'En destino',  emoji: '📍' },
+  { key: 'entregado',  label: 'Entregado',   emoji: '✅' },
+]
+
+/**
+ * En qué columna del tablero está este pedido.
+ *
+ * `en_camino` (domicilio) y `transito` (agencia) son la misma casilla —"el
+ * paquete va en camino"— y comparten columna: el tablero mezcla los dos tipos
+ * de envío y una columna por cada uno los partiría en dos sin motivo.
+ *
+ * `no_entregado` sale acá también, pero NO está en `COLUMNAS`: es el cierre de
+ * fracaso y va en su propio grupo, igual que los cancelados. Un tablero donde
+ * la derrota es una columna más invita a arrastrar pedidos hacia ella.
+ */
+export function columnaDelPedido(p: PedidoRastreable): PasoKey {
+  const key = pasoActual(p)?.key ?? 'nuevo'
+  return key === 'en_camino' ? 'transito' : key
+}
+
 
 /** Dónde deja la línea el reloj interno del equipo. */
 function indicePorStage(stage: OrderStage, claves: PasoKey[]): number {
@@ -124,7 +176,7 @@ function indicePorStage(stage: OrderStage, claves: PasoKey[]): number {
 /** Dónde deja la línea el reloj del courier. */
 function indicePorFase(fase: string | null | undefined, claves: PasoKey[]): number {
   const equivalente: Record<string, PasoKey> = {
-    EN_ORIGEN: 'registrado', EN_TRANSITO: 'transito',
+    EN_ORIGEN: 'en_origen', EN_TRANSITO: 'transito',
     EN_DESTINO: 'en_agencia', ENTREGADO: 'entregado',
   }
   const key = equivalente[String(fase ?? '').toUpperCase()]
@@ -132,7 +184,55 @@ function indicePorFase(fase: string | null | undefined, claves: PasoKey[]): numb
   return i >= 0 ? i : -1
 }
 
+/**
+ * Dónde deja la línea el hecho de que exista la guía.
+ *
+ * Es su propio reloj porque no lo mueve ni el equipo ni el courier: la guía se
+ * emite y desde ese instante el pedido está `registrado`, aunque nadie haya
+ * marcado nada y el courier todavía no reporte. Sin esto, un pedido con guía y
+ * sin reporte se quedaba en `preparando` — indistinguible de uno que ni
+ * siquiera se ha empacado.
+ */
+function indicePorGuia(numero: string | null | undefined, claves: PasoKey[]): number {
+  if (!numero) return -1
+  return claves.indexOf('registrado')
+}
+
 /** El paso activo, para titular sin recorrer la lista afuera. */
 export function pasoActual(p: PedidoRastreable): Paso | undefined {
   return pasosDelPedido(p).find(x => x.estado === 'activo')
+}
+
+// ─── Cuánto lleva parado ─────────────────────────────────────────────────────
+//
+// Con las columnas en el idioma del courier, el número que importa deja de ser
+// *cuántos hay* y pasa a ser *cuánto llevan ahí*: un pedido en `registrado` dos
+// días es un paquete que nunca salió del almacén; uno en `en destino` cinco días
+// es plata parada esperando que el cliente recoja. Los dos se ven igual en un
+// conteo y son problemas distintos.
+
+export interface Antiguedad {
+  dias: number
+  /** `true` = medido desde que entró a ESTA fase (`tracking_phase_at`).
+   *  `false` = solo sabemos la edad del pedido. La pantalla no debe afirmar
+   *  "lleva 3 días en esta columna" cuando lo que sabe es otra cosa. */
+  exacta: boolean
+  /** Alerta de demora del courier. NO es una fase: convive con cualquiera. */
+  demorado: boolean
+}
+
+export function antiguedad(
+  p: { created_at?: string | null; tracking_phase_at?: string | null; tracking_demora_at?: string | null },
+  ahora: number,
+): Antiguedad | null {
+  const exacta = !!p.tracking_phase_at
+  const desde = p.tracking_phase_at ?? p.created_at
+  if (!desde) return null
+  const t = Date.parse(desde)
+  if (Number.isNaN(t)) return null
+  return {
+    dias: Math.max(0, Math.floor((ahora - t) / 86400_000)),
+    exacta,
+    demorado: !!p.tracking_demora_at,
+  }
 }

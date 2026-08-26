@@ -647,7 +647,9 @@ vendedor que la guía no existe cuando lo caído es Olva arma un reclamo falso.
   existe cuenta del cliente en Olva. En rojo muestra el plan B manual.
 - **`derivePhase()`** — mapea los TEXTOS de los eventos a la fase canónica
   (`EN_ORIGEN → EN_TRANSITO → EN_DESTINO → ENTREGADO`); gana la más avanzada,
-  sin asumir orden ni forma. A diferencia de Shalom (hitos explícitos,
+  sin asumir orden ni forma. Un texto que solo diga `REGISTRAD` **no** cuenta
+  como `EN_ORIGEN`, igual que en Shalom: registrar la guía no es haberla
+  entregado. A diferencia de Shalom (hitos explícitos,
   deterministas), Olva da textos. ⚠️ **Heurística provisional**: el proveedor
   elide los `details` en su doc y no hubo guía real que mirar. La cascada ya
   está VIVA sobre ella — vigilar las primeras guías Olva de cerca y calibrar
@@ -707,6 +709,13 @@ esa latencia y no obliga a custodiar un password de terceros.
   puerta) y `destino` (en agencia) son ambos `EN_DESTINO`. **`demora` no es una
   fase**: es una alerta que convive con cualquiera y se expone aparte. Nada que
   calibrar con guías vivas — el contraste que Olva sí necesita.
+- **`registrado` tampoco es una fase** (26-ago-2026). El hito existe y se
+  ignora a propósito: que la guía esté emitida no dice nada sobre dónde está el
+  paquete, que puede seguir en nuestro almacén. Mapearlo a `EN_ORIGEN` —como se
+  hacía— borraba el hueco entre *"emití la guía"* y *"la dejé en la agencia"*,
+  que es donde se pierde la plata en contraentrega. Sin fase, el pedido espera
+  en la columna **Registrado** del tablero (la abre `tracking_numero`, no el
+  courier) hasta que llegue `origen`. Ver [`11-RELACIONES.md`](./11-RELACIONES.md).
 
 ### El ciclo: registrar → barrer → reflejar → cobrar ✅
 

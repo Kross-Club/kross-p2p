@@ -39,6 +39,8 @@ describe('fase canónica del envío', () => {
   it('lee cualquier campo string del evento, con o sin tildes', () => {
     expect(derivePhase([{ descripcion: 'En tránsito hacia Arequipa' }])).toBe('EN_TRANSITO')
     expect(derivePhase([{ x: 'ADMITIDO', otra: 42 }])).toBe('EN_ORIGEN')
+    // Igual que en Shalom: registrar la guía no es haberla entregado.
+    expect(derivePhase([{ x: 'ENVIO REGISTRADO' }])).toBe(null)
   })
 
   it('sin calce devuelve null, nunca inventa fase', () => {

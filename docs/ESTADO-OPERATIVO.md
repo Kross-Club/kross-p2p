@@ -108,16 +108,67 @@ llamadas y facturas". **La facturación todavía no existe en el producto**: va 
 está por construirse. La promesa entró antes que la función a propósito; si el plan cambia,
 la línea vive en `src/components/AuthShell.tsx`.
 
-### El mapa de pedidos en vivo necesita un deploy (26-ago-2026)
+### Los recojos en Lima ya entran a En vivo ✅ (26-ago-2026)
 
-`/vendedor/mapa` lee campos que `get-store-sessions` **todavía no devuelve en producción**:
-`product_id`, `dispatch_type`, `agency_name`, `agency_branch_id`, `address_lat/lng`,
-`advance_amount`, `payment_verification` y `tracking_*`. Hasta que se despliegue, la pantalla
-carga pero sale vacía — no rompe nada, simplemente no tiene qué dibujar:
+Había **dos definiciones de "es recojo"** y una no conocía `AGENCIA_LIMA` — el valor que
+escribe el checkout para un recojo en agencia de Lima, que es lo único que vende Kross Shop
+hoy con el domicilio apagado. Tres efectos, los tres silenciosos:
+
+- El pedido recibía la línea de vida de **domicilio** (`… preparando → en camino → entregado`)
+  en vez de la del courier, así que las fases de Shalom no se mostraban — ni al vendedor ni al
+  comprador (`OrderTrackingMap`).
+- `vaEnElMapa()` devolvía `false` → el pedido **nunca entraba a `/vendedor/mapa`**.
+- Peor: con Shalom reportando `EN_TRANSITO`, el paso activo se quedaba en `preparando`. **El
+  reporte del courier se descartaba.**
+
+Corregido: `isPickupDispatch()` en `src/lib/session.ts` es la única definición, normaliza
+mayúsculas y tolera los valores heredados; `esEnvioPorAgencia()` se eliminó. Cubierto por
+tests de regresión en `order-tracking.test.ts` y `live-map.test.ts`.
+
+**No requiere deploy de Edge Functions** — es solo frontend, sale con el próximo build. Sí
+sigue pendiente el deploy de `get-store-sessions` de la nota de abajo: sin él el mapa carga
+vacío igual, porque no recibe los campos que dibuja.
+
+### En vivo y el CRM esperan el mismo deploy (26-ago-2026)
+
+`get-store-sessions` **todavía no devuelve en producción** `product_id`, `dispatch_type`,
+`agency_name`, `agency_branch_id`, `address_lat/lng`, `advance_amount`,
+`payment_verification` ni `tracking_*`:
 
 ```bash
-supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+REF=ofdjghntvmrdfjhazfvz
+supabase functions deploy get-store-sessions --project-ref $REF
 ```
+
+Y el 26-ago-2026 se le sumó otro grupo: **`registrado` dejó de mapearse a `EN_ORIGEN`** en el
+mapeo de hitos de los dos couriers (ver [`11-RELACIONES.md`](./11-RELACIONES.md)). Ese mapeo
+vive en `_shared/`, que se **empaqueta dentro de cada función**, así que hay que redesplegar
+todas las que lo importan:
+
+```bash
+for f in shalom-tracking-sync shalom-order olva-tracking olva-tracking-sync manage-store; do
+  supabase functions deploy $f --project-ref $REF
+done
+supabase functions deploy shalom-webhook --project-ref $REF --no-verify-jwt
+```
+
+Hasta ese deploy, el backend sigue marcando `EN_ORIGEN` en cuanto Shalom registra la guía: el
+frontend ya distingue las dos columnas, pero el dato que le llega no. **Nada se rompe** — es
+la conducta de antes.
+
+Sin el deploy de `get-store-sessions`, y sin romper nada:
+
+- **`/vendedor/mapa`** carga pero sale vacía: no tiene qué dibujar.
+- **El CRM y Stats** ya usan las columnas del courier, pero se quedan en la mitad de arriba
+  del eje: `registrado`, `en origen` y `en destino` salen vacías porque no llegan ni la guía
+  ni las fases, y un pedido en `validando` cae en la columna **"Pedido"** en vez de en
+  "Validando" (la línea de vida no incluye ese paso si no ve `advance_amount`). Ya no
+  desaparece, que es lo que hacía antes; simplemente todavía no se etiqueta bien.
+- **El chip de antigüedad del CRM** sale con `~` en todos los pedidos: sin `tracking_phase_at`
+  solo puede medir desde `created_at`, y lo dice en vez de fingir precisión. La alerta de
+  demora (⚠️ rojo) no aparece hasta que llegue `tracking_demora_at`.
+
+Con el deploy, las columnas del courier se llenan solas y `validando` cae donde debe.
 
 El otro requisito es de datos, no de código: un pedido solo aparece con su línea completa si
 su **producto tiene sede de origen** configurada (*Productos → editar → sede Shalom*). Sin

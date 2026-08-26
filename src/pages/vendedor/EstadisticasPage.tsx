@@ -2,17 +2,10 @@ import { useEffect, useState } from 'react'
 import { BarChart2, Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { NOTA_META, stageBar } from '../../lib/order-chips'
+import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-const STAGES = [
-  { key: 'nuevo', label: 'Pedido', emoji: '📋' },
-  { key: 'confirmado', label: 'Confirmado', emoji: '📞' },
-  { key: 'preparando', label: 'Preparando', emoji: '📦' },
-  { key: 'en_camino', label: 'En camino', emoji: '🚚' },
-  { key: 'entregado', label: 'Entregado', emoji: '✅' },
-]
 
 function roleColor(role: string) {
   const r = (role ?? '').toLowerCase()
@@ -31,7 +24,15 @@ function roleCat(role: string) {
   return 'Otro'
 }
 
-interface Sess { id: string; stage: string; status?: string; nota?: string | null; assigned_seller_id: string | null; seller_name?: string | null; seller_role?: string | null }
+interface Sess {
+  id: string; stage: string; status?: string; nota?: string | null
+  assigned_seller_id: string | null; seller_name?: string | null; seller_role?: string | null
+  // Igual que en el CRM: sin esto el conteo cae al reloj interno del equipo y
+  // "Por estado" deja de contar lo que el courier reporta.
+  dispatch_type?: string | null; agency_name?: string | null
+  advance_amount?: number | string | null
+  tracking_courier?: string | null; tracking_phase?: string | null
+}
 
 
 export default function EstadisticasPage() {
@@ -58,8 +59,15 @@ export default function EstadisticasPage() {
 
   const active = sessions.filter(s => s.status !== 'cancelado')
   const total = active.length
-  const byStage = STAGES.map(s => ({ ...s, count: active.filter(x => x.stage === s.key).length }))
-  const maxStage = Math.max(1, ...byStage.map(s => s.count))
+  // Mismas columnas que el tablero del CRM, mismo `columnaDelPedido`: si acá se
+  // contara por `stage` crudo, Stats y CRM darían números distintos del mismo
+  // día. `no_entregado` se cuenta aparte porque no es un paso del eje.
+  const columnaDe = new Map(active.map(s => [s.id, columnaDelPedido(s)]))
+  const byStage = COLUMNAS.map(c => ({
+    ...c, count: active.filter(x => columnaDe.get(x.id) === c.key).length,
+  }))
+  const caidos = active.filter(x => columnaDe.get(x.id) === 'no_entregado').length
+  const maxStage = Math.max(1, ...byStage.map(s => s.count), caidos)
 
   // Notas breakdown (across active + cancelled)
   const notaMap: Record<string, number> = {}
@@ -99,6 +107,17 @@ export default function EstadisticasPage() {
             </div>
           </div>
         ))}
+        {caidos > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs w-24 flex-shrink-0" style={{ color: 'var(--danger-fg)' }}>⚠️ No entregado</span>
+            <div className="flex-1 h-5 rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-full rounded-full flex items-center justify-end px-2"
+                style={{ width: `${(caidos / maxStage) * 100}%`, background: 'var(--danger-fg)', minWidth: 24 }}>
+                <span className="text-[10px] font-black text-white">{caidos}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {notaKeys.length > 0 && (

@@ -41,6 +41,14 @@ describe('mapa de pedidos en vivo', () => {
     expect(vaEnElMapa({ dispatch_type: 'AGENCIA_PROVINCIA', stage: 'no_entregado' })).toBe(false)
   })
 
+  // El recojo en agencia de LIMA es un recojo. Quedaba fuera del mapa porque
+  // "es agencia" estaba definido dos veces y una de las dos no lo conocía —
+  // justo el caso que vende hoy Kross Shop, con domicilio apagado.
+  it('el recojo en agencia de Lima también entra al mapa', () => {
+    expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'preparando' })).toBe(true)
+    expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'no_entregado' })).toBe(false)
+  })
+
   // Sin corregir por el coseno de la latitud, el Perú sale gordo.
   it('la proyección corrige la longitud por la latitud', () => {
     const caja = { minLng: -81.6, maxLng: -68.5, minLat: -18.6, maxLat: -3.2 }

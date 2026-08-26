@@ -873,6 +873,9 @@ GRANT EXECUTE ON FUNCTION public.shalom_api_key() TO service_role;
 --   Olva: numero (típicamente 8 dígitos) + tracking_year (año de emisión, YY):
 --   su API rastrea por numero+año, sin código.
 --   tracking_phase: EN_ORIGEN | EN_TRANSITO | EN_DESTINO | ENTREGADO.
+--     NULL con guía escrita = REGISTRADO: la guía existe y el courier todavía
+--     no la reporta, o sea el paquete sigue en el almacén. No es un valor de
+--     la columna a propósito — es la ausencia de reporte.
 --   tracking_demora_at: alerta de demora del courier — NO es una fase.
 --   Sin CHECK a propósito, como stage/dispatch_type: la lista blanca vive en
 --   el código que escribe (order-manage / shalom-tracking-sync).
