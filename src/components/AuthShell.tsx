@@ -67,24 +67,61 @@ export default function AuthShell({ subtitle, children }: { subtitle: string; ch
   )
 }
 
-/** Grilla de módulos del símbolo: unos pocos encendidos y una junta en lima. */
+/**
+ * El fondo del acceso: la grilla de módulos donde la K se arma sola, en bucle.
+ *
+ * No es un adorno genérico — es el símbolo del manual dibujado sobre la misma
+ * grilla de 5×5 que lo define: primero el astil, luego los brazos, y al final
+ * la junta en lima, que es la que cierra la letra. Alrededor, unos pocos
+ * módulos respiran para que la grilla no se vea muerta.
+ *
+ * Las animaciones viven en index.css; acá solo se decide qué celda es qué y
+ * en qué momento le toca.
+ */
 function ModuleGrid() {
   const COLS = 12
   const ROWS = 9
-  // Unos pocos módulos encendidos, sin dibujar nada: la grilla del símbolo
-  // respirando. La junta es una sola, como en el logo.
-  const llenos = new Set([14, 15, 26, 31, 38, 39, 55, 56, 68, 74, 75, 87, 88, 99])
-  const junta = 43                                      // el único en lima
+  const idx = (col: number, row: number) => row * COLS + col
+
+  // Esquina donde arranca el símbolo dentro de la grilla grande. Una fila más
+  // arriba del centro para que el pie del astil no caiga bajo el velo del
+  // titular.
+  const C = 4
+  const R = 1
+
+  // El mismo mapa del logo (§3.1), en orden de encendido: el astil de arriba
+  // hacia abajo y después los dos brazos.
+  const ASTIL = [0, 1, 2, 3, 4].map(r => idx(C, R + r))
+  const BRAZOS = [idx(C + 3, R), idx(C + 2, R + 1), idx(C + 2, R + 3), idx(C + 3, R + 4)]
+  const ORDEN = [...ASTIL, ...BRAZOS]
+  const JUNTA = idx(C + 1, R + 2)
+
+  const AMBIENTE = [14, 20, 26, 58, 71, 84, 93, 100, 105]
 
   return (
     <div className="absolute inset-0 grid" aria-hidden
       style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)`, gridTemplateRows: `repeat(${ROWS}, 1fr)` }}>
-      {Array.from({ length: COLS * ROWS }, (_, i) => (
-        <div key={i} style={{
-          border: '0.5px solid var(--border)',
-          background: i === junta ? 'var(--k-lime)' : llenos.has(i) ? 'var(--surface)' : 'transparent',
-        }} />
-      ))}
+      {Array.from({ length: COLS * ROWS }, (_, i) => {
+        const turno = ORDEN.indexOf(i)
+        const ambiente = AMBIENTE.indexOf(i)
+        const esJunta = i === JUNTA
+
+        const clase = esJunta ? 'k-cell k-joint'
+          : turno >= 0 ? 'k-cell k-mod'
+          : ambiente >= 0 ? 'k-cell k-amb'
+          : 'k-cell'
+
+        const retraso = esJunta ? 0.9 + ORDEN.length * 0.22
+          : turno >= 0 ? 0.9 + turno * 0.22
+          : ambiente >= 0 ? ambiente * 0.8
+          : null
+
+        return (
+          <div key={i} className={clase}>
+            {retraso !== null && <span className="k-fill" style={{ animationDelay: `${retraso}s` }} />}
+          </div>
+        )
+      })}
     </div>
   )
 }

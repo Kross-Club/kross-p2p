@@ -299,7 +299,7 @@ y no se toca. Por eso `--brand` es derivado y nadie lo escribe a mano:
 
 | Regla del manual | Dónde vive |
 |---|---|
-| §3 Símbolo, variantes y lockup | `src/components/KrossLogo.tsx` (`KrossIcon`, `KrossLockup`) |
+| §3 Símbolo, variantes y lockup | **Archivos de diseño en `public/`**: `logo-kross.svg` (lockup) y `simbolo-kross.svg` (solo el símbolo). Para fondo claro, `logo-kross-claro.svg` y `simbolo-kross-claro.svg`. Los pide `src/components/KrossLogo.tsx`; si un archivo no está, dibuja la versión de respaldo con los tokens |
 | §3.6 Bajo 32 px va la simplificada | El propio `KrossIcon`: apaga la junta solo, no hay que acordarse |
 | Firma del panel (marca operada) | `src/components/BrandMark.tsx` |
 | §4 Paleta | `src/index.css`, tokens `--k-*`; los componentes usan los semánticos (`--surface`, `--text`, `--border`, `--ok-*`…) |
@@ -307,6 +307,7 @@ y no se toca. Por eso `--brand` es derivado y nadie lo escribe a mano:
 | §5 Tipografía | Inter y los dos pesos, en `index.css` bajo `[data-theme]`. Las clases `font-black`/`font-bold` heredadas se remapean a 500 en vez de reescribir cientos de `className` |
 | §6 Radios y bordes | Mismo sitio: remapeo de `rounded-*` a 6/8/12 y de los bordes a 0.5 px |
 | §6 Indicador de nav activa | Barra lima de 6×14 en `SideNav` (y tumbada, 14×6, en `BottomNav`) |
+| El símbolo como sistema | El fondo del acceso arma la K sobre la grilla de módulos, en bucle: `ModuleGrid` en `AuthShell.tsx` decide qué celda es qué, las animaciones están en `index.css` (`k-build`, `k-joint`, `k-amb`). Solo escritorio, solo opacidad y escala, sin JS ni imágenes; con `prefers-reduced-motion` la letra se queda quieta |
 | §6.1 Estados | `src/lib/order-chips.ts` — un solo lugar para Chats, CRM, Stats y el detalle del pedido |
 | Tema | `src/lib/theme.ts`: oscuro por defecto (§4 describe una interfaz oscura); el claro es la variante clara de §3.3 |
 | Iconos | `public/favicon.svg` (simplificada), `icon-192/512.png`, `icon-maskable-512.png` (símbolo al 60%), servidos por `api/manifest.js` |

@@ -225,6 +225,52 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   El fondo del acceso: la K armándose sobre la grilla de módulos.
+   Solo escritorio — el panel que la contiene no existe bajo 1024 px.
+   Todo es opacidad y escala sobre una decena de divs: lo mueve el compositor,
+   no repinta nada, y no suma un byte de JS ni de imagen.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.k-cell { position: relative; border: 0.5px solid var(--border); }
+.k-fill { position: absolute; inset: 0; opacity: 0; will-change: opacity; }
+
+.k-amb .k-fill   { background: var(--surface); animation: k-amb 9s ease-in-out infinite; }
+/* La K va un tono más arriba que el ambiente: tiene que LEERSE como letra,
+   no adivinarse. */
+.k-mod .k-fill   { background: var(--k-surface-2); animation: k-build 12s ease-in-out infinite; }
+.k-joint .k-fill { background: var(--k-lime); animation: k-joint 12s ease-in-out infinite; }
+
+/* Los módulos que no son la K solo respiran: dan textura sin contar nada. */
+@keyframes k-amb {
+  0%, 100% { opacity: 0.10; }
+  50%      { opacity: 0.42; }
+}
+
+/* Cada módulo de la K entra en su turno (el desfase lo pone el componente),
+   se queda mientras la letra está armada, y se va. */
+@keyframes k-build {
+  0%        { opacity: 0; }
+  6%        { opacity: 1; }
+  62%       { opacity: 1; }
+  74%, 100% { opacity: 0; }
+}
+
+/* La junta llega al final y con un golpe: es el módulo que cierra la letra. */
+@keyframes k-joint {
+  0%   { opacity: 0; transform: scale(0.55); }
+  5%   { opacity: 1; transform: scale(1.08); }
+  9%   { transform: scale(1); }
+  62%  { opacity: 1; }
+  74%  { opacity: 0; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.55); }
+}
+
+/* Quien pidió menos movimiento ve la letra armada, quieta. */
+@media (prefers-reduced-motion: reduce) {
+  .k-fill { animation: none !important; opacity: 1; transform: none; }
+  .k-amb .k-fill { opacity: 0.25; }
+}
+
 /* Impresión. La Hoja de Reclamación es una constancia legal y el consumidor
    tiene derecho a quedarse con ella: al imprimir (o "guardar como PDF") queda
    solo el documento, sin menú, sin pie ni botones. */

@@ -1,15 +1,41 @@
-// Símbolo y lockup de Kross — manual de marca v2.0, §3.
+import { useState } from 'react'
+
+// Marca gráfica de Kross — manual §3.
 //
-// La K se construye sobre una grilla de 5×5 módulos; el símbolo mide 4M × 5M
-// (viewBox 112×140, módulo = 28). La junta —columna 2, fila 3— es el ÚNICO
-// módulo en color: marca el punto donde se cruzan el brazo del pago y el brazo
-// de la entrega. No decora, señala. Por eso no se colorea ningún otro módulo.
+// El logo REAL es un archivo de diseño, no código:
 //
-// Los colores salen de tokens (`--k-module` / `--k-joint`, en index.css) para
-// que el mismo componente sirva en fondo oscuro (hueso + lima) y en fondo claro
-// (ink + lima oscuro): el lima brillante desaparece sobre blanco.
+//   public/logo-kross.svg      → el lockup (símbolo + KROSS + bajada)
+//   public/simbolo-kross.svg   → solo el símbolo (opcional)
+//
+// Sobre fondo claro el hueso desaparece, así que si existen estas variantes se
+// usan ahí:
+//
+//   public/logo-kross-claro.svg
+//   public/simbolo-kross-claro.svg
+//
+// Si un archivo no está, se dibuja la versión de respaldo que hay más abajo:
+// la misma K de 5×5 módulos del manual, con los colores tomados de los tokens.
+// Así la app nunca muestra un logo roto — pero el que manda es el archivo.
 
 const M = 28
+
+/** ¿Estamos sobre una superficie oscura? Lo dice el tema aplicado al documento. */
+function enOscuro() {
+  return typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark'
+}
+
+/**
+ * Elige el archivo según la superficie; `null` = no está, hay que dibujar.
+ *
+ * Se recuerda QUÉ ruta falló, no un simple "falló": el tema puede resolverse
+ * después del primer render (usePanelTheme lo aplica en un efecto), y si al
+ * cambiar de superficie cambia el archivo, hay que volver a intentarlo.
+ */
+function useArchivo(base: string): { src: string | null; fallar: () => void } {
+  const [fallado, setFallado] = useState<string | null>(null)
+  const src = enOscuro() ? `/${base}.svg` : `/${base}-claro.svg`
+  return { src: fallado === src ? null : src, fallar: () => setFallado(src) }
+}
 
 export function KrossIcon({
   size = 40,
@@ -20,15 +46,21 @@ export function KrossIcon({
 }: {
   /** Alto del símbolo en px. El ancho sale solo: 4M × 5M. */
   size?: number
-  /** Forzar/quitar la junta. Por defecto se apaga bajo 32 px (§3.6). */
+  /** Solo aplica al respaldo dibujado: por defecto la junta se apaga bajo 32 px (§3.6). */
   joint?: boolean
-  /** Color de los módulos. Una sola tinta: pásalo y pon `joint={false}`. */
   module?: string
   jointColor?: string
   className?: string
 }) {
+  const { src, fallar } = useArchivo('simbolo-kross')
+
+  if (src) {
+    return <img src={src} alt="Kross" onError={fallar} className={className}
+      style={{ height: size, width: 'auto', display: 'block' }} />
+  }
+
+  // ── Respaldo dibujado (manual §3.1) ──
   // §3.6: bajo 32 px la junta mide menos de 3 px y se lee como suciedad.
-  // La versión simplificada no es una excepción que se pide: es el default.
   const conJunta = joint ?? size >= 32
 
   return (
@@ -53,11 +85,10 @@ export function KrossIcon({
 }
 
 /**
- * La bajada del lockup. Nunca va sola ni bajo 11 px (§3.4).
+ * La bajada del respaldo dibujado. Nunca va sola ni bajo 11 px (§3.4).
  *
  * OJO: el manual escrito dice "VENDE, COBRA Y DESPACHA", pero el archivo de
- * marca que se está usando trae esta otra. Manda el archivo hasta que se
- * decida cuál es la definitiva; está anotado en §10.1 del manual.
+ * marca trae esta otra. Manda el archivo; está anotado en §10.1 del manual.
  */
 const BAJADA = 'LA TECNOLOGÍA DE TU TIENDA'
 
@@ -68,13 +99,21 @@ export function KrossLockup({
   jointColor,
   className,
 }: {
-  /** Alto del símbolo en px; el resto del lockup se deriva de su módulo. */
+  /** Alto del lockup en px (del archivo, o del símbolo en el respaldo). */
   size?: number
   bajada?: boolean
   module?: string
   jointColor?: string
   className?: string
 }) {
+  const { src, fallar } = useArchivo('logo-kross')
+
+  if (src) {
+    return <img src={src} alt="Kross" onError={fallar} className={className}
+      style={{ height: size, width: 'auto', display: 'block' }} />
+  }
+
+  // ── Respaldo dibujado ──
   const m = size / 5
   // §3.4: la altura de la palabra es 3M. Eso es altura de MAYÚSCULA, no cuerpo:
   // en Inter la mayúscula mide 0.727em, así que el cuerpo sale de dividir.
