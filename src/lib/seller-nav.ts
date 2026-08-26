@@ -1,4 +1,4 @@
-import { MessageCircle, ShoppingBag, BarChart2, Users, Package, Store, Phone, UserPlus, TrendingUp } from 'lucide-react'
+import { MessageCircle, ShoppingBag, BarChart2, Users, Package, Store, Phone, UserPlus, TrendingUp, Radar } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SellerProfile } from './seller-session'
 
@@ -24,6 +24,7 @@ export function sellerNavLinks(effective: SellerProfile | null | undefined): Sel
 
   if (storeAdmin) return [
     { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
+    { to: '/vendedor/mapa', icon: Radar, label: 'En vivo' },
     { to: '/vendedor/clientes', icon: UserPlus, label: 'Clientes' },
     { to: '/vendedor/retencion', icon: TrendingUp, label: 'Retención' },
     { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
@@ -36,6 +37,7 @@ export function sellerNavLinks(effective: SellerProfile | null | undefined): Sel
 
   return [
     { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
+    { to: '/vendedor/mapa', icon: Radar, label: 'En vivo' },
     { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
     { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
   ]

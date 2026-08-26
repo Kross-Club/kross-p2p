@@ -101,6 +101,28 @@ comprador sigue con el color de cada marca — eso es el white-label y no cambia
 Lo que falta está listado en §10.1 del manual: el barrido de acentos en las pantallas que
 no se tocaron, el chat del panel (`ChatView`), la web pública de Kross en ink, y los mapas.
 
+### El acceso ya promete facturas (26-ago-2026)
+
+La pantalla de acceso al panel dice "Productos, cobros con Yape, envíos con Shalom, chats,
+llamadas y facturas". **La facturación todavía no existe en el producto**: va con Nubefact y
+está por construirse. La promesa entró antes que la función a propósito; si el plan cambia,
+la línea vive en `src/components/AuthShell.tsx`.
+
+### El mapa de pedidos en vivo necesita un deploy (26-ago-2026)
+
+`/vendedor/mapa` lee campos que `get-store-sessions` **todavía no devuelve en producción**:
+`product_id`, `dispatch_type`, `agency_name`, `agency_branch_id`, `address_lat/lng`,
+`advance_amount`, `payment_verification` y `tracking_*`. Hasta que se despliegue, la pantalla
+carga pero sale vacía — no rompe nada, simplemente no tiene qué dibujar:
+
+```bash
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+```
+
+El otro requisito es de datos, no de código: un pedido solo aparece con su línea completa si
+su **producto tiene sede de origen** configurada (*Productos → editar → sede Shalom*). Sin
+eso se dibuja el destino, pero no de dónde sale.
+
 ## Bloqueos abiertos
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |

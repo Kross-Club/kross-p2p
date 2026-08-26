@@ -307,6 +307,20 @@
   .k-amb .k-fill { opacity: 0.25; }
 }
 
+/* El pedido en el mapa: late mientras está en movimiento. Es lo único de la
+   tarjeta que dice "esto está pasando ahora", así que late el punto y nada
+   más. Solo transform y opacity: lo mueve el compositor. */
+.k-latido { transform-box: fill-box; transform-origin: center; animation: k-latido 2.6s ease-in-out infinite; }
+
+@keyframes k-latido {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.18); opacity: 0.75; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .k-latido { animation: none; }
+}
+
 /* Impresión. La Hoja de Reclamación es una constancia legal y el consumidor
    tiene derecho a quedarse con ella: al imprimir (o "guardar como PDF") queda
    solo el documento, sin menú, sin pie ni botones. */

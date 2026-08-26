@@ -5,6 +5,65 @@
 >
 > Leyenda: ✅ construido · 🟡 parcial · 🔮 planeado
 
+## La línea de vida del pedido (26-ago-2026)
+
+Un pedido tiene **dos relojes** y hasta ahora se miraban por separado: el interno (`stage`,
+que mueve una persona del equipo) y el del courier (`tracking_phase`, que mueven Shalom y
+Olva desde su API). El vendedor no piensa en dos relojes: piensa "¿dónde está el pedido?".
+
+`src/lib/order-tracking.ts` los funde en una sola línea y arma los pasos según **cómo se
+entrega**:
+
+| Entrega | Pasos |
+|---|---|
+| Domicilio | Pedido → *Validando pago* → Confirmado → Preparando → En camino → Entregado |
+| Agencia | Pedido → *Validando pago* → Confirmado → Preparando → **Registrado en {courier}** → **En tránsito** → **En agencia de destino** → Entregado |
+
+- *Validando pago* solo aparece si hubo adelanto (misma regla que la barra del comprador).
+- Si los dos relojes discrepan **gana el que va más adelante**: que el courier diga
+  `EN_TRANSITO` cuando nadie marcó "despachado" significa que el paquete salió.
+- `no_entregado` no es un paso más: cierra la línea donde haya quedado.
+
+Está cubierto con tests (`src/lib/order-tracking.test.ts`).
+
+### Pedidos en vivo — el país entero en una pantalla (`/vendedor/mapa`)
+
+Todos los pedidos por agencia de la tienda, moviéndose sobre el Perú. Es la pantalla que se
+comparte: un dueño de tienda mirando sus cajas cruzar el país.
+
+Qué dibuja, y de dónde sale cada cosa — **todo del repo, sin proveedor de mapas**:
+
+| Capa | Fuente |
+|---|---|
+| Silueta del país | `src/data/coverage/peru-outline.json` — Natural Earth 1:50m, dominio público, simplificado a ~2 km (`scripts/build-peru-outline.mjs`) |
+| Líneas de provincia y departamento | `src/data/coverage/region-cells.json` — Voronoi sobre los centroides (`scripts/build-regions.mjs`). **Aproximadas**: no son los límites del INEI |
+| Red de sedes | Las 902 sedes con coordenadas de Shalom y Olva |
+| Línea de cada pedido | Sede de origen (`products.shalom_origin_branch_id`) → sede de destino (`agency_branch_id`) |
+| La cajita | Posición = las tres paradas que el courier sí reporta (salió / en camino / llegó). Relleno = cómo va el dinero |
+
+**El relleno de la caja** (`src/lib/live-map.ts`, con tests): lima = pagado completo; mitad
+lima / mitad gris = adelanto **cruzado** y saldo contraentrega; gris = todavía sin pago
+verificado. "Verificado" es `payment_verification === 'MATCHED'`: un adelanto declarado que
+360pay no cruzó no es plata que entró, y pintarlo de lima sería mentirle al vendedor sobre
+su propia caja.
+
+**Lo que NO es:** posiciones GPS. Los couriers no dan la ubicación del camión — dan tres
+estados. La caja se mueve entre esos tres puntos, no simula un recorrido.
+
+**Pendiente de la marca:** los logos de los couriers. Hoy cada sede lleva la inicial; cuando
+existan `public/courier-shalom.svg` y `public/courier-olva.svg` se enchufan ahí.
+
+### El mapa del pedido, sin proveedor de mapas
+
+`src/components/OrderTrackingMap.tsx` dibuja el destino sobre **coordenadas reales** —la sede
+de recojo (Shalom y Olva traen lat/lng de sus 911 locales) o el punto de entrega— con las
+sedes vecinas alrededor para dar escala. No hay tiles, ni llave, ni request que pueda caerse:
+el dato ya vive en el repo y se carga con el mismo `import()` diferido del checkout.
+
+Lo que NO es: un callejero. Para ver calles hace falta un proveedor (Mapbox, Google, Carto),
+con su llave y su costo por carga. Cuando se decida, el basemap entra **debajo** de esta capa
+sin tocar el resto: la proyección y los puntos ya están resueltos.
+
 ## Componentes
 
 ### 1. Geolocalización precisa ✅ / 🔮

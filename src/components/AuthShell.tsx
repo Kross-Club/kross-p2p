@@ -58,8 +58,10 @@ export default function AuthShell({ subtitle, children }: { subtitle: string; ch
           style={{ background: 'linear-gradient(to top, var(--k-ink) 35%, transparent)' }} />
         <div className="relative px-12 pb-12">
           <p className="text-2xl" style={{ color: 'var(--text)', fontWeight: 500 }}>La tecnología de tu tienda.</p>
-          <p className="text-sm mt-1.5" style={{ color: 'var(--text-muted)' }}>
-            Yape, Izipay, Shalom y Olva en una sola pantalla.
+          {/* `balance` reparte las líneas para que no quede una palabra sola
+              colgando al final. */}
+          <p className="text-sm mt-1.5" style={{ color: 'var(--text-muted)', textWrap: 'balance' }}>
+            Productos, cobros con Yape, envíos con Shalom, chats, llamadas y facturas. Todo en un solo lugar.
           </p>
         </div>
       </aside>

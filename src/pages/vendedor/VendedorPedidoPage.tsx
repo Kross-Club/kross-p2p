@@ -12,6 +12,8 @@ import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
+import CustomerCard from '../../components/CustomerCard'
+import OrderTrackingMap from '../../components/OrderTrackingMap'
 import { useSeller } from '../../lib/seller-session'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
@@ -706,6 +708,12 @@ export default function VendedorPedidoPage() {
 
   const contextPanel = (
     <>
+      {/* Quién es el cliente (el DNI manda) y dónde está su paquete. Va arriba
+          del todo: son las dos preguntas que trae quien abre un pedido. */}
+      <CustomerCard session={session} />
+
+      <OrderTrackingMap order={session} />
+
       {/* Stage selector */}
       {session.status !== 'cancelado' && (
       <StageSelector
