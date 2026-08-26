@@ -227,11 +227,47 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    El fondo del acceso: la K armándose sobre la grilla de módulos.
-   Solo escritorio — el panel que la contiene no existe bajo 1024 px.
-   Todo es opacidad y escala sobre una decena de divs: lo mueve el compositor,
-   no repinta nada, y no suma un byte de JS ni de imagen.
+
+   El módulo es CUADRADO —la K se construye sobre una grilla de 5×5 módulos
+   iguales (§3.1)—, así que el paso `--m` manda en las dos direcciones: las
+   líneas del panel se pintan con ese paso y el tablero mide un número entero
+   de módulos, en vez de estirarse con el alto de la pantalla.
+
+   Solo escritorio: el panel que lo contiene no existe bajo 1024 px. Todo es
+   opacidad y escala sobre una docena de nodos —lo mueve el compositor, no
+   repinta nada— y no suma un byte de JS ni de imagen.
    ═══════════════════════════════════════════════════════════════════════════ */
-.k-cell { position: relative; border: 0.5px solid var(--border); }
+.k-panel {
+  --m: 48px;
+  /* La grilla, sin un solo nodo: dos degradados de una línea cada uno. */
+  /* 1 px, no 0.5: una línea de medio píxel sobre este fondo se pierde. */
+  background-image:
+    linear-gradient(to right, var(--border) 0 1px, transparent 1px 100%),
+    linear-gradient(to bottom, var(--border) 0 1px, transparent 1px 100%);
+  background-size: var(--m) var(--m);
+  background-position: center center;
+}
+
+@media (min-width: 1600px) {
+  .k-panel { --m: 56px; }
+}
+
+/* El tablero: 9×7 módulos centrados. El medio módulo de corrección es lo que
+   hace que sus celdas caigan JUSTO sobre las líneas del fondo — ambos lados
+   son impares, y centrar un impar deja medio módulo de desfase. */
+.k-tablero {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--m) * 9);
+  height: calc(var(--m) * 7);
+  transform: translate(calc(-50% + var(--m) / 2), calc(-50% + var(--m) / 2));
+  display: grid;
+  grid-template-columns: repeat(9, var(--m));
+  grid-template-rows: repeat(7, var(--m));
+}
+
+.k-cuadro { position: relative; }
 .k-fill { position: absolute; inset: 0; opacity: 0; will-change: opacity; }
 
 .k-amb .k-fill   { background: var(--surface); animation: k-amb 9s ease-in-out infinite; }

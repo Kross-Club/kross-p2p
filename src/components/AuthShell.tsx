@@ -50,7 +50,7 @@ export default function AuthShell({ subtitle, children }: { subtitle: string; ch
       {/* Panel de marca: la grilla del símbolo, con una sola junta encendida.
           Es decoración con sentido —el mismo módulo del logo— y se va en
           pantallas chicas, donde el formulario necesita todo el ancho. */}
-      <aside className="hidden lg:flex flex-col justify-end w-[46%] max-w-[720px] relative overflow-hidden"
+      <aside className="hidden lg:flex flex-col justify-end w-[46%] max-w-[720px] relative overflow-hidden k-panel"
         style={{ borderLeft: '0.5px solid var(--border)' }}>
         <ModuleGrid />
         {/* Velo para que el titular no compita con la grilla */}
@@ -68,60 +68,48 @@ export default function AuthShell({ subtitle, children }: { subtitle: string; ch
 }
 
 /**
- * El fondo del acceso: la grilla de módulos donde la K se arma sola, en bucle.
+ * El fondo del acceso: la K se arma sola sobre la grilla de módulos, en bucle.
  *
  * No es un adorno genérico — es el símbolo del manual dibujado sobre la misma
- * grilla de 5×5 que lo define: primero el astil, luego los brazos, y al final
- * la junta en lima, que es la que cierra la letra. Alrededor, unos pocos
- * módulos respiran para que la grilla no se vea muerta.
+ * grilla que lo define: primero el astil, luego los brazos, y al final la
+ * junta en lima, que es la que cierra la letra.
  *
- * Las animaciones viven en index.css; acá solo se decide qué celda es qué y
- * en qué momento le toca.
+ * El módulo es CUADRADO (§3.1: la K se construye sobre una grilla de 5×5
+ * módulos iguales). Por eso el tablero mide un número entero de módulos en vez
+ * de estirarse con el panel, y las líneas del fondo se pintan con el mismo
+ * paso: así los bloques caen exactamente sobre la grilla.
  */
 function ModuleGrid() {
-  const COLS = 12
-  const ROWS = 9
-  const idx = (col: number, row: number) => row * COLS + col
-
-  // Esquina donde arranca el símbolo dentro de la grilla grande. Una fila más
-  // arriba del centro para que el pie del astil no caiga bajo el velo del
-  // titular.
-  const C = 4
-  const R = 1
-
-  // El mismo mapa del logo (§3.1), en orden de encendido: el astil de arriba
-  // hacia abajo y después los dos brazos.
-  const ASTIL = [0, 1, 2, 3, 4].map(r => idx(C, R + r))
-  const BRAZOS = [idx(C + 3, R), idx(C + 2, R + 1), idx(C + 2, R + 3), idx(C + 3, R + 4)]
+  // Coordenadas dentro del tablero (columna, fila), 1-indexadas como CSS grid.
+  // Es el mapa del logo: astil, brazos y junta.
+  const ASTIL = [1, 2, 3, 4, 5].map(fila => ({ col: 3, fila }))
+  const BRAZOS = [{ col: 6, fila: 1 }, { col: 5, fila: 2 }, { col: 5, fila: 4 }, { col: 6, fila: 5 }]
   const ORDEN = [...ASTIL, ...BRAZOS]
-  const JUNTA = idx(C + 1, R + 2)
+  const JUNTA = { col: 4, fila: 3 }
 
-  const AMBIENTE = [14, 20, 26, 58, 71, 84, 93, 100, 105]
+  // Unos pocos módulos alrededor, respirando. No dibujan nada: dan textura.
+  const AMBIENTE = [
+    { col: 1, fila: 6 }, { col: 8, fila: 2 }, { col: 2, fila: 3 },
+    { col: 9, fila: 5 }, { col: 7, fila: 7 }, { col: 1, fila: 1 },
+  ]
 
   return (
-    <div className="absolute inset-0 grid" aria-hidden
-      style={{ gridTemplateColumns: `repeat(${COLS}, 1fr)`, gridTemplateRows: `repeat(${ROWS}, 1fr)` }}>
-      {Array.from({ length: COLS * ROWS }, (_, i) => {
-        const turno = ORDEN.indexOf(i)
-        const ambiente = AMBIENTE.indexOf(i)
-        const esJunta = i === JUNTA
+    <div className="k-tablero" aria-hidden>
+      {ORDEN.map(({ col, fila }, i) => (
+        <span key={`k${i}`} className="k-cuadro k-mod" style={{ gridColumn: col, gridRow: fila }}>
+          <span className="k-fill" style={{ animationDelay: `${0.9 + i * 0.22}s` }} />
+        </span>
+      ))}
 
-        const clase = esJunta ? 'k-cell k-joint'
-          : turno >= 0 ? 'k-cell k-mod'
-          : ambiente >= 0 ? 'k-cell k-amb'
-          : 'k-cell'
+      <span className="k-cuadro k-joint" style={{ gridColumn: JUNTA.col, gridRow: JUNTA.fila }}>
+        <span className="k-fill" style={{ animationDelay: `${0.9 + ORDEN.length * 0.22}s` }} />
+      </span>
 
-        const retraso = esJunta ? 0.9 + ORDEN.length * 0.22
-          : turno >= 0 ? 0.9 + turno * 0.22
-          : ambiente >= 0 ? ambiente * 0.8
-          : null
-
-        return (
-          <div key={i} className={clase}>
-            {retraso !== null && <span className="k-fill" style={{ animationDelay: `${retraso}s` }} />}
-          </div>
-        )
-      })}
+      {AMBIENTE.map(({ col, fila }, i) => (
+        <span key={`a${i}`} className="k-cuadro k-amb" style={{ gridColumn: col, gridRow: fila }}>
+          <span className="k-fill" style={{ animationDelay: `${i * 0.8}s` }} />
+        </span>
+      ))}
     </div>
   )
 }

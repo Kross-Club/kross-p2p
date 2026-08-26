@@ -333,10 +333,10 @@ y no se toca. Por eso `--brand` es derivado y nadie lo escribe a mano:
   eso el archivo se usa en el acceso (a 64 px, donde se lee) y en el resto —barra lateral,
   header del panel— se dibuja el lockup sin bajada. Con un `logo-kross-simple.svg` sin
   bajada se enchufa y desaparece el dibujo.
-- **El favicon es un módulo lima sólido**, subido por la marca. El §3.3 pide ahí la variante
-  simplificada (símbolo hueso sobre ink). Los iconos de la PWA (`icon-192/512`, maskable)
-  siguen con el símbolo, así que hoy el favicon y el ícono instalado no dicen lo mismo:
-  falta decidir cuál de los dos manda.
+- **El favicon es un módulo lima sólido y así se queda** (decidido al adoptar el archivo).
+  Reemplaza a la variante simplificada que pide el §3.3 para ese uso: a 16 px un módulo
+  lleno se reconoce y la K no. Aplica **solo al favicon**: los iconos de la PWA
+  (`icon-192/512`, maskable) siguen con el símbolo.
 - **La bajada del lockup no coincide.** El §3.4 dice `VENDE, COBRA Y DESPACHA`; el archivo
   de marca que se está usando trae `LA TECNOLOGÍA DE TU TIENDA`, y es la que quedó en el
   código (`KrossLogo.tsx`) y en el acceso al panel. Falta decidir cuál manda y alinear el
