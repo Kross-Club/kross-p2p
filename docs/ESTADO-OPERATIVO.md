@@ -108,6 +108,22 @@ llamadas y facturas". **La facturación todavía no existe en el producto**: va 
 está por construirse. La promesa entró antes que la función a propósito; si el plan cambia,
 la línea vive en `src/components/AuthShell.tsx`.
 
+### Los recojos en Lima no aparecen en En vivo (26-ago-2026) ⚠️
+
+`esEnvioPorAgencia()` (`src/lib/order-tracking.ts`) no incluye `AGENCIA_LIMA` en su lista, pero
+el checkout sí escribe ese valor (`OrderService.ts`) y `register-buyer` lo acepta. Kross Shop
+vende **solo recojo en agencia con entrega a domicilio apagada**, así que un recojo en Lima es
+exactamente ese caso. Dos efectos, los dos silenciosos:
+
+- El pedido recibe la línea de vida de **domicilio** (`… preparando → en camino → entregado`)
+  en vez de la del courier, así que las fases de Shalom no se muestran — ni al vendedor ni al
+  comprador (`OrderTrackingMap`).
+- `vaEnElMapa()` devuelve `false` → **el pedido nunca entra a `/vendedor/mapa`.**
+
+Raíz: hay dos definiciones de "es recojo" — `isPickupDispatch()` en `src/lib/session.ts`
+(correcta, incluye `AGENCIA_LIMA`) y `esEnvioPorAgencia()` (incompleta). Debe quedar una.
+Detalle y orden de ejecución en [`11-RELACIONES.md`](./11-RELACIONES.md).
+
 ### El mapa de pedidos en vivo necesita un deploy (26-ago-2026)
 
 `/vendedor/mapa` lee campos que `get-store-sessions` **todavía no devuelve en producción**:
