@@ -1,4 +1,4 @@
-import { MessageCircle, LayoutGrid, Radar, BarChart2 } from 'lucide-react'
+import { List, LayoutGrid, Radar, BarChart2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 // ─── Las cuatro maneras de mirar los pedidos ─────────────────────────────────
@@ -9,16 +9,16 @@ import type { LucideIcon } from 'lucide-react'
 // que `COLUMNAS` en order-tracking.ts — el orden y las etiquetas se definen una
 // vez, no dentro del componente que los pinta.
 
-export type Modo = 'bandeja' | 'tablero' | 'mapa' | 'resumen'
+export type Modo = 'lista' | 'tablero' | 'mapa' | 'resumen'
 
 /** El modo por defecto: la puerta de entrada a Pedidos. */
-export const MODO_INICIAL: Modo = 'bandeja'
+export const MODO_INICIAL: Modo = 'lista'
 
 /** `pregunta` no es decorativa: es lo que cada modo sirve para responder, y sale
  *  como `title` del botón. Un modo que no responde una pregunta distinta a las
  *  otras tres no debería existir. */
 export const MODOS: { key: Modo; label: string; icon: LucideIcon; pregunta: string }[] = [
-  { key: 'bandeja', label: 'Bandeja', icon: MessageCircle, pregunta: '¿a quién le debo un mensaje?' },
+  { key: 'lista', label: 'Lista', icon: List, pregunta: '¿a quién le debo un mensaje?' },
   { key: 'tablero', label: 'Tablero', icon: LayoutGrid, pregunta: '¿dónde se está atorando la operación?' },
   { key: 'mapa', label: 'En vivo', icon: Radar, pregunta: '¿dónde está la plata que ya salió?' },
   { key: 'resumen', label: 'Resumen', icon: BarChart2, pregunta: '¿cómo vamos?' },
@@ -33,7 +33,7 @@ export function esModo(v: string | null | undefined): v is Modo {
  *
  * Un valor desconocido cae al inicial en vez de romper: `?modo=` viene de fuera
  * —un enlace viejo, alguien tecleando— y una pantalla en blanco por un
- * parámetro mal escrito es peor que mostrar la bandeja.
+ * parámetro mal escrito es peor que mostrar la lista.
  */
 export function modoDeUrl(params: URLSearchParams): Modo {
   const v = params.get('modo')

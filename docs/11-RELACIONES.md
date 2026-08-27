@@ -448,6 +448,83 @@ dos.
 Lo que sigue abierto no es del plan sino de su despliegue: las funciones que hay que publicar
 y la revisión visual que todavía nadie hizo. Está en [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md).
 
+## Después del plan: el tablero pasa de contar pedidos a contar plata (27-ago-2026)
+
+Cinco arreglos sobre la pantalla ya unificada. Cuatro son de uso; el quinto le faltaba al
+modelo desde el paso 4.
+
+### El sub-interruptor Lista/Kanban se fue
+
+Dentro de *Tablero* había otro selector: la misma agrupación por etapa, en vertical o en
+columnas. Era una **tercera** manera de mirar lo mismo dentro de un modo que existe justamente
+para eso, y salía por defecto en la que menos dice: en vertical, nueve etapas son nueve
+títulos separados por scroll, y el tablero deja de responder "¿dónde se atora la operación?".
+Queda una sola vista, la de columnas.
+
+### *Bandeja* se llama *Lista*
+
+Mismo contenido, mismo archivo (`PedidosLista.tsx`, antes `PedidosBandeja.tsx`). "Bandeja" es
+vocabulario de correo y no de pedidos: el vendedor no está vaciando una bandeja, está
+recorriendo sus pedidos uno por uno. El modo se llama `lista`, que es lo que la pantalla es.
+
+### La barra de arrastre va arriba
+
+Nueve columnas, cinco en pantalla. La barra nativa vive al pie del contenido, o sea debajo de
+la columna más larga: para descubrir que hay más etapas hay que bajar hasta el final, y para
+arrastrar otra vez, bajar otra vez. Media operación quedaba fuera de la vista sin nada que lo
+dijera. `ScrollHorizontal` arrastra **dos** contenedores sincronizados —un riel de 10 px
+arriba, con la barra, y la caja real debajo, con la suya escondida— y mide el ancho con un
+`ResizeObserver` sobre la fila (`w-max`), para que no se desincronice cuando cambian las
+columnas.
+
+### Cada etapa dice cuánto, no solo cuántos
+
+El conteo dice **dónde** se atora la operación; la suma dice **cuánto cuesta** que esté atorada
+ahí. Ocho pedidos parados en `registrado` no son lo mismo si son de S/ 120 o de S/ 180, y es la
+mitad que decide a qué columna correr primero.
+
+Al escribirlo apareció que "cuánto vale un pedido" no estaba definido en ningún lado: había dos
+respuestas sueltas —`estadoDePago` en `live-map.ts` y la resta del saldo en `OrderChatPage`— y
+ninguna con nombre. Ahora viven en `src/lib/order-money.ts`, y `estadoDePago` las usa en vez de
+repetir la regla:
+
+| Cifra | Qué es |
+|---|---|
+| `valor` | lo que cuesta el pedido |
+| `cobrado` | lo que YA entró — **solo si 360pay lo cruzó** (`payment_verification = MATCHED`) |
+| `saldo` | lo que falta cobrar, típicamente contra entrega |
+
+`cobrado` es la definición cara y es la correcta: un adelanto declarado que todavía no se cruza
+no es plata en caja, y pintarlo como cobrado le mentiría al vendedor sobre el número por el que
+abre el tablero.
+
+### El filtro es de *Pedidos*, no del tablero
+
+Por la misma razón que la lectura (`useStoreOrders`) es una sola: los cuatro modos son la misma
+lista mirada distinto. Un filtro por modo dejaría el tablero de "esta semana" y el resumen de
+"todo" conviviendo en pantalla sin que nada avise que están contando cosas distintas. Vive en
+`PedidosPage` y `src/lib/pedidos-filtro.ts`, y aplica a los cuatro.
+
+Se filtra por **fecha de creación**, no por la fecha de la etapa: "los pedidos de ayer" es una
+cohorte que no cambia de tamaño cuando el courier mueve uno. Medir contra la etapa haría que el
+mismo rango diera otro número en cada sincronización del tracking.
+
+Tres decisiones que el código deja escritas:
+
+- **Las opciones salen de los pedidos que hay**, no de las tablas `team` y `products`: un
+  desplegable con veinte productos donde diecinueve no tienen pedidos filtra a una pantalla
+  vacía y hace creer que algo se rompió.
+- **Un pedido con `created_at` ilegible se queda.** Se ve de más, nunca de menos: esconder un
+  pedido por una fecha rota es perder plata sin dejar rastro.
+- **El filtro va abierto, no detrás de un botón**, y cuando hay algo puesto dice `N de M`. Un
+  filtro escondido que quedó encendido es la forma más rápida de creer que la tienda dejó de
+  vender.
+
+De paso se juntaron los formateadores de fecha, que ya eran tres y empezaban a discrepar
+(`src/lib/fechas.ts`). El de la bandeja leía el reloj **dentro** del render, así que dos
+tarjetas pintadas en distinto momento podían decidir distinto si un pedido "es de hoy"; ahora
+`ahora` se pasa como dato, igual que en `antiguedad`.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

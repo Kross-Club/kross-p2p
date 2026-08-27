@@ -412,3 +412,29 @@
     background: #fff;
   }
 }
+
+/* Scroll horizontal con la barra arriba (ver components/ScrollHorizontal.tsx).
+   El riel es lo único que enseña barra; la caja de abajo la esconde para que no
+   haya dos barras diciendo lo mismo. Se estiliza a mano porque la barra
+   flotante de macOS solo aparece mientras uno arrastra, y acá la barra ES el
+   aviso de que hay más columnas. */
+.riel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.riel-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.riel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.riel-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+.sin-barra {
+  scrollbar-width: none;
+}
+.sin-barra::-webkit-scrollbar {
+  display: none;
+}

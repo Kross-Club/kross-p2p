@@ -1,4 +1,5 @@
 import { isPickupDispatch } from './session'
+import { cobradoDelPedido, valorDelPedido } from './order-money'
 
 // ─── El mapa de pedidos en vivo ──────────────────────────────────────────────
 // Reglas de lo que se ve moverse por el país. Puro y testeable: la pantalla
@@ -24,16 +25,14 @@ export interface PedidoEnVivo {
  *               típico del contraentrega peruano)
  *   pendiente → todavía no entró nada verificado
  *
- * "Verificado" es `payment_verification === 'MATCHED'`: un adelanto declarado
- * que 360pay todavía no cruzó no es plata que entró, y pintarlo de lima sería
- * mentirle al vendedor sobre su propia caja.
+ * Qué cuenta como cobrado lo decide `order-money.ts`, no esta pantalla: la
+ * misma regla que suma la columna del tablero pinta la cajita del mapa.
  */
 export function estadoDePago(p: PedidoEnVivo): 'completo' | 'parcial' | 'pendiente' {
-  const cruzado = String(p.payment_verification ?? '').toUpperCase() === 'MATCHED'
-  const adelanto = Number(p.advance_amount ?? 0)
-  if (!cruzado || adelanto <= 0) return 'pendiente'
-  const total = Number(p.product_price ?? 0)
-  return total > 0 && adelanto >= total ? 'completo' : 'parcial'
+  const cobrado = cobradoDelPedido(p)
+  if (cobrado <= 0) return 'pendiente'
+  const valor = valorDelPedido(p)
+  return valor > 0 && cobrado >= valor ? 'completo' : 'parcial'
 }
 
 /**

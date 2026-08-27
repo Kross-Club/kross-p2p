@@ -7,6 +7,8 @@ import { useIsDesktop } from '../../lib/use-desktop'
 import { stageChip, NOTA_META } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
 import { estaVivo } from '../../lib/store-orders'
+import { soles } from '../../lib/order-money'
+import { horaOFecha } from '../../lib/fechas'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 
 
@@ -21,19 +23,7 @@ const ETIQUETA: Record<string, string> = {
   no_entregado: 'No entregado',
 }
 
-// Un pedido de la semana pasada mostrando solo "07:08 p. m." se lee como si
-// fuera de hoy. Hora para lo de hoy, fecha corta para lo demás.
-function formatWhen(iso: string | undefined): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const now = new Date()
-  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
-  return sameDay
-    ? d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })
-}
-
-export default function PedidosBandeja({ lista }: { lista: StoreOrders }) {
+export default function PedidosLista({ lista }: { lista: StoreOrders }) {
   const navigate = useNavigate()
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
@@ -117,10 +107,10 @@ export default function PedidosBandeja({ lista }: { lista: StoreOrders }) {
         && !(session.writer_seller_ids ?? []).includes(meId ?? ''),
       preview: lastMsg?.type === 'text' ? lastMsg.body : lastMsg?.type === 'audio' ? '🎵 Audio' : 'Sin mensajes',
       unread: unreadOf(session),
-      when: formatWhen(session.created_at),
+      when: horaOFecha(session.created_at, leidoEn),
       online: !!session.buyer_id && onlineBuyers.has(session.buyer_id),
       nota: session.nota ? NOTA_META[session.nota] : undefined,
-      pedido: `${session.product_name ?? 'Producto'} · ${session.pack_name || `S/ ${session.product_price}`}`,
+      pedido: `${session.product_name ?? 'Producto'} · ${session.pack_name || soles(session.product_price)}`,
     }
   })
 
