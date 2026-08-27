@@ -311,9 +311,30 @@ function roleColor(role?: string | null) {
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ msg }: { msg: OrderMessage }) {
+function MessageBubble({ msg, audio }: { msg: OrderMessage; audio?: string | null }) {
   const isSeller = msg.sender_role === 'seller'
   const time = new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+
+  // La llamada es un evento del pedido, no un mensaje de texto. Antes caía en
+  // la burbuja genérica del chat —y su grabación vivía en otra pantalla, la de
+  // Llamadas—, así que la llamada donde el cliente corrigió su dirección no
+  // quedaba donde está la dirección. Acá se ve en la línea de tiempo, y si hay
+  // grabación se escucha sin salir del pedido.
+  if (msg.type === 'call_log') {
+    return (
+      <div className="flex justify-center mb-3">
+        <div className="rounded-2xl px-3 py-2 max-w-[85%] w-full"
+          style={{ background: 'var(--surface-3)' }}>
+          <div className="flex items-center justify-center gap-1.5">
+            <Phone size={11} style={{ color: 'var(--text-faint)' }} />
+            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{msg.body}</p>
+            <span className="text-[10px]" style={{ color: 'var(--text-faint)' }}>· {time}</span>
+          </div>
+          {audio && <audio controls preload="none" src={audio} className="w-full h-8 mt-2" />}
+        </div>
+      </div>
+    )
+  }
 
   if (msg.type === 'status_update') {
     return (
@@ -360,7 +381,7 @@ function MessageBubble({ msg }: { msg: OrderMessage }) {
 export default function VendedorPedidoPage() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
-  const { effective, isAdmin } = useSeller()
+  const { real, effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
   usePanelTheme()
   const sellerName = effective?.nombre ?? 'Kross'
@@ -379,6 +400,11 @@ export default function VendedorPedidoPage() {
   const [showContact, setShowContact] = useState(false)
   const [showOffer, setShowOffer] = useState(false)
   const [showWa, setShowWa] = useState(false)
+  // Las grabaciones de ESTE pedido, para engancharlas a su mensaje de llamada.
+  // Solo admin: dissolver la pantalla de Llamadas no debe ampliar en silencio
+  // quién puede escuchar a un cliente. `get-recordings` ya lo exige y filtra
+  // por `session_id`; acá solo se le pregunta por este pedido.
+  const [audios, setAudios] = useState<Record<string, string>>({})
   const [team, setTeam] = useState<{ auth_user_id: string; nombre: string; role_label: string }[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -414,6 +440,27 @@ export default function VendedorPedidoPage() {
   }, [])
 
   useEffect(() => { if (session?.id) markRead(session.id) }, [session?.id, markRead])
+
+  // Las grabaciones se piden UNA vez por pedido, y solo si el hilo tiene alguna
+  // llamada que enganchar: sin llamadas no hay nada que traer.
+  const hayLlamadas = messages.some(m => m.type === 'call_log' && m.call_recording_id)
+  useEffect(() => {
+    if (!isAdmin || !real?.auth_user_id || !session?.id || !hayLlamadas) return
+    let vivo = true
+    fetch(`${BASE}/get-recordings`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_auth_id: real.auth_user_id, store_id: effective?.store_id, session_id: session.id }),
+    })
+      .then(r => (r.ok ? r.json() : { recordings: [] }))
+      .then((d: { recordings?: { id: string; url: string | null }[] }) => {
+        if (!vivo) return
+        const map: Record<string, string> = {}
+        for (const r of d.recordings ?? []) if (r.url) map[r.id] = r.url
+        setAudios(map)
+      })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [isAdmin, real?.auth_user_id, effective?.store_id, session?.id, hayLlamadas])
 
   // Realtime
   useEffect(() => {
@@ -775,7 +822,10 @@ export default function VendedorPedidoPage() {
             <p className="text-sm text-gray-400">Sin mensajes aún</p>
           </div>
         )}
-        {messages.map(msg => <MessageBubble key={msg.id} msg={msg} />)}
+        {messages.map(msg => (
+          <MessageBubble key={msg.id} msg={msg}
+            audio={msg.call_recording_id ? audios[msg.call_recording_id] : undefined} />
+        ))}
 
         {/* Typing indicator */}
         {buyerTyping && (

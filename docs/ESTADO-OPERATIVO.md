@@ -129,15 +129,63 @@ tests de regresión en `order-tracking.test.ts` y `live-map.test.ts`.
 sigue pendiente el deploy de `get-store-sessions` de la nota de abajo: sin él el mapa carga
 vacío igual, porque no recibe los campos que dibuja.
 
+### Cómo comprobar que un deploy entró
+
+El CLI no dice mucho al terminar. Para ver qué versión quedó viva de cada función:
+
+```
+supabase functions list --project-ref ofdjghntvmrdfjhazfvz
+```
+
+La columna de versión sube en cada deploy y `updated_at` marca la hora. Si una función que
+creías haber desplegado sigue con la fecha vieja, no entró — pasa cuando el CLI abre el
+selector de proyectos y se cancela sin elegir.
+
+### Las llamadas en el hilo necesitan SQL + deploy (27-ago-2026)
+
+La llamada dejó de ser una sección y pasó a ser un evento del pedido
+([`11-RELACIONES.md`](./11-RELACIONES.md)). El frontend ya salió con `main`; el backend no.
+
+**1. Correr en el SQL Editor** el bloque §7 de `setup-kross.sql` (es idempotente, se puede
+correr entero):
+
+```sql
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS call_recording_id uuid REFERENCES call_recordings(id);
+```
+
+**2. Desplegar:**
+
+> Los comandos van con el `--project-ref` **literal en cada línea**, sin variable de shell: el
+> equipo trabaja en Windows y `REF=...` es sintaxis de bash — en PowerShell falla y el CLI
+> termina abriendo el selector interactivo de proyectos. Si copias esto en PowerShell, pega
+> línea por línea.
+
+```
+supabase functions deploy get-session        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy create-call-token  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy seller-call-token  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy livekit-webhook    --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+Sin la columna, `livekit-webhook` falla al insertar el mensaje de cierre y la llamada no queda
+registrada en el hilo — **corre el SQL antes que el deploy**. Sin el deploy, la pantalla de
+Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabaciones viejas
+siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
+única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
+
 ### En vivo y el CRM esperan el mismo deploy (26-ago-2026)
 
 `get-store-sessions` **todavía no devuelve en producción** `product_id`, `dispatch_type`,
 `agency_name`, `agency_branch_id`, `address_lat/lng`, `advance_amount`,
 `payment_verification` ni `tracking_*`:
 
-```bash
-REF=ofdjghntvmrdfjhazfvz
-supabase functions deploy get-store-sessions --project-ref $REF
+> Los comandos van con el `--project-ref` **literal en cada línea**, sin variable de shell: el
+> equipo trabaja en Windows y `REF=...` es sintaxis de bash — en PowerShell falla y el CLI
+> termina abriendo el selector interactivo de proyectos. Si copias esto en PowerShell, pega
+> línea por línea.
+
+```
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
 ```
 
 Y el 26-ago-2026 se le sumó otro grupo: **`registrado` dejó de mapearse a `EN_ORIGEN`** en el
@@ -145,11 +193,13 @@ mapeo de hitos de los dos couriers (ver [`11-RELACIONES.md`](./11-RELACIONES.md)
 vive en `_shared/`, que se **empaqueta dentro de cada función**, así que hay que redesplegar
 todas las que lo importan:
 
-```bash
-for f in shalom-tracking-sync shalom-order olva-tracking olva-tracking-sync manage-store; do
-  supabase functions deploy $f --project-ref $REF
-done
-supabase functions deploy shalom-webhook --project-ref $REF --no-verify-jwt
+```
+supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking-sync   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-webhook       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
 ```
 
 Hasta ese deploy, el backend sigue marcando `EN_ORIGEN` en cuanto Shalom registra la guía: el

@@ -144,6 +144,23 @@ Deno.serve(async (req) => {
     ? `https://${storeSlug}.krossclub.app/p/${session.token}`
     : `https://krossclub.app/p/${session.token}`
 
+  // La llamada del vendedor no dejaba NADA en el hilo: solo una fila en
+  // `call_recordings`, visible en otra pantalla. Así, la llamada donde el
+  // cliente corrigió su dirección no quedaba donde está la dirección. Con esto
+  // los dos lados marcan igual el intento — que se conteste o no es otra cosa,
+  // y la registra el webhook al terminar la grabación.
+  await supabase.from('chat_messages').insert({
+    session_id: session.id,
+    sender_role: 'system',
+    type: 'call_log',
+    body: `${displayName} inició una llamada de voz`,
+    // Solo Ventas: el aviso de que ALGUIEN está llamando es operativo —le sirve
+    // al equipo para ver el intento aunque no contesten—, no una línea que el
+    // comprador necesite en su chat. Lo que sí ven los dos es el cierre de la
+    // llamada, que escribe `livekit-webhook` al terminar la grabación.
+    visibility: 'sellers',
+  })
+
   const roomName = `order-${session.id}`
   const at = new AccessToken(
     Deno.env.get('LIVEKIT_API_KEY')!,
