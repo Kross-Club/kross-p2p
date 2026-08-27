@@ -65,6 +65,13 @@ export interface OrderSession {
      *  número desde el que YAPEÓ no existe: Yape no lo revela — del pago llega
      *  la operación bancaria, en `payment_trace`. */
     phone: string | null
+    /** Primera vez que el comprador entró a la app. `null` = nunca. */
+    activated_at?: string | null
+    /** Si HOY tiene una suscripción viva a notificaciones. No es lo mismo que
+     *  haber entrado: desinstalar la app no avisa a nadie, pero se lleva la
+     *  suscripción. Es lo único honesto que se puede decir, y es justo lo que
+     *  decide si una push le llega. */
+    push_activo?: boolean
   } | null
   /** Rastro del pago cruzado — la cadena con la que el comercio coteja contra
    *  el panel de 360pay y contra el banco. Solo vendedor. */

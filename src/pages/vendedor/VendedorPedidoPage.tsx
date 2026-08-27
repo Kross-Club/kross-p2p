@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { escuchar } from '../../lib/realtime'
+import { useCompradoresEnLinea } from '../../lib/presencia'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import TrackingBar from '../../components/TrackingBar'
@@ -13,6 +14,7 @@ import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
 import CustomerCard from '../../components/CustomerCard'
+import Confirmar from '../../components/Confirmar'
 import PagoTrace from '../../components/PagoTrace'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
@@ -235,6 +237,8 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
   onAdvanced: (next: string, handedOff: boolean) => void
 }) {
   const [busy, setBusy] = useState(false)
+  // Qué se está por hacer, mientras se pregunta. `null` = no se preguntó nada.
+  const [porConfirmar, setPorConfirmar] = useState<string | null>(null)
   const stageLabel: Record<string, string> = {
     nuevo: 'Nuevo', validando: 'Validando', confirmado: 'Confirmado', preparando: 'Preparando', en_camino: 'En camino', entregado: 'Entregado',
     no_entregado: 'No entregado',
@@ -259,19 +263,21 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
     }
   }
 
+  // Avanzar de etapa NO SE PUEDE DESHACER: no hay botón de retroceder, y el
+  // cambio dispara avisos al comprador y puede ceder el pedido a otro rol. Un
+  // dedo que resbala en el móvil del vendedor deja un pedido en una etapa que
+  // no le toca y sin manera de volver. Por eso se pregunta antes.
   const advance = () => {
     const idx = STAGES.indexOf(current)
     if (idx >= STAGES.length - 1 || busy) return
-    push(STAGES[idx + 1])
+    setPorConfirmar(STAGES[idx + 1])
   }
 
-  // Terminal de fracaso, con confirmación: es lo que alimenta la tasa de
-  // entrega, y marcarlo por error ensucia la métrica que la marca vende.
-  const markUndelivered = () => {
-    if (busy) return
-    if (!window.confirm('¿Marcar como NO ENTREGADO? Cierra el pedido y cuenta en la tasa de entrega.')) return
-    push('no_entregado')
-  }
+  // Terminal de fracaso: es lo que alimenta la tasa de entrega, y marcarlo por
+  // error ensucia la métrica que la marca vende.
+  const markUndelivered = () => { if (!busy) setPorConfirmar('no_entregado') }
+
+  const fallido = porConfirmar === 'no_entregado'
 
   const idx = STAGES.indexOf(current)
   const terminal = current === 'entregado' || current === 'no_entregado'
@@ -297,6 +303,23 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
           style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
           {busy ? '…' : `→ ${stageLabel[STAGES[idx + 1]]}`}
         </button>
+      )}
+
+      {porConfirmar && (
+        <Confirmar
+          titulo={fallido
+            ? '¿Marcar como NO ENTREGADO?'
+            : `¿Ya está todo listo para "${stageLabel[porConfirmar]}"?`}
+          detalle={fallido
+            ? 'Cierra el pedido y cuenta en la tasa de entrega de la marca.'
+            : 'El pedido pasa a esa etapa y no se puede retroceder.'}
+          si={fallido ? 'Sí, no se entregó' : 'Sí, avanzar'}
+          no="Todavía no"
+          peligro={fallido}
+          ocupado={busy}
+          onSi={() => { const n = porConfirmar; setPorConfirmar(null); push(n) }}
+          onNo={() => setPorConfirmar(null)}
+        />
       )}
     </div>
   )
@@ -419,8 +442,14 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showCall, setShowCall] = useState(false)
+  // El puntito verde, de la misma fuente que Lista y Tablero.
+  const enLinea = useCompradoresEnLinea(effective?.store_id)
+  const buyerOnline = !!session?.buyer_id && enLinea.has(session.buyer_id)
+  // "Está en la app" = hoy puede recibir una push. Haber entrado alguna vez no
+  // basta: se desinstala sin avisar, y lo que decide si el aviso llega es la
+  // suscripción viva.
+  const enApp = !!session?.buyer_contact?.push_activo
   const [buyerTyping, setBuyerTyping] = useState(false)
-  const [buyerOnline, setBuyerOnline] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [showOffer, setShowOffer] = useState(false)
@@ -573,15 +602,6 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
     }
   }, [session?.id])
 
-  // Track the buyer's real presence (online anywhere in the app)
-  useEffect(() => {
-    const buyerId = session?.buyer_id
-    if (!buyerId) return
-    const s = escuchar('presence:buyers', {
-      presencia: estado => setBuyerOnline(buyerId in estado),
-    })
-    return () => s.cerrar()
-  }, [session?.buyer_id])
 
   // Scroll to bottom
   useEffect(() => {
@@ -732,20 +752,37 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
               style={{ borderColor: 'var(--chat-header)', background: buyerOnline ? 'var(--text)' : 'var(--structural, #3D444C)' }} />
           </div>
 
-          <button onClick={() => setShowDetail(true)} className="flex-1 min-w-0 text-left">
+          <button onClick={() => setShowDetail(true)} disabled={desktop}
+            className="flex-1 min-w-0 text-left disabled:cursor-default">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
             <p className="text-xs" style={{ color: buyerOnline ? 'var(--text)' : 'rgba(255,255,255,0.6)' }}>
               {buyerOnline ? 'En línea ahora' : ((session.items && session.items.length > 1) ? `${session.items.length} productos · S/ ${session.product_price}` : `${session.product_name} · S/ ${session.product_price}`)}
             </p>
-            <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><ShoppingCart size={11} /> Ver pedido</p>
+            {!desktop && (
+              <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><ShoppingCart size={11} /> Ver pedido</p>
+            )}
           </button>
 
+          {/* Antes era una campana genérica. Ahora dice lo que de verdad
+              importa: si este cliente está en la app.
+
+              El botón NO se esconde cuando ya está: desinstalar no avisa a
+              nadie, así que "ya la tiene" nunca es una certeza y esconder el
+              botón dejaría al vendedor sin manera de reinvitarlo. Lo que cambia
+              es el color y lo que dice — apagado si ya recibe notificaciones,
+              encendido si no—, y los dos datos crudos (desde cuándo entró, si
+              hoy recibe push) están en la ficha del cliente, a la derecha. */}
           <button
             onClick={() => channelRef.current?.send({ type: 'broadcast', event: 'request_push_permission', payload: {} })}
             className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: 'rgba(255,255,255,0.15)' }}
-            title="Invitar al cliente a instalar la app">
-            <Bell size={16} className="text-white" />
+            style={enApp
+              ? { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.55)' }
+              : { background: 'var(--brand)', color: 'var(--on-brand)' }}
+            aria-label={enApp ? 'Volver a invitarlo a la app' : 'Invitar al cliente a instalar la app'}
+            title={enApp
+              ? 'Ya recibe notificaciones en la app · tocar vuelve a pedirle permiso'
+              : 'Todavía no está en la app — tocar le pide instalarla y activar notificaciones'}>
+            <Smartphone size={16} />
           </button>
           <button
             onClick={() => setShowWa(true)}
@@ -755,10 +792,16 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
             <MessageCircle size={16} className="text-white" />
           </button>
           {canWrite && (
+            // `--invert`/`--invert-fg` y no `--text` + blanco: en el panel
+            // oscuro `--text` ES casi blanco, así que el botón quedaba claro
+            // con un teléfono blanco encima — invisible. El par invertido está
+            // definido justamente para que el fondo y el icono se opongan.
             <button onClick={() => setShowCall(true)}
+              title="Llamar al cliente"
+              aria-label="Llamar al cliente"
               className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'var(--text)' }}>
-              <Phone size={16} className="text-white" />
+              style={{ background: 'var(--invert)', color: 'var(--invert-fg)' }}>
+              <Phone size={16} />
             </button>
           )}
         </div>
@@ -883,6 +926,21 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
         tracking={session}
         onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
       />
+
+      {/* El pedido en sí —productos, cantidades, nota del CRM, cancelar— cierra
+          la columna en escritorio. Estaba en una ventana en el centro de la
+          pantalla, encima de la conversación que habla justamente de él, y
+          debajo quedaba media columna vacía. En móvil sigue siendo hoja: ahí no
+          hay columna donde ponerlo. */}
+      {desktop && (
+        <OrderDetailModal
+          enColumna
+          session={session}
+          role="seller"
+          onClose={() => {}}
+          onPatch={(patch) => setSession(s => s ? { ...s, ...patch } : s)}
+        />
+      )}
     </>
   )
 
@@ -1002,7 +1060,7 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
         />
       )}
 
-      {showDetail && (
+      {showDetail && !desktop && (
         <OrderDetailModal
           session={session}
           role="seller"

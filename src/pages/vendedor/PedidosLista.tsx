@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { escuchar } from '../../lib/realtime'
+import { useCompradoresEnLinea } from '../../lib/presencia'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { stageChip, NOTA_META } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
@@ -29,23 +30,14 @@ export default function PedidosLista({ lista, onAbrir }: {
 }) {
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
+  // El puntito verde sale de una sola definición, compartida con el Tablero y
+  // con el chat (lib/presencia.ts). Antes vivía acá y por eso era la única
+  // pantalla que lo tenía.
+  const onlineBuyers = useCompradoresEnLinea(effective?.store_id)
   const [search, setSearch] = useState('')
-  const [onlineBuyers, setOnlineBuyers] = useState<Set<string>>(new Set())
   // `gen` = el `leidoEn` de la lista sobre la que se contaron estos bumps.
   const [bumpsRef, setBumps] = useState<{ gen: number; por: Record<string, number> }>({ gen: 0, por: {} })
   const seenRef = useRef<Set<string>>(new Set())
-
-  // Live presence of all buyers → green dot on active chats.
-  //
-  // Por `escuchar` y no por `supabase.channel` directo: el pedido abierto en
-  // panel escucha este MISMO topic, y pedirlo dos veces devolvía el canal ya
-  // suscrito de la otra pantalla — atarle un manejador lanza. Ver lib/realtime.
-  useEffect(() => {
-    const s = escuchar('presence:buyers', {
-      presencia: estado => setOnlineBuyers(new Set(Object.keys(estado))),
-    })
-    return () => s.cerrar()
-  }, [])
 
   // La lista la trae la pantalla contenedora, una sola vez para los cuatro
   // modos. Acá se descartan los cancelados: un pedido muerto no espera

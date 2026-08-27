@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Package, AlertTriangle, RefreshCw, Trash2, Eye } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
 import { NOTA_META, NOTA_KEYS } from '../lib/order-chips'
+import Confirmar from './Confirmar'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -22,14 +24,22 @@ const LOSES = [
   'Promociones y descuentos cada mes',
 ]
 
-export default function OrderDetailModal({ session, role, onClose, onPatch }: {
+export default function OrderDetailModal({ session, role, onClose, onPatch, enColumna = false }: {
   session: OrderSession
   role: 'buyer' | 'seller'
   onClose: () => void
   onPatch: (patch: Partial<OrderSession>) => void
+  /** `true` = va dentro de la columna del pedido, sin velo ni hoja flotante.
+   *  En escritorio la columna tiene sitio de sobra y el pedido es justo lo que
+   *  uno mira mientras escribe: taparlo con una ventana en el centro era
+   *  esconder el dato detrás de la conversación que habla de él. */
+  enColumna?: boolean
 }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Un cambio de cantidad se guarda solo y le cambia el total al comprador. Se
+  // pregunta antes: `{ i, qty }` es lo que está esperando el sí.
+  const [cambioQty, setCambioQty] = useState<{ i: number; nombre: string; de: number; a: number } | null>(null)
   const [viewerImgs, setViewerImgs] = useState<string[]>([])
   const [viewerIdx, setViewerIdx] = useState<number | null>(null)
   const [removingIdx, setRemovingIdx] = useState<number | null>(null)
@@ -71,6 +81,13 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
     await post({ action: 'set_nota', session_id: session.id, nota })
   }
 
+  // No se guarda al primer toque: el total del pedido es lo que el comprador ve
+  // y lo que se le va a cobrar, y +/- están a un dedo de distancia.
+  const pedirCambio = (i: number, nombre: string, de: number, a: number) => {
+    if (busy || a === de) return
+    setCambioQty({ i, nombre, de, a })
+  }
+
   const setQty = async (index: number, qty: number) => {
     setBusy(true)
     try {
@@ -94,14 +111,12 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
   const cancelled = session.status === 'cancelado'
   const stageText = cancelled ? '❌ Pedido cancelado' : (STAGE_LABEL[session.stage] ?? session.stage)
 
-  return (
+  const cuerpo = (
     <>
-      <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={onClose}>
-        <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-gray-900 flex items-center gap-2"><Package size={18} /> Tu pedido</h3>
-            <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
-          </div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-black text-gray-900 flex items-center gap-2 text-sm"><Package size={16} /> Tu pedido</h3>
+        {!enColumna && <button onClick={onClose} aria-label="Cerrar"><X size={18} className="text-gray-400" /></button>}
+      </div>
 
           {(() => {
             const items = (session.items && session.items.length ? session.items : [{ nombre: session.product_name || 'Producto', precio: session.product_price ?? 0, pack_name: session.pack_name, image: null, qty: 1 }])
@@ -126,9 +141,13 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
                         </div>
                         {role === 'seller' && (
                           <div className="flex items-center gap-1 flex-shrink-0">
-                            <button onClick={() => setQty(i, Math.max(1, (it.qty ?? 1) - 1))} disabled={busy} className="w-6 h-6 rounded-lg bg-white border text-gray-700 font-black">−</button>
+                            <button aria-label="Quitar una unidad"
+                              onClick={() => pedirCambio(i, it.nombre, it.qty ?? 1, Math.max(1, (it.qty ?? 1) - 1))}
+                              disabled={busy || (it.qty ?? 1) <= 1} className="w-6 h-6 rounded-lg bg-white border text-gray-700 font-black disabled:opacity-40">−</button>
                             <span className="w-5 text-center text-sm font-black">{it.qty ?? 1}</span>
-                            <button onClick={() => setQty(i, (it.qty ?? 1) + 1)} disabled={busy} className="w-6 h-6 rounded-lg bg-white border text-gray-700 font-black">+</button>
+                            <button aria-label="Agregar una unidad"
+                              onClick={() => pedirCambio(i, it.nombre, it.qty ?? 1, (it.qty ?? 1) + 1)}
+                              disabled={busy} className="w-6 h-6 rounded-lg bg-white border text-gray-700 font-black">+</button>
                           </div>
                         )}
                         <p className="font-bold text-gray-800 text-sm flex-shrink-0 w-14 text-right">S/ {it.precio}</p>
@@ -225,10 +244,42 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
               </div>
             </div>
           )}
-        </div>
-      </div>
+    </>
+  )
 
-      {viewerIdx !== null && viewerImgs.length > 0 && (
+  return (
+    <>
+      {enColumna ? (
+        // Dentro de la columna: una tarjeta más, con el mismo aire que las
+        // vecinas. Sin velo y sin botón de cerrar — no hay nada que cerrar.
+        <div className="mx-4 mt-2 rounded-2xl px-3 py-3"
+          style={{ background: 'var(--surface)', border: '0.5px solid var(--border)' }}>
+          {cuerpo}
+        </div>
+      ) : (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={onClose}>
+          <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            {cuerpo}
+          </div>
+        </div>
+      )}
+
+      {cambioQty && (
+        <Confirmar
+          titulo={cambioQty.a > cambioQty.de ? '¿Agregar una unidad?' : '¿Quitar una unidad?'}
+          detalle={`${cambioQty.nombre}: ${cambioQty.de} → ${cambioQty.a}. Cambia el total del pedido y el comprador lo ve al instante.`}
+          si="Sí, guardar"
+          no="No"
+          ocupado={busy}
+          onSi={() => { const c = cambioQty; setCambioQty(null); setQty(c.i, c.a) }}
+          onNo={() => setCambioQty(null)}
+        />
+      )}
+
+      {/* La galería va por portal: en la columna del pedido este bloque queda
+          dentro de un contenedor que scrollea, y su `scrollIntoView` —el que
+          centra la imagen— arrastraría también a la columna. */}
+      {viewerIdx !== null && viewerImgs.length > 0 && createPortal(
         <div className="fixed inset-0 z-[60] bg-black flex flex-col" onClick={() => setViewerIdx(null)}>
           <div className="flex justify-end p-4">
             <button onClick={() => setViewerIdx(null)} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
@@ -244,7 +295,8 @@ export default function OrderDetailModal({ session, role, onClose, onPatch }: {
             ))}
           </div>
           <p className="text-center text-white/50 text-xs pb-4">Desliza para ver más ‹ ›</p>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   )

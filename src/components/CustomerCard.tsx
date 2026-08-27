@@ -1,5 +1,6 @@
-import { MessageCircle, Phone, BadgeCheck, ChevronRight } from 'lucide-react'
+import { MessageCircle, Phone, BadgeCheck, ChevronRight, Smartphone } from 'lucide-react'
 import CopyRow from './CopyRow'
+import { diaMes } from '../lib/fechas'
 import type { OrderSession } from '../lib/order-api'
 
 // ─── A quién pertenece este pedido ───────────────────────────────────────────
@@ -31,6 +32,8 @@ export default function CustomerCard({ session, onVerCliente }: {
   // El distrito vive DENTRO de `address` ("San Borja, Lima"): el primer tramo.
   const distrito = session.address ? session.address.split(',')[0].trim() : null
   const pagado = session.payment_verification === 'MATCHED'
+  const pushActivo = !!c?.push_activo
+  const enAppDesde = diaMes(c?.activated_at)
   const adelanto = Number(session.advance_amount ?? 0)
 
   const identidad = (
@@ -61,6 +64,23 @@ export default function CustomerCard({ session, onVerCliente }: {
           <BadgeCheck size={13} /> Adelanto de S/ {adelanto} verificado
         </p>
       )}
+
+      {/* ¿Está en la app? Son DOS datos, no uno, y hace falta separarlos para
+          decidir cómo se le avisa:
+            · entró alguna vez  → `activated_at`
+            · le llega una push HOY → hay suscripción viva
+          Desinstalar no avisa a nadie, así que "entró en marzo" no promete que
+          la campaña de hoy le llegue; la suscripción sí. Quien entró y ya no
+          recibe es exactamente a quien hay que escribirle por WhatsApp. */}
+      <p className="mt-2 flex items-center gap-1.5 text-[11px]"
+        style={{ color: pushActivo ? 'var(--ok-fg)' : 'var(--text-faint)' }}>
+        <Smartphone size={12} className="flex-shrink-0" />
+        {pushActivo
+          ? <>En la app{enAppDesde ? ` desde ${enAppDesde}` : ''} · recibe notificaciones</>
+          : enAppDesde
+            ? <>Entró a la app en {enAppDesde} · hoy NO recibe notificaciones</>
+            : <>Nunca ha entrado a la app · solo por WhatsApp</>}
+      </p>
 
       {(dni || phone) && (
         <div className="mt-2 divide-y" style={{ borderColor: 'var(--border)' }}>
