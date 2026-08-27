@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Package } from 'lucide-react'
-import { useSeller } from '../../lib/seller-session'
 import { NOTA_META, CERRADO_SUAVE, NEUTRO, ALERTA } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido, antiguedad } from '../../lib/order-tracking'
-import { useStoreOrders, estaVivo } from '../../lib/store-orders'
-import type { StoreOrder } from '../../lib/store-orders'
+import { estaVivo } from '../../lib/store-orders'
+import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 
 // Las columnas son el eje del pedido (`COLUMNAS` en order-tracking), con la
 // mitad de abajo en el idioma del courier. Este archivo ya NO define etapas:
@@ -15,17 +14,14 @@ const etapaChip = (key: string) => (key === 'entregado' ? CERRADO_SUAVE : NEUTRO
 
 
 
-export default function CRMPage() {
+export default function PedidosTablero({ lista }: { lista: StoreOrders }) {
   const navigate = useNavigate()
-  const { effective } = useSeller()
   const [view, setView] = useState<'lista' | 'kanban'>('lista')
 
-  // Los cancelados entran porque el tablero los muestra en su propio grupo.
   // `leidoEn` es el instante en que llegaron los datos: medir la antigüedad
   // contra eso —y no contra cada pintada— hace que todas las tarjetas cuenten
   // desde el mismo punto y mantiene el render puro.
-  const { pedidos: sessions, cargando: loading, leidoEn: ahora, soloMios } =
-    useStoreOrders(effective, { incluirCancelados: true })
+  const { pedidos: sessions, cargando: loading, leidoEn: ahora, soloMios } = lista
 
   // Cuánto lleva parado. Con las columnas en el idioma del courier, el dato que
   // decide es el tiempo, no el conteo: dos días en `registrado` es un paquete
@@ -116,15 +112,16 @@ export default function CRMPage() {
     )
 
   return (
-    <div className="px-4 py-4">
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-black text-gray-900">CRM</h1>
+    <div className="px-4 pt-3 pb-4">
+      {/* Lista y Kanban son la misma agrupación con otra forma, así que van
+          como sub-control del modo, no como un modo más. */}
+      <div className="flex items-center justify-end mb-1">
         <div className="flex bg-gray-100 rounded-xl p-0.5">
           <button onClick={() => setView('lista')} className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${view === 'lista' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>Lista</button>
           <button onClick={() => setView('kanban')} className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${view === 'kanban' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}>Kanban</button>
         </div>
       </div>
-      <p className="text-xs text-gray-400 mb-4">{soloMios ? 'Tus pedidos por estado' : 'Todos los pedidos de la tienda'}</p>
+      <p className="text-xs text-gray-400 mb-4">{soloMios ? 'Tus pedidos por etapa' : 'Todos los pedidos de la tienda, por etapa'}</p>
 
       {loading ? (
         <div className="flex justify-center py-12">

@@ -1,4 +1,4 @@
-import { MessageCircle, ShoppingBag, BarChart2, Users, Package, Store, Phone, UserPlus, TrendingUp, Radar } from 'lucide-react'
+import { ShoppingBag, Users, Package, Store, Phone, UserPlus, TrendingUp } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SellerProfile } from './seller-session'
 
@@ -15,7 +15,7 @@ export interface SellerNavLink {
 // El menú sigue a QUIÉN estás actuando:
 //  · super admin (plataforma Kross, fuera de una tienda) → solo Marcas
 //  · admin de tienda (o super admin que entró a una) → todo el toolset
-//  · miembro del equipo → Chats, CRM, Stats
+//  · miembro del equipo → Pedidos
 export function sellerNavLinks(effective: SellerProfile | null | undefined): SellerNavLink[] {
   const platform = !!effective?.is_super_admin
   const storeAdmin = !!effective?.is_admin && !effective?.is_super_admin
@@ -23,23 +23,19 @@ export function sellerNavLinks(effective: SellerProfile | null | undefined): Sel
   if (platform) return [{ to: '/vendedor/marca', icon: Store, label: 'Marcas' }]
 
   if (storeAdmin) return [
-    { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
-    { to: '/vendedor/mapa', icon: Radar, label: 'En vivo' },
+    { to: '/vendedor/pedidos', icon: ShoppingBag, label: 'Pedidos' },
     { to: '/vendedor/clientes', icon: UserPlus, label: 'Clientes' },
     { to: '/vendedor/retencion', icon: TrendingUp, label: 'Retención' },
-    { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
     { to: '/vendedor/productos', icon: Package, label: 'Productos' },
     { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
     { to: '/vendedor/llamadas', icon: Phone, label: 'Llamadas' },
     { to: '/vendedor/marca', icon: Store, label: 'Marca' },
-    { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
   ]
 
+  // El miembro del equipo tiene UNA entrada, y está bien: su trabajo entero es
+  // la lista de pedidos. Los cuatro modos viven dentro, no en el menú.
   return [
-    { to: '/vendedor/chats', icon: MessageCircle, label: 'Chats' },
-    { to: '/vendedor/mapa', icon: Radar, label: 'En vivo' },
-    { to: '/vendedor/crm', icon: ShoppingBag, label: 'CRM' },
-    { to: '/vendedor/estadisticas', icon: BarChart2, label: 'Stats' },
+    { to: '/vendedor/pedidos', icon: ShoppingBag, label: 'Pedidos' },
   ]
 }
 

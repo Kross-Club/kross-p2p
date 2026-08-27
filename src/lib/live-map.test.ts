@@ -44,6 +44,13 @@ describe('mapa de pedidos en vivo', () => {
   // El recojo en agencia de LIMA es un recojo. Quedaba fuera del mapa porque
   // "es agencia" estaba definido dos veces y una de las dos no lo conocía —
   // justo el caso que vende hoy Kross Shop, con domicilio apagado.
+  // Las cuatro vistas comparten una sola lista y esa lista trae cancelados,
+  // así que el filtro del mapa tiene que descartarlos él mismo.
+  it('un pedido cancelado no entra al mapa aunque sea recojo en agencia', () => {
+    expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'en_camino', status: 'cancelado' })).toBe(false)
+    expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'en_camino', status: 'active' })).toBe(true)
+  })
+
   it('el recojo en agencia de Lima también entra al mapa', () => {
     expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'preparando' })).toBe(true)
     expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'no_entregado' })).toBe(false)

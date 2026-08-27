@@ -96,7 +96,7 @@ export default function EquipoPage() {
     return () => { supabase.removeChannel(ch) }
   }, [])
 
-  const enterAs = (s: SellerProfile) => { if (s.auth_user_id === real?.auth_user_id) stopActing(); else actAs(s); navigate('/vendedor/chats') }
+  const enterAs = (s: SellerProfile) => { if (s.auth_user_id === real?.auth_user_id) stopActing(); else actAs(s); navigate('/vendedor/pedidos') }
 
   const setAvailable = async (s: SellerProfile, available: boolean) => {
     setBusy(true)

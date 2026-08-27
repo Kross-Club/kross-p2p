@@ -5,6 +5,7 @@ import { isPickupDispatch } from './session'
 // solo dibuja lo que estas funciones deciden.
 
 export interface PedidoEnVivo {
+  status?: string | null
   stage?: string | null
   dispatch_type?: string | null
   agency_name?: string | null
@@ -56,10 +57,18 @@ export function avanceDelPaquete(p: PedidoEnVivo): number {
   return 0.1
 }
 
-/** Un pedido entra al mapa cuando hay algo que mirar moverse. */
+/**
+ * Un pedido entra al mapa cuando hay algo que mirar moverse.
+ *
+ * Ni un pedido cancelado ni uno que no se entregó lo tienen: el primero nunca
+ * va a salir y el segundo ya terminó su viaje. El `status` importa desde que
+ * las cuatro vistas comparten UNA lista —que sí trae cancelados, porque el
+ * tablero los agrupa aparte—; antes el mapa pedía su propia consulta sin
+ * ellos y la pregunta no se le presentaba.
+ */
 export function vaEnElMapa(p: PedidoEnVivo): boolean {
   const stage = String(p.stage ?? '').toLowerCase()
-  return stage !== 'no_entregado' && isPickupDispatch(p.dispatch_type)
+  return p.status !== 'cancelado' && stage !== 'no_entregado' && isPickupDispatch(p.dispatch_type)
 }
 
 export interface Caja { minLng: number; maxLng: number; minLat: number; maxLat: number }

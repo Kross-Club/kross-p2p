@@ -7,8 +7,7 @@ import { pickupBranchIdOf } from '../../lib/session'
 import { estadoDePago, avanceDelPaquete, vaEnElMapa, proyector } from '../../lib/live-map'
 import type { Caja } from '../../lib/live-map'
 import { pasoActual, courierDelPedido } from '../../lib/order-tracking'
-import { useStoreOrders } from '../../lib/store-orders'
-import type { StoreOrder } from '../../lib/store-orders'
+import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 import { escenaDemo } from '../../lib/live-map-demo'
 import type { AgencyName } from '../../lib/checkout/types'
 
@@ -41,14 +40,15 @@ interface Territorio {
   departamentos: { id: string; puntos: number[][] }[]
 }
 
-export default function MapaVivoPage() {
+export default function PedidosMapa({ lista }: { lista: StoreOrders }) {
   const navigate = useNavigate()
   const { effective } = useSeller()
   const storeId = effective?.store_id
-  // El lector único trae los pedidos; acá solo se queda con los que tienen algo
-  // que mirarse mover. El `cargando` viene del mismo sitio que el dato.
-  const { pedidos: todos, cargando } = useStoreOrders(effective)
-  const pedidos = useMemo(() => todos.filter(vaEnElMapa), [todos])
+  // De la lista compartida el mapa se queda con los que tienen algo que mirarse
+  // mover: recojo en agencia, vivos y sin cerrar. El `cargando` viene del mismo
+  // sitio que el dato.
+  const { cargando } = lista
+  const pedidos = useMemo(() => lista.pedidos.filter(vaEnElMapa), [lista.pedidos])
   const [origenPorProducto, setOrigenPorProducto] = useState<Record<string, string>>({})
   const [territorio, setTerritorio] = useState<Territorio | null>(null)
   const [sedes, setSedes] = useState<{ lat: number; lng: number }[]>([])
@@ -172,11 +172,10 @@ export default function MapaVivoPage() {
     anillo.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ') + ' Z'
 
   return (
-    <div className="px-6 py-5">
+    <div className="px-6 pt-4 pb-5">
       <div className="flex items-end justify-between gap-6 mb-4">
         <div className="min-w-0">
-          <h1 className="text-lg text-gray-900 leading-tight" style={{ fontWeight: 500 }}>Pedidos en vivo</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Cada caja es un pedido moviéndose entre sedes.</p>
+          <p className="text-xs text-gray-400">Cada caja es un pedido moviéndose entre sedes.</p>
         </div>
         <div className="flex items-center gap-5 flex-shrink-0">
           <Contador valor={conteo.vivos} etiqueta="En el mapa" />

@@ -73,18 +73,21 @@ pedir `get-store-sessions`, no es una sección — es un modo de Pedidos.
 
 ## La navegación que sale de la regla — de 10 a 5
 
-| Hoy | Propuesta |
-|---|---|
-| Chats · CRM · En vivo · Stats | **Pedidos**, con cuatro modos: Bandeja · Tablero · Mapa · Resumen |
-| Clientes · Retención | **Clientes**: la lista real de personas; importar, invitar y campañas viven adentro |
-| Llamadas | ✂️ se disuelve — cada grabación vuelve a su pedido (ver abajo) |
-| Productos | **Productos** |
-| Equipo | **Equipo** |
-| Marca | **Marca** |
+| Antes | Ahora | Estado |
+|---|---|---|
+| Chats · CRM · En vivo · Stats | **Pedidos**, con cuatro modos: Bandeja · Tablero · En vivo · Resumen | ✅ 27-ago-2026 |
+| Clientes · Retención | **Clientes**: la lista real de personas; importar, invitar y campañas viven adentro | 🔮 paso 6 |
+| Llamadas | ✂️ se disuelve — cada grabación vuelve a su pedido | 🔮 paso 5 |
+| Productos · Equipo · Marca | igual | — |
 
-Cinco entradas para el admin. Para un miembro del equipo, **una**: Pedidos (sus modos ya
-respetan el `x-seller-id`, que es el filtro que hoy hace `onlyMine` en cada pantalla por
-separado).
+**El menú del admin va en siete**, camino a cinco: faltan los dos pasos de arriba. El miembro
+del equipo ya tiene **una** entrada, y está bien — su trabajo entero es la lista de pedidos,
+y los cuatro modos viven dentro de ella, no en el menú.
+
+El modo vive en la URL (`?modo=tablero`), no en un `useState`: se puede enlazar un modo
+concreto y el "atrás" del navegador hace lo esperable. Las cuatro rutas viejas
+(`/vendedor/chats`, `/crm`, `/mapa`, `/estadisticas`) quedan como redirección al modo que les
+corresponde — hay enlaces guardados y notificaciones push que apuntan ahí.
 
 Los cuatro modos comparten un solo `fetch` y un solo estado. Eso ya está construido
 (`useStoreOrders`), y al construirlo apareció algo peor que los cuatro spinners: **tres
@@ -107,11 +110,16 @@ La regla que quedó es una sola frase, sin `impersonating` de por medio:
 > Si eres admin **de lo que estás mirando**, ves esa tienda entera. Si no, ves los pedidos en
 > los que estás metido.
 
-Lo único que sigue siendo decisión por pantalla es `incluirCancelados`, y con razón: el CRM
-los agrupa aparte y Stats los cuenta en las notas, mientras que Chats y el mapa no tienen nada
-que hacer con un pedido muerto. No se unifica pidiéndolos siempre porque el `limit(80)` del
-servidor se aplica **antes** de filtrar: traerlos de más empujaría pedidos vivos fuera de la
-lista.
+Con las cuatro pantallas ya fundidas en una, la lectura es **una sola y trae los cancelados**:
+el tablero los agrupa aparte y el resumen los cuenta en las notas, y los dos modos que no los
+quieren —bandeja y mapa— los descartan al pintar, que es gratis. Cambiar de modo no vuelve a
+pedir nada.
+
+⚠️ **El precio, anotado para cuando importe:** el `limit(80)` del servidor se aplica **antes**
+de filtrar, así que los cancelados ocupan lugar en esa ventana y la bandeja puede mostrar
+menos de 80 pedidos vivos. Con los volúmenes de hoy (4 pedidos en la marca más grande) no
+roza; el arreglo real cuando roce es paginar o subir el límite en `get-store-sessions`, no
+volver a partir la consulta en cuatro.
 
 ## Lo que falta de verdad #1: la ficha del cliente
 
@@ -349,13 +357,13 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 | ~~1~~ | ✅ **Un solo lector de pedidos** (`useStoreOrders`) con una sola regla de alcance | hecho (26-ago-2026) |
 | ~~2~~ | ✅ **Columnas = fases del courier** en CRM, Stats y el chip de Chats | hecho (26-ago-2026) |
 | ~~3~~ | ✅ **`registrado` deja de ser `EN_ORIGEN`** + chip de antigüedad en el CRM | hecho (26-ago-2026) |
-| 4 | Fusionar Chats/CRM/Mapa/Stats en **Pedidos** con selector de modo | `seller-nav.ts`, las 4 páginas → una |
+| ~~4~~ | ✅ **Pedidos con selector de modo**; las 4 rutas viejas redirigen | hecho (27-ago-2026) |
 | 5 | La llamada como evento del hilo (`call_log` en `seller-call-token`, burbuja en el panel) y borrar **Llamadas** | `seller-call-token`, `VendedorPedidoPage`, `LlamadasPage` |
 | 6 | **Clientes** de verdad: lista + ficha con historial; Retención adentro | pantalla nueva + `ClientesPage`, `RetencionPage` |
 | 7 | Borrar las dos rutas mock del comprador | `App.tsx`, `src/pages/comprador/Chats*` |
 
-Los pasos 0 a 3 están hechos. El paso 4 —fusionar las cuatro pantallas en una con selector
-de modo— ya es barato: comparten lector, tipo, alcance y vocabulario de etapas.
+Los pasos 0 a 4 están hechos: hoy Pedidos es una pantalla con cuatro modos sobre una sola
+lectura. Lo que queda (5, 6, 7) es lo que baja el menú del admin de siete a cinco.
 
 ## Ver también
 

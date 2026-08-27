@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
@@ -6,8 +6,8 @@ import { supabase } from '../../lib/supabase'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { stageChip, NOTA_META } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
-import { useStoreOrders } from '../../lib/store-orders'
-import type { StoreOrder } from '../../lib/store-orders'
+import { estaVivo } from '../../lib/store-orders'
+import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 
 
 
@@ -33,7 +33,7 @@ function formatWhen(iso: string | undefined): string {
     : d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })
 }
 
-export default function ChatsVendedorPage() {
+export default function PedidosBandeja({ lista }: { lista: StoreOrders }) {
   const navigate = useNavigate()
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
@@ -42,11 +42,6 @@ export default function ChatsVendedorPage() {
   // `gen` = el `leidoEn` de la lista sobre la que se contaron estos bumps.
   const [bumpsRef, setBumps] = useState<{ gen: number; por: Record<string, number> }>({ gen: 0, por: {} })
   const seenRef = useRef<Set<string>>(new Set())
-
-  // The super admin (Kross platform) isn't a store → send them to Marcas.
-  useEffect(() => {
-    if (effective?.is_super_admin) navigate('/vendedor/marca', { replace: true })
-  }, [effective?.is_super_admin, navigate])
 
   // Live presence of all buyers → green dot on active chats
   useEffect(() => {
@@ -59,11 +54,11 @@ export default function ChatsVendedorPage() {
     return () => { supabase.removeChannel(ch) }
   }, [])
 
-  // El alcance —quién ve qué— lo decide `useStoreOrders`, una sola vez para las
-  // cuatro pantallas: si eres admin de lo que miras ves la tienda entera, si no
-  // ves los pedidos en los que estás metido.
-  const { pedidos: sessions, cargando: loading, soloMios: onlyMine, leidoEn } =
-    useStoreOrders(effective)
+  // La lista la trae la pantalla contenedora, una sola vez para los cuatro
+  // modos. Acá se descartan los cancelados: un pedido muerto no espera
+  // respuesta de nadie, así que no pinta nada en una bandeja de mensajes.
+  const { cargando: loading, soloMios: onlyMine, leidoEn } = lista
+  const sessions = useMemo(() => lista.pedidos.filter(estaVivo), [lista.pedidos])
 
   // Los contadores de "sin leer" son de ESTA pantalla y se acumulan sobre la
   // lista, así que una lista nueva tiene que soltarlos o seguirían sumando
@@ -197,11 +192,10 @@ export default function ChatsVendedorPage() {
 
   if (desktop) {
     return (
-      <div className="px-6 py-5">
+      <div className="px-6 pt-4 pb-5">
         <div className="flex items-end justify-between gap-6 mb-4">
           <div className="min-w-0">
-            <h1 className="text-lg font-black text-gray-900 leading-tight">Chats de clientes</h1>
-            <p className="text-xs text-gray-400 mt-0.5">{scopeLabel}</p>
+            <p className="text-xs text-gray-400">{scopeLabel}</p>
           </div>
           <div className="relative w-80 flex-shrink-0">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -283,9 +277,8 @@ export default function ChatsVendedorPage() {
 
   // ── Móvil: la tarjeta de siempre ──────────────────────────────────────────
   return (
-    <div className="px-4 py-4">
-      <h1 className="text-xl font-black text-gray-900 mb-1">Chats de clientes</h1>
-      <p className="text-xs text-gray-400 mb-4">{scopeLabel}</p>
+    <div className="px-4 pt-3 pb-4">
+      <p className="text-xs text-gray-400 mb-3">{scopeLabel}</p>
 
       <div className="relative mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
