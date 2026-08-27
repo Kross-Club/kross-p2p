@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Users, Eye, LogIn, UserPlus, X, Pencil } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { escuchar } from '../../lib/realtime'
 import { demoActivo } from '../../lib/demo/modo-demo'
 import { tiendaDemo } from '../../lib/demo/tienda-demo'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
@@ -98,12 +99,17 @@ export default function EquipoPage() {
     return () => { vivo = false }
   }, [isAdmin, real?.auth_user_id, storeId])
 
-  // Real connection presence
+  // Real connection presence.
+  //
+  // Por `escuchar`: `SellerPresenceTracker` (en `Layout`) ya tiene abierto este
+  // topic, y `supabase.channel` devolvía ESE canal ya suscrito — atarle un
+  // manejador lanza y dejaba Equipo en blanco. Además su `removeChannel` se
+  // llevaba la presencia del propio vendedor. Ver lib/realtime.ts.
   useEffect(() => {
-    const ch = supabase.channel('presence:sellers')
-      .on('presence', { event: 'sync' }, () => setOnline(new Set(Object.keys(ch.presenceState()))))
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    const s = escuchar('presence:sellers', {
+      presencia: estado => setOnline(new Set(Object.keys(estado))),
+    })
+    return () => s.cerrar()
   }, [])
 
   const enterAs = (s: SellerProfile) => { if (s.auth_user_id === real?.auth_user_id) stopActing(); else actAs(s); navigate('/vendedor/pedidos') }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SellerProfile } from './seller-session'
-import { useDemo } from './demo/modo-demo'
-import { tiendaDemo } from './demo/tienda-demo'
+import { useDemo, demoActivo } from './demo/modo-demo'
+import { tiendaDemo, fichaDemoDeCliente } from './demo/tienda-demo'
 import type { Segmento } from '../../supabase/functions/_shared/clientes.ts'
 
 // ─── El lector de clientes de la tienda ──────────────────────────────────────
@@ -108,10 +108,19 @@ export function useStoreClients(
   return { clientes, cargando, error, recargar }
 }
 
-/** Trae la ficha de una persona: sus datos y su historial de pedidos. */
+/**
+ * Trae la ficha de una persona: sus datos y su historial de pedidos.
+ *
+ * En demo sale del generador y no de `list-clients`: la libreta del demo ya se
+ * pintaba sola, pero al abrir a alguien se consultaba la base de verdad —que no
+ * sabe nada de un `demo-cli-7`— y la ficha decía "No se pudo cargar". Se
+ * pregunta por `storeId` y no por una bandera para que ninguna pantalla pueda
+ * olvidarse de pasarla.
+ */
 export async function fichaDeCliente(
   adminId: string, storeId: string | undefined, buyerId: string,
 ): Promise<{ cliente: Cliente; pedidos: PedidoDeCliente[] } | null> {
+  if (demoActivo(storeId)) return fichaDemoDeCliente(buyerId)
   try {
     const r = await fetch(`${BASE}/list-clients`, {
       method: 'POST',

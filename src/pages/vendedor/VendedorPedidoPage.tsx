@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Bell, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { escuchar } from '../../lib/realtime'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import TrackingBar from '../../components/TrackingBar'
@@ -510,55 +511,64 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
     return () => { vivo = false }
   }, [token, isAdmin, real?.auth_user_id, effective?.store_id, session?.id, hayLlamadas])
 
-  // Realtime
+  // Realtime.
+  //
+  // Por `escuchar` y no por `supabase.channel` directo: desde que el pedido se
+  // abre EN PANEL encima de la lista, las dos pantallas piden los mismos topics
+  // a la vez. `supabase.channel(topic)` devuelve el canal que ya existe, y
+  // atarle un manejador después de `subscribe()` LANZA — la excepción subía por
+  // este efecto y dejaba la pantalla en blanco. Ver lib/realtime.ts.
   useEffect(() => {
     if (!session) return
-    const ch = supabase.channel(`order:${session.id}`)
-      .on('broadcast', { event: 'new_message' }, ({ payload }) => {
-        const msg = payload as OrderMessage
-        setMessages(prev => {
-          if (prev.some(m => m.id === msg.id)) return prev
-          return [...prev.filter(m => !(m.id.startsWith('opt-') && m.sender_role === msg.sender_role)), msg]
-        })
-        if (msg.sender_role === 'buyer') markRead(session.id)
-      })
-      .on('broadcast', { event: 'stage_update' }, ({ payload }) => {
-        setSession(prev => prev ? { ...prev, stage: payload.stage as OrderSession['stage'] } : prev)
-      })
-      .on('broadcast', { event: 'assignment_update' }, () => { reloadSession() })
-      .on('broadcast', { event: 'participants_update' }, () => { reloadSession() })
-      .on('broadcast', { event: 'address_update' }, ({ payload }) => {
-        setSession(prev => prev ? { ...prev, address: payload.address, address_verified: payload.address_verified, address_lat: payload.address_lat, address_lng: payload.address_lng } : prev)
-      })
-      .on('broadcast', { event: 'order_cancelled' }, () => {
-        setSession(prev => prev ? { ...prev, status: 'cancelado' } : prev)
-      })
-      .on('broadcast', { event: 'order_recreated' }, () => {
-        setSession(prev => prev ? { ...prev, status: 'active', stage: 'nuevo' } : prev)
-      })
-      .on('broadcast', { event: 'nota_update' }, ({ payload }) => {
-        setSession(prev => prev ? { ...prev, nota: payload.nota } : prev)
-      })
-      .on('broadcast', { event: 'tracking_update' }, ({ payload }) => {
-        setSession(prev => prev ? { ...prev, ...payload } : prev)
-      })
-      .on('broadcast', { event: 'items_update' }, ({ payload }) => {
-        setSession(prev => prev ? { ...prev, items: payload.items, product_price: payload.total } : prev)
-      })
-      .on('broadcast', { event: 'message_update' }, ({ payload }) => {
-        setMessages(prev => prev.map(m => m.id === payload.id ? { ...m, offer: payload.offer } : m))
-      })
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        if (payload.role === 'buyer') {
-          setBuyerTyping(true)
-          if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
-          typingTimerRef.current = setTimeout(() => setBuyerTyping(false), 3000)
-        }
-      })
-      .subscribe()
-    channelRef.current = ch
+    const sid = session.id
+    const s = escuchar(`order:${sid}`, {
+      broadcast: {
+        new_message: ({ payload }) => {
+          const msg = payload as unknown as OrderMessage
+          setMessages(prev => {
+            if (prev.some(m => m.id === msg.id)) return prev
+            return [...prev.filter(m => !(m.id.startsWith('opt-') && m.sender_role === msg.sender_role)), msg]
+          })
+          if (msg.sender_role === 'buyer') markRead(sid)
+        },
+        stage_update: ({ payload }) => {
+          setSession(prev => prev ? { ...prev, stage: payload.stage as OrderSession['stage'] } : prev)
+        },
+        assignment_update: () => { reloadSession() },
+        participants_update: () => { reloadSession() },
+        address_update: ({ payload }) => {
+          setSession(prev => prev ? { ...prev, address: payload.address as string, address_verified: payload.address_verified as boolean, address_lat: payload.address_lat as number, address_lng: payload.address_lng as number } : prev)
+        },
+        order_cancelled: () => {
+          setSession(prev => prev ? { ...prev, status: 'cancelado' } : prev)
+        },
+        order_recreated: () => {
+          setSession(prev => prev ? { ...prev, status: 'active', stage: 'nuevo' } : prev)
+        },
+        nota_update: ({ payload }) => {
+          setSession(prev => prev ? { ...prev, nota: payload.nota as string } : prev)
+        },
+        tracking_update: ({ payload }) => {
+          setSession(prev => prev ? { ...prev, ...payload } : prev)
+        },
+        items_update: ({ payload }) => {
+          setSession(prev => prev ? { ...prev, items: payload.items as OrderSession['items'], product_price: payload.total as number } : prev)
+        },
+        message_update: ({ payload }) => {
+          setMessages(prev => prev.map(m => m.id === payload.id ? { ...m, offer: payload.offer as OrderMessage['offer'] } : m))
+        },
+        typing: ({ payload }) => {
+          if (payload.role === 'buyer') {
+            setBuyerTyping(true)
+            if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+            typingTimerRef.current = setTimeout(() => setBuyerTyping(false), 3000)
+          }
+        },
+      },
+    })
+    channelRef.current = s.canal
     return () => {
-      supabase.removeChannel(ch)
+      s.cerrar()
       channelRef.current = null
     }
   }, [session?.id])
@@ -567,13 +577,10 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   useEffect(() => {
     const buyerId = session?.buyer_id
     if (!buyerId) return
-    const ch = supabase
-      .channel('presence:buyers')
-      .on('presence', { event: 'sync' }, () => {
-        setBuyerOnline(buyerId in ch.presenceState())
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    const s = escuchar('presence:buyers', {
+      presencia: estado => setBuyerOnline(buyerId in estado),
+    })
+    return () => s.cerrar()
   }, [session?.buyer_id])
 
   // Scroll to bottom
