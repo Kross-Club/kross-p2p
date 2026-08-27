@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
-import { supabase } from '../../lib/supabase'
+import { escuchar } from '../../lib/realtime'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { stageChip, NOTA_META } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
@@ -35,15 +35,16 @@ export default function PedidosLista({ lista, onAbrir }: {
   const [bumpsRef, setBumps] = useState<{ gen: number; por: Record<string, number> }>({ gen: 0, por: {} })
   const seenRef = useRef<Set<string>>(new Set())
 
-  // Live presence of all buyers → green dot on active chats
+  // Live presence of all buyers → green dot on active chats.
+  //
+  // Por `escuchar` y no por `supabase.channel` directo: el pedido abierto en
+  // panel escucha este MISMO topic, y pedirlo dos veces devolvía el canal ya
+  // suscrito de la otra pantalla — atarle un manejador lanza. Ver lib/realtime.
   useEffect(() => {
-    const ch = supabase
-      .channel('presence:buyers')
-      .on('presence', { event: 'sync' }, () => {
-        setOnlineBuyers(new Set(Object.keys(ch.presenceState())))
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    const s = escuchar('presence:buyers', {
+      presencia: estado => setOnlineBuyers(new Set(Object.keys(estado))),
+    })
+    return () => s.cerrar()
   }, [])
 
   // La lista la trae la pantalla contenedora, una sola vez para los cuatro
@@ -69,20 +70,22 @@ export default function PedidosLista({ lista, onAbrir }: {
     // Cada lectura empieza su propio conteo: los ids ya vistos de la lista
     // anterior no deben silenciar mensajes de la nueva.
     seenRef.current = new Set()
-    const channels = sessions.map(s =>
-      supabase.channel(`order:${s.id}`)
-        .on('broadcast', { event: 'new_message' }, ({ payload }) => {
-          const m = payload as { id: string; sender_role: string }
-          if (m.sender_role !== 'buyer' || seenRef.current.has(m.id)) return
-          seenRef.current.add(m.id)
-          setBumps(b => {
-            const por = b.gen === leidoEn ? b.por : {}
-            return { gen: leidoEn, por: { ...por, [s.id]: (por[s.id] ?? 0) + 1 } }
-          })
-        })
-        .subscribe()
+    const suscripciones = sessions.map(s =>
+      escuchar(`order:${s.id}`, {
+        broadcast: {
+          new_message: ({ payload }) => {
+            const m = payload as { id: string; sender_role: string }
+            if (m.sender_role !== 'buyer' || seenRef.current.has(m.id)) return
+            seenRef.current.add(m.id)
+            setBumps(b => {
+              const por = b.gen === leidoEn ? b.por : {}
+              return { gen: leidoEn, por: { ...por, [s.id]: (por[s.id] ?? 0) + 1 } }
+            })
+          },
+        },
+      })
     )
-    return () => channels.forEach(c => supabase.removeChannel(c))
+    return () => suscripciones.forEach(s => s.cerrar())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionIds, leidoEn])
 

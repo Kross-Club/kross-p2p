@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, Users, ChevronRight, IdCard, MessageCircle, Phone, X } from 'lucide-react'
+import { Search, Users, ChevronRight, MessageCircle, Phone, X } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { useStoreClients, fichaDeCliente, resumenDeCliente } from '../../lib/store-clients'
 import type { Cliente, PedidoDeCliente } from '../../lib/store-clients'
@@ -8,6 +8,8 @@ import { CERRADO, ALERTA, NEUTRO } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
 import { soles } from '../../lib/order-money'
 import { fechaCorta } from '../../lib/fechas'
+import PanelDerecha from '../../components/PanelDerecha'
+import CopyRow from '../../components/CopyRow'
 
 // ─── La libreta de clientes ──────────────────────────────────────────────────
 //
@@ -140,6 +142,9 @@ export default function ClientesPersonas() {
 
       {abierto && (
         <Ficha
+          // Una ficha por persona: con el mismo componente reusado, el "no se
+          // pudo cargar" de un cliente se quedaba pegado al siguiente.
+          key={abierto}
           buyerId={abierto}
           adminId={real?.auth_user_id}
           storeId={effective?.store_id}
@@ -152,6 +157,10 @@ export default function ClientesPersonas() {
 }
 
 // ─── La ficha: la persona y su historial ─────────────────────────────────────
+//
+// Entra por la derecha, como el pedido: es el mismo gesto —mirar algo sin salir
+// de donde estás— y con el mismo marco no parecen dos aplicaciones distintas.
+//
 // Va con TODOS sus pedidos, no solo los entregados: un cancelado o un no
 // entregado es justamente lo que explica por qué este cliente merece otra
 // mirada antes de despacharle sin adelanto.
@@ -177,43 +186,71 @@ function Ficha({ buyerId, adminId, storeId, onClose, onAbrirPedido }: {
 
   const c = datos?.cliente
   const celular = c?.phone ? c.phone.slice(-9) : null
+  const seg = c?.segmento ? SEGMENTO[c.segmento] : undefined
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.4)' }}
-      onClick={onClose}>
-      <div className="w-full max-w-[430px] rounded-t-3xl max-h-[85vh] overflow-y-auto"
-        style={{ background: 'var(--surface)' }} onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b border-gray-100"
-          style={{ background: 'var(--surface)' }}>
-          <p className="font-black text-sm" style={{ color: 'var(--text)' }}>
+    <PanelDerecha etiqueta={`Cliente ${c?.nombre ?? ''}`} ancho="min(520px, 100%)" onCerrar={onClose}>
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+        style={{ borderBottom: '0.5px solid var(--border)' }}>
+        <div className="min-w-0">
+          <p className="font-black text-sm truncate" style={{ color: 'var(--text)' }}>
             {c?.nombre || (fallo ? 'No se pudo cargar' : 'Cargando…')}
           </p>
-          <button onClick={onClose} className="p-1 rounded-lg" style={{ color: 'var(--text-faint)' }}>
-            <X size={18} />
-          </button>
+          {c && (
+            <p className="text-[11px]" style={{ color: 'var(--text-faint)' }}>{resumenDeCliente(c)}</p>
+          )}
         </div>
+        <button onClick={onClose} aria-label="Cerrar" className="p-1 rounded-lg flex-shrink-0"
+          style={{ color: 'var(--text-faint)' }}>
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {!c && !fallo && (
+          <div className="flex justify-center py-10">
+            <div className="w-7 h-7 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" />
+          </div>
+        )}
+
+        {fallo && (
+          <p className="text-xs text-center py-8" style={{ color: 'var(--text-faint)' }}>
+            No se pudo cargar la ficha. Si acaba de salir el despliegue, puede que{' '}
+            <code>list-clients</code> aún no esté publicada.
+          </p>
+        )}
 
         {c && (
-          <div className="px-4 py-4">
-            <div className="grid grid-cols-3 gap-2 mb-4">
+          <>
+            {/* Lo que decide cómo tratar a esta persona, de un vistazo. */}
+            <div className="grid grid-cols-4 gap-2 mb-3">
               <Dato valor={String(c.pedidos)} etiqueta="Entregados" />
               <Dato valor={soles(c.gastado)} etiqueta="Ha gastado" />
               <Dato valor={String(c.puntos ?? 0)} etiqueta="Puntos" />
+              <Dato valor={c.score != null ? String(c.score) : '—'} etiqueta="Puntaje" />
             </div>
 
-            {c.document_number && (
-              <div className="flex items-center gap-1.5 mb-2">
-                <IdCard size={13} style={{ color: 'var(--text-faint)' }} />
-                <p className="text-[11px] font-mono" style={{ color: 'var(--text-muted)' }}>
-                  {c.document_type || 'DNI'} {c.document_number}
-                </p>
-              </div>
+            {seg && (
+              <span className="inline-block mb-3 text-[10px] font-black px-2 py-1 rounded-full" style={seg.style}>
+                {seg.label}
+              </span>
             )}
-            <p className="text-[11px] mb-3" style={{ color: 'var(--text-faint)' }}>
-              Último pedido: {fechaCorta(c.ultimo)}
-              {c.activated_at ? ' · usa la app' : ' · nunca entró a la app'}
-              {c.source === 'import' && ' · importado'}
-            </p>
+
+            <div className="rounded-2xl px-3 py-1 mb-3" style={{ background: 'var(--surface-3)' }}>
+              {c.document_number && (
+                <CopyRow label={c.document_type || 'DNI'} value={c.document_number} />
+              )}
+              {c.phone && <CopyRow label="WhatsApp" value={c.phone} />}
+            </div>
+
+            <div className="text-[11px] mb-3 space-y-0.5" style={{ color: 'var(--text-faint)' }}>
+              <p>Último pedido: {fechaCorta(c.ultimo)}</p>
+              <p>Cliente desde: {fechaCorta(c.created_at)}</p>
+              <p>
+                {c.activated_at ? `Usa la app desde ${fechaCorta(c.activated_at)}` : 'Nunca entró a la app'}
+                {c.source === 'import' && ' · importado'}
+              </p>
+            </div>
 
             {celular && (
               <div className="flex items-center gap-2 mb-4">
@@ -231,10 +268,10 @@ function Ficha({ buyerId, adminId, storeId, onClose, onAbrirPedido }: {
             )}
 
             <p className="text-[10px] font-black uppercase tracking-wide mb-2" style={{ color: 'var(--text-faint)' }}>
-              Sus pedidos
+              Sus pedidos · {datos.pedidos.length}
             </p>
             {datos.pedidos.length === 0 ? (
-              <p className="text-xs text-gray-400">Todavía no ha hecho ningún pedido.</p>
+              <p className="text-xs" style={{ color: 'var(--text-faint)' }}>Todavía no ha hecho ningún pedido.</p>
             ) : (
               <div className="space-y-2">
                 {datos.pedidos.map(p => {
@@ -243,28 +280,29 @@ function Ficha({ buyerId, adminId, storeId, onClose, onAbrirPedido }: {
                     <button key={p.id}
                       onClick={() => p.token && onAbrirPedido(p.token)}
                       disabled={!p.token}
-                      className="w-full rounded-xl px-3 py-2 text-left"
+                      className="w-full rounded-xl px-3 py-2 text-left disabled:cursor-default"
                       style={{ background: 'var(--surface-3)' }}>
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs font-bold truncate" style={{ color: 'var(--text)' }}>
                           {p.product_name || 'Pedido'}
                         </p>
-                        <span className="text-[11px] flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-                          {p.product_price != null ? soles(Number(p.product_price)) : ''}
+                        <span className="text-[11px] flex-shrink-0 tabular" style={{ color: 'var(--text-muted)' }}>
+                          {p.product_price != null ? soles(p.product_price) : ''}
                         </span>
                       </div>
                       <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-faint)' }}>
                         {p.status === 'cancelado' ? 'Cancelado' : (ETIQUETA_ETAPA[col] ?? col)} · {fechaCorta(p.created_at)}
+                        {!p.token && ' · sin chat'}
                       </p>
                     </button>
                   )
                 })}
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
-    </div>
+    </PanelDerecha>
   )
 }
 

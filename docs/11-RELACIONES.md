@@ -588,6 +588,50 @@ dice `TrackingBar` con texto—. Detalle y decisión en
 **En vivo** no se toca: ahí el mapa sí responde algo —dónde está la plata que ya salió, todos
 los pedidos a la vez— y por eso es un modo propio.
 
+### Lo que se rompió al poner dos pantallas vivas a la vez
+
+Abrir el pedido en panel dejó, por primera vez, **dos pantallas montadas sobre los mismos
+datos**. Salieron tres fallas del mismo origen, y una es de las caras.
+
+**`supabase.channel(topic)` no crea un canal: devuelve el que ya existe.** Y
+`canal.on(...)` después de `subscribe()` **lanza** (`cannot add broadcast callbacks for … after
+subscribe()`). Mientras abrir un pedido significaba navegar, eso nunca pasaba: la lista se
+desmontaba antes de que el pedido se montara. Con el panel encima, las dos piden los mismos
+topics —`presence:buyers` y `order:<id>`—, la segunda recibe el canal ya suscrito de la
+primera, le añade un manejador, y la excepción sube por el efecto hasta **desmontar el árbol
+entero**: pantalla en blanco, y solo desde *Lista*, porque el Tablero no escucha nada.
+
+Al arreglarlo apareció que la misma trampa ya estaba armada en otro sitio, sin panel de por
+medio: `SellerPresenceTracker` vive en `Layout` y abre `presence:sellers`; **Equipo** pedía ese
+mismo topic y se llevaba el mismo crash — y su `removeChannel` al salir apagaba la presencia
+del propio vendedor.
+
+`src/lib/realtime.ts` reparte: el canal se pide una vez, se ata una vez —un comodín de
+broadcast y un `sync` de presencia— y cada pantalla registra y retira sus manejadores. Se
+cierra cuando se va la última. Diez pruebas lo fijan, con un doble que imita las dos reglas de
+la librería (devolver el canal existente, lanzar al atar después de `subscribe`): sin esas dos
+reglas la prueba no probaría nada.
+
+| Consumidor | Topic |
+|---|---|
+| `PedidosLista` | `presence:buyers`, `order:<id>` de cada pedido de la lista |
+| `PedidoVista` | `presence:buyers`, `order:<id>` del pedido abierto |
+| `SellerPresenceTracker` (abre y pone la clave) · `EquipoPage` | `presence:sellers` |
+
+### La ficha del cliente en demo, y en el mismo cajón
+
+La libreta del demo se pintaba sola, pero abrir a una persona consultaba `list-clients` —que
+no sabe nada de un `demo-cli-7`— y la ficha decía *"No se pudo cargar"*. Justo ahí es donde se
+ve la recompra, que es medio Loyalty. Ahora sale del generador
+(`fichaDemoDeCliente`), juntando los pedidos **vivos** (con token, o sea que se abren con su
+chat) y el **historial entregado** (sin token: no hubo conversación que guardar).
+
+La ficha pasó de hoja inferior a **cajón de la derecha**, el mismo que el pedido: es el mismo
+gesto —mirar algo sin salir de donde estás— y con dos marcos distintos se verían como dos
+aplicaciones. `PanelDerecha` es ese marco, y `PanelPedido` quedó como una línea encima de él.
+De paso la ficha muestra lo que faltaba para decidir cómo tratar a alguien: **puntaje**,
+segmento, cliente desde cuándo, DNI y teléfono copiables, y el conteo de sus pedidos.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

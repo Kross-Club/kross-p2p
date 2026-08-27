@@ -1,7 +1,7 @@
 import { AgencyService } from '../checkout/services/AgencyService'
 import { agregarPorComprador, segmentoDe } from '../../../supabase/functions/_shared/clientes.ts'
 import type { StoreOrder } from '../store-orders'
-import type { Cliente } from '../store-clients'
+import type { Cliente, PedidoDeCliente } from '../store-clients'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
@@ -216,8 +216,18 @@ function conversacion(
   return msgs
 }
 
+export interface PedidoHistorico {
+  buyer_id: string
+  product_price: number
+  product_name: string
+  created_at: string
+}
+
 export interface TiendaDemo {
   pedidos: StoreOrder[]
+  /** Lo entregado en los últimos meses. Es lo que da recompras a la ficha del
+   *  cliente y peso al LTV; no son pedidos vivos, así que no tienen chat. */
+  historial: PedidoHistorico[]
   clientes: Cliente[]
   productos: ProductoDemo[]
   equipo: MiembroDemo[]
@@ -262,7 +272,7 @@ async function construir(): Promise<TiendaDemo> {
   }))
 
   // ── El historial: solo entregados, solo lo que pesa el agregado ──
-  const historial: { buyer_id: string; product_price: number; created_at: string }[] = []
+  const historial: { buyer_id: string; product_price: number; created_at: string; product_name: string }[] = []
   for (let i = 0; i < HISTORIAL; i++) {
     // Sesgo hacia los primeros clientes: unos pocos concentran las recompras,
     // que es como se comporta una base real.
@@ -271,6 +281,7 @@ async function construir(): Promise<TiendaDemo> {
     historial.push({
       buyer_id: personas[Math.min(idx, TOTAL_CLIENTES - 1)].id,
       product_price: prod.precio,
+      product_name: prod.nombre,
       created_at: new Date(ahora - entre(r, 1, DIAS_HISTORIAL) * DIA).toISOString(),
     })
   }
@@ -367,7 +378,62 @@ async function construir(): Promise<TiendaDemo> {
     vendidos: vendidosPorProducto.get(String(p.precio)) ?? 0,
   }))
 
-  return { pedidos, clientes, productos, equipo: EQUIPO, origenPorProducto }
+  return { pedidos, historial, clientes, productos, equipo: EQUIPO, origenPorProducto }
+}
+
+/**
+ * La ficha de una persona de ejemplo: sus datos y TODOS sus pedidos.
+ *
+ * Sin esto la ficha del demo decía "No se pudo cargar": pedía `list-clients`,
+ * que consulta la base de verdad y no sabe nada de un `demo-cli-7`. Un demo que
+ * enseña la libreta pero se rompe al abrir a una persona es peor que no
+ * tenerla — justo ahí es donde se ve la recompra, que es medio Loyalty.
+ *
+ * Junta las dos mitades: los pedidos VIVOS (con token, o sea que se abren con
+ * su chat) y el historial entregado (sin token: no hubo conversación que
+ * guardar). Ordenados del más nuevo al más viejo.
+ */
+export async function fichaDemoDeCliente(
+  buyerId: string,
+): Promise<{ cliente: Cliente; pedidos: PedidoDeCliente[] } | null> {
+  const t = await tiendaDemo()
+  const cliente = t.clientes.find(c => c.id === buyerId)
+  if (!cliente) return null
+
+  const vivos: PedidoDeCliente[] = t.pedidos
+    .filter(p => p.buyer_id === buyerId)
+    .map(p => ({
+      id: p.id,
+      token: p.token ?? null,
+      product_name: p.product_name ?? null,
+      pack_name: p.pack_name ?? null,
+      product_price: p.product_price ?? null,
+      stage: p.stage ?? null,
+      status: p.status ?? null,
+      created_at: p.created_at ?? null,
+      tracking_phase: p.tracking_phase ?? null,
+    }))
+
+  const entregados: PedidoDeCliente[] = t.historial
+    .filter(h => h.buyer_id === buyerId)
+    .map((h, i) => ({
+      id: `demo-hist-${buyerId}-${i}`,
+      token: null,
+      product_name: h.product_name,
+      pack_name: null,
+      product_price: h.product_price,
+      stage: 'entregado',
+      status: 'active',
+      created_at: h.created_at,
+      tracking_phase: 'ENTREGADO',
+    }))
+
+  return {
+    cliente,
+    pedidos: [...vivos, ...entregados].sort(
+      (a, b) => Date.parse(b.created_at ?? '') - Date.parse(a.created_at ?? ''),
+    ),
+  }
 }
 
 /** El pedido de ejemplo detrás de un token (`demo-42`), o `null` si no es uno.
