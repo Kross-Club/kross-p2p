@@ -31,7 +31,6 @@ import BotIAPage from './pages/vendedor/BotIAPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
-import RetencionPage from './pages/vendedor/RetencionPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
 import BuyerPresenceTracker from './components/BuyerPresenceTracker'
@@ -168,7 +167,9 @@ export default function App() {
               porque estaba en el menú y puede haber enlaces guardados. */}
           <Route path="/vendedor/llamadas" element={<Navigate to="/vendedor/pedidos" replace />} />
           <Route path="/vendedor/clientes" element={<ClientesPage />} />
-          <Route path="/vendedor/retencion" element={<RetencionPage />} />
+          {/* Retención dejó de ser una sección: mide a la misma gente que
+              Clientes, así que vive adentro como un modo (11-RELACIONES). */}
+          <Route path="/vendedor/retencion" element={<Navigate to="/vendedor/clientes?modo=reactivar" replace />} />
         </Route>
 
         {/* Sin esto, cualquier URL que no exista renderizaba una página en
