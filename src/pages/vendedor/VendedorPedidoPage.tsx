@@ -13,6 +13,7 @@ import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
+import { soles } from '../../lib/order-money'
 import CustomerCard from '../../components/CustomerCard'
 import Confirmar from '../../components/Confirmar'
 import PagoTrace from '../../components/PagoTrace'
@@ -748,15 +749,25 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
               style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
               {(session.buyer_name || 'C')[0]}
             </div>
+            {/* Lima cuando está conectado, como en Lista y en el Tablero. Decía
+                `var(--text)`, que en el panel oscuro ES casi blanco: el punto
+                salía blanco y no se distinguía del apagado. */}
             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
-              style={{ borderColor: 'var(--chat-header)', background: buyerOnline ? 'var(--text)' : 'var(--structural, #3D444C)' }} />
+              title={buyerOnline ? 'Con la app abierta ahora' : 'No tiene la app abierta'}
+              style={{ borderColor: 'var(--chat-header)', background: buyerOnline ? 'var(--ok-fg)' : 'var(--structural, #3D444C)' }} />
           </div>
 
           <button onClick={() => setShowDetail(true)} disabled={desktop}
             className="flex-1 min-w-0 text-left disabled:cursor-default">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
-            <p className="text-xs" style={{ color: buyerOnline ? 'var(--text)' : 'rgba(255,255,255,0.6)' }}>
-              {buyerOnline ? 'En línea ahora' : ((session.items && session.items.length > 1) ? `${session.items.length} productos · S/ ${session.product_price}` : `${session.product_name} · S/ ${session.product_price}`)}
+            {/* Qué pedido es. Antes, estar conectado REEMPLAZABA esta línea por
+                "En línea ahora": justo cuando hay que atender rápido, la
+                cabecera dejaba de decir qué se está vendiendo. Que esté
+                conectado ya lo dice el punto del avatar. */}
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              {(session.items && session.items.length > 1)
+                ? `${session.items.length} productos · ${soles(session.product_price)}`
+                : `${session.product_name} · ${soles(session.product_price)}`}
             </p>
             {!desktop && (
               <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><ShoppingCart size={11} /> Ver pedido</p>
