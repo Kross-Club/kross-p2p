@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tiendaDemo, PEDIDOS_POR_DIA } from './tienda-demo'
+import { tiendaDemo, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
 import { columnaDelPedido, COLUMNAS } from '../order-tracking'
 import { estaVivo } from '../store-orders'
 
@@ -80,5 +80,44 @@ describe('el equipo y la escala', () => {
 
   it('declara la escala que representa', () => {
     expect(PEDIDOS_POR_DIA).toBe(1000)
+  })
+})
+
+// La bandeja del demo llevaba a "Sesión no encontrada": el pedido de ejemplo no
+// existe en la base, así que la pantalla tiene que abrirlo desde el generador.
+describe('abrir un pedido de ejemplo', () => {
+  it('reconoce sus tokens sin consultar nada', () => {
+    expect(esTokenDemo('demo-42')).toBe(true)
+    expect(esTokenDemo('abc123')).toBe(false)
+    expect(esTokenDemo(null)).toBe(false)
+  })
+
+  it('cada pedido de la lista se puede abrir por su token', async () => {
+    for (const p of t.pedidos.slice(0, 5)) {
+      expect(await pedidoDemoPorToken(p.token)).toMatchObject({ id: p.id })
+    }
+  })
+
+  it('un token que no es de ejemplo no devuelve nada', async () => {
+    expect(await pedidoDemoPorToken('token-real')).toBeNull()
+  })
+
+  it('los pedidos traen conversación, no un chat vacío', () => {
+    for (const p of t.pedidos.slice(0, 10)) {
+      expect((p.chat_messages ?? []).length).toBeGreaterThan(2)
+    }
+    expect(t.pedidos.some(p => (p.chat_messages ?? []).some(m => m.sender_role === 'buyer'))).toBe(true)
+  })
+
+  // La llamada es un evento del pedido (11-RELACIONES): en el demo también.
+  it('algunos pedidos tienen llamada con grabación enganchada', () => {
+    const conGrabacion = t.pedidos.filter(p =>
+      (p.chat_messages ?? []).some(m => m.type === 'call_log' && (m as { call_recording_id?: string }).call_recording_id))
+    expect(conGrabacion.length).toBeGreaterThan(5)
+  })
+
+  it('el audio de ejemplo es un WAV de verdad, no un botón muerto', () => {
+    expect(AUDIO_DEMO.startsWith('data:audio/wav;base64,')).toBe(true)
+    expect(AUDIO_DEMO.length).toBeGreaterThan(1000)
   })
 })

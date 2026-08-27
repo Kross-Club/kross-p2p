@@ -91,8 +91,11 @@ async function call(payload: Record<string, unknown>) {
 
 export default function MarcaPage() {
   const navigate = useNavigate()
-  const { real, isAdmin, impersonating, actAs } = useSeller()
-  const demo = useDemo()
+  const { real, effective, isAdmin, impersonating, actAs } = useSeller()
+  // El demo es de UNA tienda: la que se está mirando. Un super admin en el nivel
+  // plataforma no está dentro de ninguna, y ahí el interruptor no aplica.
+  const tiendaDemoId = effective?.is_super_admin ? null : effective?.store_id ?? null
+  const demo = useDemo(tiendaDemoId)
 
   // Super admin "enters" a brand → acts as itself but scoped to that store, so the
   // full store toolset (Chats, Productos, CRM, Equipo, Stats) works even for a brand
@@ -104,6 +107,9 @@ export default function MarcaPage() {
   }
   const [stores, setStores] = useState<StoreRow[]>([])
   const [isSuper, setIsSuper] = useState(false)
+  const nombreTiendaActual = tiendaDemoId
+    ? stores.find(x => x.id === tiendaDemoId)?.nombre ?? null
+    : null
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<StoreRow | null>(null)
   const [creating, setCreating] = useState(false)
@@ -173,7 +179,9 @@ export default function MarcaPage() {
             funcionando, sin esperar a que la marca venda.
           </p>
           <p className="text-[10px] text-gray-400 mt-1">
-            Solo en este dispositivo · no toca la base · nadie más lo ve.
+            {tiendaDemoId
+              ? <>Solo <b>{nombreTiendaActual ?? 'esta marca'}</b> y solo en este dispositivo · no toca la base · nadie más lo ve.</>
+              : <>Entra a una marca para activarle el demo: se enciende de a una, no para todas.</>}
           </p>
         </div>
         <button
@@ -181,9 +189,15 @@ export default function MarcaPage() {
           role="switch"
           aria-checked={demo}
           aria-label="Modo demo"
-          onClick={() => setDemo(!demo)}
+          disabled={!tiendaDemoId}
+          onClick={() => tiendaDemoId && setDemo(tiendaDemoId, !demo)}
           className="relative flex-shrink-0 rounded-full transition-colors"
-          style={{ width: 44, height: 26, background: demo ? 'var(--brand)' : 'var(--border-strong)' }}>
+          style={{
+            width: 44, height: 26,
+            background: demo ? 'var(--brand)' : 'var(--border-strong)',
+            opacity: tiendaDemoId ? 1 : 0.4,
+            cursor: tiendaDemoId ? 'pointer' : 'not-allowed',
+          }}>
           <span className="absolute top-[3px] rounded-full transition-all"
             style={{ width: 20, height: 20, background: '#fff', left: demo ? 21 : 3 }} />
         </button>

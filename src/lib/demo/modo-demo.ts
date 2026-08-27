@@ -6,38 +6,51 @@ import { useSyncExternalStore } from 'react'
 // equipo— para poder enseñar cómo se ve la herramienta con una tienda que ya
 // vende, sin esperar a que la marca venda.
 //
-// **Vive en el dispositivo, no en la marca.** Es una decisión, no un descuido:
+// **Es POR TIENDA y POR DISPOSITIVO.** Las dos cosas, y las dos a propósito:
 //
-//  · Si fuera una columna de `stores`, un vendedor encendiéndolo pondría a TODO
-//    su equipo a mirar pedidos inventados, y una marca podría quedarse en demo
-//    en producción sin que nadie lo note. El riesgo no vale la comodidad.
-//  · Es una forma de MIRAR, no un atributo de la tienda — igual que el tema
-//    claro/oscuro, que ya vive así (`kross-theme`).
-//  · Y no toca la base: nada de lo que se ve acá se guarda ni se envía.
+//  · Por dispositivo (`localStorage`), no una columna de `stores`: si fuera de
+//    la marca, un vendedor encendiéndolo pondría a TODO su equipo a mirar
+//    pedidos inventados, y una tienda podría quedarse en demo en producción sin
+//    que nadie lo note. Es una forma de MIRAR, como el tema claro/oscuro.
+//  · Por tienda: encenderlo en una marca para enseñarla no debe ensuciar la
+//    vista de las otras. Un super admin que prepara una demo de Gadicaf tiene
+//    que poder saltar a Kross Shop y ver los pedidos REALES de Kross Shop.
 //
-// El interruptor está en Marca → Modo demo. Mientras esté encendido, el panel
-// lo dice con una barra fija arriba: un demo que no se anuncia es una mentira.
+// Y no toca la base: nada de lo que se ve acá se guarda ni se envía.
+//
+// El interruptor está en Marca → Modo demo, y dice de qué tienda habla.
+// Mientras esté encendido, el panel lo anuncia con una barra fija arriba: un
+// demo que no se anuncia es una mentira.
 
-const KEY = 'kross-demo'
+const PREFIJO = 'kross-demo:'
 
-function leer(): boolean {
+const clave = (storeId: string) => `${PREFIJO}${storeId}`
+
+function leer(storeId: string): boolean {
   try {
-    return localStorage.getItem(KEY) === '1'
+    return localStorage.getItem(clave(storeId)) === '1'
   } catch {
     return false   // incógnito o storage bloqueado: nunca se asume demo
   }
 }
 
-let activo: boolean = typeof window !== 'undefined' ? leer() : false
+// Cache en memoria para que `demoActivo()` sea barato y sincrónico: se consulta
+// en cada lectura de datos y en cada pintada del panel.
+const estado = new Map<string, boolean>()
 const oyentes = new Set<() => void>()
 
-export function demoActivo(): boolean { return activo }
+/** ¿La tienda que se está mirando está en demo? Sin tienda, nunca. */
+export function demoActivo(storeId: string | null | undefined): boolean {
+  if (!storeId) return false
+  if (!estado.has(storeId)) estado.set(storeId, leer(storeId))
+  return estado.get(storeId)!
+}
 
-export function setDemo(next: boolean) {
-  activo = next
+export function setDemo(storeId: string, next: boolean) {
+  estado.set(storeId, next)
   try {
-    if (next) localStorage.setItem(KEY, '1')
-    else localStorage.removeItem(KEY)
+    if (next) localStorage.setItem(clave(storeId), '1')
+    else localStorage.removeItem(clave(storeId))
   } catch { /* sin storage sigue valiendo para esta sesión */ }
   oyentes.forEach(l => l())
 }
@@ -47,7 +60,11 @@ function subscribe(onChange: () => void): () => void {
   return () => { oyentes.delete(onChange) }
 }
 
-/** `true` mientras el panel muestra datos de ejemplo. Reacciona al interruptor. */
-export function useDemo(): boolean {
-  return useSyncExternalStore(subscribe, demoActivo, () => false)
+/** `true` mientras el panel muestra datos de ejemplo de ESTA tienda. */
+export function useDemo(storeId: string | null | undefined): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => demoActivo(storeId),
+    () => false,
+  )
 }

@@ -140,6 +140,82 @@ const EQUIPO: MiembroDemo[] = [
   avatar_url: null,
 }))
 
+// ─── El audio de ejemplo ─────────────────────────────────────────────────────
+// Un WAV diminuto generado a mano (un tono suave de medio segundo). Existe para
+// que el reproductor de la grabación sea REAL y no un botón muerto: se ve el
+// control, se puede dar play y se oye algo. Pesa ~4 KB en base64 y no sale del
+// navegador. Lo que NO hace es fingir una conversación grabada.
+function wavDeEjemplo(): string {
+  const hz = 8000, segundos = 0.6, n = Math.floor(hz * segundos)
+  const buf = new Uint8Array(44 + n)
+  const txt = (o: number, t: string) => { for (let i = 0; i < t.length; i++) buf[o + i] = t.charCodeAt(i) }
+  const u32 = (o: number, v: number) => { buf[o] = v & 255; buf[o+1] = (v>>8) & 255; buf[o+2] = (v>>16) & 255; buf[o+3] = (v>>24) & 255 }
+  const u16 = (o: number, v: number) => { buf[o] = v & 255; buf[o+1] = (v>>8) & 255 }
+  txt(0, 'RIFF'); u32(4, 36 + n); txt(8, 'WAVE'); txt(12, 'fmt ')
+  u32(16, 16); u16(20, 1); u16(22, 1); u32(24, hz); u32(28, hz); u16(32, 1); u16(34, 8)
+  txt(36, 'data'); u32(40, n)
+  for (let i = 0; i < n; i++) {
+    const desvanece = 1 - i / n
+    buf[44 + i] = 128 + Math.round(Math.sin(i * 0.08) * 40 * desvanece)
+  }
+  let bin = ''
+  for (const b of buf) bin += String.fromCharCode(b)
+  return `data:audio/wav;base64,${btoa(bin)}`
+}
+
+export const AUDIO_DEMO = wavDeEjemplo()
+
+/** La conversación de un pedido: lo que el equipo y el comprador se dijeron. */
+function conversacion(
+  r: () => number, ahora: number, pedidoId: string,
+  cliente: string, producto: string, vendedor: string, t: { stage: string; fase: string | null },
+): NonNullable<StoreOrder['chat_messages']> {
+  const msgs: NonNullable<StoreOrder['chat_messages']> = []
+  let cuando = ahora - entre(r, 2, 9) * DIA
+  const push = (rol: string, tipo: string, cuerpo: string, extra: Record<string, unknown> = {}) => {
+    cuando += entre(r, 2, 90) * 60_000
+    msgs.push({
+      id: `${pedidoId}-m${msgs.length}`,
+      sender_role: rol,
+      type: tipo,
+      body: cuerpo,
+      created_at: new Date(cuando).toISOString(),
+      read_at: new Date(cuando).toISOString(),
+      ...extra,
+    } as NonNullable<StoreOrder['chat_messages']>[number])
+  }
+
+  push('system', 'status_update', `Pedido registrado · ${producto}`)
+  push('buyer', 'text', elige(r, [
+    'Hola, quiero confirmar mi pedido por favor',
+    'Buenas, ¿en cuánto tiempo me llega?',
+    '¿Sigue disponible el pack de 2?',
+  ]))
+  push('seller', 'text', `¡Hola ${cliente.split(' ')[0]}! Soy ${vendedor.split(' ')[0]}. Confirmo tu pedido de ${producto}.`)
+
+  // Una llamada, con su grabación. Es lo que antes vivía en otra pantalla.
+  if (r() < 0.45) {
+    push('system', 'call_log', `${vendedor} inició una llamada de voz`)
+    const seg = entre(r, 45, 260)
+    push('system', 'call_log', `Llamada de voz · ${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`,
+      { call_recording_id: `${pedidoId}-rec` })
+  }
+
+  if (t.stage !== 'nuevo') {
+    push('buyer', 'text', elige(r, ['Ya hice el pago', 'Listo, adelanté la mitad', 'Te mando el yapeo']))
+    push('system', 'status_update', 'Adelanto verificado')
+  }
+  if (t.fase === 'EN_TRANSITO' || t.fase === 'EN_DESTINO' || t.fase === 'ENTREGADO') {
+    push('system', 'status_update', '🚚 ¡Tu pedido va en camino a tu agencia!')
+  }
+  if (t.fase === 'EN_DESTINO' || t.fase === 'ENTREGADO') {
+    push('system', 'status_update', '📍 ¡Tu pedido ya llegó a tu agencia!')
+    push('buyer', 'text', '¿Con qué documento lo recojo?')
+    push('seller', 'text', 'Con tu DNI. Te paso la clave de recojo por acá.')
+  }
+  return msgs
+}
+
 export interface TiendaDemo {
   pedidos: StoreOrder[]
   clientes: Cliente[]
@@ -267,7 +343,7 @@ async function construir(): Promise<TiendaDemo> {
       seller_name: miembro.nombre,
       seller_role: miembro.role_label,
       created_at: new Date(ahora - entre(r, 0, 9) * DIA - entre(r, 0, 23) * 3_600_000).toISOString(),
-      chat_messages: [],
+      chat_messages: conversacion(r, ahora, `demo-ped-${i}`, persona.nombre, prod.nombre, miembro.nombre, t),
     }
   }).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
 
@@ -292,4 +368,18 @@ async function construir(): Promise<TiendaDemo> {
   }))
 
   return { pedidos, clientes, productos, equipo: EQUIPO, origenPorProducto }
+}
+
+/** El pedido de ejemplo detrás de un token (`demo-42`), o `null` si no es uno.
+ *  Lo usa la pantalla del pedido para abrir el chat completo sin consultar. */
+export async function pedidoDemoPorToken(token: string | undefined): Promise<StoreOrder | null> {
+  if (!token || !esTokenDemo(token)) return null
+  const t = await tiendaDemo()
+  return t.pedidos.find(p => p.token === token) ?? null
+}
+
+/** Los tokens de ejemplo se reconocen por la forma, sin consultar nada: así la
+ *  pantalla del pedido sabe a quién preguntarle antes de preguntar. */
+export function esTokenDemo(token: string | null | undefined): boolean {
+  return !!token && /^demo-\d+$/.test(token)
 }

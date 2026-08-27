@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SellerProfile } from './seller-session'
-import { demoActivo } from './demo/modo-demo'
+import { useDemo } from './demo/modo-demo'
 import { tiendaDemo } from './demo/tienda-demo'
 import type { Segmento } from '../../supabase/functions/_shared/clientes.ts'
 
@@ -78,7 +78,7 @@ export function useStoreClients(
   const storeId = effective?.store_id
   const permitido = puedeVerClientes(effective)
 
-  const demo = demoActivo()
+  const demo = useDemo(storeId)
 
   useEffect(() => {
     let vivo = true
