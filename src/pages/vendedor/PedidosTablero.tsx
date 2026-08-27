@@ -5,6 +5,7 @@ import { estaVivo } from '../../lib/store-orders'
 import { plataDe, soles } from '../../lib/order-money'
 import { horaOFecha } from '../../lib/fechas'
 import { useSeller } from '../../lib/seller-session'
+import { useIsDesktop } from '../../lib/use-desktop'
 import { useCompradoresEnLinea } from '../../lib/presencia'
 import ScrollHorizontal from '../../components/ScrollHorizontal'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
@@ -29,6 +30,7 @@ export default function PedidosTablero({ lista, onAbrir }: {
   // ahora se atiende distinto —se le escribe, no se le llama—, y eso vale igual
   // en el tablero.
   const enLinea = useCompradoresEnLinea(effective?.store_id)
+  const desktop = useIsDesktop()
 
   // `leidoEn` es el instante en que llegaron los datos: medir la antigüedad
   // contra eso —y no contra cada pintada— hace que todas las tarjetas cuenten
@@ -121,9 +123,15 @@ export default function PedidosTablero({ lista, onAbrir }: {
     ...(cancelados.length ? [{ key: 'cancelado', label: 'Cancelados', emoji: '❌', style: ALERTA, items: cancelados }] : []),
   ]
 
+  // En escritorio el tablero se queda con el alto que le sobra y scrollea él
+  // mismo. Dos cosas dependen de eso: que los nombres de las etapas se puedan
+  // quedar fijos arriba (`sticky` necesita un contenedor que scrollee) y que la
+  // pantalla de atrás no tenga scroll que perder cuando se abre un pedido
+  // encima. En móvil no: un área que scrollea dentro de otra, en un teléfono,
+  // se pelea con el gesto de la página.
   return (
-    <div className="px-4 pt-3 pb-4">
-      <p className="text-xs text-gray-400 mb-2">
+    <div className={`px-4 pt-3 ${desktop ? 'pb-0 flex flex-col flex-1 min-h-0' : 'pb-4'}`}>
+      <p className="text-xs text-gray-400 mb-2 flex-shrink-0">
         {soloMios ? 'Tus pedidos por etapa' : 'Todos los pedidos de la tienda, por etapa'}
         {' · '}
         <span title="Suma del precio de los pedidos que se ven">{soles(plataDe(vivos).valor)} en juego</span>
@@ -137,21 +145,30 @@ export default function PedidosTablero({ lista, onAbrir }: {
         // La barra de arrastre va ARRIBA, pegada a los nombres de las etapas:
         // con nueve columnas y cinco en pantalla, una barra al pie de la
         // columna más larga esconde media operación.
-        <ScrollHorizontal className="flex gap-3 pb-4">
+        <ScrollHorizontal lleno={desktop} className="flex gap-3 pb-4">
           {columnas.map(col => {
             const plata = plataDe(col.items)
             return (
               <div key={col.key} className="flex-shrink-0 w-56">
                 {/* Cuántos y CUÁNTO. El conteo dice dónde se atora la operación;
                     la suma dice cuánto cuesta que esté atorada ahí, que es la
-                    mitad que decide a qué columna correr primero. */}
-                <div className="px-3 py-1.5 rounded-xl mb-2" style={col.style}
-                  title={`${col.items.length} pedidos · valor ${soles(plata.valor)} · cobrado ${soles(plata.cobrado)} · por cobrar ${soles(plata.saldo)}`}>
-                  <div className="flex items-center justify-between gap-1 text-[11px] font-black">
-                    <span className="truncate">{col.emoji} {col.label}</span>
-                    <span className="tabular flex-shrink-0">{col.items.length}</span>
+                    mitad que decide a qué columna correr primero.
+
+                    Se queda pegado arriba al bajar: con columnas de veinte
+                    tarjetas, a mitad de scroll uno ya no sabe qué etapa está
+                    mirando. El fondo sólido es del envoltorio, no del chip —
+                    varios chips son translúcidos y las tarjetas se verían
+                    pasar por debajo. */}
+                <div className="sticky top-0 z-10 pb-2"
+                  style={{ background: 'var(--surface-2)' }}>
+                  <div className="px-3 py-1.5 rounded-xl" style={col.style}
+                    title={`${col.items.length} pedidos · valor ${soles(plata.valor)} · cobrado ${soles(plata.cobrado)} · por cobrar ${soles(plata.saldo)}`}>
+                    <div className="flex items-center justify-between gap-1 text-[11px] font-black">
+                      <span className="truncate">{col.emoji} {col.label}</span>
+                      <span className="tabular flex-shrink-0">{col.items.length}</span>
+                    </div>
+                    <div className="text-[10px] font-bold tabular opacity-70">{soles(plata.valor)}</div>
                   </div>
-                  <div className="text-[10px] font-bold tabular opacity-70">{soles(plata.valor)}</div>
                 </div>
                 <div className="space-y-2">
                   {col.items.map(s => <Card key={s.id} s={s} />)}

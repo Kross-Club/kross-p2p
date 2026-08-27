@@ -13,9 +13,10 @@ import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
-import { soles } from '../../lib/order-money'
+import { useUbicacion } from '../../lib/ubicacion'
 import CustomerCard from '../../components/CustomerCard'
 import Confirmar from '../../components/Confirmar'
+import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
@@ -443,6 +444,7 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showCall, setShowCall] = useState(false)
+  const [verClienteAbierto, setVerCliente] = useState(false)
   // El puntito verde, de la misma fuente que Lista y Tablero.
   const enLinea = useCompradoresEnLinea(effective?.store_id)
   const buyerOnline = !!session?.buyer_id && enLinea.has(session.buyer_id)
@@ -450,6 +452,9 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   // basta: se desinstala sin avisar, y lo que decide si el aviso llega es la
   // suscripción viva.
   const enApp = !!session?.buyer_contact?.push_activo
+  // De dónde es el pedido: del `address` a domicilio, de la SEDE si va por
+  // agencia (ver lib/ubicacion.ts).
+  const ubicacion = useUbicacion(session)
   const [buyerTyping, setBuyerTyping] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
@@ -461,7 +466,7 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   // por `session_id`; acá solo se le pregunta por este pedido.
   const [audiosReales, setAudios] = useState<Record<string, string>>({})
   const [team, setTeam] = useState<{ auth_user_id: string; nombre: string; role_label: string }[]>([])
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const mensajesRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sendTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -604,9 +609,14 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   }, [session?.id])
 
 
-  // Scroll to bottom
+  // Bajar al último mensaje.
+  //
+  // Se mueve el `scrollTop` del propio contenedor y no `scrollIntoView`: ese
+  // arrastra a TODOS los ancestros que scrolleen, y con el pedido abierto
+  // encima de una lista eso significaba mover también la pantalla de atrás.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const caja = mensajesRef.current
+    if (caja) caja.scrollTop = caja.scrollHeight
   }, [messages.length, buyerTyping])
 
   const broadcastTyping = useCallback(() => {
@@ -760,14 +770,12 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
           <button onClick={() => setShowDetail(true)} disabled={desktop}
             className="flex-1 min-w-0 text-left disabled:cursor-default">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
-            {/* Qué pedido es. Antes, estar conectado REEMPLAZABA esta línea por
-                "En línea ahora": justo cuando hay que atender rápido, la
-                cabecera dejaba de decir qué se está vendiendo. Que esté
-                conectado ya lo dice el punto del avatar. */}
+            {/* DE DÓNDE es el pedido. Decide el courier, el costo del envío y
+                cuánto tarda, y es lo primero que se pregunta al abrir un chat.
+                Acá decía "En línea ahora" —que ya lo dice el punto del avatar— o
+                el producto, que ahora vive entero en la columna de la derecha. */}
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
-              {(session.items && session.items.length > 1)
-                ? `${session.items.length} productos · ${soles(session.product_price)}`
-                : `${session.product_name} · ${soles(session.product_price)}`}
+              {ubicacion ?? 'Sin ubicación'}
             </p>
             {!desktop && (
               <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><ShoppingCart size={11} /> Ver pedido</p>
@@ -877,13 +885,18 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   // abajo: ocupaba el sitio más caro de la columna sin responder nada que el
   // vendedor no supiera. Lo que sí importa del envío —la fase del courier— lo
   // dice `TrackingBar`, con texto.
+  // "Ver sus pedidos" abre la ficha ENCIMA del pedido, no en otra pantalla:
+  // mirar al dueño de un pedido no debería costar salir del pedido. Desde ahí,
+  // tocar otro de sus pedidos cambia el que está abierto abajo (`onAbrirPedido`),
+  // que es exactamente lo que uno quiere: saltar entre los pedidos de la misma
+  // persona sin volver a la lista.
   const verCliente = session.buyer_id && puedeVerClientes(effective)
-    ? () => navigate(`/vendedor/clientes?cliente=${session.buyer_id}`)
+    ? () => setVerCliente(true)
     : undefined
 
   const contextPanel = (
     <>
-      <CustomerCard session={session} onVerCliente={verCliente} />
+      <CustomerCard session={session} ubicacion={ubicacion} onVerCliente={verCliente} />
 
       {/* Stage selector */}
       {session.status !== 'cancelado' && (
@@ -958,7 +971,7 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   const messagesBlock = (
     <>
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={mensajesRef} className="flex-1 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <CheckCircle2 size={40} className="text-gray-200 mb-3" />
@@ -983,7 +996,6 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
           </div>
         )}
 
-        <div ref={bottomRef} />
       </div>
     </>
   )
@@ -1111,6 +1123,23 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
           sessionId={session.id}
           sellerName={sellerName}
           onClose={() => setShowWa(false)}
+        />
+      )}
+
+      {verClienteAbierto && session.buyer_id && (
+        <PanelCliente
+          encima
+          buyerId={session.buyer_id}
+          adminId={real?.auth_user_id}
+          storeId={effective?.store_id}
+          onClose={() => setVerCliente(false)}
+          onAbrirPedido={token => {
+            setVerCliente(false)
+            // En panel, saltar a otro pedido de la misma persona es cambiar el
+            // que está abierto; como página, es navegar.
+            if (enPanel) navigate(`/vendedor/pedidos?pedido=${token}`, { replace: true })
+            else navigate(`/vendedor/pedido/${token}`)
+          }}
         />
       )}
     </>
