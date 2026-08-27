@@ -61,9 +61,12 @@ export default function PublicLayout({ children, tono = 'kross' }: {
 
       <header className="sticky top-0 z-40 backdrop-blur"
         style={{ borderBottom: '1px solid var(--border)', background: 'color-mix(in srgb, var(--surface-2) 92%, transparent)' }}>
-        <div className="max-w-[1120px] mx-auto px-5 h-16 flex items-center gap-4">
+        <div className="max-w-[1120px] mx-auto px-5 h-[72px] flex items-center gap-4">
+          {/* El lockup REAL (`public/logo-kross.svg`), con su bajada: es la marca,
+              no el dibujo de respaldo. §3.6 pide 130 px de ancho como mínimo para
+              que la bajada se lea — a 40 px de alto son 143. */}
           <Link to="/" className="mr-auto" onClick={() => setMenu(false)} aria-label={`${EMPRESA.marca} · inicio`}>
-            <KrossLockup size={26} />
+            <KrossLockup size={40} bajada />
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
@@ -136,7 +139,9 @@ function Footer() {
     <footer className="mt-20" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
       <div className="max-w-[1120px] mx-auto px-5 py-14 grid gap-10 md:grid-cols-3">
         <div>
-          <KrossLockup size={26} />
+          {/* En el pie hay sitio: a 64 px de alto (229 de ancho) la bajada del
+              archivo cae en los ~10 px, que es el cuerpo que le pide el §3.4. */}
+          <KrossLockup size={64} bajada />
           <p className="text-sm leading-relaxed mt-4 max-w-[320px]" style={{ color: 'var(--text-faint)' }}>
             {MENSAJES.resumen}
           </p>
