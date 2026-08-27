@@ -236,6 +236,16 @@ propósito desde *Marca*, llena el panel entero con una tienda de ejemplo para p
 herramienta, y **se anuncia con una barra fija** mientras está activo. Ver
 [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md).
 
+**Dónde vive el interruptor:** en *Marca*, **en la fila de cada marca**, junto a *Editar* y
+*Entrar*. Estuvo un rato en una tarjeta suelta arriba de la lista y quedó inalcanzable para el
+super admin: fuera de una marca se deshabilitaba (no había tienda a la que aplicarlo) y al
+entrar a una, `MarcaPage` se bloquea entera por su guarda `!isAdmin || impersonating`. Puesto
+en la fila, la pregunta "¿de cuál marca?" la responde el sitio del botón, y el mismo interruptor
+sirve al super admin —que ve todas— y al admin de una sola marca, que ve la suya. El estado es
+`localStorage` por tienda (`kross-demo:<store_id>`), o sea **por dispositivo**: encenderlo no
+pone al equipo entero a mirar pedidos inventados. Se apaga desde el mismo sitio o desde
+*Salir* en la barra del panel.
+
 `src/types/index.ts` **no se toca**: aunque CLAUDE.md lo llama mock para los tipos de sesión,
 toda la capa de checkout importa tipos de ahí.
 

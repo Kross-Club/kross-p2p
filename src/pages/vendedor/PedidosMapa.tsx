@@ -55,9 +55,9 @@ export default function PedidosMapa({ lista }: { lista: StoreOrders }) {
   const [sedes, setSedes] = useState<{ lat: number; lng: number }[]>([])
   const [puntos, setPuntos] = useState<EnMapa[]>([])
   const [elegido, setElegido] = useState<string | null>(null)
-  // El modo demo dejó de ser un botón de esta pantalla: es global, se enciende
-  // en Marca y lo anuncia la barra del panel. Acá el mapa solo pinta lo que le
-  // dé el lector, que ya sabe si está en demo.
+  // El modo demo dejó de ser un botón de esta pantalla: se enciende por marca
+  // desde Marca —en la fila de cada una— y lo anuncia la barra del panel. Acá
+  // el mapa solo pinta lo que le dé el lector, que ya sabe si está en demo.
   const demo = useDemo(effective?.store_id)
   // En demo el origen de cada producto lo da el generador; en real lo trae la
   // consulta a `products`. La lista de pedidos ya llega resuelta por el lector.
