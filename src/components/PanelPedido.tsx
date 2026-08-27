@@ -22,7 +22,7 @@ export default function PanelPedido({ token, onCerrar }: {
     // Ancho: el pedido en escritorio son dos columnas —chat y contexto— y
     // necesita sitio para las dos, dejando ver la lista por la izquierda.
     <PanelDerecha etiqueta="Pedido" ancho="min(1100px, 100%)" onCerrar={onCerrar}>
-      <PedidoVista token={token} enPanel onCerrar={onCerrar} />
+      <PedidoVista token={token} montaje="panel" onCerrar={onCerrar} />
     </PanelDerecha>
   )
 }

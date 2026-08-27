@@ -6,7 +6,6 @@ import { ALERTA, NEUTRO } from '../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../lib/order-tracking'
 import { soles } from '../lib/order-money'
 import { fechaCorta } from '../lib/fechas'
-import { codigoPedido, esElMismoPedido } from '../lib/order-code'
 import PanelDerecha from './PanelDerecha'
 import CopyRow from './CopyRow'
 import PanelCentro from './PanelCentro'
@@ -154,38 +153,32 @@ export default function PanelCliente({ buyerId, adminId, storeId, encima = false
               <div className="space-y-2">
                 {datos.pedidos.map(p => {
                   const col = p.status === 'cancelado' ? 'cancelado' : columnaDelPedido(p)
-                  const esteMismo = esElMismoPedido(p.id, pedidoActual)
-                  const codigo = codigoPedido(p.order_id)
+                  // "Cuál estoy viendo" se decide por `id` de sesión, que es
+                  // lo único que no se repite. Con eso marcado, el número de
+                  // pedido en cada fila sobraba: la pregunta ya está respondida.
+                  const esteMismo = !!pedidoActual && p.id === pedidoActual
                   return (
                     <div key={p.id}
-                      className="w-full rounded-xl px-3 py-2 flex items-center gap-2"
+                      className="w-full rounded-xl px-3 py-2 flex items-center gap-3"
                       style={esteMismo
                         ? { background: 'var(--brand-tint)', border: '0.5px solid var(--brand)' }
                         : { background: 'var(--surface-3)', border: '0.5px solid transparent' }}>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-bold truncate flex items-center gap-1.5" style={{ color: 'var(--text)' }}>
-                            <span className="truncate">{p.product_name || 'Pedido'}</span>
-                            {/* El número de la tienda: es con lo que se
-                                distingue un pedido de otro del mismo cliente,
-                                que es justamente para lo que se abre esta
-                                lista. El completo va en el `title`. */}
-                            {codigo && (
-                              <span className="text-[10px] tabular flex-shrink-0 font-semibold"
-                                title={p.order_id ?? undefined}
-                                style={{ color: 'var(--text-faint)' }}>{codigo}</span>
-                            )}
-                          </p>
-                          <span className="text-[11px] flex-shrink-0 tabular" style={{ color: 'var(--text-muted)' }}>
-                            {p.product_price != null ? soles(p.product_price) : ''}
-                          </span>
-                        </div>
-                        <p className="text-[10px] mt-0.5" style={{ color: esteMismo ? 'var(--brand)' : 'var(--text-faint)' }}>
+                        <p className="text-xs font-bold truncate" style={{ color: 'var(--text)' }}>
+                          {p.product_name || 'Pedido'}
+                        </p>
+                        <p className="text-[10px] mt-0.5 truncate" style={{ color: esteMismo ? 'var(--brand)' : 'var(--text-faint)' }}>
                           {esteMismo && 'Lo estás viendo · '}
                           {p.status === 'cancelado' ? 'Cancelado' : (ETIQUETA_ETAPA[col] ?? col)} · {fechaCorta(p.created_at)}
-                          {!p.token && ' · sin chat'}
                         </p>
                       </div>
+
+                      {/* El monto y el `+` van juntos y centrados con la fila:
+                          el precio colgado de la primera línea quedaba a otra
+                          altura que el botón de al lado. */}
+                      <span className="text-[11px] flex-shrink-0 tabular" style={{ color: 'var(--text-muted)' }}>
+                        {p.product_price != null ? soles(p.product_price) : ''}
+                      </span>
 
                       {/* El que ya se está mirando no ofrece abrirse otra vez.
                           Los demás sí: un `+` que abre su chat y su detalle en
@@ -194,7 +187,7 @@ export default function PanelCliente({ buyerId, adminId, storeId, encima = false
                       {!esteMismo && p.token && (
                         <button type="button"
                           onClick={() => setMirando(p)}
-                          aria-label={`Ver el pedido ${codigo ?? ''}`}
+                          aria-label={`Ver el pedido de ${p.product_name ?? 'este cliente'}`}
                           title="Ver este pedido"
                           className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{ background: 'var(--surface)', color: 'var(--text-muted)', border: '0.5px solid var(--border)' }}>
@@ -211,14 +204,14 @@ export default function PanelCliente({ buyerId, adminId, storeId, encima = false
       </div>
       {mirando?.token && (
         <PanelCentro
-          titulo={`${mirando.product_name || 'Pedido'}${codigoPedido(mirando.order_id) ? ` · ${codigoPedido(mirando.order_id)}` : ''}`}
+          titulo={mirando.product_name || 'Pedido'}
           detalle={`${c?.nombre ?? ''} · ${fechaCorta(mirando.created_at)}`}
           onCerrar={() => setMirando(null)}
         >
           {/* El MISMO componente del pedido, en su tercera presentación:
               página, cajón y ahora ventana. Un pedido que se pintara distinto
               según desde dónde se abrió sería otra pantalla que mantener. */}
-          <PedidoVista token={mirando.token} enPanel onCerrar={() => setMirando(null)} />
+          <PedidoVista token={mirando.token} montaje="ventana" onCerrar={() => setMirando(null)} />
         </PanelCentro>
       )}
     </PanelDerecha>

@@ -219,13 +219,29 @@ function conversacion(
 export interface PedidoHistorico {
   buyer_id: string
   order_id: string
+  /** Su token, como cualquier pedido. Todo pedido nace de un formulario y por
+   *  eso todo pedido tiene chat: un "pedido sin chat" no existe en el producto,
+   *  y el demo no debería inventar un estado que la tienda real no tiene. La
+   *  conversación se arma al abrirlo (`pedidoDemoPorToken`) y no acá: son miles
+   *  de pedidos, y generar miles de chats para que se lean cuatro es pagar por
+   *  adelantado algo que casi nunca se usa. */
+  token: string
   product_price: number
   product_name: string
   created_at: string
 }
 
+export interface RutaDemo {
+  courier: string
+  destinoId: string
+  origenId: string
+}
+
 export interface TiendaDemo {
   pedidos: StoreOrder[]
+  /** Las rutas reales (courier + sede de destino). Las necesita el armado de un
+   *  pedido histórico, que ocurre al abrirlo y no al generar la tienda. */
+  rutas: RutaDemo[]
   /** Compradores "conectados" ahora mismo, para el puntito verde. La presencia
    *  de verdad la da Supabase y en una tienda de ejemplo no hay nadie: un
    *  tablero donde ningún cliente está en línea no enseña la herramienta. */
@@ -277,7 +293,7 @@ async function construir(): Promise<TiendaDemo> {
   }))
 
   // ── El historial: solo entregados, solo lo que pesa el agregado ──
-  const historial: { buyer_id: string; product_price: number; created_at: string; product_name: string; order_id: string }[] = []
+  const historial: PedidoHistorico[] = []
   for (let i = 0; i < HISTORIAL; i++) {
     // Sesgo hacia los primeros clientes: unos pocos concentran las recompras,
     // que es como se comporta una base real.
@@ -288,6 +304,7 @@ async function construir(): Promise<TiendaDemo> {
       product_price: prod.precio,
       product_name: prod.nombre,
       order_id: `ORD-${17540000000000 + i * 6151}`,
+      token: `demo-h-${i}`,
       created_at: new Date(ahora - entre(r, 1, DIAS_HISTORIAL) * DIA).toISOString(),
     })
   }
@@ -392,7 +409,7 @@ async function construir(): Promise<TiendaDemo> {
   // de pantalla.
   const enLinea = [...new Set(pedidos.filter(() => r() < 0.17).map(p => p.buyer_id ?? ''))].filter(Boolean)
 
-  return { pedidos, historial, enLinea, clientes, productos, equipo: EQUIPO, origenPorProducto }
+  return { pedidos, rutas, historial, enLinea, clientes, productos, equipo: EQUIPO, origenPorProducto }
 }
 
 /**
@@ -403,9 +420,9 @@ async function construir(): Promise<TiendaDemo> {
  * enseña la libreta pero se rompe al abrir a una persona es peor que no
  * tenerla — justo ahí es donde se ve la recompra, que es medio Loyalty.
  *
- * Junta las dos mitades: los pedidos VIVOS (con token, o sea que se abren con
- * su chat) y el historial entregado (sin token: no hubo conversación que
- * guardar). Ordenados del más nuevo al más viejo.
+ * Junta las dos mitades —la ventana viva y el historial entregado—, del más
+ * nuevo al más viejo. Las dos se abren igual: un pedido viejo es un pedido, no
+ * un renglón de resumen.
  */
 export async function fichaDemoDeCliente(
   buyerId: string,
@@ -418,7 +435,6 @@ export async function fichaDemoDeCliente(
     .filter(p => p.buyer_id === buyerId)
     .map(p => ({
       id: p.id,
-      order_id: p.order_id ?? null,
       token: p.token ?? null,
       product_name: p.product_name ?? null,
       pack_name: p.pack_name ?? null,
@@ -433,8 +449,7 @@ export async function fichaDemoDeCliente(
     .filter(h => h.buyer_id === buyerId)
     .map((h, i) => ({
       id: `demo-hist-${buyerId}-${i}`,
-      order_id: h.order_id,
-      token: null,
+      token: h.token,
       product_name: h.product_name,
       pack_name: null,
       product_price: h.product_price,
@@ -457,11 +472,64 @@ export async function fichaDemoDeCliente(
 export async function pedidoDemoPorToken(token: string | undefined): Promise<StoreOrder | null> {
   if (!token || !esTokenDemo(token)) return null
   const t = await tiendaDemo()
+  const viejo = /^demo-h-(\d+)$/.exec(token)
+  if (viejo) return pedidoHistorico(t, Number(viejo[1]))
   return t.pedidos.find(p => p.token === token) ?? null
+}
+
+/**
+ * Un pedido entregado de hace meses, armado al abrirlo.
+ *
+ * Sale entero —con su conversación, su guía y su adelanto cruzado— porque eso
+ * es lo que es: un pedido como cualquier otro, solo que viejo. Su azar va
+ * sembrado con el índice, así que abrirlo dos veces da lo mismo.
+ */
+function pedidoHistorico(t: TiendaDemo, i: number): StoreOrder | null {
+  const h = t.historial[i]
+  if (!h) return null
+  const r = azar(770000 + i)
+  const cliente = t.clientes.find(c => c.id === h.buyer_id)
+  const ruta = elige(r, t.rutas)
+  const miembro = elige(r, EQUIPO)
+  const nombre = cliente?.nombre ?? 'Comprador'
+  const cerrado = { stage: 'entregado', fase: 'ENTREGADO' }
+
+  return {
+    id: `demo-hist-${i}`,
+    order_id: h.order_id,
+    token: h.token,
+    store_id: 'demo',
+    buyer_id: h.buyer_id,
+    buyer_name: nombre,
+    buyer_phone: cliente?.phone ?? null,
+    product_name: h.product_name,
+    product_price: h.product_price,
+    pack_name: elige(r, ['Pack 1', 'Pack 2', 'Pack 3']),
+    status: 'active',
+    stage: 'entregado',
+    nota: null,
+    dispatch_type: r() < 0.35 ? 'AGENCIA_LIMA' : 'AGENCIA_PROVINCIA',
+    agency_name: ruta.courier,
+    agency_branch_id: ruta.destinoId,
+    advance_amount: Math.round(h.product_price / 2),
+    payment_verification: 'MATCHED',
+    tracking_courier: ruta.courier,
+    tracking_numero: String(entre(r, 100000, 999999)),
+    tracking_phase: 'ENTREGADO',
+    tracking_phase_at: h.created_at,
+    tracking_demora_at: null,
+    assigned_seller_id: miembro.auth_user_id,
+    seller_name: miembro.nombre,
+    seller_role: miembro.role_label,
+    created_at: h.created_at,
+    chat_messages: conversacion(
+      r, Date.parse(h.created_at), `demo-hist-${i}`, nombre, h.product_name, miembro.nombre, cerrado,
+    ),
+  }
 }
 
 /** Los tokens de ejemplo se reconocen por la forma, sin consultar nada: así la
  *  pantalla del pedido sabe a quién preguntarle antes de preguntar. */
 export function esTokenDemo(token: string | null | undefined): boolean {
-  return !!token && /^demo-\d+$/.test(token)
+  return !!token && /^demo-(\d+|h-\d+)$/.test(token)
 }

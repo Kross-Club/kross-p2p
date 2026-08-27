@@ -137,7 +137,8 @@ describe('la ficha de un cliente de ejemplo', () => {
     expect(await fichaDemoDeCliente('demo-cli-999999')).toBeNull()
   })
 
-  // Las dos mitades: lo vivo (con chat) y lo entregado (sin chat que guardar).
+  // Las dos mitades: la ventana viva y el historial entregado. Las dos se
+  // abren igual — un pedido viejo es un pedido, no un renglón de resumen.
   it('junta los pedidos vivos y el historial, del más nuevo al más viejo', async () => {
     const conVivo = t.pedidos.find(p => p.buyer_id)!
     const ficha = (await fichaDemoDeCliente(conVivo.buyer_id!))!
@@ -148,20 +149,34 @@ describe('la ficha de un cliente de ejemplo', () => {
     expect([...fechas].sort((a, b) => b - a)).toEqual(fechas)
   })
 
-  // El número de pedido es con lo que el vendedor distingue un pedido de otro
-  // del mismo cliente: sin él, la lista son cuatro filas parecidas.
-  it('todos los pedidos traen su número, y ninguno se repite', async () => {
+  // Todo pedido nace de un formulario, así que todo pedido tiene chat: un
+  // "pedido sin chat" no existe en el producto y el demo no debe inventarlo.
+  it('todos sus pedidos se pueden abrir, también los viejos', async () => {
     const ficha = (await fichaDemoDeCliente(t.clientes.find(c => c.pedidos >= 3)!.id))!
-    for (const p of ficha.pedidos) expect(p.order_id).toMatch(/^ORD-\d+$/)
-    const numeros = ficha.pedidos.map(p => p.order_id)
-    expect(new Set(numeros).size).toBe(numeros.length)
+    expect(ficha.pedidos.length).toBeGreaterThan(0)
+    for (const p of ficha.pedidos) expect(p.token).toBeTruthy()
   })
 
-  it('el historial no finge tener chat', async () => {
-    const ficha = (await fichaDemoDeCliente(t.clientes.find(c => c.pedidos >= 3)!.id))!
-    for (const p of ficha.pedidos.filter(p => !p.token)) {
-      expect(p.stage).toBe('entregado')
-    }
+  it('un pedido viejo se abre entero: con chat, guía y adelanto cruzado', async () => {
+    const persona = t.clientes.find(c => c.pedidos >= 3)!
+    const ficha = (await fichaDemoDeCliente(persona.id))!
+    const viejo = ficha.pedidos.find(p => p.token?.startsWith('demo-h-'))!
+    expect(viejo).toBeTruthy()
+
+    const pedido = (await pedidoDemoPorToken(viejo.token!))!
+    expect(pedido).not.toBeNull()
+    // Es de esta persona, no de cualquiera: la ficha lista SUS pedidos.
+    expect(pedido.buyer_id).toBe(persona.id)
+    expect(pedido.stage).toBe('entregado')
+    expect(pedido.tracking_numero).toBeTruthy()
+    expect(pedido.payment_verification).toBe('MATCHED')
+    expect((pedido.chat_messages ?? []).length).toBeGreaterThan(2)
+  })
+
+  it('abrir el mismo pedido viejo dos veces da lo mismo', async () => {
+    const uno = await pedidoDemoPorToken('demo-h-7')
+    const otro = await pedidoDemoPorToken('demo-h-7')
+    expect(uno).toEqual(otro)
   })
 })
 
