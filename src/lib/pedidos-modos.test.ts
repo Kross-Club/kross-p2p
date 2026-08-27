@@ -4,8 +4,8 @@ import { MODOS, modoDeUrl, urlDeModo, esModo } from './pedidos-modos'
 const url = (q: string) => new URLSearchParams(q)
 
 describe('los modos de Pedidos', () => {
-  it('sin parámetro entra por la bandeja', () => {
-    expect(modoDeUrl(url(''))).toBe('bandeja')
+  it('sin parámetro entra por la lista', () => {
+    expect(modoDeUrl(url(''))).toBe('lista')
   })
 
   it('cada modo se puede enlazar', () => {
@@ -13,15 +13,15 @@ describe('los modos de Pedidos', () => {
   })
 
   // `?modo=` llega de fuera: un enlace viejo, alguien tecleando. Una pantalla
-  // en blanco por un parámetro mal escrito es peor que mostrar la bandeja.
+  // en blanco por un parámetro mal escrito es peor que mostrar la lista.
   it('un modo desconocido no rompe la pantalla', () => {
-    expect(modoDeUrl(url('modo=inventado'))).toBe('bandeja')
-    expect(modoDeUrl(url('modo='))).toBe('bandeja')
+    expect(modoDeUrl(url('modo=inventado'))).toBe('lista')
+    expect(modoDeUrl(url('modo='))).toBe('lista')
     expect(esModo(null)).toBe(false)
   })
 
-  it('la bandeja deja la URL limpia', () => {
-    expect(urlDeModo('bandeja')).toEqual({})
+  it('la lista deja la URL limpia', () => {
+    expect(urlDeModo('lista')).toEqual({})
     expect(urlDeModo('mapa')).toEqual({ modo: 'mapa' })
   })
 

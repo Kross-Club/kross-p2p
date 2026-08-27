@@ -6,6 +6,8 @@ import { useStoreClients, fichaDeCliente, resumenDeCliente } from '../../lib/sto
 import type { Cliente, PedidoDeCliente } from '../../lib/store-clients'
 import { CERRADO, ALERTA, NEUTRO } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
+import { soles } from '../../lib/order-money'
+import { fechaCorta } from '../../lib/fechas'
 
 // ─── La libreta de clientes ──────────────────────────────────────────────────
 //
@@ -15,8 +17,6 @@ import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
 // se le despacha sin adelanto, si vale el upsell, y si el reclamo de hoy es de
 // un cliente de tres pedidos o de un desconocido.
 
-const soles = (n: number) => `S/ ${Math.round(n).toLocaleString('es-PE')}`
-
 const SEGMENTO: Record<string, { label: string; style: typeof NEUTRO }> = {
   restock: { label: 'Toca recompra', style: NEUTRO },
   winback: { label: 'Se está yendo', style: ALERTA },
@@ -25,13 +25,6 @@ const SEGMENTO: Record<string, { label: string; style: typeof NEUTRO }> = {
 const ETIQUETA_ETAPA: Record<string, string> = {
   ...Object.fromEntries(COLUMNAS.map(c => [c.key, c.label])),
   no_entregado: 'No entregado',
-}
-
-function cuandoFue(iso: string | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 
 export default function ClientesPersonas() {
@@ -201,7 +194,7 @@ function Ficha({ buyerId, adminId, storeId, onClose, onAbrirPedido }: {
               </div>
             )}
             <p className="text-[11px] mb-3" style={{ color: 'var(--text-faint)' }}>
-              Último pedido: {cuandoFue(c.ultimo)}
+              Último pedido: {fechaCorta(c.ultimo)}
               {c.activated_at ? ' · usa la app' : ' · nunca entró a la app'}
               {c.source === 'import' && ' · importado'}
             </p>
@@ -245,7 +238,7 @@ function Ficha({ buyerId, adminId, storeId, onClose, onAbrirPedido }: {
                         </span>
                       </div>
                       <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                        {p.status === 'cancelado' ? 'Cancelado' : (ETIQUETA_ETAPA[col] ?? col)} · {cuandoFue(p.created_at)}
+                        {p.status === 'cancelado' ? 'Cancelado' : (ETIQUETA_ETAPA[col] ?? col)} · {fechaCorta(p.created_at)}
                       </p>
                     </button>
                   )
