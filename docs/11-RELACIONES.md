@@ -525,6 +525,69 @@ De paso se juntaron los formateadores de fecha, que ya eran tres y empezaban a d
 tarjetas pintadas en distinto momento podían decidir distinto si un pedido "es de hoy"; ahora
 `ahora` se pasa como dato, igual que en `antiguedad`.
 
+## El pedido deja de ser un viaje (27-ago-2026)
+
+### Abrir un pedido no saca de Pedidos
+
+Hacer clic en un pedido navegaba a `/vendedor/pedido/:token`: se perdía la lista, el filtro y
+el sitio donde uno estaba, y volver costaba otra consulta. Con cien pedidos al día ese viaje
+se paga cien veces.
+
+Ahora entra como **panel desde la derecha**, encima de la lista, desde *Lista* y desde
+*Tablero*. El token vive en la URL (`?pedido=`) por lo mismo que el modo: "atrás" cierra el
+panel, el enlace se puede mandar y recargar deja abierto lo que estaba abierto.
+
+Es el **mismo componente**, no una copia. `VendedorPedidoPage` se partió en dos: la ruta
+—que sigue existiendo intacta para lo que llega de afuera: notificaciones, enlaces viejos, el
+historial del cliente— y `PedidoVista`, que se monta como página o como panel. Un pedido que
+se comportara distinto según por dónde se abrió sería otra pantalla que mantener, que es
+justo lo que este documento viene deshaciendo.
+
+En PC el panel se ancla al **marco 16:9 de la app**, no a la ventana: `Layout` dibuja una
+tarjeta centrada con margen gris alrededor, y un panel anclado a la ventana se desbordaría
+sobre ese gris y se vería como otra aplicación encima.
+
+De paso salió un bug latente: `usePanelTheme` escribía `data-theme` al montar y lo QUITABA al
+desmontar, sin contar cuántos lo pedían. Con el pedido abierto en panel hay dos montados a la
+vez —el marco y el pedido—, así que cerrar el pedido apagaba el tema del marco y el panel se
+volvía claro hasta el siguiente cambio de tema. Ahora se cuenta.
+
+### El avatar dejó de esconder la mitad del pedido
+
+Tocando el avatar del chat se abría `ContactSheet`: DNI copiable, teléfono, y el rastro del
+pago en 360pay (pedido, código de pago, operación bancaria, botón de copiar para soporte). Un
+botón que no parece un botón, con datos que deciden si se despacha o no.
+
+`ContactSheet` se borró y su contenido se repartió en la columna del pedido, **en el orden en
+que se pregunta**:
+
+| # | Bloque | Responde |
+|---|---|---|
+| 1 | **Cliente** (`CustomerCard`) | ¿de quién es este pedido? |
+| 2 | **Etapa** (`StageSelector`) | ¿en qué va? |
+| 3 | **Adelanto** + **con qué pagó** (`AdvancePanel` + `PagoTrace`) | ¿entró la plata? |
+| 4 | **Dirección** (`AddressBar`) | ¿dónde recibe? |
+| 5 | **Envío** (`TrackingBar`) | ¿dónde está el paquete? |
+
+El bloque 1 va primero **y es un enlace a la persona** (`/vendedor/clientes?cliente=<id>`,
+solo para quien tiene libreta). Esa es la relación que el modelo ya decía y la pantalla no: un
+pedido pertenece a un cliente, y del cliente cuelgan **todos** sus pedidos. Si para saber quién
+es hay que abrir un modal, la pertenencia no se ve.
+
+Qué ficha está abierta en *Clientes* también pasó a la URL (`?cliente=`), justamente porque ya
+no se abre solo desde la libreta.
+
+### Se fue el mapa del chat
+
+`OrderTrackingMap` pintaba una cuadrícula con un punto y *"7 sedes cerca"* en el sitio más caro
+de la columna: lo primero que se ve al abrir un pedido. Sin callejero debajo no respondía nada
+—la dirección exacta de la agencia está escrita dos tarjetas más abajo, y la fase del envío la
+dice `TrackingBar` con texto—. Detalle y decisión en
+[`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md#el-mapa-del-pedido--retirado-del-chat-27-ago-2026).
+
+**En vivo** no se toca: ahí el mapa sí responde algo —dónde está la plata que ya salió, todos
+los pedidos a la vez— y por eso es un modo propio.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

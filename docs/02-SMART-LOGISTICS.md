@@ -53,16 +53,26 @@ estados. La caja se mueve entre esos tres puntos, no simula un recorrido.
 **Pendiente de la marca:** los logos de los couriers. Hoy cada sede lleva la inicial; cuando
 existan `public/courier-shalom.svg` y `public/courier-olva.svg` se enchufan ahí.
 
-### El mapa del pedido, sin proveedor de mapas
+### El mapa del pedido — retirado del chat (27-ago-2026)
 
-`src/components/OrderTrackingMap.tsx` dibuja el destino sobre **coordenadas reales** —la sede
-de recojo (Shalom y Olva traen lat/lng de sus 911 locales) o el punto de entrega— con las
-sedes vecinas alrededor para dar escala. No hay tiles, ni llave, ni request que pueda caerse:
-el dato ya vive en el repo y se carga con el mismo `import()` diferido del checkout.
+`OrderTrackingMap` dibujaba el destino sobre coordenadas reales —la sede de recojo (Shalom y
+Olva traen lat/lng de sus 911 locales) o el punto de entrega— con las sedes vecinas alrededor
+para dar escala, sin tiles ni llave de proveedor.
 
-Lo que NO es: un callejero. Para ver calles hace falta un proveedor (Mapbox, Google, Carto),
-con su llave y su costo por carga. Cuando se decida, el basemap entra **debajo** de esta capa
-sin tocar el resto: la proyección y los puntos ya están resueltos.
+**Se borró de la columna del pedido y del repo.** Sin callejero debajo, una cuadrícula con un
+punto y *"7 sedes cerca"* no responde ninguna pregunta del vendedor: la dirección exacta de la
+agencia ya está escrita dos tarjetas más abajo, y en qué fase va el envío lo dice
+`TrackingBar` con texto. Ocupaba el sitio más caro de la columna —lo primero que se ve al
+abrir un pedido— para no decir nada.
+
+Lo que se conserva es lo que valía: los **datos**. `AgencyService` tiene lat/lng de las 911
+sedes y `address_lat/lng` sigue capturándose. Si algún día entra un proveedor de mapas
+(Mapbox, Google, Carto) con su llave y su costo por carga, el basemap tendrá dónde apoyarse —
+pero entonces será un mapa que sirve, no una cuadrícula. El componente vive en el historial de
+git si hace falta recuperar la proyección.
+
+**En vivo** (`?modo=mapa` en Pedidos) es otra cosa y sigue en pie: ahí el mapa SÍ responde algo
+—dónde está la plata que ya salió, todos los pedidos a la vez— y por eso es un modo propio.
 
 ## Componentes
 

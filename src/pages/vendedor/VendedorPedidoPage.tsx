@@ -7,14 +7,14 @@ import AddressBar from '../../components/AddressBar'
 import TrackingBar from '../../components/TrackingBar'
 import AdvancePanel from '../../components/checkout/payment/AdvancePanel'
 import OrderDetailModal from '../../components/OrderDetailModal'
-import ContactSheet from '../../components/ContactSheet'
 import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
 import CustomerCard from '../../components/CustomerCard'
-import OrderTrackingMap from '../../components/OrderTrackingMap'
+import PagoTrace from '../../components/PagoTrace'
 import { useSeller } from '../../lib/seller-session'
+import { puedeVerClientes } from '../../lib/store-clients'
 import { pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
@@ -379,8 +379,32 @@ function MessageBubble({ msg, audio }: { msg: OrderMessage; audio?: string | nul
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
+/**
+ * La ruta `/vendedor/pedido/:token`. Se queda como estaba: es la que abren las
+ * notificaciones, los enlaces compartidos y el historial del cliente.
+ */
 export default function VendedorPedidoPage() {
   const { token } = useParams<{ token: string }>()
+  const navigate = useNavigate()
+  return <PedidoVista token={token} onCerrar={() => navigate('/vendedor/pedidos')} />
+}
+
+/**
+ * El pedido, montado como página completa o como panel lateral.
+ *
+ * Abrir un pedido desde Pedidos dejó de ser un viaje a otra pantalla —perdías
+ * la lista, y volver costaba una recarga entera— y pasó a entrar por la derecha
+ * encima de ella. Es el MISMO componente: un pedido que se comporta distinto
+ * según por dónde se abrió sería otra copia de la misma pantalla, que es
+ * justamente lo que este refactor viene deshaciendo (docs/11-RELACIONES.md).
+ */
+export function PedidoVista({ token, enPanel = false, onCerrar }: {
+  token: string | undefined
+  /** `true` = va dentro del panel lateral: sin marco 16:9 y llenando su caja. */
+  enPanel?: boolean
+  /** Volver: a la lista en la ruta, cerrar el panel en el panel. */
+  onCerrar: () => void
+}) {
   const navigate = useNavigate()
   const { real, effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
@@ -398,7 +422,6 @@ export default function VendedorPedidoPage() {
   const [buyerOnline, setBuyerOnline] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
-  const [showContact, setShowContact] = useState(false)
   const [showOffer, setShowOffer] = useState(false)
   const [showWa, setShowWa] = useState(false)
   // Las grabaciones de ESTE pedido, para engancharlas a su mensaje de llamada.
@@ -623,7 +646,7 @@ export default function VendedorPedidoPage() {
       <div className="flex flex-col h-screen items-center justify-center px-8 text-center" style={{ background: 'var(--chat-bg)' }}>
         <Package size={40} className="text-gray-300 mb-4" />
         <p className="font-black text-gray-800">Sesión no encontrada</p>
-        <button onClick={() => navigate('/vendedor/pedidos')} className="mt-4 text-sm text-[var(--brand)] font-semibold">
+        <button onClick={onCerrar} className="mt-4 text-sm text-[var(--brand)] font-semibold">
           Volver a chats
         </button>
       </div>
@@ -682,23 +705,25 @@ export default function VendedorPedidoPage() {
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
         style={{ background: 'var(--chat-header)', borderRadius: '0 0 24px 24px' }}>
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/vendedor/pedidos')}
+          <button onClick={onCerrar} aria-label={enPanel ? 'Cerrar el pedido' : 'Volver a Pedidos'}
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: 'rgba(255,255,255,0.1)' }}>
-            <ArrowLeft size={18} className="text-white" />
+            {enPanel ? <X size={18} className="text-white" /> : <ArrowLeft size={18} className="text-white" />}
           </button>
 
-          {/* El avatar abre a la PERSONA (ficha de contacto); el nombre, al
-              PEDIDO. Dos preguntas distintas, dos puertas. */}
-          <button onClick={() => setShowContact(true)} className="relative flex-shrink-0"
-            aria-label="Ver datos de contacto del cliente">
+          {/* El avatar ya no abre nada. Era un botón que no parecía botón, y
+              detrás tenía el DNI, el teléfono y el rastro del pago — datos que
+              nadie encontraba. Todo eso vive ahora en la columna de la derecha,
+              a la vista. Acá el avatar es lo que aparenta: quién es, y si está
+              en línea. */}
+          <div className="relative flex-shrink-0">
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-black"
               style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
               {(session.buyer_name || 'C')[0]}
             </div>
             <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
               style={{ borderColor: 'var(--chat-header)', background: buyerOnline ? 'var(--text)' : 'var(--structural, #3D444C)' }} />
-          </button>
+          </div>
 
           <button onClick={() => setShowDetail(true)} className="flex-1 min-w-0 text-left">
             <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
@@ -778,13 +803,26 @@ export default function VendedorPedidoPage() {
     </>
   )
 
+  // La columna del pedido, en el orden en que se pregunta:
+  //
+  //   1. ¿DE QUIÉN es este pedido?  → y de ahí, a todos sus pedidos
+  //   2. ¿en qué etapa va?
+  //   3. ¿entró la plata?           → adelanto + con qué pagó
+  //   4. ¿dónde recibe?
+  //   5. ¿dónde está el paquete?
+  //
+  // Se fue el mapa. Pintaba una cuadrícula con un punto y "7 sedes cerca" para
+  // un envío por agencia cuya dirección exacta ya está escrita dos tarjetas más
+  // abajo: ocupaba el sitio más caro de la columna sin responder nada que el
+  // vendedor no supiera. Lo que sí importa del envío —la fase del courier— lo
+  // dice `TrackingBar`, con texto.
+  const verCliente = session.buyer_id && puedeVerClientes(effective)
+    ? () => navigate(`/vendedor/clientes?cliente=${session.buyer_id}`)
+    : undefined
+
   const contextPanel = (
     <>
-      {/* Quién es el cliente (el DNI manda) y dónde está su paquete. Va arriba
-          del todo: son las dos preguntas que trae quien abre un pedido. */}
-      <CustomerCard session={session} />
-
-      <OrderTrackingMap order={session} />
+      <CustomerCard session={session} onVerCliente={verCliente} />
 
       {/* Stage selector */}
       {session.status !== 'cancelado' && (
@@ -795,7 +833,7 @@ export default function VendedorPedidoPage() {
         onAdvanced={(next, handedOff) => {
           setSession(s => s ? { ...s, stage: next as OrderSession['stage'] } : s)
           // Ceded the lead → back to my list; otherwise refresh in place
-          if (handedOff) navigate('/vendedor/pedidos')
+          if (handedOff) onCerrar()
           else reloadSession()
         }}
       />
@@ -810,6 +848,10 @@ export default function VendedorPedidoPage() {
         reason={session.payment_reason ?? null}
         provider={session.payment_provider ?? null}
       />
+
+      {/* Pegado al adelanto porque responde lo mismo: si esa plata entró de
+          verdad. Vivía escondido en el modal del avatar. */}
+      <PagoTrace session={session} />
 
       <AddressBar
         sessionId={session.id}
@@ -953,10 +995,6 @@ export default function VendedorPedidoPage() {
         />
       )}
 
-      {showContact && (
-        <ContactSheet session={session} onClose={() => setShowContact(false)} />
-      )}
-
       {showDetail && (
         <OrderDetailModal
           session={session}
@@ -1002,11 +1040,54 @@ export default function VendedorPedidoPage() {
     </>
   )
 
-  // ── PC: el mismo marco 16:9 del panel ────────────────────────────────────
-  // El chat a la izquierda (con el ancho de línea acotado para que se siga
-  // leyendo) y el CONTEXTO del pedido —etapa, adelanto, dirección, tracking—
-  // fijo a la derecha: en escritorio no hay que hacer scroll para ver en qué
-  // etapa está lo que estás escribiendo.
+  // ── PC: chat a la izquierda, contexto del pedido fijo a la derecha ───────
+  // El ancho de línea del chat va acotado para que se siga leyendo, y la
+  // columna —cliente, etapa, adelanto, dirección, tracking— no se mueve: en
+  // escritorio no hay que hacer scroll para ver en qué etapa está lo que estás
+  // escribiendo.
+  const cuerpoEscritorio = (
+    <>
+      {headerBlock}
+      {cancelBanner}
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-h-0 w-full max-w-[820px] mx-auto">
+            {messagesBlock}
+            {composerBlock}
+          </div>
+        </div>
+        <aside className="w-[400px] flex-shrink-0 border-l border-gray-100 overflow-y-auto py-2"
+          style={{ background: 'var(--surface)' }}>
+          {contextPanel}
+        </aside>
+      </div>
+    </>
+  )
+
+  // ── Móvil: la columna de siempre ─────────────────────────────────────────
+  const cuerpoMovil = (
+    <>
+      {headerBlock}
+      {cancelBanner}
+      {contextPanel}
+      {messagesBlock}
+      {composerBlock}
+    </>
+  )
+
+  // Dentro del panel no hay marco que dibujar: la caja la pone el cajón, y
+  // esto solo la llena.
+  if (enPanel) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--chat-bg)' }}>
+        {overlay}
+        {desktop ? cuerpoEscritorio : cuerpoMovil}
+        {modals}
+      </div>
+    )
+  }
+
+  // Como página: el mismo marco 16:9 del panel.
   if (desktop) {
     return (
       <div className="h-screen w-screen overflow-hidden bg-gray-100 flex items-center justify-center p-4">
@@ -1014,37 +1095,17 @@ export default function VendedorPedidoPage() {
         <div
           className="rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
           style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9', background: 'var(--chat-bg)' }}>
-          {headerBlock}
-          {cancelBanner}
-
-          <div className="flex-1 flex min-h-0">
-            <div className="flex-1 flex flex-col min-w-0">
-              <div className="flex-1 flex flex-col min-h-0 w-full max-w-[820px] mx-auto">
-                {messagesBlock}
-                {composerBlock}
-              </div>
-            </div>
-
-            <aside className="w-[400px] flex-shrink-0 border-l border-gray-100 overflow-y-auto py-2"
-              style={{ background: 'var(--surface)' }}>
-              {contextPanel}
-            </aside>
-          </div>
+          {cuerpoEscritorio}
         </div>
         {modals}
       </div>
     )
   }
 
-  // ── Móvil: la columna de siempre ─────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: 'var(--chat-bg)' }}>
       {overlay}
-      {headerBlock}
-      {cancelBanner}
-      {contextPanel}
-      {messagesBlock}
-      {composerBlock}
+      {cuerpoMovil}
       {modals}
     </div>
   )

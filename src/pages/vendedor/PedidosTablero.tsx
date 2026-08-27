@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Package } from 'lucide-react'
 import { NOTA_META, CERRADO_SUAVE, NEUTRO, ALERTA } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido, antiguedad } from '../../lib/order-tracking'
@@ -18,8 +17,11 @@ import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 // §6.1: la etapa la dice la columna, no el color. Solo la última lleva lima.
 const etapaChip = (key: string) => (key === 'entregado' ? CERRADO_SUAVE : NEUTRO)
 
-export default function PedidosTablero({ lista }: { lista: StoreOrders }) {
-  const navigate = useNavigate()
+export default function PedidosTablero({ lista, onAbrir }: {
+  lista: StoreOrders
+  /** Abre el pedido en el panel de la derecha, sin salir del tablero. */
+  onAbrir: (token: string) => void
+}) {
 
   // `leidoEn` es el instante en que llegaron los datos: medir la antigüedad
   // contra eso —y no contra cada pintada— hace que todas las tarjetas cuenten
@@ -53,7 +55,7 @@ export default function PedidosTablero({ lista }: { lista: StoreOrders }) {
   }
 
   const Card = ({ s }: { s: StoreOrder }) => (
-    <button onClick={() => navigate(`/vendedor/pedido/${s.token}`)}
+    <button onClick={() => s.token && onAbrir(s.token)} disabled={!s.token}
       className="w-full bg-white border border-gray-100 rounded-2xl p-3 shadow-sm text-left">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">

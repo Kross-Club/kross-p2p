@@ -66,14 +66,25 @@ export function useTheme(): { theme: Theme; pref: ThemePref; setPref: (p: ThemeP
 /**
  * Aplica el tema al documento mientras el componente esté montado y lo quita
  * al desmontarse. Lo llaman las pantallas de panel (`Layout` y la del pedido).
+ *
+ * Se cuenta cuántas lo piden porque desde que el pedido se abre EN PANEL hay
+ * dos montadas a la vez: el marco y el pedido encima. Sin la cuenta, cerrar el
+ * pedido quitaba el atributo que el marco seguía necesitando, y el panel se
+ * volvía claro hasta el siguiente cambio de tema.
  */
+let pidiendoTema = 0
+
 export function usePanelTheme(): Theme {
   const { theme } = useTheme()
 
   useEffect(() => {
     const root = document.documentElement
+    pidiendoTema++
     root.setAttribute('data-theme', theme)
-    return () => { root.removeAttribute('data-theme') }
+    return () => {
+      pidiendoTema--
+      if (pidiendoTema === 0) root.removeAttribute('data-theme')
+    }
   }, [theme])
 
   return theme
