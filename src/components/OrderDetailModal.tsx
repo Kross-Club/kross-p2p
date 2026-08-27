@@ -280,7 +280,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
           dentro de un contenedor que scrollea, y su `scrollIntoView` —el que
           centra la imagen— arrastraría también a la columna. */}
       {viewerIdx !== null && viewerImgs.length > 0 && createPortal(
-        <div className="fixed inset-0 z-[60] bg-black flex flex-col" onClick={() => setViewerIdx(null)}>
+        <div className="fixed inset-0 z-[85] bg-black flex flex-col" onClick={() => setViewerIdx(null)}>
           <div className="flex justify-end p-4">
             <button onClick={() => setViewerIdx(null)} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.15)' }}>
               <X size={20} className="text-white" />

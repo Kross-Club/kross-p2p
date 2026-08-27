@@ -14,6 +14,7 @@ import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
 import { useUbicacion } from '../../lib/ubicacion'
+import { codigoPedido } from '../../lib/order-code'
 import CustomerCard from '../../components/CustomerCard'
 import Confirmar from '../../components/Confirmar'
 import PanelCliente from '../../components/PanelCliente'
@@ -431,7 +432,6 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
   /** Volver: a la lista en la ruta, cerrar el panel en el panel. */
   onCerrar: () => void
 }) {
-  const navigate = useNavigate()
   const { real, effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
   usePanelTheme()
@@ -769,7 +769,20 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
 
           <button onClick={() => setShowDetail(true)} disabled={desktop}
             className="flex-1 min-w-0 text-left disabled:cursor-default">
-            <p className="font-black text-white text-base leading-tight">{session.buyer_name || 'Comprador'}</p>
+            <p className="font-black text-white text-base leading-tight flex items-baseline gap-2">
+              <span className="truncate">{session.buyer_name || 'Comprador'}</span>
+              {/* El número que le puso la tienda. Va pegado al nombre porque es
+                  lo que responde "¿cuál de sus pedidos es este?" cuando se abre
+                  la ficha del cliente y salen cuatro filas parecidas. El
+                  completo, en el `title` y en el detalle. */}
+              {codigoPedido(session.order_id) && (
+                <span className="text-[11px] font-semibold tabular flex-shrink-0"
+                  title={session.order_id ?? undefined}
+                  style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  {codigoPedido(session.order_id)}
+                </span>
+              )}
+            </p>
             {/* DE DÓNDE es el pedido. Decide el courier, el costo del envío y
                 cuánto tarda, y es lo primero que se pregunta al abrir un chat.
                 Acá decía "En línea ahora" —que ya lo dice el punto del avatar— o
@@ -1132,14 +1145,10 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
           buyerId={session.buyer_id}
           adminId={real?.auth_user_id}
           storeId={effective?.store_id}
+          // Cuál de sus pedidos es el que está abierto detrás. Sin esto, la
+          // lista son cuatro filas parecidas y el vendedor no sabe en cuál está.
+          pedidoActual={session.id}
           onClose={() => setVerCliente(false)}
-          onAbrirPedido={token => {
-            setVerCliente(false)
-            // En panel, saltar a otro pedido de la misma persona es cambiar el
-            // que está abierto; como página, es navegar.
-            if (enPanel) navigate(`/vendedor/pedidos?pedido=${token}`, { replace: true })
-            else navigate(`/vendedor/pedido/${token}`)
-          }}
         />
       )}
     </>
