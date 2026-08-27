@@ -11,7 +11,7 @@ export default function LegalPage({ titulo, actualizado, intro, children }: {
   children: ReactNode
 }) {
   return (
-    <PublicLayout>
+    <PublicLayout tono="legal">
       <article className="max-w-[760px] mx-auto px-5 py-12 text-gray-800">
         <h1 className="text-3xl md:text-4xl font-black">{titulo}</h1>
         <p className="text-sm text-gray-500 mt-1">Última actualización: {actualizado}</p>

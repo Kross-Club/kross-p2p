@@ -174,6 +174,23 @@ El otro requisito es de datos, no de código: un pedido solo aparece con su lín
 su **producto tiene sede de origen** configurada (*Productos → editar → sede Shalom*). Sin
 eso se dibuja el destino, pero no de dónde sale.
 
+### La web pública se rediseñó con la oferta nueva (27-ago-2026)
+
+`krossclub.app` dejó de venderse como "software de comercio contraentrega" y pasó a
+**«La tecnología de tu tienda»**. El cambio es de fondo, no de portada: contraentrega quiere
+decir cobrar todo en la puerta, y el checkout cobra **la mitad del pedido o el total** dentro
+del formulario, con Yape validado solo. La portada lo enfrenta con la sección «Esto ya no es
+contraentrega» y con los cuatro pasos del cobro.
+
+- Todo el sitio quedó en **ink + lima** (manual v2.0). Era el pendiente de su §10.1.
+- El copy vive en `src/config/propuesta.ts`; el catálogo (`src/config/catalogo.ts`) se
+  reescribió alrededor del cobro y **los precios no se tocaron**.
+- Las portadas del catálogo se regeneran con `npm run build:portadas`.
+- **No requiere deploy de funciones ni tocar la base**: es front y contenido estático.
+- **Deuda:** los metadatos de `index.html` son estáticos y describen a Kross, así que la vista
+  previa de un enlace de `marca.krossclub.app` sale con el texto de la plataforma. Anotado en
+  `docs/04-CUMPLIMIENTO-WEB.md`.
+
 ## Bloqueos abiertos
 
 | # | Qué bloquea | Desde | Qué lo destraba | Dueño |

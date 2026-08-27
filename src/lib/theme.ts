@@ -80,20 +80,26 @@ export function usePanelTheme(): Theme {
 }
 
 /**
- * Pantallas que son de KROSS y no de la marca —el acceso al panel— y que van
- * en ink pase lo que pase: acá todavía no hay vendedor, así que no hay
- * preferencia de tema que respetar.
+ * Pantallas que son de KROSS y no de la marca —el acceso al panel, la web
+ * pública de `krossclub.app`— y que van en ink pase lo que pase: acá todavía
+ * no hay vendedor, así que no hay preferencia de tema que respetar.
+ *
+ * `activo` existe para las pantallas que son de Kross **o** de la marca según
+ * el dominio: las páginas legales viven en los dos, y en el subdominio de una
+ * marca siguen claras. El parámetro evita el `if` alrededor del hook, que las
+ * reglas de React prohíben.
  */
-export function useKrossTheme(): void {
+export function useKrossTheme(activo = true): void {
   useEffect(() => {
     const root = document.documentElement
     const previo = root.getAttribute('data-theme')
-    root.setAttribute('data-theme', 'dark')
+    if (activo) root.setAttribute('data-theme', 'dark')
+    else root.removeAttribute('data-theme')   // pantalla de marca: manda su color
     return () => {
       if (previo) root.setAttribute('data-theme', previo)
       else root.removeAttribute('data-theme')
     }
-  }, [])
+  }, [activo])
 }
 
 /**

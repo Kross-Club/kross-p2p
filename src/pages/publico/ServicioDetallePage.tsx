@@ -20,8 +20,7 @@ export default function ServicioDetallePage() {
         <div className="max-w-[720px] mx-auto px-5 py-24 text-center">
           <p className="font-black text-xl">Este servicio no existe</p>
           <p className="text-gray-500 mt-2">Puede que lo hayamos renombrado o retirado del catálogo.</p>
-          <Link to="/servicios" className="inline-block mt-5 px-5 py-3 rounded-2xl font-black text-sm text-white"
-            style={{ background: 'var(--brand-dark)' }}>
+          <Link to="/servicios" className="inline-block mt-5 px-5 py-3 rounded-2xl text-sm k-cta">
             Ver el catálogo
           </Link>
         </div>
@@ -70,8 +69,7 @@ export default function ServicioDetallePage() {
                 </button>
               </div>
               <button onClick={comprar}
-                className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-black text-white active:scale-[.98] transition-transform"
-                style={{ background: 'var(--brand-dark)' }}>
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl active:scale-[.98] transition-transform k-cta">
                 <ShoppingCart size={18} /> Comprar
               </button>
             </div>
@@ -80,7 +78,7 @@ export default function ServicioDetallePage() {
             <ul className="space-y-2">
               {item.incluye.map((linea) => (
                 <li key={linea} className="flex gap-2.5 text-sm text-gray-700">
-                  <Check size={17} className="mt-0.5 shrink-0 text-green-600" />
+                  <Check size={17} className="mt-0.5 shrink-0" style={{ color: 'var(--text-faint)' }} />
                   <span>{linea}</span>
                 </li>
               ))}

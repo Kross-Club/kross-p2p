@@ -327,6 +327,78 @@
   .k-latido { animation: none; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Web pública de Kross (krossclub.app) — manual §10.1.
+
+   La portada, el catálogo, el checkout de la suscripción y las páginas legales
+   comparten `PublicLayout`, y ese marco se pinta en DOS tonos:
+
+     · **Kross** — en `krossclub.app` el sitio es de Kross, así que va en ink.
+       `PublicLayout` aplica `data-theme="dark"` y manda el tema oscuro de
+       arriba: superficies, grises de Tailwind, radios, bordes y pesos ya
+       quedan traducidos al manual sin tocar una sola clase.
+     · **Marca** — en `marca.krossclub.app` las páginas legales son de la
+       marca (el Libro de Reclamaciones registra su `store_id`), y ahí no hay
+       `data-theme`: el sitio sigue claro y con el color de la tienda.
+
+   Los tokens semánticos solo existían bajo `[data-theme]`. Este bloque les da
+   su valor claro para el tono de marca —y SOLO ahí, por eso el
+   `:root:not([data-theme])`—, para poder escribir las páginas públicas una vez
+   en tokens en vez de dos veces en clases.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root:not([data-theme]) .web-publica {
+  /* El blanco se repite a propósito: en tono de marca las páginas legales no
+     tienen bandas alternadas —son documentos— y así se ven exactamente igual
+     que antes de este rediseño. La alternancia solo existe en ink. */
+  --surface: #FFFFFF;
+  --surface-2: #FFFFFF;
+  --surface-3: #F7F7F5;
+  --text: var(--k-ink);
+  --text-muted: #4C535B;
+  --text-faint: #6E757D;
+  --border: rgba(15, 17, 21, 0.10);
+  --border-strong: rgba(15, 17, 21, 0.18);
+  --invert: var(--k-ink);
+  --invert-fg: var(--k-bone);
+}
+
+/* El botón principal del sitio, en un solo sitio.
+   En tono de marca conserva el color oscuro de la tienda, que es lo que se ve
+   hoy en el Libro de Reclamaciones y en el checkout de la suscripción. En ink
+   ese mismo token vale `#0F1115` —o sea, el fondo—, así que el botón se
+   invierte: hueso con texto ink. El lima NO entra acá: §4.2 lo reserva para
+   dinero que entró y entrega cerrada, nunca para botones genéricos. */
+.web-publica .k-cta {
+  background: var(--brand-dark);
+  color: #FFFFFF;
+}
+
+:root[data-theme] .web-publica .k-cta {
+  background: var(--invert);
+  color: var(--invert-fg);
+}
+
+/* Botón secundario: solo contorno. Mismo grosor de borde que todo lo demás. */
+.web-publica .k-cta-2 {
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+
+/* El indicador de navegación activa del §6: la junta del símbolo escalada a
+   una barra de 6×14. En la web es horizontal (la nav es una fila), así que va
+   tumbada bajo el ítem: 14×6. Es una de las tres apariciones de lima de la
+   página. */
+.web-publica .k-nav-activo::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 14px;
+  height: 6px;
+  transform: translateX(-50%);
+  background: var(--k-joint, var(--k-lime-light));
+}
+
 /* Impresión. La Hoja de Reclamación es una constancia legal y el consumidor
    tiene derecho a quedarse con ella: al imprimir (o "guardar como PDF") queda
    solo el documento, sin menú, sin pie ni botones. */

@@ -16,12 +16,11 @@ export default function CarritoPage() {
         <h1 className="text-3xl font-black">Tu carrito</h1>
 
         {lineas.length === 0 ? (
-          <div className="mt-10 rounded-3xl border border-gray-200 py-16 text-center">
-            <ShoppingCart size={36} className="mx-auto text-gray-300" />
-            <p className="font-black mt-4">Todavía no agregaste nada</p>
-            <p className="text-sm text-gray-500 mt-1">Elige el plan o el módulo que necesitas.</p>
-            <Link to="/servicios" className="inline-block mt-5 px-6 py-3 rounded-2xl font-black text-sm text-white"
-              style={{ background: 'var(--brand-dark)' }}>
+          <div className="mt-10 rounded-3xl py-16 text-center" style={{ border: '1px solid var(--border)' }}>
+            <ShoppingCart size={36} className="mx-auto" style={{ color: 'var(--text-faint)' }} />
+            <p className="mt-4">Todavía no agregaste nada</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Elige el plan o el módulo que necesitas.</p>
+            <Link to="/servicios" className="inline-block mt-5 px-6 py-3 rounded-2xl text-sm k-cta">
               Ver servicios
             </Link>
           </div>
@@ -74,14 +73,13 @@ export default function CarritoPage() {
                   </p>
                 </div>
                 <Link to="/pago"
-                  className="px-7 py-4 rounded-2xl font-black text-white active:scale-[.98] transition-transform"
-                  style={{ background: 'var(--brand-dark)' }}>
+                  className="px-7 py-4 rounded-2xl active:scale-[.98] transition-transform k-cta">
                   Continuar al pago
                 </Link>
               </div>
 
               <p className="flex items-center gap-2 text-xs text-gray-500 mt-5">
-                <Lock size={14} className="text-green-600" /> Conexión cifrada con certificado SSL en todo el sitio.
+                <Lock size={14} style={{ color: 'var(--text-faint)' }} /> Conexión cifrada con certificado SSL en todo el sitio.
               </p>
             </div>
           </>

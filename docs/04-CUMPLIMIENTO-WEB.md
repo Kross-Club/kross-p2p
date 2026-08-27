@@ -1,7 +1,8 @@
-# 04 · Cumplimiento de la web pública (pasarela / INDECOPI)
+# 04 · La web pública (propuesta de valor + cumplimiento)
 
-> Qué exige la pasarela de pago para habilitar las API, dónde se cumple cada
-> requisito en este repo y qué falta llenar antes de mandar la web a revisión.
+> Qué dice la web de `krossclub.app`, cómo está pintada, qué exige la pasarela de
+> pago para habilitar las API, dónde se cumple cada requisito en este repo y qué
+> falta llenar antes de mandar la web a revisión.
 >
 > Estado: ✅ construido · 🟡 pendiente de datos reales · 🔮 fuera del código
 
@@ -22,13 +23,74 @@ el comprador de una marca también tiene derecho a reclamar donde compró.
 
 ---
 
+## Qué dice la web (rediseño de ago-2026) ✅
+
+**Titular: «La tecnología de tu tienda».** Es la bajada del lockup y ahora también el
+posicionamiento: Kross es la infraestructura de una tienda peruana, no un marketplace ni un
+"software de contraentrega".
+
+**Por qué se cayó lo de contraentrega.** *Contraentrega* significa, para cualquiera que venda
+en Perú, que **todo** el dinero se cobra en la puerta. El producto dejó de hacer eso: el
+checkout cobra **la mitad del pedido o el total** dentro del mismo formulario, con Yape, y el
+pago se da por cobrado solo (cupón de la pasarela → deep link de Yape → webhook firmado que
+cruza con el pedido). Contra entrega queda, como mucho, el **saldo**. Seguir diciendo COD
+vendía justo el problema que resolvemos, así que la portada lo enfrenta de cara con la
+sección «Esto ya no es contraentrega».
+
+**Dónde vive el copy.** En [`src/config/propuesta.ts`](../src/config/propuesta.ts): titular,
+cifras, pilares, la comparativa contraentrega/Kross, los cuatro pasos del cobro y las
+garantías. La portada, el catálogo y `/servicios` leen de ahí — un solo archivo para que el
+mensaje no se desincronice entre páginas. Regla del archivo: **toda cifra tiene que poder
+señalarse en el producto o en la base** (hoy: `ADVANCE_HALF_SHARE = 0.5` y los 6.6 s del
+primer cobro real del 21-ago-2026, en `ESTADO-OPERATIVO.md`).
+
+**Estructura de la portada:** hero con las tres cifras → «Esto ya no es contraentrega»
+(comparativa) → «Cómo entra la plata» (los 4 pasos + qué sostiene la promesa) → los cuatro
+pilares (cobra, vende, despacha, retiene) → white-label → catálogo con precios → cómo se
+contrata + aviso de SSL → contacto. Los dos requisitos de la pasarela que vivían en la
+portada vieja —el catálogo con precios y el proceso de compra— siguen ahí, más abajo.
+
+### Cómo está pintada: dos tonos
+
+El manual de marca v2.0 pedía la versión Kross en ink para `krossclub.app` (§10.1) y esto la
+cierra. `PublicLayout` decide el tono:
+
+| Dónde | Tono | Cómo |
+|---|---|---|
+| `krossclub.app` (todo el sitio) | **Ink de Kross** | `useKrossTheme()` pone `data-theme="dark"`, y el tema del manual traduce superficies, rampa de grises, radios, bordes y pesos sin tocar clases |
+| `marca.krossclub.app` (páginas legales) | **Claro, de la marca** | Las legales pasan `tono="legal"`: fuera del host de la plataforma no se aplica `data-theme` y siguen como antes |
+
+Lo que sostiene eso en CSS (`src/index.css`, bloque «Web pública»):
+
+- `:root:not([data-theme]) .web-publica` da los tokens semánticos (`--surface`, `--text`,
+  `--border`, `--invert`…) al tono de marca. Antes solo existían dentro del panel, así que
+  las páginas públicas se podían escribir una sola vez en tokens.
+- `.k-cta` es **el** botón principal del sitio: en tono de marca conserva el oscuro de la
+  tienda; en ink se invierte a hueso con texto ink. El lima no entra a botones (§4.2).
+- `.k-nav-activo` es el indicador de navegación del §6, tumbado (14×6).
+
+Las portadas del catálogo (`public/catalogo/*.svg`) también se rehicieron en ink y se generan
+con `npm run build:portadas` ([`scripts/build-portadas.mjs`](../scripts/build-portadas.mjs)):
+una sola aparición de lima por portada, sin degradados y sin texto. No se editan a mano.
+
+### Deuda anotada
+
+- **Los metadatos de `index.html` son estáticos y describen a Kross.** El archivo lo sirve
+  también cada subdominio de marca, así que la vista previa de un enlace compartido de
+  `marca.krossclub.app` sale con el título y la descripción de Kross. El manifest sí es por
+  marca (`api/manifest.js` lee el Host); para los metadatos haría falta el mismo truco o SSR.
+- El **lockup del header es Kross también en las legales de una marca**, como antes del
+  rediseño. Si algún día se quiere marca blanca completa ahí, se resuelve en `PublicLayout`.
+
+---
+
 ## Mapa de requisitos
 
 ### Información general obligatoria
 
 | Requisito | Estado | Dónde |
 |---|---|---|
-| Decir con claridad qué productos/servicios ofrece el comercio | ✅ | `src/pages/publico/HomePage.tsx` (hero + "Qué hacemos por tu marca") |
+| Decir con claridad qué productos/servicios ofrece el comercio | ✅ | `src/pages/publico/HomePage.tsx` (hero + "Qué hace Kross por tu tienda"), con el copy en `src/config/propuesta.ts` |
 | Datos de contacto: número, correo, dirección | 🟡 | `src/config/empresa.ts` → pie de página, `/contacto` y home |
 | Iconos de redes que lleven a las cuentas reales | 🟡 | `EMPRESA.redes` en `src/config/empresa.ts`; se pintan en el pie y en `/contacto` |
 
@@ -56,7 +118,12 @@ Los cuatro enlaces están en el pie de **todas** las páginas públicas
 
 Las portadas son SVG en `public/catalogo/`: cargan siempre, no dependen de un
 host externo y se pueden reemplazar por fotos reales cambiando la ruta de
-`imagen` en el catálogo.
+`imagen` en el catálogo. Las genera `npm run build:portadas`.
+
+El texto de cada ítem se reescribió con el rediseño: el **cobro del adelanto con Yape
+validado solo** está en el plan de entrada, porque es el producto y no un extra. Los precios
+**no se tocaron**: son oferta al público y siguen pendientes de confirmación comercial (ver
+más abajo).
 
 ### Proceso de compra
 

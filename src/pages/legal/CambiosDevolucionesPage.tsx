@@ -5,7 +5,8 @@ import { EMPRESA, PLAZO_RESPUESTA_HABILES } from '../../config/empresa'
 // Política de cambios y devoluciones. La pasarela la exige junto con los términos, y
 // es la que responde la pregunta que más se hace antes de pagar: "¿y si no me
 // sirve?". Cubre los dos casos que existen en Kross: el software que vendemos
-// nosotros y el producto físico que vende cada marca contraentrega.
+// nosotros y el producto físico que vende cada marca, que se adelanta al pedir
+// y se termina de pagar al recibir.
 const ACTUALIZADO = '11 de agosto de 2026'
 
 export default function CambiosDevolucionesPage() {
@@ -79,13 +80,15 @@ export default function CambiosDevolucionesPage() {
 
       <Seccion titulo="7. Productos comprados a una marca que usa Kross">
         <p>
-          Cuando compras un producto físico contraentrega en la aplicación de una marca
-          (por ejemplo <i>tumarca.krossclub.app</i>), el vendedor es esa marca, no {titular}. En ese caso:
+          Cuando compras un producto físico en la aplicación de una marca (por ejemplo{' '}
+          <i>tumarca.krossclub.app</i>), el vendedor es esa marca, no {titular}. En esas compras se
+          adelanta parte del pedido —la mitad o el total— al momento de hacerlo, y el saldo, si
+          queda, se paga al recibirlo. En ese caso:
         </p>
         <ul>
-          <li>Puedes revisar el producto <b>antes de pagar</b> al repartidor y rechazarlo si no corresponde a lo pedido.</li>
+          <li>Puedes revisar el producto <b>al recibirlo</b> y rechazarlo si no corresponde a lo pedido; si quedaba saldo por pagar, no lo pagas.</li>
           <li>Los cambios por producto errado, incompleto o defectuoso los atiende la marca vendedora, dentro de los plazos que la ley de protección al consumidor establece.</li>
-          <li>El adelanto que algunas marcas cobran para despachar a provincia se devuelve si el pedido no llega a enviarse por causa de la marca.</li>
+          <li>El adelanto se devuelve si el pedido no llega a enviarse, o si no se entrega por causa de la marca.</li>
           <li>{titular} facilita el canal de contacto con la marca y conserva el historial del pedido como respaldo del reclamo.</li>
         </ul>
       </Seccion>
