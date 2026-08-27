@@ -207,10 +207,34 @@ el nombre abre el **pedido**, el avatar abre a la **persona**.
 
 ## Deuda que aparece al dibujar el mapa
 
-`/comprador/chats` y `/comprador/chat/:chatId` leen `useKrossStore()`, o sea el seed de
-`src/data/seed.ts`: son pantallas mock que nunca ven datos reales, y además cuelgan de
-`RequireSellerAuth` (un comprador no entra ahí ni queriendo). El chat real del comprador es
-`/p/:token` (`OrderChatPage`) y su lista real es `/mis-pedidos`. Las dos rutas mock se borran.
+`/comprador/chats` y `/comprador/chat/:chatId` leían `useKrossStore()`, o sea el seed de
+`src/data/seed.ts`: pantallas mock que nunca vieron datos reales y que además colgaban de
+`RequireSellerAuth` — un comprador no entraba ahí ni queriendo.
+
+**Resuelto (27-ago-2026), y eran cuatro, no dos.** Al ir a borrarlas aparecieron dos hermanas
+del mismo defecto:
+
+| Ruta mock | La pantalla real que ya la reemplazaba |
+|---|---|
+| `/comprador/chats` | `/mis-pedidos` |
+| `/comprador/chat/:chatId` | `/p/:token` (`OrderChatPage`) |
+| `/comprador/perfil` | `/mi-score` y la ficha en el panel |
+| `/vendedor/chat/:chatId` | `/vendedor/pedido/:token` |
+
+Con ellas se fueron `ChatView` (solo lo usaban esas dos) y `AccountSelector`, que **ya no lo
+importaba nadie**. El bundle bajó 22 kB.
+
+### Lo que queda del andamio
+
+`src/store/index.ts` y `src/data/seed.ts` siguen vivos por **un** consumidor: `BotIAPage`
+(`/vendedor/bots`), que no está en el menú y no hace una sola llamada a Supabase. No es del
+mismo tipo que las anteriores: aquellas duplicaban en falso pantallas que ya existían, y esta
+es la maqueta de algo que todavía **no** existe (la IA Closer, 🔮 en los docs). Borrarla es
+decidir sobre un prototipo, no limpiar un duplicado — por eso se dejó, con la nota puesta en
+`store/index.ts`.
+
+`src/types/index.ts` **no se toca**: aunque CLAUDE.md lo llama mock para los tipos de sesión,
+toda la capa de checkout importa tipos de ahí.
 
 ## El eje del pedido: dónde termina lo nuestro y empieza el courier
 
@@ -401,11 +425,15 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 | ~~4~~ | ✅ **Pedidos con selector de modo**; las 4 rutas viejas redirigen | hecho (27-ago-2026) |
 | ~~5~~ | ✅ **La llamada es un evento del hilo**; la sección Llamadas se disolvió | hecho (27-ago-2026) |
 | ~~6~~ | ✅ **Clientes de verdad**: libreta + ficha con historial, Retención adentro | hecho (27-ago-2026) |
-| 7 | Borrar las dos rutas mock del comprador | `App.tsx`, `src/pages/comprador/Chats*` |
+| ~~7~~ | ✅ **Borradas las rutas mock** — eran cuatro, no dos | hecho (27-ago-2026) |
 
-Hechos los pasos 0 a 6: el menú del admin está en cinco entradas y las dos entidades del
-modelo —Cliente y Pedido— tienen por fin cada una su pantalla. Queda el 7, que es borrar dos
-rutas muertas.
+**El plan está terminado.** El menú del admin pasó de diez entradas a cinco, las dos entidades
+del modelo —Cliente y Pedido— tienen cada una su pantalla, y las vistas que antes eran
+secciones (chats, CRM, En vivo, stats, llamadas, retención) son hoy modos o eventos de esas
+dos.
+
+Lo que sigue abierto no es del plan sino de su despliegue: las funciones que hay que publicar
+y la revisión visual que todavía nadie hizo. Está en [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md).
 
 ## Ver también
 

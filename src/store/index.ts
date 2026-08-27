@@ -1,3 +1,16 @@
+// ─── Store de MAQUETA (datos de `src/data/seed.ts`) ──────────────────────────
+//
+// ⚠️ Esto NO son datos reales. Nada de lo que vive acá toca Supabase.
+//
+// Quedó UN solo consumidor: `BotIAPage` (`/vendedor/bots`), que es una maqueta
+// de una función que todavía no existe —la IA Closer, 🔮 en los docs— y que no
+// está en el menú. Todas las demás pantallas que colgaban de este store se
+// borraron: duplicaban en falso a pantallas reales que ya existían
+// (`/mis-pedidos`, `/p/:token`, `/vendedor/pedido/:token`).
+//
+// Cuando se decida qué hacer con esa maqueta, este archivo y `seed.ts` se van
+// con ella. Ver docs/11-RELACIONES.md.
+
 import { create } from 'zustand'
 import type { Usuario, Tienda, Producto, Landing, ClientePerfil, Chat, Pedido, Vendedora, Bot, ConfigIA, Valoracion, Reclamo, Mensaje, PedidoEtapa } from '../types'
 import { USUARIOS, TIENDAS, PRODUCTOS, LANDINGS, CLIENTES, CHATS, PEDIDOS, VENDEDORAS, BOTS, CONFIGS_IA, VALORACIONES, RECLAMOS } from '../data/seed'
