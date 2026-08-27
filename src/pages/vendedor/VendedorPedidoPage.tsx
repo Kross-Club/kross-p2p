@@ -15,6 +15,7 @@ import { stageChip } from '../../lib/order-chips'
 import CustomerCard from '../../components/CustomerCard'
 import OrderTrackingMap from '../../components/OrderTrackingMap'
 import { useSeller } from '../../lib/seller-session'
+import { pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -404,7 +405,7 @@ export default function VendedorPedidoPage() {
   // Solo admin: dissolver la pantalla de Llamadas no debe ampliar en silencio
   // quién puede escuchar a un cliente. `get-recordings` ya lo exige y filtra
   // por `session_id`; acá solo se le pregunta por este pedido.
-  const [audios, setAudios] = useState<Record<string, string>>({})
+  const [audiosReales, setAudios] = useState<Record<string, string>>({})
   const [team, setTeam] = useState<{ auth_user_id: string; nombre: string; role_label: string }[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -415,6 +416,21 @@ export default function VendedorPedidoPage() {
   const reloadSession = useCallback(async (withSpinner = false) => {
     if (!token) { setLoading(false); return }
     if (withSpinner) setLoading(true)
+
+    // Un pedido de ejemplo no existe en la base: se abre desde el generador, con
+    // su conversación y su grabación. Sin esto la bandeja del demo llevaba a
+    // "Sesión no encontrada", que es peor que no tener demo.
+    if (esTokenDemo(token)) {
+      try {
+        const p = await pedidoDemoPorToken(token)
+        if (p) {
+          setSession(p as unknown as OrderSession)
+          setMessages((p.chat_messages ?? []) as unknown as OrderMessage[])
+        }
+      } finally { setLoading(false) }
+      return
+    }
+
     try {
       const res = await fetch(`${BASE}/get-session?viewer=seller`, {
         headers: { Authorization: `Bearer ${ANON}`, 'x-kross-token': token },
@@ -444,7 +460,16 @@ export default function VendedorPedidoPage() {
   // Las grabaciones se piden UNA vez por pedido, y solo si el hilo tiene alguna
   // llamada que enganchar: sin llamadas no hay nada que traer.
   const hayLlamadas = messages.some(m => m.type === 'call_log' && m.call_recording_id)
+
+  // En demo la grabación es un WAV de ejemplo incrustado: el reproductor es real
+  // y suena, pero no finge ser una conversación grabada. Se DERIVA de los
+  // mensajes en vez de guardarse en estado — un efecto lo pondría un render
+  // tarde y el control saldría muerto en la primera pintada.
+  const audios = esTokenDemo(token)
+    ? Object.fromEntries(messages.flatMap(m => m.call_recording_id ? [[m.call_recording_id, AUDIO_DEMO]] : []))
+    : audiosReales
   useEffect(() => {
+    if (esTokenDemo(token)) return   // en demo el audio se deriva, no se pide
     if (!isAdmin || !real?.auth_user_id || !session?.id || !hayLlamadas) return
     let vivo = true
     fetch(`${BASE}/get-recordings`, {
@@ -460,7 +485,7 @@ export default function VendedorPedidoPage() {
       })
       .catch(() => {})
     return () => { vivo = false }
-  }, [isAdmin, real?.auth_user_id, effective?.store_id, session?.id, hayLlamadas])
+  }, [token, isAdmin, real?.auth_user_id, effective?.store_id, session?.id, hayLlamadas])
 
   // Realtime
   useEffect(() => {

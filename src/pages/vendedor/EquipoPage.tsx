@@ -43,7 +43,7 @@ export default function EquipoPage() {
   const loadTeam = async () => {
     // En demo el equipo es el de la tienda de ejemplo: seis personas con los
     // roles reales de una operación de contraentrega.
-    if (demoActivo()) {
+    if (demoActivo(storeId)) {
       const t = await tiendaDemo()
       setTeam(t.equipo as unknown as SellerProfile[])
       setLoading(false)

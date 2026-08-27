@@ -58,7 +58,7 @@ export default function PedidosMapa({ lista }: { lista: StoreOrders }) {
   // El modo demo dejó de ser un botón de esta pantalla: es global, se enciende
   // en Marca y lo anuncia la barra del panel. Acá el mapa solo pinta lo que le
   // dé el lector, que ya sabe si está en demo.
-  const demo = useDemo()
+  const demo = useDemo(effective?.store_id)
   // En demo el origen de cada producto lo da el generador; en real lo trae la
   // consulta a `products`. La lista de pedidos ya llega resuelta por el lector.
   const [origenDemo, setOrigenDemo] = useState<Record<string, string>>({})

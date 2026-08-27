@@ -63,7 +63,7 @@ export default function ProductosPage() {
   const load = () => {
     // En demo el catálogo sale del generador: los tres productos que sostienen
     // la tienda de ejemplo, con lo que lleva vendido cada uno.
-    if (demoActivo()) {
+    if (demoActivo(effective?.store_id)) {
       tiendaDemo().then(t => { setProducts(t.productos as unknown as Product[]); setLoading(false) })
       return
     }

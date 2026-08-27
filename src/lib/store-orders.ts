@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SellerProfile } from './seller-session'
-import { demoActivo } from './demo/modo-demo'
+import { useDemo } from './demo/modo-demo'
 import { tiendaDemo } from './demo/tienda-demo'
 
 // ─── El lector único de pedidos de la tienda ─────────────────────────────────
@@ -148,7 +148,7 @@ export function useStoreOrders(
   const alcance = alcanceDePedidos(effective)
   const sellerId = alcance?.sellerId ?? null
 
-  const demo = demoActivo()
+  const demo = useDemo(storeId)
 
   useEffect(() => {
     let vivo = true

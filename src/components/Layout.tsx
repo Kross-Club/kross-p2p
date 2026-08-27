@@ -30,7 +30,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const desktop = useIsDesktop()
-  const demo = useDemo()
+  const demo = useDemo(effective?.store_id)
   usePanelTheme()
 
   // Qué marca se muestra en el header sigue a QUIÉN estás actuando: el super
@@ -129,10 +129,10 @@ export default function Layout() {
       <div className="flex items-center gap-2 min-w-0">
         <Sparkles size={14} className="flex-shrink-0" />
         <p className="text-xs font-bold truncate">
-          Modo demo — estos datos son inventados
+          Modo demo{brand?.nombre ? ` en ${brand.nombre}` : ''} — estos datos son inventados
         </p>
       </div>
-      <button onClick={() => setDemo(false)}
+      <button onClick={() => effective?.store_id && setDemo(effective.store_id, false)}
         className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
         style={{ background: 'var(--surface)', color: 'var(--text)' }}>
         <X size={12} /> Salir
@@ -226,8 +226,7 @@ export default function Layout() {
           className="rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
           style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9', background: 'var(--surface)' }}>
           {demoBar}
-          {demoBar}
-        {impersonationBar}
+          {impersonationBar}
 
           <div className="flex-1 flex min-h-0">
             <SideNav effective={effective} brand={brand} />
@@ -263,6 +262,7 @@ export default function Layout() {
         <SellerPresenceTracker authUserId={real?.auth_user_id} />
         <InstallBanner />
 
+        {demoBar}
         {impersonationBar}
 
         <header className="sticky top-0 z-20 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center justify-between"

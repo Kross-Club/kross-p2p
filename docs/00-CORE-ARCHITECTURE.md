@@ -181,15 +181,21 @@ despacha ~1.000 pedidos al día entre tres productos (S/150, S/120, S/180) y arr
 de recompras. Sirve para enseñar cómo se ve la herramienta funcionando sin esperar a que la
 marca venda.
 
-- **Vive en el dispositivo** (`localStorage`, como el tema), no en una columna de `stores`. Si
-  fuera de la marca, un vendedor encendiéndolo pondría a todo su equipo a mirar pedidos
-  inventados, y una tienda podría quedarse en demo en producción sin que nadie lo note.
+- **Es por TIENDA y por DISPOSITIVO**, las dos cosas. Por dispositivo (`localStorage`, como el
+  tema) porque si fuera de la marca, un vendedor encendiéndolo pondría a todo su equipo a mirar
+  pedidos inventados y una tienda podría quedarse en demo en producción sin que nadie lo note.
+  Por tienda porque preparar la demo de una marca no debe ensuciar la vista de las otras: un
+  super admin puede tener Gadicaf en demo y saltar a Kross Shop a ver sus pedidos reales. La
+  clave es `kross-demo:<store_id>`.
 - **Se anuncia siempre**: mientras está encendido, `Layout` pinta una barra fija arriba con un
   botón de salida. Un demo que no se anuncia es una mentira.
 - **Es determinista** (semilla fija, sin `Math.random()`): los números no cambian entre
   pintadas, así que se puede señalar un total en pantalla y confiar en él.
 - **Las sedes son reales**: los destinos salen del listado de Shalom y Olva, así que las líneas
   del mapa caen donde caerían de verdad. Lo único inventado son los pedidos.
+- **Los pedidos se abren completos**: cada uno trae su conversación (comprador, equipo y
+  avisos del sistema) y algunos una llamada con grabación, que suena — es un WAV de ejemplo
+  incrustado, no un botón muerto.
 - **No toca la base ni exige deploy.** Reemplazó al botón "Ver ejemplo" que vivía solo en el
   mapa.
 
