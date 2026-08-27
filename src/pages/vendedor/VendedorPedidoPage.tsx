@@ -14,7 +14,6 @@ import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
 import { useUbicacion } from '../../lib/ubicacion'
-import { codigoPedido } from '../../lib/order-code'
 import CustomerCard from '../../components/CustomerCard'
 import Confirmar from '../../components/Confirmar'
 import PanelCliente from '../../components/PanelCliente'
@@ -417,6 +416,13 @@ export default function VendedorPedidoPage() {
 }
 
 /**
+ * Dónde está montado el pedido. Es UN dato y no dos banderas: `pagina` y
+ * `panel` y `ventana` se excluyen, y con booleanos sueltos existe el estado
+ * imposible de estar en los dos sitios a la vez.
+ */
+export type MontajeDelPedido = 'pagina' | 'panel' | 'ventana'
+
+/**
  * El pedido, montado como página completa o como panel lateral.
  *
  * Abrir un pedido desde Pedidos dejó de ser un viaje a otra pantalla —perdías
@@ -425,11 +431,17 @@ export default function VendedorPedidoPage() {
  * según por dónde se abrió sería otra copia de la misma pantalla, que es
  * justamente lo que este refactor viene deshaciendo (docs/11-RELACIONES.md).
  */
-export function PedidoVista({ token, enPanel = false, onCerrar }: {
+export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
   token: string | undefined
-  /** `true` = va dentro del panel lateral: sin marco 16:9 y llenando su caja. */
-  enPanel?: boolean
-  /** Volver: a la lista en la ruta, cerrar el panel en el panel. */
+  /**
+   * · `pagina`  → la ruta `/vendedor/pedido/:token`, con su marco 16:9.
+   * · `panel`   → el cajón de la derecha: llena su caja, con su X para cerrar.
+   * · `ventana` → la ventana del centro, para MIRAR un pedido viejo. Va sin la
+   *   ficha del cliente —se llegó a este pedido justamente desde ahí— y sin
+   *   botón de volver: la ventana ya trae el suyo arriba a la derecha.
+   */
+  montaje?: MontajeDelPedido
+  /** Volver: a la lista en la ruta, cerrar el panel o la ventana si no. */
   onCerrar: () => void
 }) {
   const { real, effective, isAdmin } = useSeller()
@@ -743,11 +755,16 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
         style={{ background: 'var(--chat-header)', borderRadius: '0 0 24px 24px' }}>
         <div className="flex items-center gap-3">
-          <button onClick={onCerrar} aria-label={enPanel ? 'Cerrar el pedido' : 'Volver a Pedidos'}
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'rgba(255,255,255,0.1)' }}>
-            {enPanel ? <X size={18} className="text-white" /> : <ArrowLeft size={18} className="text-white" />}
-          </button>
+          {/* En la ventana del centro no va: la ventana ya trae su X arriba a
+              la derecha, y dos formas de cerrar lo mismo, a diez píxeles una de
+              otra, se leen como que hacen cosas distintas. */}
+          {montaje !== 'ventana' && (
+            <button onClick={onCerrar} aria-label={montaje === 'panel' ? 'Cerrar el pedido' : 'Volver a Pedidos'}
+              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(255,255,255,0.1)' }}>
+              {montaje === 'panel' ? <X size={18} className="text-white" /> : <ArrowLeft size={18} className="text-white" />}
+            </button>
+          )}
 
           {/* El avatar ya no abre nada. Era un botón que no parecía botón, y
               detrás tenía el DNI, el teléfono y el rastro del pago — datos que
@@ -771,15 +788,16 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
             className="flex-1 min-w-0 text-left disabled:cursor-default">
             <p className="font-black text-white text-base leading-tight flex items-baseline gap-2">
               <span className="truncate">{session.buyer_name || 'Comprador'}</span>
-              {/* El número que le puso la tienda. Va pegado al nombre porque es
-                  lo que responde "¿cuál de sus pedidos es este?" cuando se abre
-                  la ficha del cliente y salen cuatro filas parecidas. El
-                  completo, en el `title` y en el detalle. */}
-              {codigoPedido(session.order_id) && (
+              {/* El DNI, no el número de pedido. Cuál de sus pedidos es este ya
+                  lo responde la ficha del cliente, que marca el que está
+                  abierto; lo que no dice ninguna otra pantalla de un vistazo es
+                  QUIÉN es esta persona — y el DNI es su identidad en Kross: un
+                  mismo número junta sus pedidos aunque cambie de teléfono. */}
+              {session.buyer_contact?.document_number && (
                 <span className="text-[11px] font-semibold tabular flex-shrink-0"
-                  title={session.order_id ?? undefined}
+                  title={`${session.buyer_contact.document_type || 'DNI'} ${session.buyer_contact.document_number}`}
                   style={{ color: 'rgba(255,255,255,0.55)' }}>
-                  {codigoPedido(session.order_id)}
+                  {session.buyer_contact.document_number}
                 </span>
               )}
             </p>
@@ -909,7 +927,12 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
 
   const contextPanel = (
     <>
-      <CustomerCard session={session} ubicacion={ubicacion} onVerCliente={verCliente} />
+      {/* En la ventana no: a este pedido se llegó DESDE la ficha del cliente,
+          que sigue abierta detrás. Repetirla sería ofrecer volver a un sitio
+          donde uno ya está. */}
+      {montaje !== 'ventana' && (
+        <CustomerCard session={session} ubicacion={ubicacion} onVerCliente={verCliente} />
+      )}
 
       {/* Stage selector */}
       {session.status !== 'cancelado' && (
@@ -1189,9 +1212,9 @@ export function PedidoVista({ token, enPanel = false, onCerrar }: {
     </>
   )
 
-  // Dentro del panel no hay marco que dibujar: la caja la pone el cajón, y
-  // esto solo la llena.
-  if (enPanel) {
+  // Dentro del cajón o de la ventana no hay marco que dibujar: la caja la pone
+  // el contenedor, y esto solo la llena.
+  if (montaje !== 'pagina') {
     return (
       <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--chat-bg)' }}>
         {overlay}

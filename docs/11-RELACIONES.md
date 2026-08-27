@@ -807,6 +807,37 @@ Las capas quedan así, y por eso están numeradas en un solo sitio:
 | 3 | un pedido viejo, en ventana |
 | — | `Confirmar` y la galería, por encima de todo |
 
+### Y lo que se quitó al usarlo (27-ago-2026)
+
+Cinco recortes, todos de lo mismo: **decir dos veces lo que ya está dicho**.
+
+**No hay "pedido sin chat".** El demo listaba el historial como renglones sin token, y la ficha
+los marcaba *"sin chat"*. Pero todo pedido nace de un formulario, así que todo pedido tiene
+conversación: era un estado que el producto no tiene y que el demo estaba inventando. Ahora un
+pedido viejo se abre entero —con su chat, su guía y su adelanto cruzado—, armado en el momento
+(`pedidoHistorico`) y no al generar la tienda: son miles, y generar miles de chats para que se
+lean cuatro es pagar por adelantado algo que casi nunca se usa.
+
+**Se fue el código corto del pedido.** Se puso para responder *"¿cuál de sus pedidos es este?"*,
+y esa pregunta ya la responde la fila marcada *"Lo estás viendo"*. Dos respuestas a la misma
+pregunta, y la peor de las dos —seis dígitos que hay que comparar a ojo— sobraba. En su sitio,
+junto al nombre, va el **DNI**: es lo que ninguna otra pantalla dice de un vistazo, y es la
+identidad del comprador en Kross —un mismo número junta sus pedidos aunque cambie de teléfono—.
+El `ORD-…` completo sigue donde se usa de verdad: en el rastro del pago, que es lo que se copia
+para soporte de 360pay.
+
+**En la ventana del centro no va la ficha del cliente ni el botón de volver.** A ese pedido se
+llegó DESDE la ficha, que sigue abierta detrás: ofrecer volver a un sitio donde uno ya está es
+ruido. Y la ventana ya trae su X arriba a la derecha; dos formas de cerrar lo mismo, a diez
+píxeles una de otra, se leen como que hacen cosas distintas.
+
+Eso hizo falta distinguir los tres montajes del pedido, y se hizo con **un dato y no con dos
+banderas** (`montaje: 'pagina' | 'panel' | 'ventana'`): con booleanos sueltos existe el estado
+imposible de estar en dos sitios a la vez.
+
+**Y el monto va a la altura del `+`.** Colgado de la primera línea quedaba a otra altura que el
+botón de al lado, y dos cosas que se leen juntas tienen que estar juntas.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)
