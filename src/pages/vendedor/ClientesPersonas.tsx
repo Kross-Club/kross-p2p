@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Users, ChevronRight, IdCard, MessageCircle, Phone, X } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { useStoreClients, fichaDeCliente, resumenDeCliente } from '../../lib/store-clients'
@@ -32,7 +32,23 @@ export default function ClientesPersonas() {
   const { real, effective } = useSeller()
   const { clientes, cargando, error } = useStoreClients(real, effective)
   const [busca, setBusca] = useState('')
-  const [abierto, setAbierto] = useState<string | null>(null)
+
+  // Qué ficha está abierta vive en la URL y no en un `useState` porque ya no se
+  // abre solo desde acá: desde un pedido se salta a SU cliente
+  // (`/vendedor/clientes?cliente=<id>`), que es la relación que el panel tenía
+  // escrita en el modelo y no en la pantalla — un pedido pertenece a alguien, y
+  // de ese alguien cuelgan todos sus pedidos (docs/11-RELACIONES.md).
+  const [params, setParams] = useSearchParams()
+  const abierto = params.get('cliente')
+
+  // Se conserva lo que ya había en la URL (el modo de Clientes): escribir solo
+  // `cliente` borraría el modo y saltaría de vuelta a la libreta.
+  const abrirFicha = (id: string | null) => {
+    const siguiente = new URLSearchParams(params)
+    if (id) siguiente.set('cliente', id)
+    else siguiente.delete('cliente')
+    setParams(siguiente, { replace: !id })
+  }
 
   // Se ordena por lo que de verdad importa: quien más ha comprado arriba. Por
   // fecha de alta, el cliente de cinco pedidos queda enterrado bajo los que
@@ -95,7 +111,7 @@ export default function ClientesPersonas() {
           {filtrados.map(c => {
             const seg = c.segmento ? SEGMENTO[c.segmento] : undefined
             return (
-              <button key={c.id} onClick={() => setAbierto(c.id)}
+              <button key={c.id} onClick={() => abrirFicha(c.id)}
                 className="w-full bg-white border border-gray-100 rounded-2xl px-3 py-3 flex items-center gap-3 text-left shadow-sm">
                 <div className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 font-black"
                   style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
@@ -127,8 +143,8 @@ export default function ClientesPersonas() {
           buyerId={abierto}
           adminId={real?.auth_user_id}
           storeId={effective?.store_id}
-          onClose={() => setAbierto(null)}
-          onAbrirPedido={token => { setAbierto(null); navigate(`/vendedor/pedido/${token}`) }}
+          onClose={() => abrirFicha(null)}
+          onAbrirPedido={token => { abrirFicha(null); navigate(`/vendedor/pedido/${token}`) }}
         />
       )}
     </div>

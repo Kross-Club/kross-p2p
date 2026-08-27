@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Search, MessageCircle, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { supabase } from '../../lib/supabase'
@@ -23,8 +22,11 @@ const ETIQUETA: Record<string, string> = {
   no_entregado: 'No entregado',
 }
 
-export default function PedidosLista({ lista }: { lista: StoreOrders }) {
-  const navigate = useNavigate()
+export default function PedidosLista({ lista, onAbrir }: {
+  lista: StoreOrders
+  /** Abre el pedido en el panel de la derecha, sin salir de la lista. */
+  onAbrir: (token: string) => void
+}) {
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
   const [search, setSearch] = useState('')
@@ -133,9 +135,9 @@ export default function PedidosLista({ lista }: { lista: StoreOrders }) {
     { label: 'Entregados', value: cuantos('entregado'), color: 'var(--ok-fg)' },
   ]
 
-  // Un pedido sin token no tiene página a la que ir. No debería pasar, pero el
-  // tipo lo admite porque la respuesta del servidor manda, no nuestro deseo.
-  const open = (token?: string) => { if (token) navigate(`/vendedor/pedido/${token}`) }
+  // Un pedido sin token no tiene nada que abrir. No debería pasar, pero el tipo
+  // lo admite porque la respuesta del servidor manda, no nuestro deseo.
+  const open = (token?: string) => { if (token) onAbrir(token) }
 
   const Avatar = ({ name, online, size }: { name?: string | null; online: boolean; size: number }) => (
     <div className="relative flex-shrink-0">

@@ -47,3 +47,24 @@ export function modoDeUrl(params: URLSearchParams): Modo {
 export function urlDeModo(m: Modo): Record<string, string> {
   return m === MODO_INICIAL ? {} : { modo: m }
 }
+
+// ─── El pedido abierto ───────────────────────────────────────────────────────
+//
+// Abrir un pedido dejó de ser un viaje a otra pantalla: entra como panel desde
+// la derecha, encima de la lista. Pero el token sigue viviendo en la URL
+// (`?pedido=`) y no en un `useState`, por lo mismo que el modo: el enlace se
+// puede mandar, "atrás" cierra el panel, y recargar la página deja abierto lo
+// que estaba abierto. La ruta `/vendedor/pedido/:token` se queda como estaba —
+// es la que abren las notificaciones y los enlaces viejos.
+
+export function pedidoDeUrl(params: URLSearchParams): string | null {
+  const t = params.get('pedido')
+  return t ? t : null
+}
+
+/** Los parámetros del modo con un pedido abierto encima. Se compone acá y no
+ *  en la pantalla porque `urlDeModo` borra lo que no nombra: cambiar de modo
+ *  con un pedido abierto lo cerraba sin querer. */
+export function urlConPedido(m: Modo, token: string | null): Record<string, string> {
+  return token ? { ...urlDeModo(m), pedido: token } : urlDeModo(m)
+}

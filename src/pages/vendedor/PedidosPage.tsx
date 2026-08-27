@@ -3,11 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useSeller } from '../../lib/seller-session'
 import { useStoreOrders } from '../../lib/store-orders'
 import { useIsDesktop } from '../../lib/use-desktop'
-import { MODOS, modoDeUrl, urlDeModo } from '../../lib/pedidos-modos'
+import { MODOS, modoDeUrl, pedidoDeUrl, urlConPedido, urlDeModo } from '../../lib/pedidos-modos'
 import type { Modo } from '../../lib/pedidos-modos'
 import { FILTRO_VACIO, aplicarFiltro } from '../../lib/pedidos-filtro'
 import type { Filtro } from '../../lib/pedidos-filtro'
 import FiltroPedidos from '../../components/FiltroPedidos'
+import PanelPedido from '../../components/PanelPedido'
 import PedidosLista from './PedidosLista'
 import PedidosTablero from './PedidosTablero'
 import PedidosMapa from './PedidosMapa'
@@ -29,6 +30,7 @@ export default function PedidosPage() {
   const desktop = useIsDesktop()
   const [params, setParams] = useSearchParams()
   const modo = modoDeUrl(params)
+  const abierto = pedidoDeUrl(params)
   const [filtro, setFiltro] = useState<Filtro>(FILTRO_VACIO)
 
   // El super admin de la plataforma no es una tienda: no tiene pedidos que
@@ -59,8 +61,15 @@ export default function PedidosPage() {
   const filtrada = { ...lista, pedidos: filtrados }
 
   // `replace` para que los cambios de modo no llenen el historial: el "atrás"
-  // debe sacarte de Pedidos, no pasearte por los modos que probaste.
-  const irA = (m: Modo) => setParams(urlDeModo(m), { replace: true })
+  // debe sacarte de Pedidos, no pasearte por los modos que probaste. El pedido
+  // abierto se conserva: cambiar de modo con un pedido en pantalla no debería
+  // cerrarlo.
+  const irA = (m: Modo) => setParams(urlConPedido(m, abierto), { replace: true })
+
+  // Abrir SÍ apila —así "atrás" cierra el panel, que es lo que uno espera de
+  // algo que se abrió encima—; cerrar no, para no dejar un paso vacío detrás.
+  const abrir = (token: string) => setParams(urlConPedido(modo, token))
+  const cerrar = () => setParams(urlDeModo(modo), { replace: true })
 
   return (
     <div>
@@ -100,10 +109,12 @@ export default function PedidosPage() {
         </div>
       </div>
 
-      {modo === 'lista' && <PedidosLista lista={filtrada} />}
-      {modo === 'tablero' && <PedidosTablero lista={filtrada} />}
+      {modo === 'lista' && <PedidosLista lista={filtrada} onAbrir={abrir} />}
+      {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} />}
       {modo === 'mapa' && <PedidosMapa lista={filtrada} />}
       {modo === 'resumen' && <PedidosResumen lista={filtrada} />}
+
+      {abierto && <PanelPedido token={abierto} onCerrar={cerrar} />}
     </div>
   )
 }
