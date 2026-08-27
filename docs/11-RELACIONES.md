@@ -76,12 +76,12 @@ pedir `get-store-sessions`, no es una sección — es un modo de Pedidos.
 | Antes | Ahora | Estado |
 |---|---|---|
 | Chats · CRM · En vivo · Stats | **Pedidos**, con cuatro modos: Bandeja · Tablero · En vivo · Resumen | ✅ 27-ago-2026 |
-| Clientes · Retención | **Clientes**: la lista real de personas; importar, invitar y campañas viven adentro | 🔮 paso 6 |
+| Clientes · Retención | **Clientes**: la libreta real de personas; reactivar e invitar viven adentro | ✅ 27-ago-2026 |
 | Llamadas | ✂️ disuelta — cada grabación vive en el hilo de su pedido | ✅ 27-ago-2026 |
 | Productos · Equipo · Marca | igual | — |
 
-**El menú del admin va en seis**, camino a cinco: falta el paso 6 (Retención dentro de
-Clientes). El miembro
+**El menú del admin está en cinco**: Pedidos · Clientes · Productos · Equipo · Marca. Era el
+objetivo del doc y ya está. El miembro
 del equipo ya tiene **una** entrada, y está bien — su trabajo entero es la lista de pedidos,
 y los cuatro modos viven dentro de ella, no en el menú.
 
@@ -129,10 +129,33 @@ chat) pero no a la **persona**. Ninguna pantalla responde *"¿este señor ya me 
 — y esa es la pregunta que decide si se le despacha sin adelanto, si vale la pena el upsell,
 y si el reclamo de hoy es de un cliente de tres pedidos o de un desconocido.
 
-El dato ya existe y está a un join: `order_sessions.buyer_id → buyers.id`. `buyers` ya guarda
-`score`, `puntos`, `activated_at`, `source`. Falta la pantalla: **Clientes → ficha**, con sus
-pedidos, su LTV, sus puntos y su score. Retención deja de ser una sección y pasa a ser la
-cabecera de esa lista (recompra, segmentos restock/winback, campañas).
+**Resuelto (27-ago-2026).** Clientes es ahora la libreta, con tres modos —igual que Pedidos, y
+por el mismo criterio: cada uno responde una pregunta distinta.
+
+| Modo | Responde |
+|---|---|
+| **Personas** | ¿quién me compra? — la lista, ordenada por lo gastado, y la ficha con su historial |
+| **Reactivar** | ¿a quién le toca volver? — recompra, LTV, segmentos y campañas |
+| **Invitar** | ¿cómo traigo a mi base a la app? — importar CSV, invitar por WhatsApp, puntos de bienvenida |
+
+La ficha lleva **todos** sus pedidos, no solo los entregados: un cancelado o un no entregado
+es justamente lo que explica por qué ese cliente merece otra mirada antes de despacharle sin
+adelanto.
+
+### Y una tercera copia que no llegó a nacer
+
+Al escribir el listado apareció que *cuánto vale un cliente* y *cuándo le toca volver* estaban
+**duplicadas**: `retention-metrics` y `run-campaign` tenían cada uno su versión de la misma
+matemática. El listado iba a ser la tercera.
+
+Con tres copias, el chip que dice "toca recompra" en la ficha y el contador del segmento que
+dispara la campaña se separan en cuanto alguien toca una sola — y entonces la campaña le
+escribe a un conjunto distinto del que el vendedor vio antes de apretar el botón. Ahora la
+definición vive en `supabase/functions/_shared/clientes.ts`, la usan los tres, y **tiene
+tests** (es TS puro sin APIs de Deno, así que el front la importa igual que `_shared/olva.ts`).
+
+La regla que las une: **solo cuenta lo ENTREGADO**. Un pedido en `nuevo` no es plata, y en
+contraentrega uno `no_entregado` tampoco — se devolvió.
 
 ## Lo que falta de verdad #2: la llamada no está en el pedido
 
@@ -377,11 +400,12 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 | ~~3~~ | ✅ **`registrado` deja de ser `EN_ORIGEN`** + chip de antigüedad en el CRM | hecho (26-ago-2026) |
 | ~~4~~ | ✅ **Pedidos con selector de modo**; las 4 rutas viejas redirigen | hecho (27-ago-2026) |
 | ~~5~~ | ✅ **La llamada es un evento del hilo**; la sección Llamadas se disolvió | hecho (27-ago-2026) |
-| 6 | **Clientes** de verdad: lista + ficha con historial; Retención adentro | pantalla nueva + `ClientesPage`, `RetencionPage` |
+| ~~6~~ | ✅ **Clientes de verdad**: libreta + ficha con historial, Retención adentro | hecho (27-ago-2026) |
 | 7 | Borrar las dos rutas mock del comprador | `App.tsx`, `src/pages/comprador/Chats*` |
 
-Hechos los pasos 0 a 5. Queda el 6 —Clientes de verdad, con Retención adentro—, que es el
-que baja el menú a cinco, y el 7, que es borrar dos rutas muertas.
+Hechos los pasos 0 a 6: el menú del admin está en cinco entradas y las dos entidades del
+modelo —Cliente y Pedido— tienen por fin cada una su pantalla. Queda el 7, que es borrar dos
+rutas muertas.
 
 ## Ver también
 

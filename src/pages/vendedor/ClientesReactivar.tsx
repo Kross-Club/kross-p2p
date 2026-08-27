@@ -17,8 +17,8 @@ interface WaTemplate { name: string; language: string; params: number }
 
 const soles = (n: number) => `S/ ${(n ?? 0).toLocaleString('es-PE', { maximumFractionDigits: 0 })}`
 
-export default function RetencionPage() {
-  const { real, effective, isAdmin } = useSeller()
+export default function ClientesReactivar() {
+  const { real, effective } = useSeller()
   const storeId = effective?.store_id
   const [m, setM] = useState<Metrics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -62,13 +62,10 @@ export default function RetencionPage() {
     } finally { setSavingCfg(false) }
   }
 
-  if (!isAdmin) return <div className="px-4 py-8 text-center text-sm text-gray-400">Solo el administrador ve la retención.</div>
-
   const repeatPct = m ? Math.round(m.repeat_rate * 100) : 0
 
   return (
-    <div className="px-4 py-4">
-      <h1 className="text-xl font-black text-gray-900 mb-1 flex items-center gap-2"><TrendingUp size={20} /> Retención</h1>
+    <div className="px-4 pt-3 pb-4">
       <p className="text-xs text-gray-400 mb-4">Cuánto vuelven a comprar tus clientes y cómo reactivarlos.</p>
 
       {loading && !m ? (

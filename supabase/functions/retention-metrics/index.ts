@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { agregarPorComprador, segmentoDe, ventanasDe } from '../_shared/clientes.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -10,8 +11,6 @@ const corsHeaders = {
 }
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-
-const DAY = 86_400_000
 
 // Retention dashboard + segment sizing. Computes, for one store:
 //  - repeat rate (buyers with ≥2 delivered orders / buyers with ≥1)
@@ -32,8 +31,7 @@ Deno.serve(async (req) => {
 
   const { data: store } = await supabase
     .from('stores').select('restock_days, winback_days').eq('id', storeId).maybeSingle()
-  const restockDays = Math.max(1, Number(store?.restock_days ?? 30))
-  const winbackDays = Math.max(1, Number(store?.winback_days ?? 60))
+  const { restockDias: restockDays, winbackDias: winbackDays } = ventanasDe(store)
 
   // Base customer counts
   const cnt = async (build: (q: any) => any) => {
@@ -51,31 +49,23 @@ Deno.serve(async (req) => {
     .eq('stage', 'entregado')
     .not('buyer_id', 'is', null)
 
-  type Agg = { count: number; revenue: number; last: number }
-  const perBuyer = new Map<string, Agg>()
+  // La agregación y los segmentos viven en `_shared/clientes.ts`: son la misma
+  // definición que usan el listado de clientes y el disparo de campañas, y
+  // tenerla copiada acá ya era una de tres.
+  const perBuyer = agregarPorComprador(orders ?? [])
   let revenue = 0
-  for (const o of orders ?? []) {
-    const id = (o as any).buyer_id as string
-    const price = Number((o as any).product_price ?? 0)
-    const t = Date.parse((o as any).created_at ?? '') || 0
-    revenue += price
-    const a = perBuyer.get(id) ?? { count: 0, revenue: 0, last: 0 }
-    a.count += 1; a.revenue += price; a.last = Math.max(a.last, t)
-    perBuyer.set(id, a)
-  }
+  for (const a of perBuyer.values()) revenue += a.gastado
 
   const buyersWithOrder = perBuyer.size
   let repeatBuyers = 0, totalOrders = 0
   const now = Date.now()
   let restock = 0, winback = 0
   for (const a of perBuyer.values()) {
-    totalOrders += a.count
-    if (a.count >= 2) repeatBuyers += 1
-    const ageDays = a.last ? (now - a.last) / DAY : Infinity
-    // RESTOCK: bought once and the consumable is due (window around restock_days)
-    if (ageDays >= restockDays && ageDays < winbackDays) restock += 1
-    // WIN-BACK: hasn't ordered in a long time → churning
-    else if (ageDays >= winbackDays && ageDays !== Infinity) winback += 1
+    totalOrders += a.pedidos
+    if (a.pedidos >= 2) repeatBuyers += 1
+    const seg = segmentoDe(a.ultimo, now, restockDays, winbackDays)
+    if (seg === 'restock') restock += 1
+    else if (seg === 'winback') winback += 1
   }
 
   const repeatRate = buyersWithOrder ? repeatBuyers / buyersWithOrder : 0

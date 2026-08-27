@@ -129,6 +129,25 @@ tests de regresión en `order-tracking.test.ts` y `live-map.test.ts`.
 sigue pendiente el deploy de `get-store-sessions` de la nota de abajo: sin él el mapa carga
 vacío igual, porque no recibe los campos que dibuja.
 
+### La libreta de clientes necesita un deploy (27-ago-2026)
+
+Clientes pasó a ser la libreta de personas, con Retención adentro
+([`11-RELACIONES.md`](./11-RELACIONES.md)). **No hay SQL que correr** — ninguna columna nueva.
+
+`list-clients` es una función **nueva**; las otras dos se redespliegan porque ahora empaquetan
+`_shared/clientes.ts`, donde quedó la definición única de LTV y segmentos:
+
+```
+supabase functions deploy list-clients      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy retention-metrics --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy run-campaign      --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin el deploy **nada se rompe y nada se pierde**: el modo *Personas* muestra un aviso de que
+no pudo cargar (y sugiere justamente que falta publicar `list-clients`), mientras *Reactivar* e
+*Invitar* siguen funcionando como antes con las funciones ya desplegadas. Es la diferencia con
+el paso 5: acá la ventana no deja al equipo sin nada.
+
 ### Cómo comprobar que un deploy entró
 
 El CLI no dice mucho al terminar. Para ver qué versión quedó viva de cada función:

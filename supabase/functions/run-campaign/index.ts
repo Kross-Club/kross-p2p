@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { agregarPorComprador, segmentoDe, ventanasDe } from '../_shared/clientes.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -37,8 +38,7 @@ Deno.serve(async (req) => {
 
   const { data: store } = await supabase
     .from('stores').select('wa_enabled, wa_phone_number_id, slug, restock_days, winback_days').eq('id', storeId).maybeSingle()
-  const restockDays = Math.max(1, Number(store?.restock_days ?? 30))
-  const winbackDays = Math.max(1, Number(store?.winback_days ?? 60))
+  const { restockDias: restockDays, winbackDias: winbackDays } = ventanasDe(store)
 
   // Compute the segment from delivered orders (same math as retention-metrics)
   const { data: orders } = await supabase
@@ -48,22 +48,14 @@ Deno.serve(async (req) => {
     .eq('stage', 'entregado')
     .not('buyer_id', 'is', null)
 
-  const lastByBuyer = new Map<string, number>()
-  for (const o of orders ?? []) {
-    const id = (o as any).buyer_id as string
-    const t = Date.parse((o as any).created_at ?? '') || 0
-    lastByBuyer.set(id, Math.max(lastByBuyer.get(id) ?? 0, t))
-  }
-
+  // Mismo `segmentoDe` que cuenta el segmento en la pantalla de Reactivar y que
+  // pinta el chip en la ficha del cliente. Si esta campaña le escribiera a un
+  // conjunto distinto del que el vendedor vio antes de apretar el botón, el
+  // número de la pantalla sería una mentira.
   const now = Date.now()
   const targetIds: string[] = []
-  for (const [id, last] of lastByBuyer) {
-    if (!last) continue
-    const ageDays = (now - last) / DAY
-    const inSeg = body.segment === 'restock'
-      ? (ageDays >= restockDays && ageDays < winbackDays)
-      : (ageDays >= winbackDays)
-    if (inSeg) targetIds.push(id)
+  for (const [id, a] of agregarPorComprador(orders ?? [])) {
+    if (segmentoDe(a.ultimo, now, restockDays, winbackDays) === body.segment) targetIds.push(id)
   }
 
   if (targetIds.length === 0) return json({ segment: body.segment, eligible: 0, sent: 0, failed: 0 })

@@ -1,4 +1,4 @@
-import { ShoppingBag, Users, Package, Store, UserPlus, TrendingUp } from 'lucide-react'
+import { ShoppingBag, Users, Package, Store, UserPlus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SellerProfile } from './seller-session'
 
@@ -25,7 +25,6 @@ export function sellerNavLinks(effective: SellerProfile | null | undefined): Sel
   if (storeAdmin) return [
     { to: '/vendedor/pedidos', icon: ShoppingBag, label: 'Pedidos' },
     { to: '/vendedor/clientes', icon: UserPlus, label: 'Clientes' },
-    { to: '/vendedor/retencion', icon: TrendingUp, label: 'Retención' },
     { to: '/vendedor/productos', icon: Package, label: 'Productos' },
     { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
     { to: '/vendedor/marca', icon: Store, label: 'Marca' },
