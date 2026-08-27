@@ -17,8 +17,12 @@ import type { OrderSession } from '../lib/order-api'
 //
 // Todo lo sensible llega por `buyer_contact`, que `get-session` SOLO adjunta
 // cuando el que mira es vendedor: es PII, y para el comprador viaja null.
-export default function CustomerCard({ session, onVerCliente }: {
+export default function CustomerCard({ session, ubicacion, onVerCliente }: {
   session: OrderSession
+  /** Distrito · provincia · departamento, ya resuelto (lib/ubicacion.ts). Con
+   *  recojo en agencia el `address` del pedido NO sirve: es el distrito del
+   *  comprador, no el de la sede a la que va el paquete. */
+  ubicacion?: string | null
   /** Abre la ficha de la persona —donde se ven TODOS sus pedidos—. Sin esto la
    *  tarjeta no es un enlace: solo el admin tiene libreta de clientes. */
   onVerCliente?: () => void
@@ -29,8 +33,6 @@ export default function CustomerCard({ session, onVerCliente }: {
   const tipoDoc = c?.document_type || 'DNI'
   const phone = c?.phone ?? null
   const celular = phone ? phone.slice(-9) : null
-  // El distrito vive DENTRO de `address` ("San Borja, Lima"): el primer tramo.
-  const distrito = session.address ? session.address.split(',')[0].trim() : null
   const pagado = session.payment_verification === 'MATCHED'
   const pushActivo = !!c?.push_activo
   const enAppDesde = diaMes(c?.activated_at)
@@ -45,7 +47,7 @@ export default function CustomerCard({ session, onVerCliente }: {
       <div className="min-w-0 flex-1">
         <p className="text-sm truncate" style={{ color: 'var(--text)', fontWeight: 500 }}>{nombre}</p>
         <p className="text-[11px] truncate" style={{ color: 'var(--text-faint)' }}>
-          {distrito ?? 'Sin distrito'}
+          {ubicacion ?? 'Sin ubicación'}
           {onVerCliente && ' · ver sus pedidos'}
         </p>
       </div>

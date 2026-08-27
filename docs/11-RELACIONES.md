@@ -701,6 +701,67 @@ hay que escribirle por WhatsApp en vez de mandarle una push que no va a llegar. 
 los adjunta a `buyer_contact`, o sea **solo para el vendedor**, con la misma regla de PII que el
 DNI y el teléfono.
 
+## De dónde es el pedido, y los cajones que se apilan (27-ago-2026)
+
+### La cabecera del chat dice de dónde es
+
+Decía *"En línea ahora"* —que ya lo dice el punto del avatar— y si no, el producto, que desde
+que el detalle bajó a la columna ya está a la vista. Ahora dice **distrito · provincia ·
+departamento**, que es lo primero que se pregunta al abrir un chat: decide el courier, el costo
+del envío y cuánto tarda.
+
+El dato vive en dos sitios según cómo recibe el comprador, y por eso existe `src/lib/ubicacion.ts`:
+
+| Cómo recibe | De dónde sale |
+|---|---|
+| a domicilio | el `address` del pedido, que ya viene "Distrito, Provincia, Departamento" |
+| recojo en agencia | **la sede**, no el `address` |
+
+Esa segunda fila es la trampa que `AddressBar` ya documentaba: en un recojo, el `address` es el
+distrito del **comprador**, así que un pedido de Chaclacayo que se recoge en Huaycán se leía
+como "Chaclacayo" y mandaba a Logística a la ciudad equivocada.
+
+Y se colapsan las repeticiones seguidas: en Perú la ciudad, la provincia y el departamento
+coinciden muy seguido, y *"Arequipa · Arequipa · Arequipa"* no informa más que *"Arequipa"*
+ocupando el triple.
+
+De paso, el punto de conexión usaba `var(--text)` para "conectado" — que en el panel oscuro
+**es** casi blanco, o sea que salía blanco e indistinguible del apagado. Ahora es lima, el mismo
+que en Lista y en el Tablero: un color, un significado.
+
+### Los cajones se apilan
+
+*"Ver sus pedidos"* en la tarjeta del cliente navegaba a Clientes: para mirar al dueño de un
+pedido había que salir del pedido. Ahora la ficha se abre **encima**, en su propio cajón (capa
+2, con su velo), y cerrarla te devuelve al pedido donde estabas. Desde ahí, tocar otro de sus
+pedidos cambia el que está abierto abajo — que es justo lo que uno quiere: saltar entre los
+pedidos de la misma persona sin volver a la lista.
+
+Para eso la ficha salió de `ClientesPersonas` a `src/components/PanelCliente.tsx`: se abre desde
+dos sitios y no puede vivir dentro de uno de los dos.
+
+### El tablero scrollea él, no la página
+
+Dos pedidos que resultaron ser el mismo arreglo.
+
+**Los nombres de las etapas se quedan fijos arriba.** Con columnas de veinte tarjetas, a mitad
+de scroll uno ya no sabe qué etapa está mirando. `position: sticky` necesita un contenedor que
+scrollee, y el tablero no tenía ninguno: `overflow-x: auto` convierte la caja en contenedor de
+scroll también en vertical, pero con alto automático nunca scrollea, así que el sticky no se
+pegaba a nada.
+
+**Y abrir un pedido ya no devuelve la pantalla de atrás al principio.** Portar el cajón al
+`body` (PR anterior) sacó al panel del `<main>`, pero el tablero seguía siendo lo que hacía
+scrollear a `<main>`. Ahora, en escritorio, la caja del tablero se queda con el alto que le
+sobra y scrollea ella: `<main>` no tiene scroll que perder, así que no hay a dónde volver.
+
+En móvil no: un área que scrollea dentro de otra, en un teléfono, se pelea con el gesto de la
+página. Ahí el tablero sigue estirándose como siempre.
+
+De paso, el chat bajaba al último mensaje con `scrollIntoView`, que arrastra a **todos** los
+ancestros que scrolleen. Ahora mueve el `scrollTop` de su propio contenedor, que no puede tocar
+nada de fuera.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

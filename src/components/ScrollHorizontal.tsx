@@ -16,11 +16,23 @@ import type { ReactNode } from 'react'
 // (`w-max`, o sea que su caja crece con las columnas). Un ancho a ojo se
 // desincroniza en cuanto una columna cambia de tamaño.
 
-export default function ScrollHorizontal({ children, className = '', alto = 10 }: {
+export default function ScrollHorizontal({ children, className = '', alto = 10, lleno = false }: {
   children: ReactNode
   /** Clases de la fila que scrollea. Lleva `w-max` puesto. */
   className?: string
   alto?: number
+  /**
+   * `true` = la caja se queda con el alto que le sobre al padre y scrollea ella
+   * misma, en vez de estirarse y hacer scrollear la página.
+   *
+   * Es lo que hace posible que los nombres de las etapas se queden fijos
+   * arriba: un `position: sticky` necesita un contenedor que scrollee, y con
+   * alto automático no hay ninguno. De paso, si la página no scrollea, abrir un
+   * pedido encima no puede devolverla al principio.
+   *
+   * El padre tiene que ser `flex flex-col` con alto definido.
+   */
+  lleno?: boolean
 }) {
   const riel = useRef<HTMLDivElement>(null)
   const caja = useRef<HTMLDivElement>(null)
@@ -55,7 +67,7 @@ export default function ScrollHorizontal({ children, className = '', alto = 10 }
         ref={riel}
         onScroll={() => seguir(riel.current, caja.current)}
         aria-hidden
-        className="riel-scroll"
+        className="riel-scroll flex-shrink-0"
         style={{
           height: desborda ? alto : 0,
           overflowX: desborda ? 'auto' : 'hidden',
@@ -67,7 +79,7 @@ export default function ScrollHorizontal({ children, className = '', alto = 10 }
       <div
         ref={caja}
         onScroll={() => seguir(caja.current, riel.current)}
-        className="overflow-x-auto sin-barra"
+        className={`sin-barra ${lleno ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}`}
       >
         <div ref={fila} className={`w-max ${className}`}>{children}</div>
       </div>

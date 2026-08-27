@@ -71,11 +71,18 @@ export default function PedidosPage() {
   const abrir = (token: string) => setParams(urlConPedido(modo, token))
   const cerrar = () => setParams(urlDeModo(modo), { replace: true })
 
+  // El tablero en escritorio se queda con el alto que le sobra y scrollea él
+  // mismo (ver PedidosTablero): para eso esta pantalla tiene que ser una
+  // columna con alto definido. Los otros modos scrollean la página, como
+  // siempre — meterlos a todos en una caja propia les cambiaría el gesto sin
+  // que nadie lo haya pedido.
+  const tableroLleno = desktop && modo === 'tablero'
+
   return (
-    <div>
+    <div className={tableroLleno ? 'flex flex-col h-full min-h-0' : ''}>
       {/* En escritorio el marco del panel ya rotula la sección ("Pedidos" sale
           de seller-nav); en móvil no hay más título que este. */}
-      <div className={desktop ? 'px-6 pt-5' : 'px-4 pt-4'}>
+      <div className={`${desktop ? 'px-6 pt-5' : 'px-4 pt-4'}${tableroLleno ? ' flex-shrink-0' : ''}`}>
         {!desktop && <h1 className="text-xl font-black text-gray-900 mb-3">Pedidos</h1>}
 
         <div className="flex gap-1 p-0.5 rounded-2xl overflow-x-auto" style={{ background: 'var(--surface-3)' }}>

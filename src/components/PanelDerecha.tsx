@@ -20,15 +20,20 @@ import { useIsDesktop } from '../lib/use-desktop'
 // arrastra también a ese `<main>`: el Tablero volvía arriba y uno perdía dónde
 // estaba. Colgado del `body` no tiene ancestro que arrastrar.
 
-export default function PanelDerecha({ etiqueta, ancho = 'min(560px, 100%)', onCerrar, children }: {
+export default function PanelDerecha({ etiqueta, ancho = 'min(560px, 100%)', capa = 1, onCerrar, children }: {
   /** Para lectores de pantalla: qué es lo que se abrió. */
   etiqueta: string
   /** Ancho en escritorio. En móvil siempre ocupa la pantalla. */
   ancho?: string
+  /** Los cajones se APILAN: desde un pedido se abre la ficha de su cliente sin
+   *  cerrar el pedido. La capa 2 va encima de la 1, con su propio velo, así que
+   *  el de abajo sigue ahí —atenuado— y cerrar el de arriba te devuelve a él. */
+  capa?: 1 | 2
   onCerrar: () => void
   children: ReactNode
 }) {
   const desktop = useIsDesktop()
+  const z = capa === 2 ? 55 : 50
 
   // Escape cierra. Es lo que uno intenta antes de buscar la X, y en algo que
   // tapa la pantalla no tenerlo se siente como estar atrapado.
@@ -60,13 +65,13 @@ export default function PanelDerecha({ etiqueta, ancho = 'min(560px, 100%)', onC
   )
 
   if (!desktop) {
-    return createPortal(<div className="fixed inset-0 z-50">{velo}{cajon('100%')}</div>, document.body)
+    return createPortal(<div className="fixed inset-0" style={{ zIndex: z }}>{velo}{cajon('100%')}</div>, document.body)
   }
 
   // `pointer-events-none` en la capa de fuera: hacer clic en el gris de los
   // bordes no cierra nada, porque ahí no hay nada.
   return createPortal(
-    <div className="fixed inset-4 z-50 flex items-center justify-center pointer-events-none">
+    <div className="fixed inset-4 flex items-center justify-center pointer-events-none" style={{ zIndex: z }}>
       <div className="relative overflow-hidden rounded-2xl pointer-events-auto"
         style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9' }}>
         {velo}
