@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SellerProfile } from './seller-session'
+import { demoActivo } from './demo/modo-demo'
+import { tiendaDemo } from './demo/tienda-demo'
 import type { Segmento } from '../../supabase/functions/_shared/clientes.ts'
 
 // ─── El lector de clientes de la tienda ──────────────────────────────────────
@@ -76,9 +78,18 @@ export function useStoreClients(
   const storeId = effective?.store_id
   const permitido = puedeVerClientes(effective)
 
+  const demo = demoActivo()
+
   useEffect(() => {
-    if (!adminId || !storeId || !permitido) { setCargando(false); return }
     let vivo = true
+
+    if (demo) {
+      setCargando(true); setError(false)
+      tiendaDemo().then(t => { if (vivo) { setClientes(t.clientes); setCargando(false) } })
+      return () => { vivo = false }
+    }
+
+    if (!adminId || !storeId || !permitido) { setCargando(false); return }
     setCargando(true)
     setError(false)
     fetch(`${BASE}/list-clients`, {
@@ -91,7 +102,7 @@ export function useStoreClients(
       .catch(() => { if (vivo) { setClientes([]); setError(true) } })
       .finally(() => { if (vivo) setCargando(false) })
     return () => { vivo = false }
-  }, [adminId, storeId, permitido, intento])
+  }, [demo, adminId, storeId, permitido, intento])
 
   const recargar = useCallback(() => setIntento(n => n + 1), [])
   return { clientes, cargando, error, recargar }

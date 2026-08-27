@@ -224,14 +224,17 @@ del mismo defecto:
 Con ellas se fueron `ChatView` (solo lo usaban esas dos) y `AccountSelector`, que **ya no lo
 importaba nadie**. El bundle bajó 22 kB.
 
-### Lo que queda del andamio
+### El andamio se fue entero
 
-`src/store/index.ts` y `src/data/seed.ts` siguen vivos por **un** consumidor: `BotIAPage`
-(`/vendedor/bots`), que no está en el menú y no hace una sola llamada a Supabase. No es del
-mismo tipo que las anteriores: aquellas duplicaban en falso pantallas que ya existían, y esta
-es la maqueta de algo que todavía **no** existe (la IA Closer, 🔮 en los docs). Borrarla es
-decidir sobre un prototipo, no limpiar un duplicado — por eso se dejó, con la nota puesta en
-`store/index.ts`.
+`BotIAPage` (`/vendedor/bots`) era el último consumidor del store de maqueta, y el equipo
+confirmó que ya no servía. Con ella se fueron `src/store/index.ts` y `src/data/seed.ts`: **no
+queda nada del andamio de datos falsos**.
+
+Lo que ocupó su lugar es otra cosa y está bien separada: el **modo demo**
+(`src/lib/demo/`), que no es un resto de maqueta sino una función del producto — se enciende a
+propósito desde *Marca*, llena el panel entero con una tienda de ejemplo para poder enseñar la
+herramienta, y **se anuncia con una barra fija** mientras está activo. Ver
+[`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md).
 
 `src/types/index.ts` **no se toca**: aunque CLAUDE.md lo llama mock para los tipos de sesión,
 toda la capa de checkout importa tipos de ahí.

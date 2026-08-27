@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSeller } from '../../lib/seller-session'
+import { useDemo } from '../../lib/demo/modo-demo'
+import { tiendaDemo } from '../../lib/demo/tienda-demo'
 import { supabase } from '../../lib/supabase'
 import { AgencyService } from '../../lib/checkout/services/AgencyService'
 import { pickupBranchIdOf } from '../../lib/session'
@@ -8,7 +10,6 @@ import { estadoDePago, avanceDelPaquete, vaEnElMapa, proyector } from '../../lib
 import type { Caja } from '../../lib/live-map'
 import { pasoActual, courierDelPedido } from '../../lib/order-tracking'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
-import { escenaDemo } from '../../lib/live-map-demo'
 import type { AgencyName } from '../../lib/checkout/types'
 
 // ─── Los pedidos de la tienda, vivos, sobre el país ──────────────────────────
@@ -54,10 +55,13 @@ export default function PedidosMapa({ lista }: { lista: StoreOrders }) {
   const [sedes, setSedes] = useState<{ lat: number; lng: number }[]>([])
   const [puntos, setPuntos] = useState<EnMapa[]>([])
   const [elegido, setElegido] = useState<string | null>(null)
-  // El demo es un modo aparte, nunca una mezcla: o se ven los pedidos de la
-  // tienda o se ve el ejemplo, y cuando se ve el ejemplo la pantalla lo dice.
-  const [demo, setDemo] = useState(false)
-  const [escena, setEscena] = useState<{ pedidos: Pedido[]; origenPorProducto: Record<string, string> } | null>(null)
+  // El modo demo dejó de ser un botón de esta pantalla: es global, se enciende
+  // en Marca y lo anuncia la barra del panel. Acá el mapa solo pinta lo que le
+  // dé el lector, que ya sabe si está en demo.
+  const demo = useDemo()
+  // En demo el origen de cada producto lo da el generador; en real lo trae la
+  // consulta a `products`. La lista de pedidos ya llega resuelta por el lector.
+  const [origenDemo, setOrigenDemo] = useState<Record<string, string>>({})
 
   // ── El país: silueta y división territorial, en un import diferido ──
   useEffect(() => {
@@ -108,10 +112,10 @@ export default function PedidosMapa({ lista }: { lista: StoreOrders }) {
   }, [storeId])
 
   // ── Cada pedido, con sus dos sedes resueltas ──
-  const enPantalla = demo ? escena?.pedidos ?? null : pedidos
+  const enPantalla = pedidos
   const origenes = useMemo(
-    () => (demo ? escena?.origenPorProducto ?? {} : origenPorProducto),
-    [demo, escena, origenPorProducto],
+    () => (demo ? origenDemo : origenPorProducto),
+    [demo, origenDemo, origenPorProducto],
   )
 
   useEffect(() => {
@@ -142,11 +146,11 @@ export default function PedidosMapa({ lista }: { lista: StoreOrders }) {
   }, [enPantalla, origenes])
 
   useEffect(() => {
-    if (!demo || escena) return
+    if (!demo) return
     let vivo = true
-    escenaDemo().then(e => { if (vivo) setEscena(e as unknown as { pedidos: Pedido[]; origenPorProducto: Record<string, string> }) })
+    tiendaDemo().then(t => { if (vivo) setOrigenDemo(t.origenPorProducto) })
     return () => { vivo = false }
-  }, [demo, escena])
+  }, [demo])
 
   const proyeccion = useMemo(
     () => (territorio ? proyector(territorio.caja, ANCHO, ALTO) : null),
@@ -181,13 +185,6 @@ export default function PedidosMapa({ lista }: { lista: StoreOrders }) {
           <Contador valor={conteo.vivos} etiqueta="En el mapa" />
           <Contador valor={conteo.ruta} etiqueta="En camino" />
           <Contador valor={conteo.pagados} etiqueta="Ya pagados" color="var(--ok-fg)" />
-          <button onClick={() => { setDemo(d => !d); setElegido(null) }}
-            className="px-3 py-2 rounded-xl text-xs"
-            style={demo
-              ? { background: 'var(--invert)', color: 'var(--invert-fg)', fontWeight: 500 }
-              : { background: 'var(--surface-3)', color: 'var(--text)', fontWeight: 500 }}>
-            {demo ? 'Salir del ejemplo' : 'Ver ejemplo'}
-          </button>
         </div>
       </div>
 

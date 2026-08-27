@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Users, Eye, LogIn, UserPlus, X, Pencil } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { demoActivo } from '../../lib/demo/modo-demo'
+import { tiendaDemo } from '../../lib/demo/tienda-demo'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
 import PushSettings from '../../components/PushSettings'
 
@@ -39,6 +41,14 @@ export default function EquipoPage() {
 
   const storeId = effective?.store_id
   const loadTeam = async () => {
+    // En demo el equipo es el de la tienda de ejemplo: seis personas con los
+    // roles reales de una operación de contraentrega.
+    if (demoActivo()) {
+      const t = await tiendaDemo()
+      setTeam(t.equipo as unknown as SellerProfile[])
+      setLoading(false)
+      return
+    }
     if (!storeId) return
     try {
       const { data } = await supabase.from('sellers')

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Plus, X, Trash2, Copy, Image as ImageIcon, ExternalLink, GripVertical, Truck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
+import { demoActivo } from '../../lib/demo/modo-demo'
+import { tiendaDemo } from '../../lib/demo/tienda-demo'
 import { IMAGE_PRESETS, downscaleImage } from '../../lib/images/downscale'
 import AbTestPanel from './AbTestPanel'
 import { mensajePanel } from '../../lib/panel-errors'
@@ -59,6 +61,12 @@ export default function ProductosPage() {
   // Scope to the store you're currently acting in (effective) — so a super admin
   // who entered a brand sees THAT brand's products.
   const load = () => {
+    // En demo el catálogo sale del generador: los tres productos que sostienen
+    // la tienda de ejemplo, con lo que lleva vendido cada uno.
+    if (demoActivo()) {
+      tiendaDemo().then(t => { setProducts(t.productos as unknown as Product[]); setLoading(false) })
+      return
+    }
     if (!effective?.store_id) { setLoading(false); return }
     supabase.from('products').select('*').eq('store_id', effective.store_id).order('created_at', { ascending: false })
       .then(({ data }) => { setProducts((data as Product[]) ?? []); setLoading(false) })

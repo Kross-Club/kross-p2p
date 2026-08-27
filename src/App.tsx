@@ -23,7 +23,6 @@ import CambiosDevolucionesPage from './pages/legal/CambiosDevolucionesPage'
 import LibroReclamacionesPage from './pages/legal/LibroReclamacionesPage'
 import PedidosPage from './pages/vendedor/PedidosPage'
 import ProductosPage from './pages/vendedor/ProductosPage'
-import BotIAPage from './pages/vendedor/BotIAPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
@@ -151,7 +150,6 @@ export default function App() {
           <Route path="/vendedor/mapa" element={<Navigate to="/vendedor/pedidos?modo=mapa" replace />} />
           <Route path="/vendedor/estadisticas" element={<Navigate to="/vendedor/pedidos?modo=resumen" replace />} />
           <Route path="/vendedor/productos" element={<ProductosPage />} />
-          <Route path="/vendedor/bots" element={<BotIAPage />} />
           <Route path="/vendedor/equipo" element={<EquipoPage />} />
           <Route path="/vendedor/marca" element={<MarcaPage />} />
           {/* Las llamadas dejaron de ser una sección: cada grabación vive en el

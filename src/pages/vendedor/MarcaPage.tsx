@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { mensajePanel } from '../../lib/panel-errors'
-import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck, BarChart3 } from 'lucide-react'
+import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck, BarChart3, Sparkles } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
+import { useDemo, setDemo } from '../../lib/demo/modo-demo'
+import { PEDIDOS_POR_DIA } from '../../lib/demo/tienda-demo'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -90,6 +92,7 @@ async function call(payload: Record<string, unknown>) {
 export default function MarcaPage() {
   const navigate = useNavigate()
   const { real, isAdmin, impersonating, actAs } = useSeller()
+  const demo = useDemo()
 
   // Super admin "enters" a brand → acts as itself but scoped to that store, so the
   // full store toolset (Chats, Productos, CRM, Equipo, Stats) works even for a brand
@@ -149,6 +152,42 @@ export default function MarcaPage() {
           </div>
         </div>
       )}
+
+      {/* ── Modo demo ──────────────────────────────────────────────────────
+          No es una opción de la MARCA sino de quien mira, y por eso está acá
+          fuera y no dentro del editor de una tienda: vive en este dispositivo
+          (localStorage), no en `stores`. Si fuera una columna, un vendedor
+          encendiéndolo pondría a todo su equipo a mirar pedidos inventados, y
+          una marca podría quedarse en demo en producción sin que nadie lo note.
+          Ver src/lib/demo/modo-demo.ts */}
+      <div className="rounded-2xl p-3 mb-4 flex items-center justify-between gap-3"
+        style={{ background: 'var(--surface-3)', border: '0.5px solid var(--border)' }}>
+        <div className="min-w-0">
+          <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--text)' }}>
+            <Sparkles size={14} /> Modo demo
+          </span>
+          <p className="text-[10px] text-gray-500 mt-1">
+            Llena TODO el panel —pedidos, clientes, productos, equipo— con una tienda de ejemplo
+            que despacha ~{PEDIDOS_POR_DIA.toLocaleString('es-PE')} pedidos al día entre tres
+            productos, con meses de recompras detrás. Para enseñar cómo se ve la herramienta
+            funcionando, sin esperar a que la marca venda.
+          </p>
+          <p className="text-[10px] text-gray-400 mt-1">
+            Solo en este dispositivo · no toca la base · nadie más lo ve.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={demo}
+          aria-label="Modo demo"
+          onClick={() => setDemo(!demo)}
+          className="relative flex-shrink-0 rounded-full transition-colors"
+          style={{ width: 44, height: 26, background: demo ? 'var(--brand)' : 'var(--border-strong)' }}>
+          <span className="absolute top-[3px] rounded-full transition-all"
+            style={{ width: 20, height: 20, background: '#fff', left: demo ? 21 : 3 }} />
+        </button>
+      </div>
 
       <div className="space-y-3">
         {stores.map(s => (
