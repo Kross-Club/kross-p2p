@@ -21,11 +21,7 @@ import ContactoPage from './pages/publico/ContactoPage'
 import TerminosPage from './pages/legal/TerminosPage'
 import CambiosDevolucionesPage from './pages/legal/CambiosDevolucionesPage'
 import LibroReclamacionesPage from './pages/legal/LibroReclamacionesPage'
-import ChatsPage from './pages/comprador/ChatsPage'
-import ChatDetalleComprador from './pages/comprador/ChatDetalleComprador'
-import PerfilPage from './pages/comprador/PerfilPage'
 import PedidosPage from './pages/vendedor/PedidosPage'
-import ChatDetalleVendedor from './pages/vendedor/ChatDetalleVendedor'
 import ProductosPage from './pages/vendedor/ProductosPage'
 import BotIAPage from './pages/vendedor/BotIAPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
@@ -146,9 +142,6 @@ export default function App() {
 
         {/* Protected seller routes */}
         <Route element={<RequireSellerAuth><Layout /></RequireSellerAuth>}>
-          <Route path="/comprador/chats" element={<ChatsPage />} />
-          <Route path="/comprador/chat/:chatId" element={<ChatDetalleComprador />} />
-          <Route path="/comprador/perfil" element={<PerfilPage />} />
           <Route path="/vendedor/pedidos" element={<PedidosPage />} />
           {/* Chats, CRM, En vivo y Stats eran cuatro pantallas del mismo dato y
               ahora son cuatro modos de Pedidos. Las rutas viejas se quedan como
@@ -157,7 +150,6 @@ export default function App() {
           <Route path="/vendedor/crm" element={<Navigate to="/vendedor/pedidos?modo=tablero" replace />} />
           <Route path="/vendedor/mapa" element={<Navigate to="/vendedor/pedidos?modo=mapa" replace />} />
           <Route path="/vendedor/estadisticas" element={<Navigate to="/vendedor/pedidos?modo=resumen" replace />} />
-          <Route path="/vendedor/chat/:chatId" element={<ChatDetalleVendedor />} />
           <Route path="/vendedor/productos" element={<ProductosPage />} />
           <Route path="/vendedor/bots" element={<BotIAPage />} />
           <Route path="/vendedor/equipo" element={<EquipoPage />} />
