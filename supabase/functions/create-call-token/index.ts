@@ -56,6 +56,11 @@ Deno.serve(async (req) => {
     sender_role: 'system',
     type: 'call_log',
     body: 'Comprador inició una llamada de voz',
+    // Solo Ventas: el aviso de que ALGUIEN está llamando es operativo —le sirve
+    // al equipo para ver el intento aunque no contesten—, no una línea que el
+    // comprador necesite en su chat. Lo que sí ven los dos es el cierre de la
+    // llamada, que escribe `livekit-webhook` al terminar la grabación.
+    visibility: 'sellers',
   })
 
   // Notify seller via Realtime (in-app)

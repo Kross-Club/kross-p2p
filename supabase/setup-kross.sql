@@ -270,6 +270,13 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS nota text;
 -- Oferta de upsell adjunta a un mensaje del chat
 ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS offer jsonb;
 
+-- La llamada es un EVENTO DEL PEDIDO, no una sección aparte (11-RELACIONES).
+-- El mensaje `call_log` que la registra apunta acá a su grabación, para que el
+-- audio se escuche en el hilo donde ocurrió la llamada y no en otra pantalla.
+-- El enlace es explícito a propósito: emparejar por cercanía de fecha se rompe
+-- en cuanto hay dos llamadas seguidas en el mismo pedido.
+ALTER TABLE chat_messages  ADD COLUMN IF NOT EXISTS call_recording_id uuid REFERENCES call_recordings(id);
+
 -- Dirección de entrega + validación por GPS del comprador
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lat      double precision;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS address_lng      double precision;

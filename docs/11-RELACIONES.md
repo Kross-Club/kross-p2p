@@ -77,10 +77,11 @@ pedir `get-store-sessions`, no es una sección — es un modo de Pedidos.
 |---|---|---|
 | Chats · CRM · En vivo · Stats | **Pedidos**, con cuatro modos: Bandeja · Tablero · En vivo · Resumen | ✅ 27-ago-2026 |
 | Clientes · Retención | **Clientes**: la lista real de personas; importar, invitar y campañas viven adentro | 🔮 paso 6 |
-| Llamadas | ✂️ se disuelve — cada grabación vuelve a su pedido | 🔮 paso 5 |
+| Llamadas | ✂️ disuelta — cada grabación vive en el hilo de su pedido | ✅ 27-ago-2026 |
 | Productos · Equipo · Marca | igual | — |
 
-**El menú del admin va en siete**, camino a cinco: faltan los dos pasos de arriba. El miembro
+**El menú del admin va en seis**, camino a cinco: falta el paso 6 (Retención dentro de
+Clientes). El miembro
 del equipo ya tiene **una** entrada, y está bien — su trabajo entero es la lista de pedidos,
 y los cuatro modos viven dentro de ella, no en el menú.
 
@@ -147,10 +148,27 @@ Verificado en el código:
 
 Resultado: la llamada donde el cliente corrigió su dirección no está donde está la dirección.
 
-`get-recordings` **ya acepta `session_id`** como filtro, así que la pieza de servidor existe.
-Lo que falta es que la llamada entre al hilo como lo que es —un evento del pedido, con
-duración y audio, igual que ya entran `status_update` y `offer`— y que el archivo completo,
-si alguien lo quiere, sea un filtro dentro de Pedidos y no una sección.
+**Resuelto (27-ago-2026).** La llamada entra al hilo como lo que es, en dos momentos que
+dicen cosas distintas:
+
+| Cuándo | Quién lo escribe | Quién lo ve |
+|---|---|---|
+| Alguien llama | `create-call-token` / `seller-call-token` | **solo Ventas** — es el intento, sirva o no |
+| La llamada termina | `livekit-webhook` al cerrar la grabación | los dos, con la duración |
+
+El aviso de intento es de Ventas a propósito: al equipo le sirve ver que se llamó aunque no
+contesten (de ahí sale el `nota: no_contesta`), pero el comprador no necesita una línea por
+cada timbrazo. Lo que sí ven los dos es el cierre — saber que hubo una llamada de 3:24 no es
+un secreto, es lo mismo que muestra WhatsApp.
+
+El enlace mensaje↔grabación es **explícito** (`chat_messages.call_recording_id`), no por
+cercanía de fecha: dos llamadas seguidas en el mismo pedido romperían cualquier heurística.
+
+**El audio no viaja en el mensaje.** La URL firmada la pide el panel a `get-recordings`, que
+sigue exigiendo admin — disolver la pantalla de Llamadas no debía ampliar en silencio quién
+puede escuchar a un cliente. Y `call_recording_id` **no se le manda al comprador**: no es que
+pudiera bajar el audio con él, es que su sola presencia le diría que esa llamada quedó
+grabada. Misma regla que `payment_reason`.
 
 ## Lo que NO cambia: el hilo es del pedido, no de la persona
 
@@ -358,12 +376,12 @@ De lo más barato a lo más caro. Cada paso deja la app usable; ninguno depende 
 | ~~2~~ | ✅ **Columnas = fases del courier** en CRM, Stats y el chip de Chats | hecho (26-ago-2026) |
 | ~~3~~ | ✅ **`registrado` deja de ser `EN_ORIGEN`** + chip de antigüedad en el CRM | hecho (26-ago-2026) |
 | ~~4~~ | ✅ **Pedidos con selector de modo**; las 4 rutas viejas redirigen | hecho (27-ago-2026) |
-| 5 | La llamada como evento del hilo (`call_log` en `seller-call-token`, burbuja en el panel) y borrar **Llamadas** | `seller-call-token`, `VendedorPedidoPage`, `LlamadasPage` |
+| ~~5~~ | ✅ **La llamada es un evento del hilo**; la sección Llamadas se disolvió | hecho (27-ago-2026) |
 | 6 | **Clientes** de verdad: lista + ficha con historial; Retención adentro | pantalla nueva + `ClientesPage`, `RetencionPage` |
 | 7 | Borrar las dos rutas mock del comprador | `App.tsx`, `src/pages/comprador/Chats*` |
 
-Los pasos 0 a 4 están hechos: hoy Pedidos es una pantalla con cuatro modos sobre una sola
-lectura. Lo que queda (5, 6, 7) es lo que baja el menú del admin de siete a cinco.
+Hechos los pasos 0 a 5. Queda el 6 —Clientes de verdad, con Retención adentro—, que es el
+que baja el menú a cinco, y el 7, que es borrar dos rutas muertas.
 
 ## Ver también
 

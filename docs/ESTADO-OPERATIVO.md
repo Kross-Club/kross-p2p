@@ -129,6 +129,34 @@ tests de regresión en `order-tracking.test.ts` y `live-map.test.ts`.
 sigue pendiente el deploy de `get-store-sessions` de la nota de abajo: sin él el mapa carga
 vacío igual, porque no recibe los campos que dibuja.
 
+### Las llamadas en el hilo necesitan SQL + deploy (27-ago-2026)
+
+La llamada dejó de ser una sección y pasó a ser un evento del pedido
+([`11-RELACIONES.md`](./11-RELACIONES.md)). El frontend ya salió con `main`; el backend no.
+
+**1. Correr en el SQL Editor** el bloque §7 de `setup-kross.sql` (es idempotente, se puede
+correr entero):
+
+```sql
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS call_recording_id uuid REFERENCES call_recordings(id);
+```
+
+**2. Desplegar:**
+
+```bash
+REF=ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session      --project-ref $REF
+supabase functions deploy create-call-token --project-ref $REF
+supabase functions deploy seller-call-token --project-ref $REF
+supabase functions deploy livekit-webhook   --project-ref $REF --no-verify-jwt
+```
+
+Sin la columna, `livekit-webhook` falla al insertar el mensaje de cierre y la llamada no queda
+registrada en el hilo — **corre el SQL antes que el deploy**. Sin el deploy, la pantalla de
+Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabaciones viejas
+siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
+única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
+
 ### En vivo y el CRM esperan el mismo deploy (26-ago-2026)
 
 `get-store-sessions` **todavía no devuelve en producción** `product_id`, `dispatch_type`,

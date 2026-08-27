@@ -109,6 +109,10 @@ export interface OrderMessage {
   body: string | null
   media_url: string | null
   offer?: { product_id?: string; nombre: string; precio: number; image?: string | null; accepted?: boolean } | null
+  /** Grabación de esta llamada, cuando el mensaje es el cierre de una
+   *  (`type: 'call_log'`). El AUDIO no viaja en el mensaje: la URL firmada la
+   *  pide el panel a `get-recordings`, que sigue siendo solo para admins. */
+  call_recording_id?: string | null
   created_at: string
   read_at: string | null
 }

@@ -166,11 +166,18 @@ Deno.serve(async (req) => {
   // Fetch messages — the buyer never sees seller-only entries (e.g. expulsions)
   let mq = supabase
     .from('chat_messages')
-    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, offer, visibility, created_at, read_at')
+    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, offer, call_recording_id, visibility, created_at, read_at')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
   if (!viewerIsSeller) mq = mq.or('visibility.is.null,visibility.eq.all')
   const { data: messages } = await mq
+
+  // `call_recording_id` es SOLO de Ventas. No es que el comprador pueda bajar
+  // el audio con él —`get-recordings` exige admin—, es que su sola presencia le
+  // dice que esa llamada quedó grabada. Misma regla que `payment_reason`: da
+  // igual que la UI no lo pinte, viaja en el JSON y se ve en la pestaña de red.
+  const mensajes = (messages ?? []).map(m =>
+    viewerIsSeller ? m : { ...m, call_recording_id: undefined })
 
   // Campo SOLO de Ventas: `payment_reason` es el veredicto interno del cobro
   // ("no coincide el monto", el error crudo del proveedor). Mandárselo al
@@ -191,7 +198,7 @@ Deno.serve(async (req) => {
         buyer_contact: buyerContact, payment_trace: paymentTrace,
       },
       viewer_is_seller: viewerIsSeller,
-      messages: messages ?? [],
+      messages: mensajes,
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )

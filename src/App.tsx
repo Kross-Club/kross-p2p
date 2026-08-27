@@ -30,7 +30,6 @@ import ProductosPage from './pages/vendedor/ProductosPage'
 import BotIAPage from './pages/vendedor/BotIAPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
-import LlamadasPage from './pages/vendedor/LlamadasPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
 import RetencionPage from './pages/vendedor/RetencionPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
@@ -164,7 +163,10 @@ export default function App() {
           <Route path="/vendedor/bots" element={<BotIAPage />} />
           <Route path="/vendedor/equipo" element={<EquipoPage />} />
           <Route path="/vendedor/marca" element={<MarcaPage />} />
-          <Route path="/vendedor/llamadas" element={<LlamadasPage />} />
+          {/* Las llamadas dejaron de ser una sección: cada grabación vive en el
+              hilo del pedido donde ocurrió (11-RELACIONES). La ruta redirige
+              porque estaba en el menú y puede haber enlaces guardados. */}
+          <Route path="/vendedor/llamadas" element={<Navigate to="/vendedor/pedidos" replace />} />
           <Route path="/vendedor/clientes" element={<ClientesPage />} />
           <Route path="/vendedor/retencion" element={<RetencionPage />} />
         </Route>

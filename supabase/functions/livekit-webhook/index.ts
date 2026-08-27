@@ -100,9 +100,41 @@ Deno.serve(async (req) => {
     const filePath: string | null = fileRes?.filename ?? null
     const durNs = Number(fileRes?.duration ?? info.duration ?? 0)
     const durationSec = durNs > 100000 ? Math.round(durNs / 1e9) : Math.round(durNs)
-    await supabase.from('call_recordings')
+    const { data: rec } = await supabase.from('call_recordings')
       .update({ file_path: filePath, duration_sec: durationSec, status: 'done' })
       .eq('egress_id', info.egressId)
+      .select('id, session_id, duration_sec')
+      .maybeSingle()
+
+    // La llamada terminada entra al hilo del pedido como un evento más, con su
+    // grabación enganchada (11-RELACIONES). El mensaje lo ven los dos lados
+    // —igual que en WhatsApp, saber que hubo una llamada de 3:24 no es un
+    // secreto—; el AUDIO no viaja acá, lo sirve `get-recordings`, que sigue
+    // siendo solo para administradores.
+    if (rec?.session_id) {
+      const d = Number(rec.duration_sec ?? 0)
+      const mmss = `${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`
+      const { data: msg } = await supabase.from('chat_messages').insert({
+        session_id: rec.session_id,
+        sender_role: 'system',
+        type: 'call_log',
+        body: d > 0 ? `Llamada de voz · ${mmss}` : 'Llamada de voz',
+        call_recording_id: rec.id,
+      }).select().maybeSingle()
+      if (msg) {
+        try {
+          await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+              apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+            },
+            body: JSON.stringify({ messages: [{ topic: `order:${rec.session_id}`, event: 'new_message', payload: msg }] }),
+          })
+        } catch { /* el mensaje ya está guardado; el chat lo verá al recargar */ }
+      }
+    }
   }
 
   return new Response('ok')
