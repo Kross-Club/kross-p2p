@@ -148,6 +148,15 @@ describe('la ficha de un cliente de ejemplo', () => {
     expect([...fechas].sort((a, b) => b - a)).toEqual(fechas)
   })
 
+  // El número de pedido es con lo que el vendedor distingue un pedido de otro
+  // del mismo cliente: sin él, la lista son cuatro filas parecidas.
+  it('todos los pedidos traen su número, y ninguno se repite', async () => {
+    const ficha = (await fichaDemoDeCliente(t.clientes.find(c => c.pedidos >= 3)!.id))!
+    for (const p of ficha.pedidos) expect(p.order_id).toMatch(/^ORD-\d+$/)
+    const numeros = ficha.pedidos.map(p => p.order_id)
+    expect(new Set(numeros).size).toBe(numeros.length)
+  })
+
   it('el historial no finge tener chat', async () => {
     const ficha = (await fichaDemoDeCliente(t.clientes.find(c => c.pedidos >= 3)!.id))!
     for (const p of ficha.pedidos.filter(p => !p.token)) {

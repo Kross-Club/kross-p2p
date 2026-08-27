@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
-import { MessageCircle, Phone, X } from 'lucide-react'
+import { MessageCircle, Phone, Plus, X } from 'lucide-react'
 import { fichaDeCliente, resumenDeCliente } from '../lib/store-clients'
 import type { Cliente, PedidoDeCliente } from '../lib/store-clients'
 import { ALERTA, NEUTRO } from '../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../lib/order-tracking'
 import { soles } from '../lib/order-money'
 import { fechaCorta } from '../lib/fechas'
+import { codigoPedido, esElMismoPedido } from '../lib/order-code'
 import PanelDerecha from './PanelDerecha'
 import CopyRow from './CopyRow'
+import PanelCentro from './PanelCentro'
+import { PedidoVista } from '../pages/vendedor/VendedorPedidoPage'
 
 // ─── La persona, y todo lo que le cuelga ─────────────────────────────────────
 //
@@ -31,17 +34,23 @@ const ETIQUETA_ETAPA: Record<string, string> = {
 // Va con TODOS sus pedidos, no solo los entregados: un cancelado o un no
 // entregado es justamente lo que explica por qué este cliente merece otra
 // mirada antes de despacharle sin adelanto.
-export default function PanelCliente({ buyerId, adminId, storeId, encima = false, onClose, onAbrirPedido }: {
+export default function PanelCliente({ buyerId, adminId, storeId, encima = false, pedidoActual, onClose }: {
   buyerId: string
   adminId: string | undefined
   storeId: string | undefined
   /** `true` = se abrió DESDE un pedido, así que va una capa por encima de él. */
   encima?: boolean
+  /** El `id` del pedido que está abierto detrás. Se marca en la lista: la
+   *  pregunta que trae quien abre esto es "¿cuál de estos estoy viendo?", y sin
+   *  responderla la lista son cuatro filas parecidas. */
+  pedidoActual?: string | null
   onClose: () => void
-  onAbrirPedido: (token: string) => void
 }) {
   const [datos, setDatos] = useState<{ cliente: Cliente; pedidos: PedidoDeCliente[] } | null>(null)
   const [fallo, setFallo] = useState(false)
+  // Un pedido viejo se mira un momento y se cierra: va en ventana al centro, no
+  // en otro cajón. Ver PanelCentro.
+  const [mirando, setMirando] = useState<PedidoDeCliente | null>(null)
 
   useEffect(() => {
     if (!adminId) return
@@ -145,25 +154,54 @@ export default function PanelCliente({ buyerId, adminId, storeId, encima = false
               <div className="space-y-2">
                 {datos.pedidos.map(p => {
                   const col = p.status === 'cancelado' ? 'cancelado' : columnaDelPedido(p)
+                  const esteMismo = esElMismoPedido(p.id, pedidoActual)
+                  const codigo = codigoPedido(p.order_id)
                   return (
-                    <button key={p.id}
-                      onClick={() => p.token && onAbrirPedido(p.token)}
-                      disabled={!p.token}
-                      className="w-full rounded-xl px-3 py-2 text-left disabled:cursor-default"
-                      style={{ background: 'var(--surface-3)' }}>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-bold truncate" style={{ color: 'var(--text)' }}>
-                          {p.product_name || 'Pedido'}
+                    <div key={p.id}
+                      className="w-full rounded-xl px-3 py-2 flex items-center gap-2"
+                      style={esteMismo
+                        ? { background: 'var(--brand-tint)', border: '0.5px solid var(--brand)' }
+                        : { background: 'var(--surface-3)', border: '0.5px solid transparent' }}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-bold truncate flex items-center gap-1.5" style={{ color: 'var(--text)' }}>
+                            <span className="truncate">{p.product_name || 'Pedido'}</span>
+                            {/* El número de la tienda: es con lo que se
+                                distingue un pedido de otro del mismo cliente,
+                                que es justamente para lo que se abre esta
+                                lista. El completo va en el `title`. */}
+                            {codigo && (
+                              <span className="text-[10px] tabular flex-shrink-0 font-semibold"
+                                title={p.order_id ?? undefined}
+                                style={{ color: 'var(--text-faint)' }}>{codigo}</span>
+                            )}
+                          </p>
+                          <span className="text-[11px] flex-shrink-0 tabular" style={{ color: 'var(--text-muted)' }}>
+                            {p.product_price != null ? soles(p.product_price) : ''}
+                          </span>
+                        </div>
+                        <p className="text-[10px] mt-0.5" style={{ color: esteMismo ? 'var(--brand)' : 'var(--text-faint)' }}>
+                          {esteMismo && 'Lo estás viendo · '}
+                          {p.status === 'cancelado' ? 'Cancelado' : (ETIQUETA_ETAPA[col] ?? col)} · {fechaCorta(p.created_at)}
+                          {!p.token && ' · sin chat'}
                         </p>
-                        <span className="text-[11px] flex-shrink-0 tabular" style={{ color: 'var(--text-muted)' }}>
-                          {p.product_price != null ? soles(p.product_price) : ''}
-                        </span>
                       </div>
-                      <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-faint)' }}>
-                        {p.status === 'cancelado' ? 'Cancelado' : (ETIQUETA_ETAPA[col] ?? col)} · {fechaCorta(p.created_at)}
-                        {!p.token && ' · sin chat'}
-                      </p>
-                    </button>
+
+                      {/* El que ya se está mirando no ofrece abrirse otra vez.
+                          Los demás sí: un `+` que abre su chat y su detalle en
+                          una ventana, para acordarse de qué pasó sin perder el
+                          pedido de atrás. */}
+                      {!esteMismo && p.token && (
+                        <button type="button"
+                          onClick={() => setMirando(p)}
+                          aria-label={`Ver el pedido ${codigo ?? ''}`}
+                          title="Ver este pedido"
+                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ background: 'var(--surface)', color: 'var(--text-muted)', border: '0.5px solid var(--border)' }}>
+                          <Plus size={14} />
+                        </button>
+                      )}
+                    </div>
                   )
                 })}
               </div>
@@ -171,6 +209,18 @@ export default function PanelCliente({ buyerId, adminId, storeId, encima = false
           </>
         )}
       </div>
+      {mirando?.token && (
+        <PanelCentro
+          titulo={`${mirando.product_name || 'Pedido'}${codigoPedido(mirando.order_id) ? ` · ${codigoPedido(mirando.order_id)}` : ''}`}
+          detalle={`${c?.nombre ?? ''} · ${fechaCorta(mirando.created_at)}`}
+          onCerrar={() => setMirando(null)}
+        >
+          {/* El MISMO componente del pedido, en su tercera presentación:
+              página, cajón y ahora ventana. Un pedido que se pintara distinto
+              según desde dónde se abrió sería otra pantalla que mantener. */}
+          <PedidoVista token={mirando.token} enPanel onCerrar={() => setMirando(null)} />
+        </PanelCentro>
+      )}
     </PanelDerecha>
   )
 }

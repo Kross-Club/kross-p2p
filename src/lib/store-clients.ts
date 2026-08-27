@@ -39,6 +39,9 @@ export interface Cliente {
 
 export interface PedidoDeCliente {
   id: string
+  /** El número que la tienda le puso al pedido (`ORD-…`). Es con lo que el
+   *  vendedor distingue un pedido de otro del mismo cliente. */
+  order_id: string | null
   token: string | null
   product_name: string | null
   pack_name: string | null

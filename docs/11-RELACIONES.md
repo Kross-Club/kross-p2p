@@ -762,6 +762,51 @@ De paso, el chat bajaba al último mensaje con `scrollIntoView`, que arrastra a 
 ancestros que scrolleen. Ahora mueve el `scrollTop` de su propio contenedor, que no puede tocar
 nada de fuera.
 
+## El número de pedido, y la tercera presentación del pedido (27-ago-2026)
+
+### Cuál de sus pedidos es este
+
+La ficha del cliente lista sus pedidos, y hasta acá eran cuatro filas parecidas: *"Faja
+Reductora Premium · En tránsito"* dos veces, sin nada que dijera cuál es el que está abierto
+detrás. Ahora cada fila lleva el **número que le puso la tienda** y el que está abierto va
+marcado (*"Lo estás viendo"*, en lima). El mismo número va pegado al nombre en la cabecera del
+chat, que es la otra mitad de la comparación.
+
+`order_id` es `ORD-1756345678901`: prefijo fijo más el milisegundo en que entró. Entero no
+sirve para lo que el vendedor necesita —mirar dos y saber si son el mismo—: trece dígitos
+iguales salvo los últimos cuatro son trece dígitos que nadie compara. Se muestra la **cola**
+(`#678901`, `src/lib/order-code.ts`), y el completo queda en el `title` y en el detalle del
+pedido, que es donde se copia para soporte de 360pay.
+
+Y la comparación de "¿es este?" se hace por **`id` de sesión**, no por el código pintado: dos
+pedidos distintos pueden compartir cola, y marcar el equivocado es peor que no marcar ninguno.
+
+### El pedido, ahora también en ventana
+
+Los otros pedidos del cliente llevan un **`+`** que abre su chat y su detalle en una **ventana
+al centro**. La diferencia con el cajón de la derecha es de intención, no de estilo:
+
+| | Para qué |
+|---|---|
+| **Cajón derecho** (`PanelDerecha`) | **trabajar** sobre algo — se queda, se escribe, la lista sigue detrás |
+| **Ventana centro** (`PanelCentro`) | **mirar** algo un momento y cerrarlo — un pedido viejo, para acordarse de qué pasó |
+
+Por eso va centrada y no pegada al borde: no continúa el trabajo de atrás, lo interrumpe a
+propósito.
+
+Adentro va el **mismo** `PedidoVista`, en su tercera presentación: página, cajón y ventana. Un
+pedido que se pintara distinto según desde dónde se abrió sería otra pantalla que mantener —
+que es lo que este documento viene deshaciendo desde el primer paso.
+
+Las capas quedan así, y por eso están numeradas en un solo sitio:
+
+| Capa | Qué |
+|---|---|
+| 1 | el pedido abierto desde Pedidos |
+| 2 | la ficha del cliente, encima del pedido |
+| 3 | un pedido viejo, en ventana |
+| — | `Confirmar` y la galería, por encima de todo |
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

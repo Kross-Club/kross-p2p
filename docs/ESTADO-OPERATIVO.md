@@ -192,6 +192,17 @@ Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabac
 siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
 
+### `list-clients`: el número de pedido en la ficha del cliente (27-ago-2026)
+
+```
+supabase functions deploy list-clients --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Añade `order_id` al `select` de los pedidos de una persona. Sin el deploy, la ficha del cliente
+lista sus pedidos **sin número**: se sigue viendo cuál es el que está abierto (eso se marca por
+`id` de sesión, que ya viaja), pero no se puede leer el `#678901` de cada fila. No hay SQL: la
+columna existe desde siempre.
+
 ### `get-session` otra vez: saber si el cliente está en la app (27-ago-2026)
 
 ```

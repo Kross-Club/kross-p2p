@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
     // justamente lo que explica por qué este cliente merece otra mirada.
     const { data: pedidos } = await supabase
       .from('order_sessions')
-      .select('id, token, product_name, pack_name, product_price, stage, status, created_at, tracking_phase')
+      .select('id, order_id, token, product_name, pack_name, product_price, stage, status, created_at, tracking_phase')
       .eq('buyer_id', body.buyer_id)
       .order('created_at', { ascending: false })
       .limit(50)

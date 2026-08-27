@@ -218,6 +218,7 @@ function conversacion(
 
 export interface PedidoHistorico {
   buyer_id: string
+  order_id: string
   product_price: number
   product_name: string
   created_at: string
@@ -276,7 +277,7 @@ async function construir(): Promise<TiendaDemo> {
   }))
 
   // ── El historial: solo entregados, solo lo que pesa el agregado ──
-  const historial: { buyer_id: string; product_price: number; created_at: string; product_name: string }[] = []
+  const historial: { buyer_id: string; product_price: number; created_at: string; product_name: string; order_id: string }[] = []
   for (let i = 0; i < HISTORIAL; i++) {
     // Sesgo hacia los primeros clientes: unos pocos concentran las recompras,
     // que es como se comporta una base real.
@@ -286,6 +287,7 @@ async function construir(): Promise<TiendaDemo> {
       buyer_id: personas[Math.min(idx, TOTAL_CLIENTES - 1)].id,
       product_price: prod.precio,
       product_name: prod.nombre,
+      order_id: `ORD-${17540000000000 + i * 6151}`,
       created_at: new Date(ahora - entre(r, 1, DIAS_HISTORIAL) * DIA).toISOString(),
     })
   }
@@ -329,6 +331,9 @@ async function construir(): Promise<TiendaDemo> {
 
     return {
       id: `demo-ped-${i}`,
+      // Mismo formato que el de verdad (`ORD-<milisegundo>`): es lo que se
+      // recorta para el código corto que se ve en la cabecera y en la ficha.
+      order_id: `ORD-${17563450000000 + i * 7919}`,
       token: `demo-${i}`,
       store_id: 'demo',
       buyer_id: persona.id,
@@ -413,6 +418,7 @@ export async function fichaDemoDeCliente(
     .filter(p => p.buyer_id === buyerId)
     .map(p => ({
       id: p.id,
+      order_id: p.order_id ?? null,
       token: p.token ?? null,
       product_name: p.product_name ?? null,
       pack_name: p.pack_name ?? null,
@@ -427,6 +433,7 @@ export async function fichaDemoDeCliente(
     .filter(h => h.buyer_id === buyerId)
     .map((h, i) => ({
       id: `demo-hist-${buyerId}-${i}`,
+      order_id: h.order_id,
       token: null,
       product_name: h.product_name,
       pack_name: null,

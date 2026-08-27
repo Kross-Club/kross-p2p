@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { Search, Users, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { useStoreClients, resumenDeCliente } from '../../lib/store-clients'
@@ -20,7 +20,6 @@ const SEGMENTO: Record<string, { label: string; style: typeof NEUTRO }> = {
 }
 
 export default function ClientesPersonas() {
-  const navigate = useNavigate()
   const { real, effective } = useSeller()
   const { clientes, cargando, error } = useStoreClients(real, effective)
   const [busca, setBusca] = useState('')
@@ -139,7 +138,6 @@ export default function ClientesPersonas() {
           adminId={real?.auth_user_id}
           storeId={effective?.store_id}
           onClose={() => abrirFicha(null)}
-          onAbrirPedido={token => { abrirFicha(null); navigate(`/vendedor/pedido/${token}`) }}
         />
       )}
     </div>

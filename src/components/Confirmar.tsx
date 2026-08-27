@@ -34,7 +34,7 @@ export default function Confirmar({ titulo, detalle, si = 'Sí', no = 'No', peli
   }, [onNo])
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center px-6"
+    <div className="fixed inset-0 z-[80] flex items-center justify-center px-6"
       style={{ background: 'rgba(0,0,0,0.5)' }} onClick={onNo}>
       <div role="alertdialog" aria-label={titulo} onClick={e => e.stopPropagation()}
         className="w-full max-w-[340px] rounded-3xl p-5 shadow-2xl panel-velo"
