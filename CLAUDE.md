@@ -79,4 +79,9 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
 - RLS activo; el frontend no lee tablas sensibles directo, invoca funciones.
 - Nunca secrets/tokens en código, commits ni en el chat.
 - Comprador identificado por DNI/teléfono; multi-tenant por subdominio (`src/lib/store-context.tsx`).
-- El tipo real de sesión vive en `src/lib/session.ts` (no en el viejo `src/types/index.ts`, que es mock).
+- El tipo real de sesión vive en `src/lib/session.ts`. `src/types/index.ts` ya **no** tiene
+  tipos de sesión —el store y el seed de maqueta se borraron (27-ago-2026)—; lo que queda ahí
+  lo usa la capa de checkout.
+- **Modo demo** (`src/lib/demo/`): un interruptor en *Marca* llena todo el panel con una tienda
+  de ejemplo (~1.000 pedidos/día) para enseñar la herramienta. Vive en el dispositivo, no en
+  `stores`, y el panel lo anuncia con una barra fija. Nunca toca la base.

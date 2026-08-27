@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SellerProfile } from './seller-session'
+import { demoActivo } from './demo/modo-demo'
+import { tiendaDemo } from './demo/tienda-demo'
 
 // ─── El lector único de pedidos de la tienda ─────────────────────────────────
 //
@@ -146,9 +148,26 @@ export function useStoreOrders(
   const alcance = alcanceDePedidos(effective)
   const sellerId = alcance?.sellerId ?? null
 
+  const demo = demoActivo()
+
   useEffect(() => {
-    if (!storeId) return
     let vivo = true
+
+    // En demo el panel no consulta nada: los datos salen del generador y la
+    // barra de arriba lo dice. Se corta el mismo tope que aplica el servidor
+    // (80) para no enseñar una pantalla que la tienda real nunca vería.
+    if (demo) {
+      setCargando(true)
+      tiendaDemo().then(t => {
+        if (!vivo) return
+        setPedidos(t.pedidos.slice(0, 80))
+        setLeidoEn(Date.now())
+        setCargando(false)
+      })
+      return () => { vivo = false }
+    }
+
+    if (!storeId) return
     setCargando(true)
 
     const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': storeId }
@@ -169,7 +188,7 @@ export function useStoreOrders(
     // vendedor cambió de tienda o de rol: sin esto la lista vieja podía pisar
     // a la nueva y mostrarle los pedidos de otra marca.
     return () => { vivo = false }
-  }, [storeId, sellerId, incluirCancelados, intento])
+  }, [demo, storeId, sellerId, incluirCancelados, intento])
 
   const recargar = useCallback(() => setIntento(n => n + 1), [])
 

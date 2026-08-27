@@ -175,6 +175,24 @@ pide, vuelve a `system` solo — así no hace falta un tercer botón "automátic
 - Al escribir pantallas nuevas del panel: usa las clases `gray-*` de Tailwind y los tokens
   de arriba. Un `#fff` o un `#111` a mano se queda fijo en los dos temas.
 
+**Modo demo** (`src/lib/demo/`, interruptor en *Marca*): llena **todo** el panel —Pedidos en
+sus cuatro modos, Clientes en los tres, Productos y Equipo— con una tienda de ejemplo que
+despacha ~1.000 pedidos al día entre tres productos (S/150, S/120, S/180) y arrastra seis meses
+de recompras. Sirve para enseñar cómo se ve la herramienta funcionando sin esperar a que la
+marca venda.
+
+- **Vive en el dispositivo** (`localStorage`, como el tema), no en una columna de `stores`. Si
+  fuera de la marca, un vendedor encendiéndolo pondría a todo su equipo a mirar pedidos
+  inventados, y una tienda podría quedarse en demo en producción sin que nadie lo note.
+- **Se anuncia siempre**: mientras está encendido, `Layout` pinta una barra fija arriba con un
+  botón de salida. Un demo que no se anuncia es una mentira.
+- **Es determinista** (semilla fija, sin `Math.random()`): los números no cambian entre
+  pintadas, así que se puede señalar un total en pantalla y confiar en él.
+- **Las sedes son reales**: los destinos salen del listado de Shalom y Olva, así que las líneas
+  del mapa caen donde caerían de verdad. Lo único inventado son los pedidos.
+- **No toca la base ni exige deploy.** Reemplazó al botón "Ver ejemplo" que vivía solo en el
+  mapa.
+
 **Notificaciones push del equipo** (Equipo → Notificaciones, `src/components/PushSettings.tsx`):
 cada miembro las activa/desactiva **por dispositivo** — el celular y la computadora se
 suscriben por separado y ambos reciben — y por **evento**: 🛍️ nuevo cliente y 💬 nuevo

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Eye, X } from 'lucide-react'
+import { LogOut, Eye, X, Sparkles } from 'lucide-react'
 import BottomNav from './BottomNav'
 import SideNav from './SideNav'
 import IncomingCallOverlay from './IncomingCallOverlay'
@@ -15,6 +15,7 @@ import { useSeller, clearSellerCache, setActingSeller } from '../lib/seller-sess
 import { sellerNavLinks, activeNavLink } from '../lib/seller-nav'
 import { useIsDesktop } from '../lib/use-desktop'
 import { usePanelTheme } from '../lib/theme'
+import { useDemo, setDemo } from '../lib/demo/modo-demo'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -29,6 +30,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const desktop = useIsDesktop()
+  const demo = useDemo()
   usePanelTheme()
 
   // Qué marca se muestra en el header sigue a QUIÉN estás actuando: el super
@@ -119,6 +121,25 @@ export default function Layout() {
   const links = sellerNavLinks(effective)
   const section = activeNavLink(links, pathname)
 
+  // Un demo que no se anuncia es una mentira: mientras esté encendido, cada
+  // pantalla del panel lleva esto encima y se puede apagar desde acá mismo.
+  const demoBar = demo && (
+    <div className="flex items-center justify-between px-4 py-2 flex-shrink-0"
+      style={{ background: 'var(--brand)', color: 'var(--invert-fg, #0b0b0b)', borderBottom: '0.5px solid var(--border)' }}>
+      <div className="flex items-center gap-2 min-w-0">
+        <Sparkles size={14} className="flex-shrink-0" />
+        <p className="text-xs font-bold truncate">
+          Modo demo — estos datos son inventados
+        </p>
+      </div>
+      <button onClick={() => setDemo(false)}
+        className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
+        style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+        <X size={12} /> Salir
+      </button>
+    </div>
+  )
+
   const impersonationBar = impersonating && (
     <div className="flex items-center justify-between px-4 py-2 flex-shrink-0"
       style={{ background: 'var(--surface-3)', color: 'var(--text)', borderBottom: '0.5px solid var(--border)' }}>
@@ -204,7 +225,9 @@ export default function Layout() {
         <div
           className="rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
           style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9', background: 'var(--surface)' }}>
-          {impersonationBar}
+          {demoBar}
+          {demoBar}
+        {impersonationBar}
 
           <div className="flex-1 flex min-h-0">
             <SideNav effective={effective} brand={brand} />
