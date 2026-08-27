@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "build:portadas": "node scripts/build-portadas.mjs",
     "build:data": "node scripts/build-peru-geo.mjs && node scripts/build-coverage.mjs && node scripts/build-districts.mjs && node scripts/build-agencies.mjs && node scripts/build-olva.mjs && node scripts/build-centroids.mjs",
     "sim:shalom": "node scripts/sim-shalom-guia.mjs",
     "guia:ensayo": "node scripts/ensayo-guia.mjs"

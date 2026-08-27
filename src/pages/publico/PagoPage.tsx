@@ -92,8 +92,7 @@ export default function PagoPage() {
         <div className="max-w-[720px] mx-auto px-5 py-24 text-center">
           <p className="font-black text-xl">Tu carrito está vacío</p>
           <p className="text-gray-500 mt-2">Agrega un servicio para continuar con el pago.</p>
-          <Link to="/servicios" className="inline-block mt-5 px-6 py-3 rounded-2xl font-black text-sm text-white"
-            style={{ background: 'var(--brand-dark)' }}>
+          <Link to="/servicios" className="inline-block mt-5 px-6 py-3 rounded-2xl text-sm k-cta">
             Ver servicios
           </Link>
         </div>
@@ -113,9 +112,10 @@ export default function PagoPage() {
           <div className="flex gap-2 mt-6">
             {(['empresa', 'natural'] as TipoCliente[]).map((t) => (
               <button key={t} type="button" onClick={() => { setTipo(t); setErrores({}) }}
-                className={`flex-1 py-3 rounded-2xl font-black text-sm border-2 ${
-                  tipo === t ? 'border-[var(--brand-dark)] bg-gray-50' : 'border-gray-200 text-gray-500'
-                }`}>
+                className="flex-1 py-3 rounded-2xl text-sm"
+                style={tipo === t
+                  ? { border: '1px solid var(--text)', background: 'var(--surface-3)', color: 'var(--text)' }
+                  : { border: '1px solid var(--border)', color: 'var(--text-faint)' }}>
                 {t === 'empresa' ? 'Empresa (RUC)' : 'Persona natural (DNI)'}
               </button>
             ))}
@@ -167,13 +167,12 @@ export default function PagoPage() {
           )}
 
           <button type="submit" disabled={enviando}
-            className="w-full mt-6 py-4 rounded-2xl font-black text-white disabled:opacity-50 active:scale-[.99] transition-transform"
-            style={{ background: 'var(--brand-dark)' }}>
+            className="w-full mt-6 py-4 rounded-2xl disabled:opacity-50 active:scale-[.99] transition-transform k-cta">
             {enviando ? 'Registrando…' : `Confirmar pedido · ${precioTexto(total)}`}
           </button>
 
           <p className="flex items-center gap-2 text-xs text-gray-500 mt-4">
-            <Lock size={14} className="text-green-600" />
+            <Lock size={14} style={{ color: 'var(--text-faint)' }} />
             Tus datos viajan cifrados (HTTPS) y se usan solo para tu comprobante y la activación.
           </p>
         </form>
@@ -234,7 +233,7 @@ function Confirmacion({ codigo }: { codigo: string }) {
           {EMPRESA.telefono ? <> o llamando al <a href={`tel:${EMPRESA.telefono.replace(/\s/g, '')}`} className="underline font-bold">{EMPRESA.telefono}</a></> : null}.
         </p>
         <div className="flex flex-wrap gap-3 justify-center mt-8">
-          <Link to="/" className="px-6 py-3 rounded-2xl font-black text-sm text-white" style={{ background: 'var(--brand-dark)' }}>
+          <Link to="/" className="px-6 py-3 rounded-2xl text-sm k-cta">
             Volver al inicio
           </Link>
           <Link to="/servicios" className="px-6 py-3 rounded-2xl font-black text-sm bg-gray-100 text-gray-700">

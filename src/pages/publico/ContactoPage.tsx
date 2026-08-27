@@ -76,14 +76,13 @@ export default function ContactoPage() {
           </div>
         )}
 
-        <div className="mt-10 rounded-3xl p-6 text-white" style={{ background: 'var(--brand-dark)' }}>
-          <p className="flex items-center gap-2 font-black"><BookOpen size={20} /> ¿Tienes un reclamo o una queja?</p>
-          <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.75)' }}>
+        <div className="mt-10 rounded-3xl p-6" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <p className="flex items-center gap-2"><BookOpen size={20} /> ¿Tienes un reclamo o una queja?</p>
+          <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
             Puedes registrarlo en nuestro Libro de Reclamaciones virtual. Es un formulario propio de
             esta web: no necesitas descargar nada ni salir del sitio.
           </p>
-          <Link to="/libro-de-reclamaciones"
-            className="inline-block mt-4 px-5 py-3 rounded-2xl font-black text-sm bg-white text-gray-900">
+          <Link to="/libro-de-reclamaciones" className="inline-block mt-4 px-5 py-3 rounded-2xl text-sm k-cta">
             Ir al Libro de Reclamaciones
           </Link>
         </div>

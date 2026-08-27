@@ -23,14 +23,25 @@ Lo único que sobrevive del manual anterior es el nombre.
 
 ## 2. Posicionamiento
 
+> **Actualizado en ago-2026** junto con el rediseño de la web pública. Antes esta sección
+> vendía "contraentrega"; el producto ya no hace eso y el nombre confundía. Ver
+> `docs/04-CUMPLIMIENTO-WEB.md` y `src/config/propuesta.ts`.
+
 **Qué es:** una app donde una tienda ecommerce peruana gestiona productos, cobros y entregas
 en un solo lugar.
 
-**Promesa:** vende, cobra y despacha desde un solo lugar. Hecho para Perú.
+**Promesa:** la tecnología de tu tienda. Cobra la mitad o el total del pedido antes de
+despachar. Hecho para Perú.
 
-**Diferencial:** Shopify opera en Perú pero no conecta Yape, Plin, Izipay, Shalom ni Olva, y
-no entiende contraentrega. Kross sí. El diferencial no es ser mejor software, es ser el
-software que habla el idioma operativo del mercado peruano.
+**Diferencial:** Shopify opera en Perú pero no conecta Yape, Plin, Izipay, Shalom ni Olva. Y
+el resto del mercado local vende *contraentrega*, que quiere decir cobrar recién en la puerta:
+la tienda pone producto, empaque y flete, y se entera de si vendió cuando el motorizado toca.
+Kross cobra en el formulario —la mitad del pedido o el total, con Yape validado solo— y
+despacha lo que ya está cobrado. El diferencial no es ser mejor software: es mover el cobro
+al principio, en el idioma operativo del mercado peruano.
+
+**Cómo se nombra:** Kross **no** es "software COD" ni "software contraentrega". Contraentrega
+es, como mucho, cómo se paga el saldo.
 
 **Contra qué NO competimos:** no somos una marca de tecnología genérica. Nada de morado neón,
 gradientes, ilustraciones 3D ni lenguaje de "revolucionar" o "potenciar".
@@ -90,7 +101,9 @@ Símbolo + palabra `KROSS` en mayúsculas.
 
 - Separación entre símbolo y palabra: **1M**.
 - Altura de la palabra: igual a **3M** (alineada al centro óptico del símbolo).
-- Bajada opcional bajo la palabra, en lima, cuerpo pequeño: `VENDE, COBRA Y DESPACHA`.
+- Bajada opcional bajo la palabra, en lima, cuerpo pequeño: `LA TECNOLOGÍA DE TU TIENDA`
+  (es la que trae el archivo de marca y, desde el rediseño de la web de ago-2026, también el
+  titular de la portada: quedó decidido que manda esta y no `VENDE, COBRA Y DESPACHA`).
 - La bajada nunca se usa sin la palabra, ni en tamaños menores a 11 px.
 
 ### 3.5 Área de resguardo
@@ -255,9 +268,12 @@ disruptivo, seamless, unlock, ecosistema.
 
 **Mensajes base:**
 
+- La tecnología de tu tienda.
+- Cobra la mitad o el total del pedido antes de despachar.
 - Vende, cobra y despacha desde un solo lugar.
 - Hecho para Perú.
-- Tus pasarelas y tus couriers en una sola pantalla.
+
+El copy vivo de estos mensajes está en `src/config/propuesta.ts`, no suelto en cada pantalla.
 
 ---
 
@@ -319,15 +335,21 @@ y no se toca. Por eso `--brand` es derivado y nadie lo escribe a mano:
   donde antes había color de marca, incluidos botones genéricos que §4.2 prohíbe. Falta el
   barrido pantalla por pantalla.
 - **`ChatView`** (el chat dentro del panel) conserva el amarillo del sistema viejo.
-- **Web pública** (`/servicios`, legales): comparte plantilla con las marcas, así que quedó
-  clara. Falta decidir la versión Kross en ink para `krossclub.app` — la portada todavía
-  tiene el celeste del sistema viejo.
+- ~~**Web pública**: falta decidir la versión Kross en ink.~~ **Cerrado (ago-2026).**
+  `PublicLayout` se pinta en dos tonos: en `krossclub.app` aplica `data-theme="dark"` y todo
+  el sitio va en ink; en `marca.krossclub.app` las páginas legales siguen claras y con el
+  color de la tienda (pasan `tono="legal"`). Los tokens semánticos del tono claro viven en
+  `index.css`, bajo `:root:not([data-theme]) .web-publica`, y el botón principal del sitio es
+  una sola regla (`.k-cta`) para no repetir la decisión en cada página. Las portadas del
+  catálogo se generan con `npm run build:portadas`.
 - **Entrar con Google** aparece en el diseño del acceso pero no está implementado: hace
   falta habilitar el proveedor en Supabase Auth antes de poner el botón.
 - **Mapas y tracking (§6.2)** y **vidrio esmerilado (§6.3)**: no hay implementación todavía.
 - **Excepción anotada:** §4.2 pide máximo tres apariciones de lima por pantalla. En una lista
   de pedidos, cada entregado pinta su chip: son varias apariciones del *mismo* significado.
-  Se aceptó para listas; en pantallas de detalle la regla se cumple tal cual.
+  Se aceptó para listas; en pantallas de detalle la regla se cumple tal cual. Vale lo mismo
+  para la vitrina del catálogo público: cada portada gasta **una** aparición y en la grilla
+  se ven varias a la vez.
 - **Falta un lockup sin bajada.** `logo-kross.svg` trae la bajada dentro del mismo archivo,
   y a menos de ~60 px de alto esa bajada baja de los 11 px que el §3.4 fija como mínimo. Por
   eso el archivo se usa en el acceso (a 64 px, donde se lee) y en el resto —barra lateral,
@@ -337,10 +359,9 @@ y no se toca. Por eso `--brand` es derivado y nadie lo escribe a mano:
   Reemplaza a la variante simplificada que pide el §3.3 para ese uso: a 16 px un módulo
   lleno se reconoce y la K no. Aplica **solo al favicon**: los iconos de la PWA
   (`icon-192/512`, maskable) siguen con el símbolo.
-- **La bajada del lockup no coincide.** El §3.4 dice `VENDE, COBRA Y DESPACHA`; el archivo
-  de marca que se está usando trae `LA TECNOLOGÍA DE TU TIENDA`, y es la que quedó en el
-  código (`KrossLogo.tsx`) y en el acceso al panel. Falta decidir cuál manda y alinear el
-  manual con el archivo, o al revés.
+- ~~**La bajada del lockup no coincide.**~~ **Cerrado (ago-2026):** manda
+  `LA TECNOLOGÍA DE TU TIENDA`, la del archivo de marca y la de `KrossLogo.tsx`. El §3.4 ya
+  está alineado, y esa frase es además el titular de la portada.
 - **El punto de "en línea"** quedó en hueso, no en lima: presencia no es dinero ni entrega.
 - Siguen abiertos los pendientes de §9 (íconos de interfaz, favicon 16/32 rasterizado,
   modo claro completo, Indecopi).

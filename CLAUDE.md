@@ -6,9 +6,15 @@
 
 ## Qué es Kross
 
-**Sistema Operativo de E-commerce contraentrega (COD) para Perú.** PWA white-label
-multi-tenant: cada marca tiene su app instalable en `marca.krossclub.app`. Resuelve 3 fases:
+**La tecnología de una tienda en línea peruana.** PWA white-label multi-tenant: cada marca
+tiene su app instalable en `marca.krossclub.app`. El pedido **se cobra antes de despacharse**
+—la mitad o el total, con Yape validado automático— y de ahí sigue las 3 fases:
 **vender** (Sales) → **entregar** (Logistics) → **retener** (Loyalty).
+
+> ⚠️ **No lo llames COD ni contraentrega.** Contraentrega significa cobrar todo en la puerta,
+> y eso no es lo que hace el producto: el checkout cobra el adelanto —mitad o total— dentro
+> del formulario y contra entrega queda, como mucho, el saldo. El posicionamiento vivo está
+> en `src/config/propuesta.ts` y explicado en `docs/04-CUMPLIMIENTO-WEB.md`.
 
 ## Stack
 
@@ -40,7 +46,7 @@ comando, comparten organización pero **no** comparten esquema ni convenciones.
 | `docs/01-SALES-ENGINE.md` | IA Closer, DNI, checkout guiado (state machine), adelanto Yape verificado solo |
 | `docs/02-SMART-LOGISTICS.md` | Geolocalización, motorizados, envíos a provincia |
 | `docs/03-LOYALTY-ENGINE.md` | Recompra, puntos, campañas WhatsApp, LTV |
-| `docs/04-CUMPLIMIENTO-WEB.md` | Web pública, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
+| `docs/04-CUMPLIMIENTO-WEB.md` | Web pública: propuesta de valor y sus dos tonos, páginas legales, Libro de Reclamaciones, requisitos de pasarela |
 | `docs/06-360PAY.md` | 360pay como pasarela por defecto: cupón, deeplink de Yape, webhook. **Primer pago real cobrado** |
 | `docs/07-CONTRATO-360PAY.md` | Contrato de recaudación: quién es quién, flujo del dinero, tarifario, plazos y qué nos obliga en el código |
 | `docs/08-RECORDATORIOS-RECOJO.md` | 🔮 Cascada automática push+WA para recojo en agencia (diseño; por qué no robocall) |

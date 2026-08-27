@@ -136,10 +136,11 @@ export default function LibroReclamacionesPage() {
   if (hoja) return <HojaRegistrada hoja={hoja} marca={marca} />
 
   return (
-    <PublicLayout>
+    <PublicLayout tono="legal">
       <div className="max-w-[820px] mx-auto px-5 py-12">
         <div className="flex items-center gap-3">
-          <span className="w-12 h-12 rounded-2xl flex items-center justify-center text-white" style={{ background: 'var(--brand-dark)' }}>
+          <span className="w-12 h-12 rounded-2xl flex items-center justify-center"
+            style={{ background: 'var(--invert)', color: 'var(--invert-fg)' }}>
             <BookOpen size={24} />
           </span>
           <div>
@@ -182,7 +183,7 @@ export default function LibroReclamacionesPage() {
               {(['RECLAMO', 'QUEJA'] as Tipo[]).map((t) => (
                 <button key={t} type="button" onClick={() => set('tipo', t)}
                   className={`flex-1 py-3 rounded-2xl font-black text-sm border-2 ${
-                    f.tipo === t ? 'border-[var(--brand-dark)] bg-gray-50' : 'border-gray-200 text-gray-500'
+                    f.tipo === t ? 'border-[var(--text)] bg-gray-50' : 'border-gray-200 text-gray-500'
                   }`}>
                   {t === 'RECLAMO' ? 'Reclamo' : 'Queja'}
                 </button>
@@ -249,7 +250,7 @@ export default function LibroReclamacionesPage() {
               {(['PRODUCTO', 'SERVICIO'] as BienTipo[]).map((t) => (
                 <button key={t} type="button" onClick={() => set('bienTipo', t)}
                   className={`flex-1 py-3 rounded-2xl font-black text-sm border-2 ${
-                    f.bienTipo === t ? 'border-[var(--brand-dark)] bg-gray-50' : 'border-gray-200 text-gray-500'
+                    f.bienTipo === t ? 'border-[var(--text)] bg-gray-50' : 'border-gray-200 text-gray-500'
                   }`}>
                   {t === 'PRODUCTO' ? 'Producto' : 'Servicio'}
                 </button>
@@ -295,8 +296,8 @@ export default function LibroReclamacionesPage() {
           {errores.acepta && <p className="text-xs text-red-600 font-bold mt-1">{errores.acepta}</p>}
 
           <button type="submit" disabled={enviando}
-            className="w-full mt-6 py-4 rounded-2xl font-black text-white disabled:opacity-50 active:scale-[.99] transition-transform"
-            style={{ background: 'var(--brand-dark)' }}>
+            className="w-full mt-6 py-4 rounded-2xl font-black disabled:opacity-50 active:scale-[.99] transition-transform"
+            style={{ background: 'var(--invert)', color: 'var(--invert-fg)' }}>
             {enviando ? 'Enviando…' : 'Enviar hoja de reclamación'}
           </button>
 
@@ -356,7 +357,7 @@ function HojaRegistrada({ hoja, marca }: { hoja: Hoja; marca: string | null }) {
   const fechaTexto = new Date(fecha).toLocaleString('es-PE', { timeZone: 'America/Lima' })
 
   return (
-    <PublicLayout>
+    <PublicLayout tono="legal">
       <div className="max-w-[820px] mx-auto px-5 py-12">
         <div className="flex items-start gap-3" data-no-print>
           <CheckCircle2 size={28} className="text-green-600 shrink-0 mt-1" />
@@ -425,8 +426,8 @@ function HojaRegistrada({ hoja, marca }: { hoja: Hoja; marca: string | null }) {
 
         <div className="flex flex-wrap gap-3 mt-6" data-no-print>
           <button onClick={() => window.print()}
-            className="flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm text-white"
-            style={{ background: 'var(--brand-dark)' }}>
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm"
+            style={{ background: 'var(--invert)', color: 'var(--invert-fg)' }}>
             <Printer size={16} /> Imprimir o guardar en PDF
           </button>
           <Link to="/" className="px-6 py-3 rounded-2xl font-black text-sm bg-gray-100 text-gray-700">

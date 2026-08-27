@@ -13,7 +13,7 @@ export default function PrivacidadPage() {
   const marca = store.nombre || 'Kross'
 
   return (
-    <PublicLayout>
+    <PublicLayout tono="legal">
       <div className="max-w-[720px] mx-auto px-5 py-10 text-gray-800">
         <h1 className="text-2xl font-black mb-1">Política de Privacidad</h1>
         <p className="text-sm text-gray-500 mb-6">Última actualización: 16 de julio de 2026</p>
@@ -36,7 +36,7 @@ export default function PrivacidadPage() {
 
         <Section title="2. Para qué usamos tus datos">
           <ul className="list-disc pl-5 space-y-1">
-            <li>Procesar y entregar tu pedido bajo la modalidad contraentrega.</li>
+            <li>Procesar, cobrar y entregar tu pedido, incluido el adelanto que pagas al hacerlo.</li>
             <li>Comunicarnos contigo sobre el estado de tu pedido por chat, notificaciones push y WhatsApp.</li>
             <li>Verificar tu identidad y prevenir pedidos fraudulentos.</li>
             <li>Mejorar el servicio y la atención.</li>

@@ -1,24 +1,69 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Plan Escala — equipo, CRM y campañas">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="600" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#04121A"/><stop offset="1" stop-color="#0B3B33"/>
-    </linearGradient>
-    <linearGradient id="ac" x1="200" y1="420" x2="620" y2="140" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#22C55E"/><stop offset="1" stop-color="#7DE8FF"/>
-    </linearGradient>
-  </defs>
-  <rect width="800" height="600" fill="url(#bg)"/>
-  <circle cx="660" cy="140" r="170" fill="#22C55E" opacity=".12"/>
-  <circle cx="130" cy="470" r="130" fill="#7DE8FF" opacity=".08"/>
-  <!-- Barras de crecimiento -->
-  <rect x="212" y="330" width="70" height="120" rx="16" fill="#ffffff" opacity=".2"/>
-  <rect x="302" y="278" width="70" height="172" rx="16" fill="#ffffff" opacity=".3"/>
-  <rect x="392" y="222" width="70" height="228" rx="16" fill="url(#ac)" opacity=".75"/>
-  <rect x="482" y="160" width="70" height="290" rx="16" fill="url(#ac)"/>
-  <!-- Equipo -->
-  <circle cx="247" cy="150" r="34" fill="#7DE8FF" opacity=".85"/>
-  <circle cx="317" cy="180" r="26" fill="#ffffff" opacity=".35"/>
-  <circle cx="187" cy="192" r="22" fill="#ffffff" opacity=".25"/>
-  <text x="400" y="512" font-family="Nunito, Verdana, sans-serif" font-size="44" font-weight="800" fill="#ffffff" text-anchor="middle">Plan Escala</text>
-  <text x="400" y="552" font-family="Nunito, Verdana, sans-serif" font-size="24" font-weight="600" fill="#86EFAC" text-anchor="middle">Equipo, CRM y campañas</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" role="img" aria-label="Plan Escala — tablero con varios agentes y estados de pedido">
+  <rect width="800" height="600" fill="#0F1115"/>
+  <g stroke="rgba(255,255,255,0.05)" stroke-width="1">
+    <path d="M50 0V600"/>
+    <path d="M100 0V600"/>
+    <path d="M150 0V600"/>
+    <path d="M200 0V600"/>
+    <path d="M250 0V600"/>
+    <path d="M300 0V600"/>
+    <path d="M350 0V600"/>
+    <path d="M400 0V600"/>
+    <path d="M450 0V600"/>
+    <path d="M500 0V600"/>
+    <path d="M550 0V600"/>
+    <path d="M600 0V600"/>
+    <path d="M650 0V600"/>
+    <path d="M700 0V600"/>
+    <path d="M750 0V600"/>
+    <path d="M0 50H800"/>
+    <path d="M0 100H800"/>
+    <path d="M0 150H800"/>
+    <path d="M0 200H800"/>
+    <path d="M0 250H800"/>
+    <path d="M0 300H800"/>
+    <path d="M0 350H800"/>
+    <path d="M0 400H800"/>
+    <path d="M0 450H800"/>
+    <path d="M0 500H800"/>
+    <path d="M0 550H800"/>
+  </g>
+  <rect x="110" y="100" width="580" height="400" rx="14" fill="#171A1F" stroke="rgba(255,255,255,0.09)"/>
+  <rect x="110" y="100" width="92" height="400" rx="14" fill="#0F1115"/>
+  <rect x="190" y="100" width="12" height="400" fill="#0F1115"/>
+  <rect x="130" y="140" width="52" height="28" rx="6" fill="#23262B"/>
+  <rect x="130" y="192" width="52" height="28" rx="6" fill="#23262B"/>
+  <rect x="116" y="199" width="6" height="14" fill="#D4FF4F"/>
+  <rect x="130" y="244" width="52" height="28" rx="6" fill="#23262B"/>
+  <rect x="130" y="296" width="52" height="28" rx="6" fill="#23262B"/>
+  <rect x="222" y="140" width="448" height="50" rx="8" fill="#23262B"/>
+  <circle cx="250" cy="165" r="14" fill="#3D444C"/>
+  <rect x="276" y="154" width="128" height="10" rx="5" fill="#C7CDD4"/>
+  <rect x="276" y="170" width="84" height="8" rx="4" fill="#9BA1A9"/>
+  <rect x="560" y="154" width="92" height="22" rx="11" fill="#3D444C"/>
+  <rect x="222" y="202" width="448" height="50" rx="8" fill="#23262B"/>
+  <circle cx="250" cy="227" r="14" fill="#3D444C"/>
+  <rect x="276" y="216" width="128" height="10" rx="5" fill="#C7CDD4"/>
+  <rect x="276" y="232" width="84" height="8" rx="4" fill="#9BA1A9"/>
+  <rect x="560" y="216" width="92" height="22" rx="11" fill="#3D444C"/>
+  <rect x="222" y="264" width="448" height="50" rx="8" fill="#23262B"/>
+  <circle cx="250" cy="289" r="14" fill="#3D444C"/>
+  <rect x="276" y="278" width="128" height="10" rx="5" fill="#C7CDD4"/>
+  <rect x="276" y="294" width="84" height="8" rx="4" fill="#9BA1A9"/>
+  <rect x="560" y="278" width="92" height="22" rx="11" fill="#3D444C"/>
+  <rect x="222" y="326" width="448" height="50" rx="8" fill="#23262B"/>
+  <circle cx="250" cy="351" r="14" fill="#3D444C"/>
+  <rect x="276" y="340" width="128" height="10" rx="5" fill="#C7CDD4"/>
+  <rect x="276" y="356" width="84" height="8" rx="4" fill="#9BA1A9"/>
+  <rect x="560" y="340" width="92" height="22" rx="11" fill="#3D444C"/>
+  <rect x="222" y="388" width="448" height="50" rx="8" fill="#23262B"/>
+  <circle cx="250" cy="413" r="14" fill="#3D444C"/>
+  <rect x="276" y="402" width="128" height="10" rx="5" fill="#C7CDD4"/>
+  <rect x="276" y="418" width="84" height="8" rx="4" fill="#9BA1A9"/>
+  <rect x="560" y="402" width="92" height="22" rx="11" fill="#3D444C"/>
+  <rect x="222" y="450" width="448" height="50" rx="8" fill="#23262B"/>
+  <circle cx="250" cy="475" r="14" fill="#3D444C"/>
+  <rect x="276" y="464" width="128" height="10" rx="5" fill="#C7CDD4"/>
+  <rect x="276" y="480" width="84" height="8" rx="4" fill="#9BA1A9"/>
+  <rect x="560" y="464" width="92" height="22" rx="11" fill="#3D444C"/>
 </svg>

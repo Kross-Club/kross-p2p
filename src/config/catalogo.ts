@@ -4,6 +4,12 @@
 // con foto, descripción clara y precio visible. Kross vende software por
 // suscripción, así que el catálogo son sus planes y módulos.
 //
+// El texto de cada ítem tiene que decir lo mismo que la portada
+// (`src/config/propuesta.ts`): lo que se contrata es una tienda que **cobra el
+// adelanto antes de despachar**, no un software de contraentrega. Por eso el
+// cobro con Yape validado solo vive en el plan de entrada y no como un extra:
+// es el producto, no un módulo.
+//
 // ⚠️ PRECIOS: son los de la lista comercial. Si cambian, se cambian aquí y se
 // actualizan la home, el detalle, el carrito y el checkout a la vez. Reviselos
 // antes de publicar: lo que se muestra aquí es oferta al público.
@@ -11,6 +17,10 @@
 // Las imágenes viven en `public/catalogo/`. Son portadas vectoriales para que
 // carguen siempre y no dependan de ningún host externo; se pueden reemplazar
 // por fotos reales (.jpg/.webp) cambiando solo la ruta de `imagen`.
+//
+// Las genera `npm run build:portadas` (scripts/build-portadas.mjs) aplicando el
+// manual v2.0: ink, módulos en hueso y una sola aparición de lima por portada.
+// No se editan a mano — se edita el generador y se vuelven a emitir las seis.
 
 export interface ItemCatalogo {
   /** Slug: es la URL del detalle (/catalogo/:slug) y la llave en el carrito. */
@@ -38,15 +48,17 @@ export const CATALOGO: ItemCatalogo[] = [
   {
     slug: 'plan-inicia',
     nombre: 'Plan Inicia',
-    resumen: 'Tu tienda contraentrega en línea, con app instalable propia.',
+    resumen: 'Tu tienda con app propia, cobrando el adelanto por Yape.',
     descripcion:
-      'Para la marca que hoy vende por WhatsApp y necesita ordenar sus pedidos. Incluye tu ' +
-      'aplicación web instalable en tu propio subdominio (tumarca.krossclub.app), el checkout ' +
-      'guiado contraentrega y el chat donde el comprador sigue su pedido hasta la entrega.',
+      'Para la marca que hoy vende por WhatsApp y anota los pedidos a mano. Incluye tu ' +
+      'aplicación instalable en tu propio subdominio (tumarca.krossclub.app), el checkout de ' +
+      'tres pasos que le cobra a tu cliente la mitad del pedido —o el total— con Yape antes de ' +
+      'que despaches, y el chat donde sigue su pedido hasta la entrega.',
     incluye: [
       'App web instalable con tu logo, colores y nombre',
-      'Checkout contraentrega guiado (Lima y provincia)',
-      'Chat de pedido con notificaciones al comprador',
+      'Checkout de 3 pasos que cobra el adelanto con Yape',
+      'Validación automática del pago: sin capturas ni códigos que dictar',
+      'Chat del pedido con notificaciones al comprador',
       'Panel de pedidos para tu equipo',
       'Hasta 500 pedidos al mes',
     ],
@@ -58,17 +70,18 @@ export const CATALOGO: ItemCatalogo[] = [
   {
     slug: 'plan-vende',
     nombre: 'Plan Vende',
-    resumen: 'Todo el Plan Inicia más el cierre de ventas asistido con IA.',
+    resumen: 'Todo lo de Inicia, más el cierre del que se quedó a medias.',
     descripcion:
       'Para la marca que ya tiene tráfico y pierde pedidos por no contestar a tiempo. Suma el ' +
-      'asistente de cierre con IA, las llamadas grabadas desde la propia app y la verificación ' +
-      'automática del adelanto, para que el pedido llegue confirmado al motorizado.',
+      'asistente de cierre con IA sobre el chat del pedido, las llamadas grabadas desde la ' +
+      'propia app y el DNI que autocompleta los datos del comprador, para que el formulario ' +
+      'se termine y el adelanto entre.',
     incluye: [
       'Todo lo del Plan Inicia',
       'Asistente de cierre con IA sobre el chat del pedido',
       'Llamadas de voz grabadas dentro de la app',
-      'Verificación automática del adelanto y del comprobante',
-      'Validación de identidad por DNI',
+      'Validación de identidad por DNI, con autocompletado',
+      'Recuperación de los pedidos que quedaron sin pagar',
       'Hasta 2 000 pedidos al mes',
     ],
     precio: 449,
@@ -90,7 +103,7 @@ export const CATALOGO: ItemCatalogo[] = [
       'Equipo multi-agente con reparto automático de pedidos',
       'CRM de compradores con historial y puntaje',
       'Campañas de recompra y recuperación por WhatsApp',
-      'Reportes de venta, entrega y retención',
+      'Reportes de venta, cobro, entrega y retención',
       'Pedidos ilimitados',
     ],
     precio: 899,
@@ -103,7 +116,7 @@ export const CATALOGO: ItemCatalogo[] = [
     nombre: 'Módulo Smart Logistics',
     resumen: 'Cobertura por distrito, motorizados y envíos a provincia.',
     descripcion:
-      'Complemento de logística para cualquier plan. Valida la dirección del comprador contra tu ' +
+      'Complemento de despacho para cualquier plan. Valida la dirección del comprador contra tu ' +
       'cobertura real por distrito, calcula el envío a provincia por agencia y le da al motorizado ' +
       'la ruta y el estado de cada entrega.',
     incluye: [
@@ -139,15 +152,15 @@ export const CATALOGO: ItemCatalogo[] = [
   {
     slug: 'implementacion',
     nombre: 'Implementación y puesta en marcha',
-    resumen: 'Dejamos tu marca operando: pago único.',
+    resumen: 'Dejamos tu tienda cobrando: pago único.',
     descripcion:
       'Servicio de configuración inicial, en un solo pago. Montamos tu subdominio, cargamos tu ' +
-      'catálogo con fotos y precios, configuramos cobertura y medios de pago, y capacitamos a tu ' +
-      'equipo hasta que despachen su primer pedido con el sistema.',
+      'catálogo con fotos y precios, conectamos tu cobro con Yape, configuramos tu cobertura y ' +
+      'capacitamos a tu equipo hasta que cobren y despachen su primer pedido con el sistema.',
     incluye: [
       'Configuración del subdominio y la identidad de tu marca',
       'Carga del catálogo, packs y precios',
-      'Configuración de cobertura, agencias y medios de pago',
+      'Conexión del cobro con Yape y de tu cobertura de entrega',
       'Capacitación del equipo (2 sesiones)',
       'Acompañamiento los primeros 30 días',
     ],

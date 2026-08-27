@@ -29,7 +29,8 @@ export default function TerminosPage() {
           {EMPRESA.domicilioFiscal ? `, con domicilio en ${EMPRESA.domicilioFiscal}` : ''}
           {EMPRESA.email ? `, correo de contacto ${EMPRESA.email}` : ''}
           {EMPRESA.telefono ? ` y teléfono ${EMPRESA.telefono}` : ''}, tiene la titularidad de la
-          plataforma {EMPRESA.marca}, un software de gestión de comercio contraentrega que se contrata
+          plataforma {EMPRESA.marca}, un software de gestión de tiendas en línea —cobro del pedido,
+          despacho y recompra— que se contrata
           por suscripción.
         </p>
       </Seccion>
