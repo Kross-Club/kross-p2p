@@ -24,18 +24,15 @@ import LibroReclamacionesPage from './pages/legal/LibroReclamacionesPage'
 import ChatsPage from './pages/comprador/ChatsPage'
 import ChatDetalleComprador from './pages/comprador/ChatDetalleComprador'
 import PerfilPage from './pages/comprador/PerfilPage'
-import ChatsVendedorPage from './pages/vendedor/ChatsVendedorPage'
+import PedidosPage from './pages/vendedor/PedidosPage'
 import ChatDetalleVendedor from './pages/vendedor/ChatDetalleVendedor'
 import ProductosPage from './pages/vendedor/ProductosPage'
-import CRMPage from './pages/vendedor/CRMPage'
-import MapaVivoPage from './pages/vendedor/MapaVivoPage'
 import BotIAPage from './pages/vendedor/BotIAPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
 import LlamadasPage from './pages/vendedor/LlamadasPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
 import RetencionPage from './pages/vendedor/RetencionPage'
-import EstadisticasPage from './pages/vendedor/EstadisticasPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
 import BuyerPresenceTracker from './components/BuyerPresenceTracker'
@@ -55,7 +52,7 @@ function HomeRedirect() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) { setDest('/vendedor/chats'); return }
+      if (data.session) { setDest('/vendedor/pedidos'); return }
       const buyer = localStorage.getItem('buyer_session')
       if (buyer) { setDest('/mis-pedidos'); return }
       setDest(isPlatformHost() ? 'PUBLICA' : '/acceso')
@@ -154,18 +151,22 @@ export default function App() {
           <Route path="/comprador/chats" element={<ChatsPage />} />
           <Route path="/comprador/chat/:chatId" element={<ChatDetalleComprador />} />
           <Route path="/comprador/perfil" element={<PerfilPage />} />
-          <Route path="/vendedor/chats" element={<ChatsVendedorPage />} />
+          <Route path="/vendedor/pedidos" element={<PedidosPage />} />
+          {/* Chats, CRM, En vivo y Stats eran cuatro pantallas del mismo dato y
+              ahora son cuatro modos de Pedidos. Las rutas viejas se quedan como
+              redirección: hay enlaces guardados y push que apuntan ahí. */}
+          <Route path="/vendedor/chats" element={<Navigate to="/vendedor/pedidos" replace />} />
+          <Route path="/vendedor/crm" element={<Navigate to="/vendedor/pedidos?modo=tablero" replace />} />
+          <Route path="/vendedor/mapa" element={<Navigate to="/vendedor/pedidos?modo=mapa" replace />} />
+          <Route path="/vendedor/estadisticas" element={<Navigate to="/vendedor/pedidos?modo=resumen" replace />} />
           <Route path="/vendedor/chat/:chatId" element={<ChatDetalleVendedor />} />
           <Route path="/vendedor/productos" element={<ProductosPage />} />
-          <Route path="/vendedor/crm" element={<CRMPage />} />
-          <Route path="/vendedor/mapa" element={<MapaVivoPage />} />
           <Route path="/vendedor/bots" element={<BotIAPage />} />
           <Route path="/vendedor/equipo" element={<EquipoPage />} />
           <Route path="/vendedor/marca" element={<MarcaPage />} />
           <Route path="/vendedor/llamadas" element={<LlamadasPage />} />
           <Route path="/vendedor/clientes" element={<ClientesPage />} />
           <Route path="/vendedor/retencion" element={<RetencionPage />} />
-          <Route path="/vendedor/estadisticas" element={<EstadisticasPage />} />
         </Route>
 
         {/* Sin esto, cualquier URL que no exista renderizaba una página en

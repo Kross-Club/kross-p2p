@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react'
-import { BarChart2, Package } from 'lucide-react'
+import { Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { NOTA_META, stageBar } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
-
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+import { estaVivo } from '../../lib/store-orders'
+import type { StoreOrders } from '../../lib/store-orders'
 
 function roleColor(role: string) {
   const r = (role ?? '').toLowerCase()
@@ -24,40 +22,16 @@ function roleCat(role: string) {
   return 'Otro'
 }
 
-interface Sess {
-  id: string; stage: string; status?: string; nota?: string | null
-  assigned_seller_id: string | null; seller_name?: string | null; seller_role?: string | null
-  // Igual que en el CRM: sin esto el conteo cae al reloj interno del equipo y
-  // "Por estado" deja de contar lo que el courier reporta.
-  dispatch_type?: string | null; agency_name?: string | null
-  advance_amount?: number | string | null
-  tracking_courier?: string | null; tracking_phase?: string | null
-}
-
-
-export default function EstadisticasPage() {
+export default function PedidosResumen({ lista }: { lista: StoreOrders }) {
   const { effective, isAdmin, impersonating } = useSeller()
-  const [sessions, setSessions] = useState<Sess[]>([])
-  const [loading, setLoading] = useState(true)
-
+  // Los cancelados llegan en la lista y acá SÍ se usan: el desglose de notas
+  // los cuenta (una nota "cancelado" solo existe en un pedido cancelado).
+  const { pedidos: sessions, cargando: loading } = lista
   const adminView = isAdmin && !impersonating
-  const onlyMine = !!effective && !adminView
-
-  useEffect(() => {
-    if (!effective) return
-    setLoading(true)
-    const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': effective.store_id, 'x-include-cancelled': '1' }
-    if (onlyMine) headers['x-seller-id'] = effective.auth_user_id
-    fetch(`${BASE}/get-store-sessions`, { headers })
-      .then(r => (r.ok ? r.json() : []))
-      .then((d: Sess[]) => setSessions(Array.isArray(d) ? d : []))
-      .catch(() => setSessions([]))
-      .finally(() => setLoading(false))
-  }, [effective?.auth_user_id, effective?.store_id, onlyMine])
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
-  const active = sessions.filter(s => s.status !== 'cancelado')
+  const active = sessions.filter(estaVivo)
   const total = active.length
   // Mismas columnas que el tablero del CRM, mismo `columnaDelPedido`: si acá se
   // contara por `stage` crudo, Stats y CRM darían números distintos del mismo
@@ -86,8 +60,7 @@ export default function EstadisticasPage() {
   for (const s of active) { const c = roleCat(s.seller_role ?? ''); roleMap[c] = (roleMap[c] ?? 0) + 1 }
 
   return (
-    <div className="px-4 py-4">
-      <h1 className="text-xl font-black text-gray-900 flex items-center gap-2 mb-1"><BarChart2 size={20} /> Estadísticas</h1>
+    <div className="px-4 pt-3 pb-4">
       <p className="text-xs text-gray-400 mb-4">{adminView ? 'Toda la tienda' : `Tus pedidos · ${effective?.role_label}`}</p>
 
       <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--surface)', border: '0.5px solid var(--border)' }}>

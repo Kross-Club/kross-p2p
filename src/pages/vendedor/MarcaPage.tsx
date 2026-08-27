@@ -97,7 +97,7 @@ export default function MarcaPage() {
   const enterStore = (storeId: string) => {
     if (!real) { alert('Sesión no lista, recarga la página e intenta de nuevo.'); return }
     actAs({ ...real, store_id: storeId, is_admin: true, is_super_admin: false, role_label: 'Admin' } as SellerProfile)
-    navigate('/vendedor/chats')
+    navigate('/vendedor/pedidos')
   }
   const [stores, setStores] = useState<StoreRow[]>([])
   const [isSuper, setIsSuper] = useState(false)

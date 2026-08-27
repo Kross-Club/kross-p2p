@@ -551,7 +551,7 @@ export default function VendedorPedidoPage() {
       <div className="flex flex-col h-screen items-center justify-center px-8 text-center" style={{ background: 'var(--chat-bg)' }}>
         <Package size={40} className="text-gray-300 mb-4" />
         <p className="font-black text-gray-800">Sesión no encontrada</p>
-        <button onClick={() => navigate('/vendedor/chats')} className="mt-4 text-sm text-[var(--brand)] font-semibold">
+        <button onClick={() => navigate('/vendedor/pedidos')} className="mt-4 text-sm text-[var(--brand)] font-semibold">
           Volver a chats
         </button>
       </div>
@@ -610,7 +610,7 @@ export default function VendedorPedidoPage() {
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
         style={{ background: 'var(--chat-header)', borderRadius: '0 0 24px 24px' }}>
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/vendedor/chats')}
+          <button onClick={() => navigate('/vendedor/pedidos')}
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: 'rgba(255,255,255,0.1)' }}>
             <ArrowLeft size={18} className="text-white" />
@@ -723,7 +723,7 @@ export default function VendedorPedidoPage() {
         onAdvanced={(next, handedOff) => {
           setSession(s => s ? { ...s, stage: next as OrderSession['stage'] } : s)
           // Ceded the lead → back to my list; otherwise refresh in place
-          if (handedOff) navigate('/vendedor/chats')
+          if (handedOff) navigate('/vendedor/pedidos')
           else reloadSession()
         }}
       />

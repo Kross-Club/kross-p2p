@@ -44,7 +44,7 @@ export default function LoginPage() {
         return
       }
     }
-    navigate('/vendedor/chats', { replace: true })
+    navigate('/vendedor/pedidos', { replace: true })
   }
 
   return (

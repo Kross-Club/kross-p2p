@@ -14,7 +14,7 @@ export default function AccountSelector() {
     switchUser(userId)
     setOpen(false)
     if (user.tipo === 'comprador') navigate('/comprador/chats')
-    else navigate('/vendedor/chats')
+    else navigate('/vendedor/pedidos')
   }
 
   const badgeColor = currentUser.tipo === 'comprador'
