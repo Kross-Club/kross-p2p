@@ -91,11 +91,7 @@ async function call(payload: Record<string, unknown>) {
 
 export default function MarcaPage() {
   const navigate = useNavigate()
-  const { real, effective, isAdmin, impersonating, actAs } = useSeller()
-  // El demo es de UNA tienda: la que se está mirando. Un super admin en el nivel
-  // plataforma no está dentro de ninguna, y ahí el interruptor no aplica.
-  const tiendaDemoId = effective?.is_super_admin ? null : effective?.store_id ?? null
-  const demo = useDemo(tiendaDemoId)
+  const { real, isAdmin, impersonating, actAs } = useSeller()
 
   // Super admin "enters" a brand → acts as itself but scoped to that store, so the
   // full store toolset (Chats, Productos, CRM, Equipo, Stats) works even for a brand
@@ -107,9 +103,6 @@ export default function MarcaPage() {
   }
   const [stores, setStores] = useState<StoreRow[]>([])
   const [isSuper, setIsSuper] = useState(false)
-  const nombreTiendaActual = tiendaDemoId
-    ? stores.find(x => x.id === tiendaDemoId)?.nombre ?? null
-    : null
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<StoreRow | null>(null)
   const [creating, setCreating] = useState(false)
@@ -159,48 +152,19 @@ export default function MarcaPage() {
         </div>
       )}
 
-      {/* ── Modo demo ──────────────────────────────────────────────────────
-          No es una opción de la MARCA sino de quien mira, y por eso está acá
-          fuera y no dentro del editor de una tienda: vive en este dispositivo
-          (localStorage), no en `stores`. Si fuera una columna, un vendedor
-          encendiéndolo pondría a todo su equipo a mirar pedidos inventados, y
-          una marca podría quedarse en demo en producción sin que nadie lo note.
-          Ver src/lib/demo/modo-demo.ts */}
-      <div className="rounded-2xl p-3 mb-4 flex items-center justify-between gap-3"
+      {/* El demo se enciende POR MARCA, en su fila. Vivía en una tarjeta suelta
+          arriba y era inalcanzable para el super admin: fuera de una marca se
+          deshabilitaba, y al entrar a una, esta pantalla se bloquea entera
+          (`!isAdmin || impersonating`). Acá está donde están las marcas. */}
+      <div className="rounded-2xl px-3 py-2 mb-3 flex items-start gap-2"
         style={{ background: 'var(--surface-3)', border: '0.5px solid var(--border)' }}>
-        <div className="min-w-0">
-          <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--text)' }}>
-            <Sparkles size={14} /> Modo demo
-          </span>
-          <p className="text-[10px] text-gray-500 mt-1">
-            Llena TODO el panel —pedidos, clientes, productos, equipo— con una tienda de ejemplo
-            que despacha ~{PEDIDOS_POR_DIA.toLocaleString('es-PE')} pedidos al día entre tres
-            productos, con meses de recompras detrás. Para enseñar cómo se ve la herramienta
-            funcionando, sin esperar a que la marca venda.
-          </p>
-          <p className="text-[10px] text-gray-400 mt-1">
-            {tiendaDemoId
-              ? <>Solo <b>{nombreTiendaActual ?? 'esta marca'}</b> y solo en este dispositivo · no toca la base · nadie más lo ve.</>
-              : <>Entra a una marca para activarle el demo: se enciende de a una, no para todas.</>}
-          </p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={demo}
-          aria-label="Modo demo"
-          disabled={!tiendaDemoId}
-          onClick={() => tiendaDemoId && setDemo(tiendaDemoId, !demo)}
-          className="relative flex-shrink-0 rounded-full transition-colors"
-          style={{
-            width: 44, height: 26,
-            background: demo ? 'var(--brand)' : 'var(--border-strong)',
-            opacity: tiendaDemoId ? 1 : 0.4,
-            cursor: tiendaDemoId ? 'pointer' : 'not-allowed',
-          }}>
-          <span className="absolute top-[3px] rounded-full transition-all"
-            style={{ width: 20, height: 20, background: '#fff', left: demo ? 21 : 3 }} />
-        </button>
+        <Sparkles size={13} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }} />
+        <p className="text-[10px] text-gray-500">
+          <b style={{ color: 'var(--text)' }}>Modo demo:</b> llena TODO el panel de esa marca
+          —pedidos, clientes, productos, equipo— con una tienda de ejemplo que despacha
+          ~{PEDIDOS_POR_DIA.toLocaleString('es-PE')} pedidos al día, con meses de recompras.
+          Se enciende de a una marca, solo en este dispositivo, y no toca la base.
+        </p>
       </div>
 
       <div className="space-y-3">
@@ -225,6 +189,7 @@ export default function MarcaPage() {
               <span className="w-5 h-5 rounded-full border border-gray-200" style={{ background: s.color_primary }} />
               <span className="w-5 h-5 rounded-full border border-gray-200" style={{ background: s.color_dark }} />
             </div>
+            <InterruptorDemo storeId={s.id} nombre={s.nombre} />
             <button onClick={() => setEditing(s)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>Editar</button>
             {isSuper && (
               <button onClick={() => enterStore(s.id)} className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
@@ -248,6 +213,35 @@ async function uploadLogo(file: File, adminId: string): Promise<string | null> {
   const { error } = await supabase.storage.from('branding').upload(path, file, { contentType: file.type, upsert: true })
   if (error) return null
   return supabase.storage.from('branding').getPublicUrl(path).data.publicUrl
+}
+
+/**
+ * El interruptor de demo de UNA marca.
+ *
+ * Va en su fila y no en una tarjeta general porque el demo es por tienda: si
+ * estuviera arriba habría que preguntar "¿de cuál?", y esa pregunta ya la
+ * responde el sitio donde está el botón.
+ */
+function InterruptorDemo({ storeId, nombre }: { storeId: string; nombre: string }) {
+  const activo = useDemo(storeId)
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={activo}
+      aria-label={`Modo demo en ${nombre}`}
+      title={activo ? `Apagar el demo de ${nombre}` : `Ver ${nombre} con datos de ejemplo`}
+      onClick={() => setDemo(storeId, !activo)}
+      className="flex items-center gap-1.5 flex-shrink-0 px-2 py-1.5 rounded-xl"
+      style={{ background: activo ? 'var(--brand-tint)' : 'transparent' }}>
+      <Sparkles size={13} style={{ color: activo ? 'var(--brand)' : 'var(--text-faint)' }} />
+      <span className="relative rounded-full transition-colors"
+        style={{ width: 34, height: 20, background: activo ? 'var(--brand)' : 'var(--border-strong)' }}>
+        <span className="absolute top-[3px] rounded-full transition-all"
+          style={{ width: 14, height: 14, background: '#fff', left: activo ? 17 : 3 }} />
+      </span>
+    </button>
+  )
 }
 
 function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
