@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 
 // Marca gráfica de Kross — manual §3.
 //
@@ -10,8 +10,8 @@ import { useState } from 'react'
 // Sobre fondo claro el hueso desaparece, así que si existen estas variantes se
 // usan ahí:
 //
-//   public/logo-kross-claro.svg
-//   public/simbolo-kross-claro.svg
+//   public/logo-kross-claro.svg      → existe: derivada del maestro (§3.3)
+//   public/simbolo-kross-claro.svg   → no existe todavía: se dibuja el respaldo
 //
 // Si un archivo no está, se dibuja la versión de respaldo que hay más abajo:
 // la misma K de 5×5 módulos del manual, con los colores tomados de los tokens.
@@ -19,9 +19,29 @@ import { useState } from 'react'
 
 const M = 28
 
-/** ¿Estamos sobre una superficie oscura? Lo dice el tema aplicado al documento. */
-function enOscuro() {
-  return typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark'
+/**
+ * ¿Estamos sobre una superficie oscura? Lo dice el tema aplicado al documento.
+ *
+ * Va suscrito al atributo, no leído una sola vez: `useKrossTheme` y
+ * `usePanelTheme` escriben `data-theme` en un efecto, o sea DESPUÉS del primer
+ * render, y cambiar un atributo del DOM no vuelve a renderizar a nadie. Sin la
+ * suscripción, la pantalla se quedaba pidiendo el archivo de la superficie
+ * contraria —el lockup claro sobre ink, que es ink sobre ink— y solo se
+ * arreglaba de rebote cuando ese archivo no existía y el `onError` forzaba el
+ * reintento.
+ */
+function suscribirTema(alCambiar: () => void): () => void {
+  if (typeof MutationObserver === 'undefined') return () => {}
+  const obs = new MutationObserver(alCambiar)
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  return () => obs.disconnect()
+}
+
+const temaDelDocumento = (): string =>
+  (typeof document !== 'undefined' && document.documentElement.dataset.theme) || ''
+
+function useEnOscuro(): boolean {
+  return useSyncExternalStore(suscribirTema, temaDelDocumento, () => '') === 'dark'
 }
 
 /**
@@ -33,7 +53,8 @@ function enOscuro() {
  */
 function useArchivo(base: string): { src: string | null; fallar: () => void } {
   const [fallado, setFallado] = useState<string | null>(null)
-  const src = enOscuro() ? `/${base}.svg` : `/${base}-claro.svg`
+  const oscuro = useEnOscuro()
+  const src = oscuro ? `/${base}.svg` : `/${base}-claro.svg`
   return { src: fallado === src ? null : src, fallar: () => setFallado(src) }
 }
 
