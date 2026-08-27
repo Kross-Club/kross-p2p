@@ -632,6 +632,75 @@ aplicaciones. `PanelDerecha` es ese marco, y `PanelPedido` quedó como una líne
 De paso la ficha muestra lo que faltaba para decidir cómo tratar a alguien: **puntaje**,
 segmento, cliente desde cuándo, DNI y teléfono copiables, y el conteo de sus pedidos.
 
+## Siete cosas del uso diario (27-ago-2026)
+
+### El puntito verde es uno solo
+
+Lo tenía **solo la Lista**, con su propio canal y su propio `Set`. El Tablero no lo mostraba y
+el chat lo calculaba aparte. Es el mismo dato —quién tiene la app abierta ahora— y cambia lo
+que uno hace: a quien está mirando la pantalla se le escribe, y al que no, se le llama. Ahora
+vive en `src/lib/presencia.ts` y lo leen las tres.
+
+En demo sale del generador. La presencia real es de Supabase y en una tienda de ejemplo no hay
+nadie conectado: un tablero de mil pedidos al día donde ningún cliente está en línea no enseña
+la herramienta, enseña un dato apagado.
+
+### Avanzar de etapa pregunta antes
+
+**No se puede retroceder.** El cambio dispara avisos al comprador y puede ceder el pedido a
+otro rol, y un dedo que resbala en el móvil del vendedor deja un pedido en una etapa que no le
+toca y sin manera de volver. Ahora sale *"¿Ya está todo listo para «Confirmado»?"* con **Sí /
+Todavía no**.
+
+Lo mismo para **cambiar la cantidad** de un producto: se guarda solo, le cambia el total al
+comprador, y `+` y `−` están a un dedo de distancia.
+
+`src/components/Confirmar.tsx` es ese diálogo, y no un `window.confirm`: el del navegador sale
+con el dominio, sin contexto y sin poder explicar qué se está por hacer. Va por `createPortal`
+al `body` porque se usa **dentro** del cajón del pedido, y un `fixed` dentro de un contenedor
+animado se ancla al contenedor, no a la pantalla.
+
+### El pedido, en la columna y no en una ventana encima del chat
+
+El detalle —productos, cantidades, nota del CRM, cancelar— se abría como ventana en el centro
+de la pantalla, **encima de la conversación que habla justamente de él**, mientras media
+columna de la derecha quedaba vacía. En escritorio ahora cierra esa columna. En móvil sigue
+siendo hoja: ahí no hay columna donde ponerlo.
+
+### El cajón vuelve arriba el fondo — arreglado
+
+En el Tablero, abrir un pedido devolvía el scroll de atrás al inicio y uno perdía dónde estaba;
+en Lista y en Clientes no. La causa: `PanelDerecha` se declaraba dentro de la pantalla, o sea
+como descendiente del `<main>` que scrollea, y el `scrollIntoView` del chat —que baja al último
+mensaje al abrirse— arrastraba también a ese `<main>`. Ahora el cajón va por `createPortal` al
+`body`: no tiene ancestro que arrastrar. Por lo mismo se portó la galería de imágenes del
+pedido, que centra la imagen con `scrollIntoView`.
+
+### El botón de llamar era invisible
+
+`background: var(--text)` con un teléfono blanco encima. En el panel oscuro `--text` **es** casi
+blanco: blanco sobre blanco. Ahora usa el par `--invert` / `--invert-fg`, que está definido
+justamente para que el fondo y el icono se opongan en los dos temas.
+
+### La campana pasa a ser "¿está en la app?"
+
+Era una campana genérica que pedía permiso de notificaciones. Ahora es un teléfono y dice lo
+que de verdad importa: si este cliente está en la PWA.
+
+**El botón no se esconde cuando ya está.** Desinstalar no avisa a nadie, así que *"ya la tiene"*
+nunca es una certeza, y esconderlo dejaría al vendedor sin manera de reinvitarlo. Lo que cambia
+es el color y lo que dice. Los datos crudos van a la ficha del cliente, y son **dos, no uno**:
+
+| Dato | De dónde | Qué promete |
+|---|---|---|
+| `activated_at` | `buyers` | entró alguna vez — no promete que la push de hoy le llegue |
+| `push_activo` | ¿hay fila viva en `push_subscriptions`? | **hoy** le llega una notificación |
+
+Separarlos es lo que hace útil el dato: **quien entró y ya no recibe** es exactamente a quien
+hay que escribirle por WhatsApp en vez de mandarle una push que no va a llegar. `get-session`
+los adjunta a `buyer_contact`, o sea **solo para el vendedor**, con la misma regla de PII que el
+DNI y el teléfono.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

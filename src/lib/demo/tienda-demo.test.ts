@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tiendaDemo, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
+import { tiendaDemo, fichaDemoDeCliente, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
 import { columnaDelPedido, COLUMNAS } from '../order-tracking'
 import { estaVivo } from '../store-orders'
 
@@ -119,5 +119,57 @@ describe('abrir un pedido de ejemplo', () => {
   it('el audio de ejemplo es un WAV de verdad, no un botón muerto', () => {
     expect(AUDIO_DEMO.startsWith('data:audio/wav;base64,')).toBe(true)
     expect(AUDIO_DEMO.length).toBeGreaterThan(1000)
+  })
+})
+
+describe('la ficha de un cliente de ejemplo', () => {
+  // Abrir a una persona pedía `list-clients`, que consulta la base de verdad y
+  // no sabe nada de un `demo-cli-7`: la ficha decía "No se pudo cargar" justo
+  // donde se ve la recompra.
+  it('se puede abrir a cualquiera de la libreta', async () => {
+    const alguien = t.clientes.find(c => c.pedidos >= 2)!
+    const ficha = await fichaDemoDeCliente(alguien.id)
+    expect(ficha).not.toBeNull()
+    expect(ficha!.cliente.id).toBe(alguien.id)
+  })
+
+  it('quien no existe no inventa una ficha', async () => {
+    expect(await fichaDemoDeCliente('demo-cli-999999')).toBeNull()
+  })
+
+  // Las dos mitades: lo vivo (con chat) y lo entregado (sin chat que guardar).
+  it('junta los pedidos vivos y el historial, del más nuevo al más viejo', async () => {
+    const conVivo = t.pedidos.find(p => p.buyer_id)!
+    const ficha = (await fichaDemoDeCliente(conVivo.buyer_id!))!
+    expect(ficha.pedidos.length).toBeGreaterThan(0)
+    expect(ficha.pedidos.some(p => p.token)).toBe(true)
+
+    const fechas = ficha.pedidos.map(p => Date.parse(p.created_at ?? ''))
+    expect([...fechas].sort((a, b) => b - a)).toEqual(fechas)
+  })
+
+  it('el historial no finge tener chat', async () => {
+    const ficha = (await fichaDemoDeCliente(t.clientes.find(c => c.pedidos >= 3)!.id))!
+    for (const p of ficha.pedidos.filter(p => !p.token)) {
+      expect(p.stage).toBe('entregado')
+    }
+  })
+})
+
+describe('quién está en línea', () => {
+  // Un tablero de mil pedidos al día donde ningún cliente está conectado no
+  // enseña la herramienta: enseña un dato apagado.
+  it('hay compradores conectados, pero no todos', () => {
+    expect(t.enLinea.length).toBeGreaterThan(3)
+    expect(t.enLinea.length).toBeLessThan(t.pedidos.length)
+  })
+
+  it('los conectados son compradores que existen en la ventana viva', () => {
+    const deLaVentana = new Set(t.pedidos.map(p => p.buyer_id))
+    for (const id of t.enLinea) expect(deLaVentana.has(id)).toBe(true)
+  })
+
+  it('no se repiten', () => {
+    expect(new Set(t.enLinea).size).toBe(t.enLinea.length)
   })
 })

@@ -192,6 +192,18 @@ Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabac
 siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
 
+### `get-session` otra vez: saber si el cliente está en la app (27-ago-2026)
+
+```
+supabase functions deploy get-session --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Adjunta dos campos más a `buyer_contact` (que es **solo para el vendedor**, misma regla de PII
+que el DNI): `activated_at` —si el comprador entró alguna vez a la app— y `push_activo` —si hoy
+tiene una suscripción viva en `push_subscriptions`—. Sin el deploy, la ficha del cliente y el
+botón de la cabecera muestran el caso "nunca ha entrado a la app" para todos: no rompe nada,
+pero el dato no sirve hasta desplegar. No hay SQL: las dos columnas ya existen.
+
 ### En vivo y el CRM esperan el mismo deploy (26-ago-2026)
 
 `get-store-sessions` **todavía no devuelve en producción** `product_id`, `dispatch_type`,

@@ -225,6 +225,10 @@ export interface PedidoHistorico {
 
 export interface TiendaDemo {
   pedidos: StoreOrder[]
+  /** Compradores "conectados" ahora mismo, para el puntito verde. La presencia
+   *  de verdad la da Supabase y en una tienda de ejemplo no hay nadie: un
+   *  tablero donde ningún cliente está en línea no enseña la herramienta. */
+  enLinea: string[]
   /** Lo entregado en los últimos meses. Es lo que da recompras a la ficha del
    *  cliente y peso al LTV; no son pedidos vivos, así que no tienen chat. */
   historial: PedidoHistorico[]
@@ -378,7 +382,12 @@ async function construir(): Promise<TiendaDemo> {
     vendidos: vendidosPorProducto.get(String(p.precio)) ?? 0,
   }))
 
-  return { pedidos, historial, clientes, productos, equipo: EQUIPO, origenPorProducto }
+  // Uno de cada seis compradores de la ventana viva está mirando la app. Sale
+  // del mismo azar sembrado que todo lo demás, así que no parpadea al cambiar
+  // de pantalla.
+  const enLinea = [...new Set(pedidos.filter(() => r() < 0.17).map(p => p.buyer_id ?? ''))].filter(Boolean)
+
+  return { pedidos, historial, enLinea, clientes, productos, equipo: EQUIPO, origenPorProducto }
 }
 
 /**

@@ -83,11 +83,21 @@ Deno.serve(async (req) => {
   if (session.buyer_id) {
     const { data: b } = await supabase
       .from('buyers')
-      .select('can_call, nombre, document_type, document_number, phone')
+      .select('can_call, nombre, document_type, document_number, phone, activated_at')
       .eq('id', session.buyer_id)
       .maybeSingle()
     buyerCanCall = !!b?.can_call
     if (viewerIsSeller && b) {
+      // ¿Se le puede mandar una push AHORA? No es lo mismo que "entró alguna
+      // vez": desinstalar la app no avisa a nadie, pero la suscripción se cae
+      // con ella. Lo único honesto que se puede decir es si HOY hay una
+      // suscripción viva, y eso es justo lo que decide si la campaña llega.
+      const { count } = await supabase
+        .from('push_subscriptions')
+        .select('id', { count: 'exact', head: true })
+        .eq('buyer_id', session.buyer_id)
+        .eq('sub_role', 'buyer')
+
       buyerContact = {
         nombre: b.nombre ?? session.buyer_name ?? null,
         document_type: b.document_type ?? 'DNI',
@@ -97,6 +107,10 @@ Deno.serve(async (req) => {
         // existe en ningún lado: Yape no lo revela — lo que sí llega del pago
         // es la operación bancaria (abajo).
         phone: b.phone ?? session.buyer_phone ?? null,
+        // Las dos mitades de "¿está en la app?": cuándo entró por primera vez
+        // (o nunca), y si hoy puede recibir notificaciones.
+        activated_at: b.activated_at ?? null,
+        push_activo: (count ?? 0) > 0,
       }
     }
   }

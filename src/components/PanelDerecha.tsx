@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { useIsDesktop } from '../lib/use-desktop'
 
@@ -12,6 +13,12 @@ import { useIsDesktop } from '../lib/use-desktop'
 // (`Layout`). Un cajón anclado a la VENTANA se desbordaría sobre ese gris; acá
 // se repite esa misma caja —mismas medidas, mismo `p-4`— y el cajón entra
 // dentro, recortado por sus esquinas redondeadas.
+//
+// Va por `createPortal` al `body` y no donde se declara. Declarado dentro de la
+// pantalla queda como descendiente del `<main>` que scrollea, y cualquier
+// `scrollIntoView` de adentro —el chat baja al último mensaje al abrirse—
+// arrastra también a ese `<main>`: el Tablero volvía arriba y uno perdía dónde
+// estaba. Colgado del `body` no tiene ancestro que arrastrar.
 
 export default function PanelDerecha({ etiqueta, ancho = 'min(560px, 100%)', onCerrar, children }: {
   /** Para lectores de pantalla: qué es lo que se abrió. */
@@ -53,18 +60,19 @@ export default function PanelDerecha({ etiqueta, ancho = 'min(560px, 100%)', onC
   )
 
   if (!desktop) {
-    return <div className="fixed inset-0 z-50">{velo}{cajon('100%')}</div>
+    return createPortal(<div className="fixed inset-0 z-50">{velo}{cajon('100%')}</div>, document.body)
   }
 
   // `pointer-events-none` en la capa de fuera: hacer clic en el gris de los
   // bordes no cierra nada, porque ahí no hay nada.
-  return (
+  return createPortal(
     <div className="fixed inset-4 z-50 flex items-center justify-center pointer-events-none">
       <div className="relative overflow-hidden rounded-2xl pointer-events-auto"
         style={{ width: 'min(1440px, 100%, calc((100vh - 2rem) * 16 / 9))', aspectRatio: '16 / 9' }}>
         {velo}
         {cajon(ancho)}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -4,6 +4,8 @@ import { COLUMNAS, columnaDelPedido, antiguedad } from '../../lib/order-tracking
 import { estaVivo } from '../../lib/store-orders'
 import { plataDe, soles } from '../../lib/order-money'
 import { horaOFecha } from '../../lib/fechas'
+import { useSeller } from '../../lib/seller-session'
+import { useCompradoresEnLinea } from '../../lib/presencia'
 import ScrollHorizontal from '../../components/ScrollHorizontal'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 
@@ -22,6 +24,11 @@ export default function PedidosTablero({ lista, onAbrir }: {
   /** Abre el pedido en el panel de la derecha, sin salir del tablero. */
   onAbrir: (token: string) => void
 }) {
+  const { effective } = useSeller()
+  // El mismo puntito verde que la Lista y el chat: quien está mirando la app
+  // ahora se atiende distinto —se le escribe, no se le llama—, y eso vale igual
+  // en el tablero.
+  const enLinea = useCompradoresEnLinea(effective?.store_id)
 
   // `leidoEn` es el instante en que llegaron los datos: medir la antigüedad
   // contra eso —y no contra cada pintada— hace que todas las tarjetas cuenten
@@ -60,7 +67,13 @@ export default function PedidosTablero({ lista, onAbrir }: {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="font-bold text-gray-800 text-sm truncate">{s.buyer_name || 'Comprador'}</p>
+            <p className="font-bold text-gray-800 text-sm truncate flex items-center gap-1.5">
+              {!!s.buyer_id && enLinea.has(s.buyer_id) && (
+                <span className="w-2 h-2 rounded-full flex-shrink-0" title="En línea ahora"
+                  style={{ background: 'var(--ok-fg)' }} />
+              )}
+              <span className="truncate">{s.buyer_name || 'Comprador'}</span>
+            </p>
             {/* Cuándo entró: la cohorte a la que pertenece el pedido. Es lo que
                 el filtro de arriba recorta, así que se ve en la tarjeta. */}
             <span className="text-[9px] text-gray-300 flex-shrink-0" title="Cuándo entró el pedido">
