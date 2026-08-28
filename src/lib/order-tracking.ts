@@ -56,8 +56,6 @@ export function courierDelPedido(p: PedidoRastreable): 'SHALOM' | 'OLVA' | null 
   return c === 'SHALOM' || c === 'OLVA' ? c : null
 }
 
-const NOMBRE_COURIER: Record<string, string> = { SHALOM: 'Shalom', OLVA: 'Olva' }
-
 /**
  * Los pasos que le tocan a ESTE pedido, con cuál está activo.
  *
@@ -68,7 +66,6 @@ const NOMBRE_COURIER: Record<string, string> = { SHALOM: 'Shalom', OLVA: 'Olva' 
 export function pasosDelPedido(p: PedidoRastreable): Paso[] {
   const stage = toStage(p.stage)
   const porAgencia = isPickupDispatch(p.dispatch_type)
-  const courier = courierDelPedido(p)
   const conAdelanto = Number(p.advance_amount ?? 0) > 0
 
   const claves: PasoKey[] = ['nuevo']
@@ -78,20 +75,20 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
   else claves.push('en_camino')
   claves.push('entregado')
 
-  const etiquetas: Record<PasoKey, string> = {
-    nuevo: 'Pedido creado', validando: 'Validando pago', confirmado: 'Confirmado',
-    registrado: courier ? `Registrado en ${NOMBRE_COURIER[courier]}` : 'Registrado',
-    en_origen: courier ? `En agencia de ${NOMBRE_COURIER[courier]}` : 'En agencia de origen',
-    transito: 'En tránsito', en_agencia: 'En agencia de destino',
-    en_camino: 'En camino', entregado: 'Entregado', no_entregado: 'No entregado',
-  }
+  // Los nombres salen de `PASOS` y no se especializan con el courier. Los tuvo:
+  // "Registrado en Shalom", "En agencia de Shalom", "En agencia de destino". Se
+  // leían bien de a uno y mal de a cien — el tablero decía "En origen" y la
+  // cabecera del mismo pedido decía "En agencia de Shalom", y eso obliga a
+  // traducir mentalmente entre dos pantallas que hablan de lo mismo. De qué
+  // courier es ya lo dice la barra del envío, que está justo debajo.
+  const etiquetas = PASOS
 
   // El fracaso no es un paso más: cierra la línea donde haya quedado.
   if (stage === 'no_entregado') {
     const hasta = Math.max(0, claves.length - 2)
     return [
-      ...claves.slice(0, hasta).map(key => paso(key, etiquetas[key], 'hecho')),
-      paso('no_entregado', etiquetas.no_entregado, 'activo'),
+      ...claves.slice(0, hasta).map(key => paso(key, etiquetas[key].label, 'hecho')),
+      paso('no_entregado', etiquetas.no_entregado.label, 'activo'),
     ]
   }
 
@@ -103,7 +100,7 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
 
   return claves.map((key, i) => paso(
     key,
-    etiquetas[key],
+    etiquetas[key].label,
     i < actual ? 'hecho' : i === actual ? 'activo' : 'pendiente',
   ))
 }

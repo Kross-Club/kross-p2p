@@ -115,7 +115,7 @@ el tablero los agrupa aparte y el resumen los cuenta en las notas, y los dos mod
 quieren —bandeja y mapa— los descartan al pintar, que es gratis. Cambiar de modo no vuelve a
 pedir nada.
 
-⚠️ **El precio, anotado para cuando importe:** el `limit(80)` del servidor se aplica **antes**
+⚠️ **El precio, anotado para cuando importe:** el `limit` del servidor se aplica **antes**
 de filtrar, así que los cancelados ocupan lugar en esa ventana y la bandeja puede mostrar
 menos de 80 pedidos vivos. Con los volúmenes de hoy (4 pedidos en la marca más grande) no
 roza; el arreglo real cuando roce es paginar o subir el límite en `get-store-sessions`, no
@@ -1393,12 +1393,35 @@ abierto es el número 340 y solo hay cien pintadas, no hay nada a lo que ir. La 
 estira hasta alcanzarlo (`cuantasPintar`). No es un caso raro — es justo lo que pasa cuando
 uno abre un pedido, se va a otra cosa y vuelve.
 
-> **Hoy no se dispara, y conviene saberlo.** `get-store-sessions` corta en **80** pedidos
-> (`limit(80)`), así que la lista nunca llega a cien y el paginado queda inerte. Se
-> construye igual porque el momento de subir ese tope es exactamente el momento en que
-> hace falta, y porque el estirón hasta la fila marcada **sí** hace falta ya. Subir el tope
-> es otra decisión: el `limit` se aplica ANTES de filtrar por estado, así que traer más
-> también cambia qué entra.
+### Y esté en la vista que esté
+
+La página no era el único sitio donde se podía perder. **Cada vista recorta distinto**: si el
+pedido abierto está en "Sin responder" y uno se fue a "Favoritos", en la pantalla no hay
+ninguna fila a la que llevarlo. El botón se quedaba quieto y parecía roto.
+
+Ahora, al pulsarlo, **cambia de vista si hace falta**. Se busca la primera vista que lo
+contenga (`vistaQueContiene`), o sea la más específica: si está sin responder Y es favorito,
+va a "Sin responder", que es la que dice por qué hay que mirarlo. Nunca falla — "Chats
+recientes" no recorta nada, así que siempre hay dónde encontrarlo.
+
+Dos cosas tuvieron que moverse para eso:
+
+- **La vista subió a `PedidosPage`**, con el modo y el filtro. Quien pinta el botón tiene que
+  poder cambiarla; quien la tenía estaba una capa más abajo.
+- **El desplazamiento aprendió a esperar.** Al cambiar de vista, la fila todavía no existe
+  cuando el clic termina. La petición queda anotada y se cumple en cuanto el nodo aparece, un
+  instante después (`usePunteroAlMarcado`). De regalo, también funciona cuando la fila aún no
+  ha llegado porque la lista estaba cargando.
+
+El tope del servidor subió de **80 a 500** el mismo día (`get-store-sessions`). Con 80, el
+panel enseñaba una rebanada sin decirlo: una tienda que despacha cien al día perdía de vista
+lo de anteayer, y el filtro de "30 días" contaba sobre lo que había llegado, no sobre lo que
+hay. Ese era el costo caro — el `limit` se aplica **antes** de filtrar por estado, así que
+cortar bajo también decide QUÉ entra.
+
+500 filas con su chat son unos cuantos cientos de kilobytes: caro para pedirlo en cada
+pantalla, barato una vez por carga. Cuando una marca lo pase de largo, lo que toca no es
+subirlo otra vez — es paginar en el servidor con un cursor por `created_at`.
 
 ### Y se fue el buscador de la Lista
 
@@ -1420,8 +1443,14 @@ Shalom ya reporta `EN_TRANSITO` está en tránsito aunque nadie del equipo haya 
 el chat decía lo que decía el reloj que no manda.
 
 Ahora la barra muestra el **paso del eje** (`pasoActual`), que es lo mismo que pinta el
-tablero, con la etiqueta específica cuando la hay — "Registrado en Shalom", "En agencia de
-Shalom" — que la genérica no tiene.
+tablero.
+
+Y con el MISMO nombre, que fue el segundo hallazgo: las etiquetas se especializaban con el
+courier —"Registrado en Shalom", "En agencia de Shalom", "En agencia de destino"—. Se leían
+bien de a uno y mal de a cien: el tablero decía **En origen** y la cabecera del mismo pedido
+decía **En agencia de Shalom**, obligando a traducir entre dos pantallas que hablan de lo
+mismo. De qué courier es ya lo dice la barra del envío, que está dos tarjetas más abajo. Un
+solo juego de nombres: el del tablero.
 
 Y los nombres salen de **una sola definición**: `PASOS` en `order-tracking.ts`, de donde
 `COLUMNAS` ahora se deriva en vez de repetirlos. El detalle del pedido tira del mismo sitio.
@@ -1430,6 +1459,16 @@ Tres pantallas nombrando lo mismo, escrito una vez.
 > Lo que se VE y lo que se MUEVE siguen siendo cosas distintas, y ahí estaba la trampa: el
 > botón *avanzar* sigue moviendo el `stage`, porque las fases del courier no son nuestras
 > para marcarlas. Lo único que cambió es que el estado que se lee es el del eje completo.
+
+### Los tres cierres, juntos y al final
+
+"No entregado" estaba suelto en la fila del estado, **pegado al botón de avanzar** — que es
+justo su contrario. Ahí se pulsa por error.
+
+Es un cierre, no un paso: termina el pedido igual que cancelarlo o anularlo. Así que se fue
+abajo con los otros dos, los tres en rojo y del mismo tamaño, que es donde uno busca las
+cosas que no se deshacen. La regla de cuándo se ofrece no cambió: solo desde `confirmado` —
+antes de que el pedido salga al mundo, lo que corresponde es cancelar, no "no entregar".
 
 ## Ver también
 

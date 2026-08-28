@@ -8,7 +8,7 @@ import { useIsDesktop } from '../../lib/use-desktop'
 import { NOTA_META } from '../../lib/order-chips'
 import { estaVivo } from '../../lib/store-orders'
 import { horaOFecha, hace } from '../../lib/fechas'
-import { datosDeFila, verBandeja, VISTAS, VISTA_INICIAL } from '../../lib/bandeja'
+import { datosDeFila, verBandeja, VISTAS } from '../../lib/bandeja'
 import type { Vista, FilaBandeja } from '../../lib/bandeja'
 import { useFavoritos } from '../../lib/favoritos'
 import { POR_PAGINA, cuantasPintar, faltanFilas, resumenDePaginado } from '../../lib/paginacion'
@@ -141,7 +141,7 @@ function Actividad({ fila, ahora }: { fila: FilaBandeja; ahora: number }) {
   )
 }
 
-export default function PedidosLista({ lista, onAbrir, marcado, refMarcado }: {
+export default function PedidosLista({ lista, onAbrir, marcado, refMarcado, vista, onVista }: {
   lista: StoreOrders
   /** Abre el pedido en el panel de la derecha, sin salir de la lista. */
   onAbrir: (token: string) => void
@@ -152,6 +152,12 @@ export default function PedidosLista({ lista, onAbrir, marcado, refMarcado }: {
    *  de filtros, una capa más arriba, así que esta pantalla solo la entrega.
    *  Ver `usePunteroAlMarcado`. */
   refMarcado?: (el: HTMLElement | null) => void
+  /** La vista vive arriba, con el modo y el filtro. Tuvo que subir por el botón
+   *  "ir al pedido seleccionado": si el pedido está en otra vista, para llevar a
+   *  alguien hasta él hay que CAMBIAR de vista, y quien pulsa el botón está una
+   *  capa más arriba que quien la tenía. */
+  vista: Vista
+  onVista: (v: Vista) => void
 }) {
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
@@ -159,7 +165,6 @@ export default function PedidosLista({ lista, onAbrir, marcado, refMarcado }: {
   // el Tablero, el chat y la pantalla de Equipo.
   const onlineBuyers = useCompradoresEnLinea(effective?.store_id)
   const { porId } = useEquipo(effective)
-  const [vista, setVista] = useState<Vista>(VISTA_INICIAL)
   const favoritos = useFavoritos(effective?.store_id)
   // `gen` = el `leidoEn` de la lista sobre la que se contaron estos bumps.
   const [bumpsRef, setBumps] = useState<{ gen: number; por: Record<string, number> }>({ gen: 0, por: {} })
@@ -294,7 +299,7 @@ export default function PedidosLista({ lista, onAbrir, marcado, refMarcado }: {
         const urge = v.key === 'sin_responder' && n > 0
         if (chips) {
           return (
-            <button key={v.key} type="button" onClick={() => setVista(v.key)}
+            <button key={v.key} type="button" onClick={() => onVista(v.key)}
               title={v.pregunta} aria-pressed={activo}
               className="text-[11px] px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap"
               style={activo
@@ -305,7 +310,7 @@ export default function PedidosLista({ lista, onAbrir, marcado, refMarcado }: {
           )
         }
         return (
-          <button key={v.key} type="button" onClick={() => setVista(v.key)}
+          <button key={v.key} type="button" onClick={() => onVista(v.key)}
             title={v.pregunta} aria-pressed={activo}
             className="bg-white border rounded-2xl px-4 py-3 text-left transition-colors"
             style={activo

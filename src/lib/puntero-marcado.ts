@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { haciaDonde } from './fuera-de-vista'
 import type { Direccion } from './fuera-de-vista'
 
@@ -88,10 +88,33 @@ export function usePunteroAlMarcado(nodo: HTMLElement | null, clave: string | nu
     }
   }, [nodo, clave])
 
-  const ir = useCallback(() => {
+  // ── Ir, aunque la fila todavía no exista ──
+  //
+  // Pulsar el botón no siempre puede desplazar en el acto: si el pedido está en
+  // otra vista de la bandeja, o más allá de las filas pintadas, su nodo aún no
+  // está en la pantalla. La petición queda ANOTADA y se cumple en cuanto el
+  // nodo aparece — que es un instante después, cuando la pantalla se reordenó.
+  //
+  // En un ref y no en estado: es una intención pendiente, no algo que se pinte.
+  // Con estado habría que limpiarla desde el efecto, que es justo la cascada de
+  // renders que React marca.
+  const pendiente = useRef(false)
+
+  const centrar = (el: HTMLElement) => {
     // `center` en los dos ejes: el tablero desplaza en dos, y dejarlo pegado a
     // un borde es dejarlo medio tapado por la columna de al lado.
-    nodo?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+  }
+
+  const ir = useCallback(() => {
+    if (nodo) { centrar(nodo); return }
+    pendiente.current = true
+  }, [nodo])
+
+  useEffect(() => {
+    if (!pendiente.current || !nodo) return
+    pendiente.current = false
+    centrar(nodo)
   }, [nodo])
 
   return { direccion: clave && fuera?.clave === clave ? fuera.dir : null, ir }

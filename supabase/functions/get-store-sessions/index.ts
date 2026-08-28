@@ -44,7 +44,17 @@ Deno.serve(async (req) => {
     `)
     .in('status', includeCancelled ? ['active', 'cancelado', 'anulado'] : ['active'])
     .order('created_at', { ascending: false })
-    .limit(80)
+    // 500 y no 80 (28-ago-2026). Con 80 el panel enseñaba una rebanada sin
+    // decirlo: una tienda que despacha cien al día perdía de vista lo de
+    // anteayer, y el filtro de "30 días" contaba sobre lo que había llegado, no
+    // sobre lo que hay. Ese es el costo caro — el `limit` se aplica ANTES de
+    // filtrar por estado, así que cortar bajo también decide QUÉ entra.
+    //
+    // 500 filas con su chat son unos cuantos cientos de kilobytes: caro para
+    // pedirlo en cada pantalla, barato una vez cada carga. Cuando una marca lo
+    // pase de largo, lo que toca no es subirlo otra vez — es paginar en el
+    // servidor con un cursor por `created_at`.
+    .limit(500)
 
   // A specific agent → every order they're involved in, regardless of the
   // store_id label (orders and sellers can carry different store ids).
