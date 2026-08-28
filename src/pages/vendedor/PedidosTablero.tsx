@@ -1,4 +1,5 @@
 import { ChevronRight, Package } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { NOTA_META, CERRADO_SUAVE, NEUTRO, ALERTA } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido, antiguedad } from '../../lib/order-tracking'
 import { estaVivo } from '../../lib/store-orders'
@@ -19,6 +20,68 @@ import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 //
 // §6.1: la etapa la dice la columna, no el color. Solo la última lleva lima.
 const etapaChip = (key: string) => (key === 'entregado' ? CERRADO_SUAVE : NEUTRO)
+
+/**
+ * La tarjeta de un pedido en el tablero.
+ *
+ * **A nivel de módulo, no dentro del render.** Declarado ahí adentro, el
+ * componente cambia de identidad en cada pintada y React desmonta y vuelve a
+ * montar TODAS las tarjetas; con el tablero scrolleando en su propia caja, eso
+ * colapsaba su alto por un instante, el navegador recortaba el scroll a cero y
+ * la vista saltaba al principio. Se notaba sobre todo en la columna más alta
+ * —la única donde uno llega a estar scrolleado hondo— y por eso parecía cosa de
+ * "la primera columna".
+ *
+ * El repo ya lo decía dos veces, en `chipAntiguedad` y en el grupo de cierre;
+ * esta era la que se había quedado.
+ */
+function TarjetaPedido({ s, ahora, enLinea, marcado, chip, onAbrir }: {
+  s: StoreOrder
+  ahora: number
+  enLinea: ReadonlySet<string>
+  marcado?: string | null
+  chip: (s: StoreOrder) => ReactNode
+  onAbrir: (token: string) => void
+}) {
+  return (
+    <button onClick={() => s.token && onAbrir(s.token)} disabled={!s.token}
+      className="w-full bg-white rounded-2xl p-3 shadow-sm text-left border"
+      style={!!marcado && s.token === marcado
+        ? { borderColor: 'var(--brand)', boxShadow: '0 0 0 1px var(--brand)' }
+        : { borderColor: 'var(--border)' }}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="font-bold text-gray-800 text-sm truncate flex items-center gap-1.5">
+              {!!s.buyer_id && enLinea.has(s.buyer_id) && (
+                <span className="w-2 h-2 rounded-full flex-shrink-0" title="En línea ahora"
+                  style={{ background: 'var(--ok-fg)' }} />
+              )}
+              <span className="truncate">{s.buyer_name || 'Comprador'}</span>
+            </p>
+            {/* Cuándo entró: la cohorte a la que pertenece el pedido. Es lo que
+                el filtro de arriba recorta, así que se ve en la tarjeta. */}
+            <span className="text-[9px] text-gray-300 flex-shrink-0" title="Cuándo entró el pedido">
+              {horaOFecha(s.created_at, ahora)}
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 truncate">{s.product_name} · {s.pack_name || soles(s.product_price)}</p>
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {s.seller_name && <span className="text-[10px] text-gray-400">Atiende: {s.seller_name.split(' ')[0]}</span>}
+            {chip(s)}
+            {s.nota && NOTA_META[s.nota] && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                style={NOTA_META[s.nota].style}>
+                {NOTA_META[s.nota].label}
+              </span>
+            )}
+          </div>
+        </div>
+        <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1" />
+      </div>
+    </button>
+  )
+}
 
 export default function PedidosTablero({ lista, onAbrir, marcado }: {
   lista: StoreOrders
@@ -65,45 +128,6 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
       </span>
     )
   }
-
-  const Card = ({ s }: { s: StoreOrder }) => (
-    <button onClick={() => s.token && onAbrir(s.token)} disabled={!s.token}
-      className="w-full bg-white rounded-2xl p-3 shadow-sm text-left border"
-      style={!!marcado && s.token === marcado
-        ? { borderColor: 'var(--brand)', boxShadow: '0 0 0 1px var(--brand)' }
-        : { borderColor: 'var(--border)' }}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="font-bold text-gray-800 text-sm truncate flex items-center gap-1.5">
-              {!!s.buyer_id && enLinea.has(s.buyer_id) && (
-                <span className="w-2 h-2 rounded-full flex-shrink-0" title="En línea ahora"
-                  style={{ background: 'var(--ok-fg)' }} />
-              )}
-              <span className="truncate">{s.buyer_name || 'Comprador'}</span>
-            </p>
-            {/* Cuándo entró: la cohorte a la que pertenece el pedido. Es lo que
-                el filtro de arriba recorta, así que se ve en la tarjeta. */}
-            <span className="text-[9px] text-gray-300 flex-shrink-0" title="Cuándo entró el pedido">
-              {horaOFecha(s.created_at, ahora)}
-            </span>
-          </div>
-          <p className="text-xs text-gray-400 truncate">{s.product_name} · {s.pack_name || soles(s.product_price)}</p>
-          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            {s.seller_name && <span className="text-[10px] text-gray-400">Atiende: {s.seller_name.split(' ')[0]}</span>}
-            {chipAntiguedad(s)}
-            {s.nota && NOTA_META[s.nota] && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-                style={NOTA_META[s.nota].style}>
-                {NOTA_META[s.nota].label}
-              </span>
-            )}
-          </div>
-        </div>
-        <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1" />
-      </div>
-    </button>
-  )
 
   // Se agrupa UNA vez. `columnaDelPedido` garantiza que cada pedido caiga en
   // exactamente una columna.
@@ -177,7 +201,7 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  {col.items.map(s => <Card key={s.id} s={s} />)}
+                  {col.items.map(s => <TarjetaPedido key={s.id} s={s} ahora={ahora} enLinea={enLinea} marcado={marcado} chip={chipAntiguedad} onAbrir={onAbrir} />)}
                   {col.items.length === 0 && (
                     <div className="bg-gray-50 rounded-xl p-4 text-center text-[10px] text-gray-300 flex flex-col items-center gap-1">
                       <Package size={16} className="opacity-40" /> vacío

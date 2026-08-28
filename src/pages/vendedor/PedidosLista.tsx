@@ -1,26 +1,113 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Search, MessageCircle, ChevronRight } from 'lucide-react'
+import { Search, MessageCircle, ChevronRight, CornerUpLeft } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
+import { useEquipo, involucradosDe } from '../../lib/store-team'
 import { useIsDesktop } from '../../lib/use-desktop'
-import { stageChip, NOTA_META } from '../../lib/order-chips'
-import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
+import { NOTA_META } from '../../lib/order-chips'
 import { estaVivo } from '../../lib/store-orders'
-import { soles } from '../../lib/order-money'
-import { horaOFecha } from '../../lib/fechas'
+import { horaOFecha, hace } from '../../lib/fechas'
+import { datosDeFila, ordenarBandeja, PRIORIDADES, PRIORIDAD_INICIAL } from '../../lib/bandeja'
+import type { Prioridad, FilaBandeja } from '../../lib/bandeja'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
+import type { SellerProfile } from '../../lib/seller-session'
 
-
+// ─── La Lista: a quién le debo un mensaje ────────────────────────────────────
+//
+// Lista y Tablero miran los mismos pedidos y responden preguntas distintas
+// (docs/11-RELACIONES.md). El Tablero pregunta dónde se atora la OPERACIÓN —y
+// por eso muestra etapa, producto y plata—; la Lista pregunta a quién le debo un
+// MENSAJE, y eso se responde con la conversación: quién habló último, hace
+// cuánto, quién atiende, qué está sin leer.
+//
+// Repetir acá la etapa y el producto era llenar la pantalla con lo que ya está
+// resuelto dos clics más allá, y dejar fuera lo único que esta vista decide: el
+// ORDEN. Una bandeja no se lee entera — se lee de arriba abajo hasta que se
+// acaba el tiempo, así que lo que está arriba ES la pantalla (lib/bandeja.ts).
 
 const VACIO: Record<string, number> = {}
 
-// La etiqueta de la etapa sale de `columnaDelPedido`, no del `stage` crudo: con
-// el chip leyendo el stage y el CRM leyendo la fase del courier, el mismo pedido
-// decía "En camino" acá y "En destino" allá.
-const ETIQUETA: Record<string, string> = {
-  ...Object.fromEntries(COLUMNAS.map(c => [c.key, c.label])),
-  no_entregado: 'No entregado',
+const ROL_COLOR = (rol?: string | null) => {
+  const r = (rol ?? '').toLowerCase()
+  if (r.includes('venta')) return '#55C8F5'
+  if (r.includes('logist') || r.includes('despacho')) return '#863bff'
+  if (r.includes('soporte')) return '#14B8A6'
+  if (r.includes('motoriz')) return '#FF8C00'
+  return '#888'
+}
+
+/** El avatar del comprador, con su puntito de conexión. Módulo y no función
+ *  dentro del render: un componente declarado ahí adentro cambia de identidad
+ *  en cada pintada, y React desmonta y vuelve a montar la fila entera. */
+function AvatarComprador({ name, online, size }: { name?: string | null; online: boolean; size: number }) {
+  return (
+    <div className="relative flex-shrink-0">
+      <div className="rounded-2xl flex items-center justify-center font-black"
+        style={{ background: 'var(--surface-3)', color: 'var(--text)', width: size, height: size, fontSize: size >= 40 ? 18 : 13 }}>
+        {(name || 'C')[0]}
+      </div>
+      {online && (
+        <div className={`absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white ${size >= 40 ? 'w-3.5 h-3.5' : 'w-3 h-3'}`}
+          style={{ background: 'var(--ok-fg)' }} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Quién atiende este pedido.
+ *
+ * Los avatares se superponen porque el dato que importa es "cuántos y quiénes",
+ * no cada cara: en una fila de tabla, tres círculos separados ocupan lo que
+ * ocupa una columna entera. El primero es el asignado — el dueño del hilo.
+ */
+function Asesores({ ids, porId }: { ids: string[]; porId: Map<string, SellerProfile> }) {
+  if (ids.length === 0) {
+    return <span className="text-[11px]" style={{ color: 'var(--text-faint)' }}>Sin asignar</span>
+  }
+  const visibles = ids.slice(0, 3)
+  return (
+    <div className="flex items-center">
+      {visibles.map((id, i) => {
+        const m = porId.get(id)
+        const nombre = m?.nombre ?? '?'
+        const color = ROL_COLOR(m?.role_label)
+        return (
+          <span key={id}
+            title={m ? `${nombre}${m.role_label ? ` · ${m.role_label}` : ''}` : 'Otro miembro del equipo'}
+            className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 border-2"
+            style={{
+              background: `${color}22`, color, borderColor: 'var(--surface)',
+              marginLeft: i === 0 ? 0 : -7, zIndex: visibles.length - i,
+            }}>
+            {nombre.charAt(0).toUpperCase()}
+          </span>
+        )
+      })}
+      {ids.length > visibles.length && (
+        <span className="text-[10px] ml-1.5" style={{ color: 'var(--text-faint)' }}>
+          +{ids.length - visibles.length}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** La actividad del hilo: cuándo se movió, y si está esperando respuesta. */
+function Actividad({ fila, ahora }: { fila: FilaBandeja; ahora: number }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] whitespace-nowrap"
+        style={{ color: fila.esperando ? 'var(--danger-fg)' : 'var(--text-faint)' }}>
+        {fila.esperando && <CornerUpLeft size={11} className="inline mr-1 -mt-0.5" />}
+        {hace(ahora - fila.ultimoEn)}
+      </p>
+      {fila.esperando && (
+        <p className="text-[10px] whitespace-nowrap" style={{ color: 'var(--danger-fg)' }}>sin responder</p>
+      )}
+    </div>
+  )
 }
 
 export default function PedidosLista({ lista, onAbrir, marcado }: {
@@ -33,11 +120,12 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
 }) {
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
-  // El puntito verde sale de una sola definición, compartida con el Tablero y
-  // con el chat (lib/presencia.ts). Antes vivía acá y por eso era la única
-  // pantalla que lo tenía.
+  // El puntito verde y el equipo salen de una sola definición, compartidas con
+  // el Tablero, el chat y la pantalla de Equipo.
   const onlineBuyers = useCompradoresEnLinea(effective?.store_id)
+  const { porId } = useEquipo(effective)
   const [search, setSearch] = useState('')
+  const [prioridad, setPrioridad] = useState<Prioridad>(PRIORIDAD_INICIAL)
   // `gen` = el `leidoEn` de la lista sobre la que se contaron estos bumps.
   const [bumpsRef, setBumps] = useState<{ gen: number; por: Record<string, number> }>({ gen: 0, por: {} })
   const seenRef = useRef<Set<string>>(new Set())
@@ -84,80 +172,65 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionIds, leidoEn])
 
-  const filtered = sessions.filter(s =>
-    !search ||
-    s.buyer_name?.toLowerCase().includes(search.toLowerCase()) ||
-    s.product_name?.toLowerCase().includes(search.toLowerCase())
-  )
-
   const scopeLabel = onlyMine ? 'Tus pedidos asignados' : 'Todos los pedidos de la tienda'
 
-  // Todo lo que cada fila necesita, calculado una sola vez: la tarjeta de móvil
-  // y la fila de escritorio pintan EXACTAMENTE los mismos datos.
   const meId = effective?.auth_user_id
   const unreadOf = (s: StoreOrder) =>
     (s.chat_messages?.filter(m => m.sender_role === 'buyer' && !m.read_at).length ?? 0) + (bumps[s.id] ?? 0)
 
-  const rows = filtered.map(session => {
-    const lastMsg = session.chat_messages?.slice(-1)[0]
-    return {
+  // Todo lo que cada fila necesita, calculado una vez: la tarjeta de móvil y la
+  // fila de escritorio pintan EXACTAMENTE los mismos datos.
+  const filas = sessions
+    .filter(s => !search
+      || s.buyer_name?.toLowerCase().includes(search.toLowerCase())
+      || s.buyer_phone?.includes(search))
+    .map(session => ({
       session,
+      fila: datosDeFila(session, leidoEn, unreadOf(session)),
       readOnly: !isAdmin
         && session.assigned_seller_id !== meId
         && !(session.writer_seller_ids ?? []).includes(meId ?? ''),
-      preview: lastMsg?.type === 'text' ? lastMsg.body : lastMsg?.type === 'audio' ? '🎵 Audio' : 'Sin mensajes',
-      unread: unreadOf(session),
-      when: horaOFecha(session.created_at, leidoEn),
       online: !!session.buyer_id && onlineBuyers.has(session.buyer_id),
       nota: session.nota ? NOTA_META[session.nota] : undefined,
-      pedido: `${session.product_name ?? 'Producto'} · ${session.pack_name || soles(session.product_price)}`,
-    }
-  })
+      asesores: involucradosDe(session),
+    }))
 
-  // Pulso de la tienda (escritorio): lo que un vendedor mira antes de abrir un
-  // chat — sobre TODO lo cargado, no sobre el filtro de búsqueda.
-  //
-  // Se cuenta por la MISMA columna que pinta el chip. Contando `stage` crudo,
-  // un pedido que Shalom ya reportó ENTREGADO pero que nadie marcó a mano salía
-  // con el chip en "Entregado" y fuera del contador "Entregados", en la misma
-  // pantalla y a dos centímetros de distancia.
-  const columnaDe = new Map(sessions.map(s => [s.id, columnaDelPedido(s)]))
-  const cuantos = (...cols: string[]) =>
-    sessions.filter(s => cols.includes(columnaDe.get(s.id) ?? '')).length
+  const rows = ordenarBandeja(filas, prioridad, r => r.fila)
+
+  // Pulso de la bandeja: lo que decide si hay que ponerse a contestar. Nada de
+  // etapas — eso es la pregunta del Tablero, y contarlo acá era invitar a
+  // comparar dos pantallas que cuentan cosas distintas.
+  const todas = sessions.map(s => datosDeFila(s, leidoEn, unreadOf(s)))
+  const esperando = todas.filter(f => f.esperando)
+  const esperaMax = esperando.length ? Math.max(...esperando.map(f => f.esperaMs)) : 0
   const kpis = [
-    { label: 'Pedidos', value: sessions.length, color: 'var(--text)' },
-    { label: 'Sin leer', value: sessions.filter(s => unreadOf(s) > 0).length, color: 'var(--text)' },
-    { label: 'Nuevos', value: cuantos('nuevo', 'validando'), color: 'var(--text)' },
-    { label: 'En proceso', value: cuantos('confirmado', 'preparando', 'registrado', 'transito', 'en_agencia'), color: 'var(--text)' },
-    // Lo entregado es lo único que cierra bien: el único lima de la tabla (§4.2)
-    { label: 'Entregados', value: cuantos('entregado'), color: 'var(--ok-fg)' },
+    { label: 'Pedidos', value: String(sessions.length), color: 'var(--text)' },
+    { label: 'Sin leer', value: String(todas.filter(f => f.sinLeer > 0).length), color: 'var(--text)' },
+    { label: 'Sin responder', value: String(esperando.length), color: esperando.length ? 'var(--danger-fg)' : 'var(--text)' },
+    { label: 'La más vieja', value: esperando.length ? hace(esperaMax).replace('hace ', '') : '—', color: 'var(--text)' },
   ]
 
   // Un pedido sin token no tiene nada que abrir. No debería pasar, pero el tipo
   // lo admite porque la respuesta del servidor manda, no nuestro deseo.
   const open = (token?: string) => { if (token) onAbrir(token) }
 
-  const Avatar = ({ name, online, size }: { name?: string | null; online: boolean; size: number }) => (
-    <div className="relative flex-shrink-0">
-      <div className="rounded-2xl flex items-center justify-center font-black"
-        style={{ background: 'var(--surface-3)', color: 'var(--text)', width: size, height: size, fontSize: size >= 40 ? 18 : 13 }}>
-        {(name || 'C')[0]}
-      </div>
-      {online && (
-        <div className={`absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white ${size >= 40 ? 'w-3.5 h-3.5' : 'w-3 h-3'}`}
-          style={{ background: 'var(--ok-fg)' }} />
-      )}
+  const selectorPrioridad = (
+    <div className="flex items-center gap-0.5 rounded-xl p-0.5 flex-shrink-0" style={{ background: 'var(--surface-3)' }}>
+      {PRIORIDADES.map(p => {
+        const activo = p.key === prioridad
+        return (
+          <button key={p.key} type="button" onClick={() => setPrioridad(p.key)}
+            title={p.pregunta} aria-pressed={activo}
+            className="text-[11px] px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap"
+            style={activo
+              ? { background: 'var(--surface)', color: 'var(--text)', fontWeight: 700 }
+              : { color: 'var(--text-faint)', fontWeight: 500 }}>
+            {p.label}
+          </button>
+        )
+      })}
     </div>
   )
-
-  const StageChip = ({ session }: { session: StoreOrder }) => {
-    const col = columnaDelPedido(session)
-    return (
-      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={stageChip(col)}>
-        {ETIQUETA[col] || col}
-      </span>
-    )
-  }
 
   const spinner = (
     <div className="flex justify-center py-12">
@@ -174,31 +247,29 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
     </div>
   )
 
-  // ── Escritorio: tabla densa, todo lo relevante en una línea ───────────────
-  // El ancho de la PC se paga mostrando cliente, pedido, etapa, último mensaje
-  // y cuándo entró SIN abrir el chat. Es lo que un CRM tiene que responder de
-  // un vistazo: a quién le debo un mensaje.
-  const COLS = 'minmax(200px,1.4fr) minmax(115px,1fr) 176px minmax(190px,1.6fr) 76px 18px'
+  // ── Escritorio: la conversación en una línea ──────────────────────────────
+  const COLS = 'minmax(190px,1.5fr) 108px minmax(220px,2fr) 96px 76px 18px'
 
   if (desktop) {
     return (
       <div className="px-6 pt-4 pb-5">
-        <div className="flex items-end justify-between gap-6 mb-4">
+        <div className="flex items-end justify-between gap-4 mb-4">
           <div className="min-w-0">
-            <p className="text-xs text-gray-400">{scopeLabel}</p>
+            <p className="text-xs text-gray-400 mb-1.5">{scopeLabel}</p>
+            {selectorPrioridad}
           </div>
-          <div className="relative w-80 flex-shrink-0">
+          <div className="relative w-72 flex-shrink-0">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar por cliente o producto..."
+              placeholder="Buscar por cliente o teléfono..."
               className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-5 gap-3 mb-4">
+        <div className="grid grid-cols-4 gap-3 mb-4">
           {kpis.map(k => (
             <div key={k.label} className="bg-white border border-gray-100 rounded-2xl px-4 py-3">
               <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">{k.label}</p>
@@ -210,7 +281,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
         <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
           <div className="grid items-center gap-3 px-4 py-2 border-b border-gray-100 bg-gray-50/70"
             style={{ gridTemplateColumns: COLS }}>
-            {['Cliente', 'Pedido', 'Etapa', 'Último mensaje', 'Creado'].map(h => (
+            {['Cliente', 'Atiende', 'Último mensaje', 'Actividad', 'Creado'].map(h => (
               <p key={h} className="text-[10px] font-black text-gray-400 uppercase tracking-wide">{h}</p>
             ))}
             <span />
@@ -232,39 +303,37 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
               }}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <Avatar name={r.session.buyer_name} online={r.online} size={34} />
+                <AvatarComprador name={r.session.buyer_name} online={r.online} size={34} />
                 <div className="min-w-0">
                   <p className="font-semibold text-gray-800 text-sm truncate">{r.session.buyer_name || 'Comprador'}</p>
-                  {r.readOnly && (
-                    <p className="text-[10px] font-bold truncate" style={{ color: '#863bff' }}>
-                      👁 {r.session.seller_role || 'En otro rol'}
-                    </p>
+                  {r.nota && (
+                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full whitespace-nowrap" style={r.nota.style}>
+                      {r.nota.label}
+                    </span>
                   )}
                 </div>
               </div>
 
-              <p className="text-xs text-gray-500 truncate">{r.pedido}</p>
-
-              <div className="flex items-center gap-1 min-w-0">
-                <StageChip session={r.session} />
-                {r.nota && (
-                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full whitespace-nowrap" style={r.nota.style}>
-                    {r.nota.label}
-                  </span>
-                )}
-              </div>
+              <Asesores ids={r.asesores} porId={porId} />
 
               <div className="flex items-center gap-2 min-w-0">
-                <p className={`text-xs truncate flex-1 ${r.unread > 0 ? 'text-gray-800 font-semibold' : 'text-gray-500'}`}>
-                  {r.preview}
+                {/* Quién habló último. Sin esto, "Listo, ya pagué" y "Confirmo
+                    tu pedido" se leen igual, y son lo contrario. */}
+                {r.fila.ultimoDe === 'seller' && (
+                  <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--text-faint)' }}>Tú:</span>
+                )}
+                <p className={`text-xs truncate flex-1 ${r.fila.sinLeer > 0 ? 'text-gray-800 font-semibold' : 'text-gray-500'}`}>
+                  {r.fila.vistaPrevia}
                 </p>
-                {r.unread > 0 && (
+                {r.fila.sinLeer > 0 && (
                   <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center flex-shrink-0"
-                    style={{ background: 'var(--text)', color: 'var(--surface)' }}>{r.unread}</span>
+                    style={{ background: 'var(--text)', color: 'var(--surface)' }}>{r.fila.sinLeer}</span>
                 )}
               </div>
 
-              <p className="text-[11px] text-gray-400">{r.when}</p>
+              <Actividad fila={r.fila} ahora={leidoEn} />
+
+              <p className="text-[11px] text-gray-400">{horaOFecha(r.session.created_at, leidoEn)}</p>
               <ChevronRight size={15} className="text-gray-300" />
             </button>
           ))}
@@ -273,17 +342,18 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
     )
   }
 
-  // ── Móvil: la tarjeta de siempre ──────────────────────────────────────────
+  // ── Móvil: la tarjeta, con lo mismo ───────────────────────────────────────
   return (
     <div className="px-4 pt-3 pb-4">
-      <p className="text-xs text-gray-400 mb-3">{scopeLabel}</p>
+      <p className="text-xs text-gray-400 mb-2">{scopeLabel}</p>
+      <div className="overflow-x-auto -mx-4 px-4 mb-3">{selectorPrioridad}</div>
 
       <div className="relative mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por cliente o producto..."
+          placeholder="Buscar por cliente o teléfono..."
           className="w-full bg-gray-100 rounded-2xl pl-9 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
         />
       </div>
@@ -299,33 +369,41 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
                 ? { borderColor: 'var(--brand)', borderWidth: '1.5px' }
                 : { borderColor: 'var(--border)', borderWidth: '0.5px' }}
             >
-              <Avatar name={r.session.buyer_name} online={r.online} size={44} />
+              <AvatarComprador name={r.session.buyer_name} online={r.online} size={44} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-0.5">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
                   <p className="font-semibold text-gray-800 text-sm truncate">{r.session.buyer_name || 'Comprador'}</p>
-                  <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-                    {r.unread > 0 && (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {r.fila.sinLeer > 0 && (
                       <span className="w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center"
-                        style={{ background: 'var(--text)', color: 'var(--surface)' }}>{r.unread}</span>
+                        style={{ background: 'var(--text)', color: 'var(--surface)' }}>{r.fila.sinLeer}</span>
                     )}
                     {r.nota && (
                       <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={r.nota.style}>
                         {r.nota.label}
                       </span>
                     )}
-                    <StageChip session={r.session} />
                   </div>
                 </div>
-                <p className="text-[11px] text-gray-400 truncate">
-                  {r.readOnly && <span className="font-bold" style={{ color: '#863bff' }}>👁 {r.session.seller_role || 'En otro rol'} · </span>}
-                  {r.pedido}
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500 truncate flex-1">{r.preview}</p>
-                  <span className="text-[10px] text-gray-300 flex-shrink-0 ml-1">{r.when}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-gray-500 truncate flex-1">
+                    {r.fila.ultimoDe === 'seller' && <span className="text-gray-400">Tú: </span>}
+                    {r.fila.vistaPrevia}
+                  </p>
+                  <span className="text-[10px] flex-shrink-0"
+                    style={{ color: r.fila.esperando ? 'var(--danger-fg)' : 'var(--text-faint)' }}>
+                    {hace(leidoEn - r.fila.ultimoEn)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-1">
+                  <Asesores ids={r.asesores} porId={porId} />
+                  {r.readOnly && (
+                    <span className="text-[10px] font-bold" style={{ color: '#863bff' }}>
+                      👁 {r.session.seller_role || 'En otro rol'}
+                    </span>
+                  )}
                 </div>
               </div>
-              <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
             </button>
           ))}
         </div>
