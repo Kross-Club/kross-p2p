@@ -19,7 +19,6 @@ la tienda.
 |---|---|---|
 | **Chats** (`ChatsVendedorPage`) | `get-store-sessions` | ordena por último mensaje. En PC ya es una tabla con cliente, pedido, **etapa** y sin leer |
 | **CRM** (`CRMPage`) | `get-store-sessions` | agrupa por `stage` (lista o kanban) |
-| **En vivo** (`MapaVivoPage`) | `get-store-sessions` | proyecta origen/destino sobre el mapa del país |
 | **Stats** (`EstadisticasPage`) | `get-store-sessions` | los cuenta por etapa y por asesor |
 
 Cuatro pantallas, cuatro `fetch`, cuatro spinners, un solo dato. El costo no son las cuatro
@@ -75,7 +74,7 @@ pedir `get-store-sessions`, no es una sección — es un modo de Pedidos.
 
 | Antes | Ahora | Estado |
 |---|---|---|
-| Chats · CRM · En vivo · Stats | **Pedidos**, con cuatro modos: Bandeja · Tablero · En vivo · Resumen | ✅ 27-ago-2026 |
+| Chats · CRM · En vivo · Stats | **Pedidos**, con tres modos: Lista · Tablero · Resumen | ✅ 27-ago-2026 · En vivo se retiró el 28-ago |
 | Clientes · Retención | **Clientes**: la libreta real de personas; reactivar e invitar viven adentro | ✅ 27-ago-2026 |
 | Llamadas | ✂️ disuelta — cada grabación vive en el hilo de su pedido | ✅ 27-ago-2026 |
 | Productos · Equipo · Marca | igual | — |
@@ -96,7 +95,7 @@ definiciones distintas de quién ve qué**.
 
 | Pantalla | Predicado que usaba |
 |---|---|
-| Chats · En vivo | `!effective.is_admin` |
+| Chats · mapa | `!effective.is_admin` |
 | CRM · Stats | `!(real.is_admin && !impersonating)` |
 
 Coinciden en todos los casos menos uno, y ese uno importa: el **super admin que entra a una
@@ -285,7 +284,6 @@ paquete salió, no que no salió.
 | Pantalla | ¿Usa la línea fundida? |
 |---|---|
 | `OrderTrackingMap` (chat, comprador y vendedor) | ✅ `pasosDelPedido` |
-| **En vivo** (`MapaVivoPage`) | ✅ `pasoActual` + `courierDelPedido` |
 | **CRM** (`CRMPage`) | ✅ `COLUMNAS` + `columnaDelPedido` (26-ago-2026) |
 | **Stats** (`EstadisticasPage`) | ✅ el mismo `columnaDelPedido` |
 | **Chats** (`ChatsVendedorPage`) | ✅ chip y KPIs por la misma columna |
@@ -339,27 +337,29 @@ se quedan ahí: `applyTracking` nunca retrocede una fase. Se muestran un paso m�
 lo que están, y se corrigen solas en cuanto el courier reporte `origen`. Los pedidos nuevos
 nacen bien.
 
-### CRM y En vivo son la misma función con distinta proyección
+### ~~CRM y En vivo son la misma función con distinta proyección~~ — y por eso sobraba una
 
-Mismo dato, misma fase, dos geometrías:
+El argumento era que el mapa y el tablero son la misma función proyectada distinto: la misma
+fase, una en un eje abstracto (columnas) y otra en el eje geográfico. Cierto, y por eso mismo
+**En vivo se eliminó el 28-ago-2026**.
 
-| | Eje | Responde |
-|---|---|---|
-| **CRM** | la fase en un eje abstracto (columnas) | ¿cuántos hay atorados en cada paso, y quién los destraba? |
-| **En vivo** | la fase en el eje geográfico real | ¿dónde está físicamente mi plata? |
-
-No es una analogía. `live-map.ts` → `avanceDelPaquete()` es literalmente la misma escala:
+Lo que el argumento no miraba es de dónde salía la posición sobre ese eje geográfico. La caja
+del mapa se colocaba interpolando la recta entre dos sedes con `avanceDelPaquete()`:
 
 ```
 EN_ORIGEN 0.1  ·  EN_TRANSITO 0.5  ·  EN_DESTINO 0.9  ·  ENTREGADO 1
 ```
 
-**El mapa ya es un kanban tumbado sobre el Perú.** Que CRM y En vivo sean dos modos de la
-misma pantalla deja de ser un ahorro de menú: son la misma función proyectada distinto.
+O sea que **la posición era la fase, redibujada**. Ni los couriers dan la ubicación del camión
+ni los camiones van en línea recta: un pedido "a mitad de camino" estaba a mitad de camino
+porque el courier había dicho EN_TRANSITO, no porque nadie supiera dónde estaba. Y una
+posición inventada en un mapa no se lee como una fase — se lee como una posición.
 
-Y como `MapaVivoPage` ya resuelve el **origen por producto** (`origenPorProducto`), En vivo
-también responde una tercera pregunta que el kanban no puede: *¿de qué producto tengo más
-plata en el aire, y saliendo de qué sede?*
+De las dos proyecciones de la misma función, la honesta es la del tablero: dice la fase
+diciendo que es la fase, y encima deja actuar sobre el pedido.
+
+Lo que sí quedó del mapa es el dibujo del país (`mapa-peru.ts`), y lo usa el mapa que sí tiene
+un hecho detrás: **dónde se entregó** (ver abajo).
 
 ### Lo que cambia en lo que el CRM mide
 
@@ -413,7 +413,8 @@ es un valor real en producción. Consecuencias, las dos directas a este tema:
 1. `pasosDelPedido` le da la línea de **domicilio** (`… confirmado → en camino → entregado`)
    a un pedido que va por Shalom → las fases del courier **nunca se muestran**, ni al
    vendedor ni al comprador (`OrderTrackingMap`).
-2. `vaEnElMapa` (`live-map.ts`) devuelve `false` → **ese pedido nunca aparece en En vivo.**
+2. `vaEnElMapa` (entonces en `live-map.ts`, hoy retirado con En vivo) devolvía `false` →
+   **ese pedido nunca aparecía en En vivo.**
 
 Y Kross Shop vende hoy **solo recojo en agencia, con entrega a domicilio apagada**: un recojo
 en Lima es exactamente `AGENCIA_LIMA`. No es hipotético.
@@ -589,8 +590,10 @@ de la columna: lo primero que se ve al abrir un pedido. Sin callejero debajo no 
 dice `TrackingBar` con texto—. Detalle y decisión en
 [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md#el-mapa-del-pedido--retirado-del-chat-27-ago-2026).
 
-**En vivo** no se toca: ahí el mapa sí responde algo —dónde está la plata que ya salió, todos
-los pedidos a la vez— y por eso es un modo propio.
+**En vivo** se salvó entonces con ese argumento —"ahí el mapa sí responde algo"— y no aguantó
+el 28-ago: lo que respondía era la fase, redibujada como posición. Ver
+[CRM y En vivo](#crm-y-en-vivo-son-la-misma-función-con-distinta-proyección--y-por-eso-sobraba-una).
+El mapa que sí tiene un hecho detrás es el de **dónde se entrega**, en Clientes.
 
 ### Lo que se rompió al poner dos pantallas vivas a la vez
 
@@ -1166,6 +1169,79 @@ Por eso son **dos preguntas y no una**:
 Se pone y se quita desde el detalle del pedido (`order-manage`, acciones `anular` / `restore`).
 Desandarlo importa: el estado se pone justamente cuando alguien se equivocó, y un botón que no
 se puede deshacer se usa menos de lo que hace falta.
+
+## El mapa que sí tiene un hecho detrás: dónde se entrega (28-ago-2026)
+
+En el sitio que dejó En vivo —y en el espacio vacío que la libreta de clientes tenía al
+costado— va el Perú con **un punto por distrito, del tamaño de lo que se entregó ahí**.
+
+La diferencia con el mapa que reemplaza no es de datos, es de naturaleza. Aquel pintaba una
+posición que nadie reporta; este pinta un hecho consumado: **un pedido entregado en Chimbote
+estuvo en Chimbote**. Y la pregunta que responde no la respondía ninguna pantalla del panel —
+*¿dónde está la demanda?*— aunque el dato estuviera en la base desde el primer pedido.
+
+### Sobre lo ENTREGADO, no sobre lo pedido
+
+Un distrito con veinte pedidos y cinco entregas no es un buen distrito: es un problema de
+logística disfrazado de demanda. Es la misma definición de "me compró" que usa el LTV de la
+libreta (`list-clients`), y por eso los dos números de esta pantalla cuadran entre sí.
+
+Un pedido entregado se cobró entero —el saldo se paga en la puerta o en el mostrador— así que
+lo facturado es el **valor** del pedido, no el adelanto verificado. Es el único sitio del panel
+donde esa distinción se resuelve al revés que en el tablero, y por eso está dicho en el código.
+
+### Dónde cae cada pedido
+
+| Cómo recibe | De dónde sale el distrito |
+|---|---|
+| Recojo en agencia | **la SEDE** — trae distrito, departamento y coordenadas exactas |
+| A domicilio | la dirección escrita, leída contra el padrón del INEI, colocada en el centroide del distrito |
+
+La sede manda sobre la dirección, siempre. En un pedido por agencia el `address` es el distrito
+del **comprador**, no el de la sede donde recoge: un pedido de Chaclacayo que se recoge en
+Huaycán se contaría en Chaclacayo. Es la misma trampa que ya documentaba `ubicacion.ts`, y la
+razón de que la regla viva UNA vez (`ubicadorDe` en `mapa-entregas.ts`) — la usa la pantalla y
+la usa el demo, así que no puede pasar que el mapa de ejemplo se vea bien y el real salga vacío.
+
+`address` no tiene formato fijo: el checkout lo arma distinto en cada rama (`addressOf` en
+OrderService), y en dos de las cuatro **no lleva departamento**. Partir por comas y asumir una
+posición falla en tres. Lo que sí es estable es que el nombre del distrito está escrito ahí, así
+que se busca contra el padrón de atrás hacia adelante. Los homónimos —hay un Miraflores en Lima
+y otro en Arequipa— se desempatan con el resto de la dirección, y **si no se puede desempatar no
+se adivina**: ese pedido va al conteo de "sin ubicar", que la pantalla muestra. Un punto en el
+distrito equivocado es peor que un punto que falta — el que falta se ve como falta, el
+equivocado se lee como dato.
+
+### El tamaño del punto
+
+Por **raíz** del conteo, no proporcional. Lo que el ojo lee como cantidad es el área: con el
+radio proporcional, un distrito con el cuádruple de pedidos se ve dieciséis veces más grande y
+el mapa miente a favor de Lima — que ya concentra bastante sin ayuda.
+
+### El filtro
+
+De **producto**, porque es la pregunta que cambia una decisión: dónde funciona cada cosa no es
+lo mismo que dónde funciona la marca. Y al abrir un distrito, el desglose al revés — qué se
+entrega ahí, con su monto —, que es lo que decide qué stock mandar a esa zona.
+
+### Por qué solo en escritorio
+
+En un teléfono no hay espacio libre que aprovechar, y el país entero con sus distritos en 390 px
+no es un mapa, es una mancha. Ahí la pantalla sigue siendo la libreta.
+
+### La agregación
+
+`delivery-map` **no resuelve geografía**: el catálogo de las 911 sedes y el padrón viven en el
+front y se cargan diferidos, y traerlos a la Edge Function sería una segunda copia que se
+desincroniza. La función agrupa por el sitio CRUDO —sede, o dirección escrita— cruzado con
+producto, y el panel lo convierte en distrito.
+
+Agrupar en el servidor sí importa: una tienda con meses de historia tiene miles de pedidos
+entregados y unos cientos de combinaciones sitio × producto. Es la diferencia entre megabytes y
+decenas de kilobytes. Se leen las filas y se juntan en Deno en vez de con un `GROUP BY` —la
+librería no lo expone y una función SQL exigiría una migración para una pantalla—, con un techo
+de 20.000; cuando lo toca, la respuesta lo dice y la pantalla presenta el total como un piso en
+vez de como el total.
 
 ## Ver también
 

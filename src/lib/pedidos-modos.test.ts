@@ -22,7 +22,15 @@ describe('los modos de Pedidos', () => {
 
   it('la lista deja la URL limpia', () => {
     expect(urlDeModo('lista')).toEqual({})
-    expect(urlDeModo('mapa')).toEqual({ modo: 'mapa' })
+    expect(urlDeModo('tablero')).toEqual({ modo: 'tablero' })
+  })
+
+  // "En vivo" se eliminó: pintaba una posición inventada sobre una línea recta
+  // que no es una ruta. Los enlaces que quedaron dando vueltas caen en la
+  // lista, como cualquier valor desconocido — no en una pantalla en blanco.
+  it('el enlace viejo a En vivo cae en la lista', () => {
+    expect(esModo('mapa')).toBe(false)
+    expect(modoDeUrl(url('modo=mapa'))).toBe('lista')
   })
 
   // Si dos modos respondieran la misma pregunta, uno de los dos sobra.
@@ -43,7 +51,7 @@ describe('los modos de Pedidos', () => {
     expect(urlConPedido('tablero', 'abc123')).toEqual({ modo: 'tablero', pedido: 'abc123' })
     expect(urlConPedido('lista', 'abc123')).toEqual({ pedido: 'abc123' })
     expect(urlConPedido('lista', null)).toEqual({})
-    expect(urlConPedido('mapa', null)).toEqual({ modo: 'mapa' })
+    expect(urlConPedido('resumen', null)).toEqual({ modo: 'resumen' })
   })
 
   it('ida y vuelta: lo que se escribe es lo que se lee', () => {

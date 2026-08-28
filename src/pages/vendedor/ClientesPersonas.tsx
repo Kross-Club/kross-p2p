@@ -2,9 +2,11 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Search, Users, ChevronRight } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
+import { useIsDesktop } from '../../lib/use-desktop'
 import { useStoreClients, resumenDeCliente } from '../../lib/store-clients'
 import { CERRADO, ALERTA, NEUTRO } from '../../lib/order-chips'
 import PanelCliente from '../../components/PanelCliente'
+import MapaEntregas from '../../components/MapaEntregas'
 
 // ─── La libreta de clientes ──────────────────────────────────────────────────
 //
@@ -21,6 +23,7 @@ const SEGMENTO: Record<string, { label: string; style: typeof NEUTRO }> = {
 
 export default function ClientesPersonas() {
   const { real, effective } = useSeller()
+  const desktop = useIsDesktop()
   const { clientes, cargando, error } = useStoreClients(real, effective)
   const [busca, setBusca] = useState('')
 
@@ -73,8 +76,18 @@ export default function ClientesPersonas() {
     </div>
   )
 
-  return (
-    <div className="px-4 pt-3 pb-4">
+  // ── Dos columnas en escritorio ──
+  //
+  // La libreta es una lista de nombres cortos y ocupaba el ancho entero: media
+  // pantalla en blanco al costado de cada fila. Ahí va el mapa de entregas, que
+  // es la otra pregunta de esta pantalla —la libreta dice QUIÉN compra, el mapa
+  // dice DÓNDE— y las dos se leen mejor juntas.
+  //
+  // Solo en escritorio, y no por pereza: en un teléfono no hay espacio libre
+  // que aprovechar, y el país entero con sus distritos en 390 px de ancho no es
+  // un mapa, es una mancha. Ahí la pantalla sigue siendo la libreta.
+  const lista = (
+    <>
       <p className="text-xs text-gray-400 mb-3">
         {clientes.length} {clientes.length === 1 ? 'persona' : 'personas'}
         {conCompra > 0 && ` · ${conCompra} con al menos un pedido entregado`}
@@ -128,6 +141,22 @@ export default function ClientesPersonas() {
           })}
         </div>
       )}
+
+    </>
+  )
+
+  return (
+    <div className="px-4 pt-3 pb-4">
+      {desktop ? (
+        <div className="flex gap-4 items-start">
+          <div className="flex-1 min-w-0">{lista}</div>
+          {/* Pegado arriba: la lista scrollea sola y son 640 personas — un mapa
+              que se va con el scroll es un mapa que solo se ve al entrar. */}
+          <aside className="w-[380px] flex-shrink-0 sticky top-4">
+            <MapaEntregas />
+          </aside>
+        </div>
+      ) : lista}
 
       {abierto && (
         <PanelCliente

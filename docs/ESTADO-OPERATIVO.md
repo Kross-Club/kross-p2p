@@ -108,7 +108,7 @@ llamadas y facturas". **La facturación todavía no existe en el producto**: va 
 está por construirse. La promesa entró antes que la función a propósito; si el plan cambia,
 la línea vive en `src/components/AuthShell.tsx`.
 
-### Los recojos en Lima ya entran a En vivo ✅ (26-ago-2026)
+### ~~Los recojos en Lima ya entran a En vivo~~ ✅ (26-ago-2026) — En vivo se retiró el 28-ago
 
 Había **dos definiciones de "es recojo"** y una no conocía `AGENCIA_LIMA` — el valor que
 escribe el checkout para un recojo en agencia de Lima, que es lo único que vende Kross Shop
@@ -123,11 +123,13 @@ hoy con el domicilio apagado. Tres efectos, los tres silenciosos:
 
 Corregido: `isPickupDispatch()` en `src/lib/session.ts` es la única definición, normaliza
 mayúsculas y tolera los valores heredados; `esEnvioPorAgencia()` se eliminó. Cubierto por
-tests de regresión en `order-tracking.test.ts` y `live-map.test.ts`.
+tests de regresión en `order-tracking.test.ts` (los de `live-map.test.ts` se fueron con la
+pantalla).
 
-**No requiere deploy de Edge Functions** — es solo frontend, sale con el próximo build. Sí
-sigue pendiente el deploy de `get-store-sessions` de la nota de abajo: sin él el mapa carga
-vacío igual, porque no recibe los campos que dibuja.
+**No requiere deploy de Edge Functions** — es solo frontend, sale con el próximo build. La
+mitad del arreglo que tocaba a *En vivo* dejó de aplicar cuando esa pantalla se retiró; la que
+importa —la línea de vida correcta para un recojo en Lima— sigue viva y es la que usa el
+tablero.
 
 ### La libreta de clientes necesita un deploy (27-ago-2026)
 
@@ -191,6 +193,28 @@ registrada en el hilo — **corre el SQL antes que el deploy**. Sin el deploy, l
 Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabaciones viejas
 siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
+
+### El mapa de entregas por distrito (28-ago-2026)
+
+**Un deploy nuevo. No hay SQL.**
+
+```
+supabase functions deploy delivery-map --project-ref ofdjghntvmrdfjhazfvz
+```
+
+`delivery-map` cuenta los pedidos **entregados** por sitio de entrega y producto, y alimenta el
+mapa del Perú que ahora vive al costado de la libreta de clientes (solo en escritorio). No
+devuelve datos personales —ni nombres, ni DNI, ni teléfonos— pero sí la facturación por zona, y
+por eso pasa por la misma puerta de admin que `list-clients`.
+
+Sin el deploy, la libreta funciona igual y el mapa dice *"No se pudo cargar el mapa de
+entregas"* con el nombre de la función que falta. No rompe nada.
+
+Y se **quitó** el modo *En vivo* de Pedidos: no necesita despliegue —es solo frontend— y los
+enlaces con `?modo=mapa` caen en la lista. La razón está en
+[`11-RELACIONES.md`](./11-RELACIONES.md): la caja que se deslizaba entre dos sedes no estaba
+donde el mapa la ponía; esa posición era la fase del courier redibujada, y en un mapa una
+posición se lee como una posición.
 
 ### El pipeline nuevo: Curiosos y Anulado (28-ago-2026)
 
@@ -276,7 +300,7 @@ tiene una suscripción viva en `push_subscriptions`—. Sin el deploy, la ficha 
 botón de la cabecera muestran el caso "nunca ha entrado a la app" para todos: no rompe nada,
 pero el dato no sirve hasta desplegar. No hay SQL: las dos columnas ya existen.
 
-### En vivo y el CRM esperan el mismo deploy (26-ago-2026)
+### El CRM espera un deploy (26-ago-2026) — *En vivo* también, hasta que se retiró
 
 `get-store-sessions` **todavía no devuelve en producción** `product_id`, `dispatch_type`,
 `agency_name`, `agency_branch_id`, `address_lat/lng`, `advance_amount`,
