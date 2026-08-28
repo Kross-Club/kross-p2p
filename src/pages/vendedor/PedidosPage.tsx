@@ -11,10 +11,9 @@ import FiltroPedidos from '../../components/FiltroPedidos'
 import PanelPedido from '../../components/PanelPedido'
 import PedidosLista from './PedidosLista'
 import PedidosTablero from './PedidosTablero'
-import PedidosMapa from './PedidosMapa'
 import PedidosResumen from './PedidosResumen'
 
-// ─── Pedidos: una pantalla, cuatro maneras de mirarla ────────────────────────
+// ─── Pedidos: una pantalla, tres maneras de mirarla ──────────────────────────
 //
 // El costo de tener Chats, CRM, En vivo y Stats como cuatro entradas del menú
 // no eran las cuatro pantallas: era que el vendedor tenía que decidir en cuál
@@ -43,12 +42,12 @@ export default function PedidosPage() {
     if (effective?.is_super_admin) navigate('/vendedor/marca', { replace: true })
   }, [effective?.is_super_admin, navigate])
 
-  // UNA lectura para los cuatro modos. Con cancelados porque el tablero los
-  // agrupa aparte y el resumen los cuenta en las notas; los modos que no los
-  // quieren (lista, mapa) los descartan al pintar, que es gratis.
+  // UNA lectura para los tres modos. Con cancelados porque el tablero los
+  // agrupa aparte y el resumen los cuenta en las notas; la lista los descarta
+  // al pintar, que es gratis.
   const lista = useStoreOrders(effective, { incluirCancelados: true })
 
-  // El filtro también es UNO para los cuatro modos, por la misma razón que la
+  // El filtro también es UNO para los tres modos, por la misma razón que la
   // lectura: si cada vista filtrara por su cuenta, el tablero de "esta semana"
   // y el resumen de "todo" convivirían en pantalla sin que nada avise que están
   // contando cosas distintas. Se mide contra `leidoEn` —el instante en que
@@ -130,7 +129,6 @@ export default function PedidosPage() {
 
       {modo === 'lista' && <PedidosLista lista={filtrada} onAbrir={abrir} marcado={marcado} />}
       {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} marcado={marcado} />}
-      {modo === 'mapa' && <PedidosMapa lista={filtrada} />}
       {modo === 'resumen' && <PedidosResumen lista={filtrada} />}
 
       {abierto && <PanelPedido token={abierto} onCerrar={cerrar} />}

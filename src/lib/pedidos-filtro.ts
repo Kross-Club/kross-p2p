@@ -3,8 +3,8 @@ import type { StoreOrder } from './store-orders'
 // ─── El filtro de Pedidos ────────────────────────────────────────────────────
 //
 // Vive en la pantalla contenedora y no en cada modo, por la misma razón que la
-// lectura (`useStoreOrders`): Lista, Tablero, En vivo y Resumen son la MISMA
-// lista mirada distinto (docs/11-RELACIONES.md). Un filtro por modo haría que
+// lectura (`useStoreOrders`): Lista, Tablero y Resumen son la MISMA lista
+// mirada distinto (docs/11-RELACIONES.md). Un filtro por modo haría que
 // el tablero de "esta semana" y el resumen de "todo" convivan en pantalla sin
 // que nada avise que están contando cosas distintas.
 //

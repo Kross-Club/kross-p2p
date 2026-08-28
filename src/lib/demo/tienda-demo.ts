@@ -3,6 +3,7 @@ import { agregarPorComprador, segmentoDe } from '../../../supabase/functions/_sh
 import type { StoreOrder } from '../store-orders'
 import type { Cliente, PedidoDeCliente } from '../store-clients'
 import type { Curioso } from '../store-drafts'
+import type { GrupoEntrega } from '../mapa-entregas'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
@@ -636,4 +637,75 @@ export async function curiososDemo(): Promise<Curioso[]> {
       updated_at: new Date(ahora - entre(r, 0, 5) * DIA - entre(r, 0, 23) * 3_600_000).toISOString(),
     }
   }).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+}
+
+/**
+ * Las ENTREGAS de la tienda de ejemplo, repartidas por el país.
+ *
+ * El mapa de la libreta pregunta dónde se está entregando, y el historial del
+ * demo —2.200 pedidos entregados— no guardaba dónde: se generaba con el precio
+ * y la fecha, que es lo que pedía el LTV. Acá se le da geografía, sobre las
+ * sedes REALES de Shalom y Olva: los puntos caen donde caerían de verdad.
+ *
+ * El reparto tiene la forma que tiene el país —Lima concentra, y la cola es
+ * larga— porque un mapa con los mismos pedidos en cada distrito no enseña nada:
+ * lo que se mira en un mapa así es justamente el desbalance.
+ *
+ * Una parte va por dirección escrita en vez de sede, y una porción de esa parte
+ * NO se puede ubicar. Es a propósito: es lo que pasa de verdad con las entregas
+ * a domicilio, y sin ella el renglón de "sin ubicar" —que existe para no mentir
+ * con el total— nunca se vería.
+ */
+export async function entregasDemo(): Promise<{ grupos: GrupoEntrega[]; entregados: number; truncado: boolean }> {
+  const t = await tiendaDemo()
+  const r = azar(660412)
+
+  const [sh, ol] = await Promise.all([
+    import('../../data/agencies/shalom.json'),
+    import('../../data/agencies/olva.json'),
+  ])
+  const de = (m: { default: unknown }, courier: string) =>
+    (m.default as { branches: { id: string; department: string; lat?: number; lng?: number }[] }).branches
+      .filter(b => b.lat != null && b.lng != null)
+      .map(b => ({ id: b.id, courier, department: b.department }))
+
+  // Lima primero: con la elección sesgada de abajo, eso la convierte en el
+  // grueso del mapa sin tener que codificar porcentajes a mano.
+  const todas = [...de(sh, 'SHALOM'), ...de(ol, 'OLVA')]
+  const esLima = (d: string) => d.toUpperCase().includes('LIMA') || d.toUpperCase().includes('CALLAO')
+  const orden = [...todas.filter(b => esLima(b.department)), ...todas.filter(b => !esLima(b.department))]
+  const sedes = orden.filter((_, i) => i % 7 === 0).slice(0, 70)
+  if (!sedes.length) return { grupos: [], entregados: 0, truncado: false }
+
+  // Direcciones escritas: dos que el padrón sí resuelve y una que no —le falta
+  // el departamento y "Miraflores" existe en Lima y en Arequipa—.
+  const DIRECCIONES = [
+    'Chimbote, Santa, Ancash',
+    'Av. Grau 455, Los Olivos, Lima',
+    'Av. Larco 123, Miraflores',
+  ]
+
+  const porClave = new Map<string, GrupoEntrega>()
+  const suma = (g: Omit<GrupoEntrega, 'pedidos' | 'valor'>, valor: number) => {
+    const clave = `${g.courier ?? ''}|${g.branch_id ?? ''}|${g.address ?? ''}|${g.product_id ?? ''}`
+    const ya = porClave.get(clave)
+    if (ya) { ya.pedidos += 1; ya.valor += valor }
+    else porClave.set(clave, { ...g, pedidos: 1, valor })
+  }
+
+  for (const h of t.historial) {
+    const prod = t.productos.find(p => p.nombre === h.product_name)
+    const base = { product_id: prod?.id ?? null, product_name: h.product_name }
+
+    if (r() < 0.05) {
+      suma({ ...base, courier: null, branch_id: null, address: elige(r, DIRECCIONES) }, h.product_price)
+      continue
+    }
+    // Sesgo hacia la cabeza de la lista: unas pocas sedes concentran, como en
+    // cualquier operación real.
+    const sede = sedes[Math.min(sedes.length - 1, Math.floor(Math.pow(r(), 2.2) * sedes.length))]
+    suma({ ...base, courier: sede.courier, branch_id: sede.id, address: null }, h.product_price)
+  }
+
+  return { grupos: [...porClave.values()], entregados: t.historial.length, truncado: false }
 }

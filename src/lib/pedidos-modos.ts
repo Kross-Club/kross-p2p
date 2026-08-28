@@ -1,15 +1,24 @@
-import { List, LayoutGrid, Radar, BarChart2 } from 'lucide-react'
+import { List, LayoutGrid, BarChart2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-// ─── Las cuatro maneras de mirar los pedidos ─────────────────────────────────
+// ─── Las tres maneras de mirar los pedidos ───────────────────────────────────
 //
 // Chats, CRM, En vivo y Stats eran cuatro entradas del menú que pedían la misma
 // consulta y pintaban el mismo dato distinto (docs/11-RELACIONES.md). Acá el
 // vocabulario de esos modos vive aparte de la pantalla: es el mismo criterio
 // que `COLUMNAS` en order-tracking.ts — el orden y las etiquetas se definen una
 // vez, no dentro del componente que los pinta.
+//
+// **En vivo se eliminó (28-ago-2026).** Pintaba cada pedido como una caja
+// deslizándose sobre la línea recta entre dos sedes: ni los couriers dan la
+// posición del camión, ni los camiones van en línea recta. O sea que la
+// posición era inventada, y una posición inventada en un mapa se lee como un
+// dato. La pregunta que decía responder —"¿dónde está la plata que ya salió?"—
+// la contesta mejor el Tablero, que además deja actuar sobre el pedido.
+//
+// Un `?modo=mapa` viejo cae en la lista, como cualquier otro valor desconocido.
 
-export type Modo = 'lista' | 'tablero' | 'mapa' | 'resumen'
+export type Modo = 'lista' | 'tablero' | 'resumen'
 
 /** El modo por defecto: la puerta de entrada a Pedidos. */
 export const MODO_INICIAL: Modo = 'lista'
@@ -20,7 +29,6 @@ export const MODO_INICIAL: Modo = 'lista'
 export const MODOS: { key: Modo; label: string; icon: LucideIcon; pregunta: string }[] = [
   { key: 'lista', label: 'Lista', icon: List, pregunta: '¿a quién le debo un mensaje?' },
   { key: 'tablero', label: 'Tablero', icon: LayoutGrid, pregunta: '¿dónde se está atorando la operación?' },
-  { key: 'mapa', label: 'En vivo', icon: Radar, pregunta: '¿dónde está la plata que ya salió?' },
   { key: 'resumen', label: 'Resumen', icon: BarChart2, pregunta: '¿cómo vamos?' },
 ]
 
