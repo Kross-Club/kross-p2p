@@ -1243,6 +1243,98 @@ librería no lo expone y una función SQL exigiría una migración para una pant
 de 20.000; cuando lo toca, la respuesta lo dice y la pantalla presenta el total como un piso en
 vez de como el total.
 
+## Encontrar uno, y no perderlo (28-ago-2026)
+
+Dos cosas del tablero que no se notan hasta que la tienda tiene cien pedidos vivos.
+
+### El buscador: rebanar no es encontrar
+
+El filtro de Pedidos ya tenía desplegables —quién atiende, qué producto, qué fechas— y
+todos hacen lo mismo: **rebanar**. Ninguno servía para el gesto contrario, que es el que
+más se hace: *llamó Rosa Sánchez y quiero SU pedido*.
+
+Son dos gestos distintos y por eso son dos controles distintos. El buscador va primero en
+la barra, porque quien llega con un nombre o una guía en la mano no viene a rebanar.
+
+**Qué se busca**, que es la decisión de verdad: **con qué llega uno a la pantalla**.
+
+| Campo | Cuándo lo tienes en la mano |
+|---|---|
+| nombre del comprador | llamó, o escribió |
+| N° de pedido (`ORD-…`) | el cliente lo está leyendo de su pantalla |
+| DNI | su identidad en Kross — junta sus pedidos aunque cambie de teléfono |
+| teléfono | es de donde viene la llamada |
+| N° de guía | por lo que pregunta el courier |
+
+El **producto no está**, y no es un olvido: ya tiene su desplegable al lado. Meterlo haría
+que escribir "faja" devuelva media tienda desde un control que promete encontrar uno.
+
+Se compara **sin acentos, sin mayúsculas y sin separadores**: quien dicta un teléfono lo
+dice "912 345 678", quien copia un pedido trae `ORD-17563…` y quien escribe un apellido no
+pone la tilde. Sin normalizar, esas tres formas de escribir lo mismo no encuentran nada — y
+un buscador que no encuentra se deja de usar a la segunda.
+
+Y por **términos**, no por la frase entera: "perez ana" encuentra a Ana Pérez igual que
+"ana perez". Uno no recuerda en qué orden estaba escrito el nombre. Todos los términos
+tienen que estar (Y, no O): con OR, escribir dos palabras devolvería MÁS resultados que
+escribir una, que es lo contrario de lo que uno espera al seguir tecleando.
+
+> Detalle que solo se ve al probarlo: los campos se juntan separados por `|`. Pegados y
+> normalizados, `ROSASANCHEZ` + `ORD1756…` serían un solo texto donde un `ZORD` encontraría
+> un pedido que no dice eso en ninguna parte.
+
+**Vive en el filtro compartido** (`pedidos-filtro.ts`), no en el Tablero, por la misma
+razón que todo lo demás de esa barra: Lista, Tablero y Resumen son la misma lista mirada
+distinto. Un buscador solo en el Tablero haría que el Resumen contara pedidos que la
+pantalla de al lado no está mostrando. De regalo, la Lista también busca.
+
+**El DNI no venía en la respuesta.** `get-store-sessions` traía nombre y teléfono pero no
+el documento, que vive en `buyers`. Se agrega en una **consulta aparte** y no embebido
+(`buyers ( document_number )`), aunque el embebido sería una línea: PostgREST lo resuelve
+por la clave foránea, y la de `order_sessions.buyer_id` se creó con
+`ADD COLUMN IF NOT EXISTS … REFERENCES`, que **no hace nada si la columna ya existía**. No
+hay forma de saber desde el código si esa constraint está en producción, y si no estuviera,
+el embebido devolvería 400: **el panel entero se quedaría sin pedidos por querer enseñar un
+DNI**. Un `IN` sobre ochenta ids no depende de ninguna constraint, y si falla se pierde
+poder buscar por DNI, no la lista.
+
+### El puntero: el borde marcado solo sirve si se ve
+
+Abrir un pedido marca su borde para no perder el sitio al cerrar el cajón. Pero el tablero
+scrollea en **dos ejes** —nueve columnas de ancho, treinta tarjetas de alto— y basta
+arrastrar un poco para que el pedido abierto quede fuera de la pantalla, sin nada que diga
+hacia dónde.
+
+Ahora aparece un puntero abajo a la izquierda —**Ir al pedido abierto**— con una flecha que
+apunta hacia donde está de verdad. Tocarlo lo centra.
+
+Tres decisiones que lo hacen usable:
+
+- **Solo cuando no se ve.** Un botón permanente ocuparía sitio las nueve de cada diez veces
+  en que el pedido está delante de los ojos, y se aprendería a ignorar justo para la décima.
+- **La flecha apunta al eje donde está MÁS lejos.** Un pedido un poco abajo y mucho a la
+  izquierda se encuentra yendo a la izquierda; una flecha hacia abajo mandaría a buscar
+  donde no está.
+- **Abajo a la izquierda**, porque el cajón del pedido entra por la derecha. Un puntero
+  debajo del cajón es un puntero que no se ve.
+
+"Se ve" se mide **por área** y con un mínimo del 35 %: una tarjeta asomando un píxel por el
+borde está técnicamente visible y en la práctica no se ve. La geometría vive aparte
+(`fuera-de-vista.ts`) justamente para poder probarla sin un navegador; el componente solo
+pone el observador.
+
+Dos mecanismos y no uno, porque cada uno tapa el hueco del otro:
+
+| | Ve | No ve |
+|---|---|---|
+| `IntersectionObserver` | que la tarjeta se mueva sin que nadie scrollee (cambió el layout) | pasar de "fuera por la izquierda" a "fuera por arriba" — no cruza ningún umbral |
+| `scroll` + `resize` | eso mismo | un cambio de layout sin scroll |
+
+Los dos pasan por la misma medición, limitada a **una por cuadro** (`requestAnimationFrame`)
+y guardando **solo cuando la dirección cambia**. Sin lo segundo, cada evento de scroll
+crearía un objeto nuevo y repintaría las cien tarjetas del tablero sesenta veces por
+segundo — el estado se devuelve idéntico para que React se salte el render.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

@@ -22,6 +22,12 @@ Deno.serve(async (req) => {
   // mapa de pedidos en vivo: de dónde sale el paquete, a dónde va, cómo va el
   // dinero y qué reporta el courier. No agrega datos personales — el nombre y
   // el teléfono del comprador ya viajaban en esta misma respuesta.
+  //
+  // El DNI (`buyers.document_number`) se agrega DESPUÉS, en su propia consulta —
+  // ver abajo—. Entra por una razón concreta: el buscador del panel. El DNI es
+  // la identidad del comprador en Kross —un mismo número junta sus pedidos
+  // aunque cambie de teléfono— y es lo que alguien dicta cuando reclama. Va a
+  // la MISMA puerta que ya cruzaban su nombre y su teléfono, no a una nueva.
   let query = supabase
     .from('order_sessions')
     .select(`
@@ -57,7 +63,34 @@ Deno.serve(async (req) => {
     })
   }
 
-  return new Response(JSON.stringify(data), {
+  // ─── El DNI de cada comprador ──────────────────────────────────────────────
+  //
+  // En una consulta aparte y no embebido (`buyers ( document_number )`), aunque
+  // el embebido sería una línea: PostgREST lo resuelve por la CLAVE FORÁNEA, y
+  // la de `order_sessions.buyer_id` se creó con
+  // `ADD COLUMN IF NOT EXISTS ... REFERENCES` — que no hace nada si la columna
+  // ya existía. O sea que no hay manera de saber desde acá si en producción
+  // existe. Si no existiera, el embebido devolvería 400 y **el panel entero se
+  // quedaría sin pedidos** por querer enseñar un DNI. Un `IN` sobre ochenta ids
+  // no depende de ninguna constraint y cuesta una consulta.
+  //
+  // Un fallo acá NO tumba la respuesta: se devuelven los pedidos sin DNI y lo
+  // único que se pierde es poder buscar por él.
+  const filas = Array.isArray(data) ? data : []
+  const ids = [...new Set(filas.map(f => f.buyer_id).filter(Boolean))]
+  let docPorComprador: Record<string, string | null> = {}
+  if (ids.length) {
+    const { data: compradores } = await supabase
+      .from('buyers').select('id, document_number').in('id', ids)
+    docPorComprador = Object.fromEntries((compradores ?? []).map(b => [b.id, b.document_number ?? null]))
+  }
+
+  const conDoc = filas.map(f => ({
+    ...f,
+    buyers: f.buyer_id ? { document_number: docPorComprador[f.buyer_id] ?? null } : null,
+  }))
+
+  return new Response(JSON.stringify(conDoc), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   })
 })

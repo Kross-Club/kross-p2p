@@ -80,6 +80,9 @@ export interface StoreOrder {
   /** Cuándo se dio por respondida la última pregunta del comprador. `null` =
    *  nunca. Ver `esperaRespuesta` en bandeja.ts. */
   answered_at?: string | null
+  /** El comprador, embebido. Solo el DNI, y solo para poder buscar por él: es
+   *  su identidad en Kross y lo que dicta por teléfono quien reclama. */
+  buyers?: { document_number?: string | null } | null
   chat_messages?: {
     id: string
     sender_role: string

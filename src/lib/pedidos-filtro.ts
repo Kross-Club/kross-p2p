@@ -36,9 +36,90 @@ export interface Filtro {
   vendedor: string
   /** `product_name`. Vacío = todos. */
   producto: string
+  /** Texto libre: nombre, N° de pedido, DNI, teléfono o guía. Vacío = todos.
+   *  Ver `coincide` para por qué esos cinco y no el producto. */
+  busca: string
 }
 
-export const FILTRO_VACIO: Filtro = { rango: 'todo', desde: '', hasta: '', vendedor: '', producto: '' }
+export const FILTRO_VACIO: Filtro = { rango: 'todo', desde: '', hasta: '', vendedor: '', producto: '', busca: '' }
+
+// ─── Buscar UN pedido ────────────────────────────────────────────────────────
+//
+// Los desplegables de arriba REBANAN —"los de Milagros", "los de esta semana"—
+// y esto ENCUENTRA: el cliente llamó, el courier preguntó por una guía, alguien
+// dictó un DNI por teléfono. Son dos gestos distintos y por eso son dos
+// controles distintos.
+//
+// Qué se busca, que es la decisión de verdad: **con qué llega uno a la
+// pantalla**. Cinco cosas:
+//
+//   · el nombre del comprador
+//   · el N° de pedido (`ORD-…`), que es lo que el cliente tiene a la vista
+//   · el DNI, que es su identidad en Kross — un mismo número junta sus pedidos
+//     aunque cambie de teléfono
+//   · el teléfono, que es de donde viene la llamada
+//   · el número de guía, que es por lo que pregunta el courier
+//
+// El PRODUCTO no está, y no es un olvido: ya tiene su desplegable al lado.
+// Meterlo acá haría que escribir "faja" devuelva media tienda desde un control
+// que promete encontrar uno.
+//
+// Se compara sin acentos, sin mayúsculas y **sin separadores**: quien dicta un
+// teléfono lo dice "912 345 678", quien copia un pedido trae "ORD-17563…" y
+// quien escribe un apellido no pone la tilde. Sin normalizar, esas tres formas
+// de escribir lo mismo no encuentran nada — y un buscador que no encuentra se
+// deja de usar a la segunda.
+
+const sinAcento = (s: string): string => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+/** Un texto reducido a lo comparable: sin acentos, en mayúsculas y sin nada que
+ *  no sea letra o número. */
+export const clave = (s: string | null | undefined): string =>
+  sinAcento(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+
+export interface PedidoBuscable {
+  buyer_name?: string | null
+  buyer_phone?: string | null
+  order_id?: string | null
+  tracking_numero?: string | null
+  buyers?: { document_number?: string | null } | null
+}
+
+/**
+ * El texto contra el que se busca un pedido.
+ *
+ * Los campos van separados por `|` en vez de pegados: normalizado, "JUAN PEREZ"
+ * + "ORD-123" pegados serían `JUANPEREZORD123`, donde un "ZORD" encontraría un
+ * pedido que no dice eso en ninguna parte. La barra no puede aparecer en un
+ * término —`clave` la borra— así que corta sin estorbar.
+ */
+export function textoDe(p: PedidoBuscable): string {
+  return [
+    p.buyer_name,
+    p.order_id,
+    p.buyers?.document_number,
+    p.buyer_phone,
+    p.tracking_numero,
+  ].map(clave).join('|')
+}
+
+/**
+ * ¿Este pedido responde a lo que se escribió?
+ *
+ * Por TÉRMINOS y no por la frase entera: "perez ana" encuentra a Ana Pérez
+ * igual que "ana perez". Uno no recuerda en qué orden estaba escrito el nombre,
+ * y exigirlo convierte una búsqueda fallida en "este cliente no existe".
+ *
+ * Todos los términos tienen que estar (Y, no O): con OR, escribir dos palabras
+ * devuelve MÁS resultados que escribir una, que es lo contrario de lo que uno
+ * espera al seguir tecleando.
+ */
+export function coincide(p: PedidoBuscable, busca: string): boolean {
+  const terminos = busca.split(/\s+/).map(clave).filter(Boolean)
+  if (!terminos.length) return true
+  const texto = textoDe(p)
+  return terminos.every(t => texto.includes(t))
+}
 
 /**
  * La ventana de tiempo que pide el filtro, en milisegundos.
@@ -71,6 +152,7 @@ export function ventanaDe(f: Filtro, ahora: number): { desde: number | null; has
 export function pasaFiltro(p: StoreOrder, f: Filtro, ahora: number): boolean {
   if (f.vendedor && (p.assigned_seller_id ?? '') !== f.vendedor) return false
   if (f.producto && (p.product_name ?? '') !== f.producto) return false
+  if (f.busca.trim() && !coincide(p, f.busca)) return false
 
   const { desde, hasta } = ventanaDe(f, ahora)
   if (desde === null && hasta === null) return true
@@ -91,7 +173,7 @@ export function aplicarFiltro(pedidos: StoreOrder[], f: Filtro, ahora: number): 
  *  de vender. */
 export function cuantosFiltros(f: Filtro): number {
   const fecha = f.rango === 'rango' ? (f.desde || f.hasta ? 1 : 0) : f.rango === 'todo' ? 0 : 1
-  return fecha + (f.vendedor ? 1 : 0) + (f.producto ? 1 : 0)
+  return fecha + (f.vendedor ? 1 : 0) + (f.producto ? 1 : 0) + (f.busca.trim() ? 1 : 0)
 }
 
 /** Cómo se lee el rango puesto, para decirlo sin abrir el panel. */

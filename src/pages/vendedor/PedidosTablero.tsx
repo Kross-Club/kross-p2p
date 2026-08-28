@@ -1,10 +1,13 @@
-import { ChevronRight, MessageCircle, Package } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Crosshair, MessageCircle, Package } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NOTA_META, CERRADO_SUAVE, NEUTRO, ALERTA } from '../../lib/order-chips'
 import { COLUMNAS, columnaDelPedido, antiguedad, conPlataEnJuego, esAnulado, esperaGuiaManual } from '../../lib/order-tracking'
 import { estaVivo } from '../../lib/store-orders'
 import { plataDe, soles } from '../../lib/order-money'
 import { horaOFecha } from '../../lib/fechas'
+import { haciaDonde } from '../../lib/fuera-de-vista'
+import type { Direccion } from '../../lib/fuera-de-vista'
 import { useSeller } from '../../lib/seller-session'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { useCompradoresEnLinea } from '../../lib/presencia'
@@ -38,20 +41,24 @@ const etapaChip = (key: string) => (key === 'entregado' ? CERRADO_SUAVE : NEUTRO
  * El repo ya lo decía dos veces, en `chipAntiguedad` y en el grupo de cierre;
  * esta era la que se había quedado.
  */
-function TarjetaPedido({ s, ahora, enLinea, marcado, chip, onAbrir }: {
+function TarjetaPedido({ s, ahora, enLinea, marcado, chip, onAbrir, refNodo }: {
   s: StoreOrder
   ahora: number
   enLinea: ReadonlySet<string>
   marcado?: string | null
   chip: (s: StoreOrder) => ReactNode
   onAbrir: (token: string) => void
+  /** Solo la tarjeta MARCADA lo recibe: es la única que hay que poder
+   *  encontrar. Un ref en las cincuenta sería medir cincuenta cosas para
+   *  responder por una. */
+  refNodo?: (el: HTMLElement | null) => void
 }) {
   // El anillo solo desde `confirmado`: antes no hay nada cobrado que mostrar, y
   // un anillo vacío en cada tarjeta de las dos primeras columnas enseña a
   // ignorarlo justo donde después importa.
   const conPlata = conPlataEnJuego(columnaDelPedido(s))
   return (
-    <button onClick={() => s.token && onAbrir(s.token)} disabled={!s.token}
+    <button ref={refNodo} onClick={() => s.token && onAbrir(s.token)} disabled={!s.token}
       className="w-full bg-white rounded-2xl p-3 shadow-sm text-left border"
       style={!!marcado && s.token === marcado
         ? { borderColor: 'var(--brand)', boxShadow: '0 0 0 1px var(--brand)' }
@@ -159,6 +166,38 @@ function TarjetaCurioso({ c, ahora, producto }: {
   )
 }
 
+/**
+ * El puntero al pedido abierto.
+ *
+ * Aparece SOLO cuando hay un pedido marcado y no se ve. Un botón permanente
+ * "ir al pedido" ocuparía sitio las nueve de cada diez veces en que el pedido
+ * está delante de los ojos, y se aprendería a ignorar justo para la décima.
+ *
+ * La flecha apunta hacia donde está de verdad (`haciaDonde`), no a un lado
+ * fijo: es lo que convierte "hay uno abierto en alguna parte" en "está a la
+ * izquierda". Abajo a la izquierda porque el cajón del pedido entra por la
+ * derecha — un puntero debajo del cajón sería un puntero que no se ve.
+ */
+const FLECHA: Record<Direccion, typeof ArrowUp> = {
+  arriba: ArrowUp, abajo: ArrowDown, izquierda: ArrowLeft, derecha: ArrowRight,
+}
+
+function PunteroAlMarcado({ direccion, onIr }: { direccion: Direccion; onIr: () => void }) {
+  const Flecha = FLECHA[direccion]
+  return (
+    <button
+      onClick={onIr}
+      className="fixed bottom-5 left-4 md:left-24 z-30 flex items-center gap-2 pl-3 pr-4 py-2 rounded-full shadow-lg"
+      style={{ background: 'var(--invert)', color: 'var(--invert-fg)' }}
+      title="Centrar el pedido que tienes abierto"
+    >
+      <Crosshair size={14} className="flex-shrink-0" />
+      <span className="text-[11px]" style={{ fontWeight: 700 }}>Ir al pedido abierto</span>
+      <Flecha size={14} className="flex-shrink-0" />
+    </button>
+  )
+}
+
 export default function PedidosTablero({ lista, onAbrir, marcado }: {
   lista: StoreOrders
   /** Abre el pedido en el panel de la derecha, sin salir del tablero. */
@@ -176,6 +215,80 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
   // Los curiosos son la primera columna y NO son pedidos: viven en
   // `checkout_drafts` y se leen aparte. Ver `store-drafts.ts`.
   const { curiosos, cargando: cargandoCuriosos } = useStoreDrafts(effective)
+
+  // ── El puntero al pedido abierto ──
+  //
+  // El borde marcado dice cuál es, pero solo mientras se vea: el tablero
+  // scrollea en dos ejes y basta arrastrar un poco para que el pedido abierto
+  // quede fuera, sin nada que diga hacia dónde. Esto lo dice, y lo trae.
+  const [nodoMarcado, setNodoMarcado] = useState<HTMLElement | null>(null)
+  // Etiquetado con el token que lo produjo: al cambiar de pedido, la dirección
+  // vieja se descarta sola. Guardarla suelta y limpiarla desde el efecto la
+  // borraría un render tarde, y en ese render la flecha apuntaría al anterior.
+  const [fuera, setFuera] = useState<{ token: string; dir: Direccion } | null>(null)
+  const direccion = marcado && fuera?.token === marcado ? fuera.dir : null
+
+  useEffect(() => {
+    if (!nodoMarcado || !marcado) return
+    let vivo = true
+    let pedido = 0
+
+    // Se guarda solo cuando CAMBIA. Devolver el mismo objeto hace que React se
+    // salte el render: sin esto, cada evento de scroll crearía un `{token, dir}`
+    // nuevo y repintaría las cien tarjetas del tablero a sesenta por segundo.
+    const aplicar = (dir: Direccion | null) => {
+      if (!vivo) return
+      setFuera(prev => {
+        if (!dir) return prev === null ? prev : null
+        if (prev && prev.token === marcado && prev.dir === dir) return prev
+        return { token: marcado, dir }
+      })
+    }
+
+    const medir = () => {
+      pedido = 0
+      if (!vivo) return
+      aplicar(haciaDonde(
+        nodoMarcado.getBoundingClientRect(),
+        { top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight },
+      ))
+    }
+
+    // Una medición por cuadro como mucho: `getBoundingClientRect` obliga al
+    // navegador a recalcular el layout, y el scroll dispara muchas más veces de
+    // las que se pintan.
+    const remedir = () => { if (!pedido) pedido = requestAnimationFrame(medir) }
+
+    // El observador contra la PANTALLA (`root: null`), no contra la caja del
+    // tablero: ya recorta por el desborde de los ancestros, así que una tarjeta
+    // tapada por su columna cuenta como fuera. Cubre lo que el scroll no ve —
+    // que la tarjeta se mueva porque cambió el layout, no la posición.
+    const io = new IntersectionObserver(remedir, { threshold: [0, 0.35, 1] })
+
+    // Y el scroll cubre lo que el observador no: solo avisa al CRUZAR un
+    // umbral, y arrastrar de "fuera por la izquierda" a "fuera por arriba" no
+    // cruza ninguno — la flecha se quedaría apuntando al lado equivocado.
+    io.observe(nodoMarcado)
+    window.addEventListener('scroll', remedir, true)
+    window.addEventListener('resize', remedir)
+    // La primera medición también por `remedir` y no directa: medir dentro del
+    // efecto sería leer el layout antes de que el navegador haya pintado, y
+    // guardar el resultado ahí mismo es la cascada de renders que React 19
+    // marca. Un cuadro de espera no se nota.
+    remedir()
+
+    return () => {
+      vivo = false
+      if (pedido) cancelAnimationFrame(pedido)
+      io.disconnect()
+      window.removeEventListener('scroll', remedir, true)
+      window.removeEventListener('resize', remedir)
+    }
+  }, [nodoMarcado, marcado])
+
+  const irAlMarcado = useCallback(() => {
+    nodoMarcado?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+  }, [nodoMarcado])
 
   // `leidoEn` es el instante en que llegaron los datos: medir la antigüedad
   // contra eso —y no contra cada pintada— hace que todas las tarjetas cuenten
@@ -325,7 +438,11 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  {col.items.map(s => <TarjetaPedido key={s.id} s={s} ahora={ahora} enLinea={enLinea} marcado={marcado} chip={chipAntiguedad} onAbrir={onAbrir} />)}
+                  {col.items.map(s => (
+                    <TarjetaPedido key={s.id} s={s} ahora={ahora} enLinea={enLinea} marcado={marcado}
+                      chip={chipAntiguedad} onAbrir={onAbrir}
+                      refNodo={s.token && s.token === marcado ? setNodoMarcado : undefined} />
+                  ))}
                   {col.items.length === 0 && (
                     <div className="bg-gray-50 rounded-xl p-4 text-center text-[10px] text-gray-300 flex flex-col items-center gap-1">
                       <Package size={16} className="opacity-40" /> vacío
@@ -337,6 +454,8 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
           })}
         </ScrollHorizontal>
       )}
+
+      {direccion && <PunteroAlMarcado direccion={direccion} onIr={irAlMarcado} />}
     </div>
   )
 }

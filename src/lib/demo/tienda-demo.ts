@@ -390,6 +390,10 @@ async function construir(): Promise<TiendaDemo> {
       buyer_id: persona.id,
       buyer_name: persona.nombre,
       buyer_phone: persona.phone,
+      // El DNI viaja embebido igual que en la respuesta real: sin él el
+      // buscador del panel encontraría por nombre en el demo y por nombre y DNI
+      // en producción, o sea que el demo enseñaría de menos.
+      buyers: { document_number: persona.document_number },
       product_id: prod.id,
       product_name: prod.nombre,
       product_price: prod.precio,
@@ -548,6 +552,7 @@ function pedidoHistorico(t: TiendaDemo, i: number): StoreOrder | null {
     buyer_id: h.buyer_id,
     buyer_name: nombre,
     buyer_phone: cliente?.phone ?? null,
+    buyers: { document_number: cliente?.document_number ?? null },
     product_name: h.product_name,
     product_price: h.product_price,
     pack_name: elige(r, ['Pack 1', 'Pack 2', 'Pack 3']),

@@ -1,5 +1,5 @@
-import { CalendarRange, SlidersHorizontal, X } from 'lucide-react'
-import { RANGOS, cuantosFiltros, opcionesDe, resumenDelRango } from '../lib/pedidos-filtro'
+import { CalendarRange, Search, SlidersHorizontal, X } from 'lucide-react'
+import { FILTRO_VACIO, RANGOS, cuantosFiltros, opcionesDe, resumenDelRango } from '../lib/pedidos-filtro'
 import type { Filtro, RangoKey } from '../lib/pedidos-filtro'
 import type { StoreOrder } from '../lib/store-orders'
 
@@ -40,6 +40,23 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados }: {
     // Envuelve en vez de scrollear: en el móvil son dos líneas, y un filtro
     // que se sale de la pantalla es un filtro que nadie va a quitar.
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+      {/* Primero el buscador y después las rebanadas: los desplegables rebanan
+          —"los de Milagros", "los de esta semana"— y esto ENCUENTRA. Cuando uno
+          llega con un nombre o una guía en la mano, no viene a rebanar. */}
+      <div className="relative flex-shrink-0">
+        <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+          style={{ color: 'var(--text-faint)' }} />
+        <input
+          type="search"
+          value={filtro.busca}
+          onChange={e => set({ busca: e.target.value })}
+          placeholder="Nombre, N° de pedido, DNI, teléfono o guía"
+          aria-label="Buscar un pedido"
+          className="text-xs rounded-lg pl-7 pr-2 py-1 outline-none w-[16rem] max-w-full"
+          style={selectStyle}
+        />
+      </div>
+
       <SlidersHorizontal size={13} className="flex-shrink-0" style={{ color: 'var(--text-faint)' }} />
 
       <div className="flex items-center gap-0.5 rounded-xl p-0.5 flex-shrink-0" style={{ background: 'var(--surface-3)' }}>
@@ -94,7 +111,7 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados }: {
       )}
 
       {puestos > 0 && (
-        <button type="button" onClick={() => onCambio({ rango: 'todo', desde: '', hasta: '', vendedor: '', producto: '' })}
+        <button type="button" onClick={() => onCambio(FILTRO_VACIO)}
           className="flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg flex-shrink-0"
           style={{ color: 'var(--text-muted)' }}
           title={`${resumenDelRango(filtro)} · quitar el filtro`}>
