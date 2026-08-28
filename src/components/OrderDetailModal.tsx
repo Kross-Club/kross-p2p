@@ -5,15 +5,19 @@ import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
 import { NOTA_META, NOTA_KEYS } from '../lib/order-chips'
 import { stageVigente } from '../lib/order-stages'
+import { etiquetaDePaso } from '../lib/order-tracking'
 import Confirmar from './Confirmar'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
+// El nombre y el emoji de cada etapa salen de `PASOS` (order-tracking), que es
+// el mismo catálogo del tablero y de la cabecera del chat. Escribirlos otra vez
+// acá es cómo empezaron a llamarse distinto en cada pantalla.
 // `preparando` ya no está en el eje: se lee como `confirmado` vía `stageVigente`.
-const STAGE_LABEL: Record<string, string> = {
-  nuevo: '📋 Pedido creado', validando: '🔎 Validando pago', confirmado: '💰 Confirmado',
-  en_camino: '🚚 En camino', entregado: '✅ Entregado',
+const etiqueta = (stage: string): string => {
+  const { label, emoji } = etiquetaDePaso(stageVigente(stage))
+  return `${emoji} ${label}`.trim()
 }
 
 // Las notas y su color viven en un solo lugar (§6.1)
@@ -43,6 +47,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
   // pregunta antes: `{ i, qty }` es lo que está esperando el sí.
   const [cambioQty, setCambioQty] = useState<{ i: number; nombre: string; de: number; a: number } | null>(null)
   const [porAnular, setPorAnular] = useState(false)
+  const [porFallar, setPorFallar] = useState(false)
   const [viewerImgs, setViewerImgs] = useState<string[]>([])
   const [viewerIdx, setViewerIdx] = useState<number | null>(null)
   const [removingIdx, setRemovingIdx] = useState<number | null>(null)
@@ -93,6 +98,20 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
     } finally { setBusy(false) }
   }
 
+  // Marcar NO ENTREGADO. Va por la misma puerta que avanzar de etapa
+  // (`advance`), porque es eso: el pedido pasa a su etapa terminal de fracaso.
+  // Lo que cambia es dónde se pulsa — con los otros cierres, no con el botón de
+  // seguir adelante.
+  const noEntregado = async () => {
+    setBusy(true)
+    try {
+      const res = await post({ action: 'advance', session_id: session.id, stage: 'no_entregado' })
+      if (!res.ok) { alert('No se pudo marcar como no entregado.'); return }
+      onPatch({ stage: 'no_entregado' })
+      setPorFallar(false)
+    } finally { setBusy(false) }
+  }
+
   const setNota = async (nota: string | null) => {
     onPatch({ nota })
     await post({ action: 'set_nota', session_id: session.id, nota })
@@ -127,9 +146,18 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
 
   const cancelled = session.status === 'cancelado'
   const anulado = session.status === 'anulado'
+  // El cierre de fracaso solo tiene sentido cuando el pedido YA SALIÓ: antes de
+  // confirmar lo que corresponde es cancelar. Misma regla que tenía la fila del
+  // estado, mudada con el botón.
+  const etapa = stageVigente(session.stage)
+  const puedeFallar = ['confirmado', 'en_camino'].includes(etapa)
+  const nombreDePaso = (key: string) => {
+    const { label, emoji } = etiquetaDePaso(key)
+    return `${emoji} ${label}`.trim()
+  }
   const stageText = anulado ? '🚫 Pedido anulado'
     : cancelled ? '❌ Pedido cancelado'
-    : (STAGE_LABEL[stageVigente(session.stage)] ?? session.stage)
+    : etiqueta(session.stage)
 
   const cuerpo = (
     <>
@@ -243,17 +271,33 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
               <div className="text-center py-2 text-sm font-bold" style={{ color: 'var(--danger-fg)' }}>Este pedido está cancelado</div>
             )
           ) : !confirming ? (
+            /* Los TRES cierres, juntos y al final. Son lo mismo visto de tres
+               maneras —el pedido termina y no sigue— y estaban repartidos:
+               "No entregado" arriba, en la fila del estado, pegado al botón de
+               avanzar que es justo su contrario. Ahí se pulsa por error.
+               Juntos y en rojo, uno los encuentra cuando los busca y no cuando
+               no los quiere. */
             <div className="space-y-2">
               <button onClick={() => setConfirming(true)}
                 className="w-full py-3 rounded-2xl font-black text-sm" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                 Cancelar pedido
               </button>
-              {/* En gris y debajo: anular no es la acción normal, es la salida
-                  para lo que nunca debió existir. */}
+              {/* Solo cuando el pedido ya salió al mundo: antes de confirmar, lo
+                  que corresponde es cancelar, no "no entregar". Es el cierre que
+                  alimenta la tasa de entrega — entregado / (entregado + no
+                  entregado) — así que marcarlo por error ensucia el número que
+                  la marca vende. */}
+              {role === 'seller' && puedeFallar && (
+                <button onClick={() => setPorFallar(true)} disabled={busy}
+                  className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-50"
+                  style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+                  {nombreDePaso('no_entregado')}
+                </button>
+              )}
               {role === 'seller' && (
                 <button onClick={() => setPorAnular(true)}
-                  className="w-full py-2 rounded-2xl text-[11px] font-bold"
-                  style={{ background: 'transparent', color: 'var(--text-faint)' }}>
+                  className="w-full py-3 rounded-2xl font-black text-sm"
+                  style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
                   🚫 Anular — fue un error o una prueba
                 </button>
               )}
@@ -303,6 +347,19 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
             {cuerpo}
           </div>
         </div>
+      )}
+
+      {porFallar && (
+        <Confirmar
+          titulo="¿Marcar como NO ENTREGADO?"
+          detalle="Cierra el pedido y cuenta en la tasa de entrega de la marca. No se puede deshacer."
+          si="Sí, no se entregó"
+          no="Todavía no"
+          peligro
+          ocupado={busy}
+          onSi={noEntregado}
+          onNo={() => setPorFallar(false)}
+        />
       )}
 
       {porAnular && (

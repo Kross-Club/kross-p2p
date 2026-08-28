@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { datosDeFila, esperaRespuesta, esperaAlCliente, verBandeja, VISTAS, esVista } from './bandeja'
+import { datosDeFila, esperaRespuesta, esperaAlCliente, verBandeja, vistaQueContiene, VISTAS, esVista } from './bandeja'
 import type { FilaBandeja, Vista } from './bandeja'
 import type { StoreOrder } from './store-orders'
 
@@ -195,5 +195,44 @@ describe('las cuatro vistas de la bandeja', () => {
     expect(esVista('favoritos')).toBe(true)
     expect(esVista('sin_leer')).toBe(false)
     expect(esVista(null)).toBe(false)
+  })
+})
+
+// ─── Dónde está el pedido que tengo abierto ──────────────────────────────────
+//
+// Existe por el botón "Ir al pedido seleccionado": para llevar a alguien a una
+// fila, la fila tiene que estar pintada, y cada vista recorta distinto. Si el
+// pedido abierto está en "Sin responder" y uno se fue a "Favoritos", ahí no hay
+// nada a lo que ir.
+describe('en qué vista aparece un pedido', () => {
+  const fila = (p: Partial<FilaBandeja>): FilaBandeja => ({
+    vistaPrevia: '', quienEscribio: null, ultimoDe: null, ultimoEn: AHORA, creadoEn: AHORA,
+    esperando: false, esperandoCliente: false, silencioMs: 0,
+    sinLeer: 0, demorado: false, diasParado: 0, favorito: false, ...p,
+  })
+
+  it('lo encuentra en la vista que lo recorta', () => {
+    expect(vistaQueContiene(fila({ esperando: true }))).toBe('sin_responder')
+    expect(vistaQueContiene(fila({ esperandoCliente: true }))).toBe('esperando_cliente')
+    expect(vistaQueContiene(fila({ favorito: true }))).toBe('favoritos')
+  })
+
+  // La más específica gana: la que dice POR QUÉ hay que mirarlo.
+  it('cuando cabe en varias, gana la más específica', () => {
+    expect(vistaQueContiene(fila({ esperando: true, favorito: true }))).toBe('sin_responder')
+    expect(vistaQueContiene(fila({ esperandoCliente: true, favorito: true }))).toBe('esperando_cliente')
+  })
+
+  // Nunca `null`: "Chats recientes" no recorta nada, así que siempre hay dónde
+  // encontrarlo — y por eso el botón siempre puede llevar a alguien.
+  it('un pedido que no cabe en ninguna vista que recorta va a los chats', () => {
+    expect(vistaQueContiene(fila({}))).toBe('chats')
+  })
+
+  it('todas las vistas que devuelve son vistas de verdad', () => {
+    const claves = VISTAS.map(v => v.key)
+    for (const f of [fila({}), fila({ esperando: true }), fila({ favorito: true })]) {
+      expect(claves).toContain(vistaQueContiene(f))
+    }
   })
 })

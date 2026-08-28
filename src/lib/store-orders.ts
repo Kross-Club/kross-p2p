@@ -22,6 +22,11 @@ import { tiendaDemo } from './demo/tienda-demo'
 //
 // Acá vive una sola: la de abajo.
 
+/** Cuántos pedidos trae `get-store-sessions` como mucho. Tiene que ser el mismo
+ *  número que el `.limit()` de la función — acá solo se usa para que el demo
+ *  corte igual que la tienda de verdad. */
+const TOPE = 500
+
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
@@ -141,7 +146,7 @@ export interface StoreOrders {
  * `incluirCancelados` es la única opción, y es de verdad una decisión por
  * pantalla: el CRM los agrupa aparte y Stats los cuenta en las notas, mientras
  * que Chats y el mapa no tienen nada que hacer con un pedido muerto. No se
- * unifica pidiéndolos siempre porque el `limit(80)` del servidor se aplica
+ * unifica pidiéndolos siempre porque el `limit` del servidor se aplica
  * ANTES de filtrar: traerlos de más empujaría pedidos vivos fuera de la lista.
  */
 export function useStoreOrders(
@@ -164,13 +169,15 @@ export function useStoreOrders(
     let vivo = true
 
     // En demo el panel no consulta nada: los datos salen del generador y la
-    // barra de arriba lo dice. Se corta el mismo tope que aplica el servidor
-    // (80) para no enseñar una pantalla que la tienda real nunca vería.
+    // barra de arriba lo dice. Se corta el MISMO tope que aplica el servidor
+    // para no enseñar una pantalla que la tienda real nunca vería — y por eso
+    // es una constante y no un número suelto: cambiar uno y no el otro haría
+    // que el demo y la tienda de verdad cortaran distinto.
     if (demo) {
       setCargando(true)
       tiendaDemo().then(t => {
         if (!vivo) return
-        setPedidos(t.pedidos.slice(0, 80))
+        setPedidos(t.pedidos.slice(0, TOPE))
         setLeidoEn(Date.now())
         setCargando(false)
       })

@@ -18,7 +18,8 @@ import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
 import { stageVigente } from '../../lib/order-stages'
-import { conPlataEnJuego, columnaDelPedido } from '../../lib/order-tracking'
+import { conPlataEnJuego, columnaDelPedido, pasoActual, etiquetaDePaso } from '../../lib/order-tracking'
+import type { PedidoRastreable } from '../../lib/order-tracking'
 import AnilloAvance from '../../components/AnilloAvance'
 import { useUbicacion } from '../../lib/ubicacion'
 import CustomerCard from '../../components/CustomerCard'
@@ -243,8 +244,22 @@ function SellerCallModal({
 }
 
 // ─── Stage selector ───────────────────────────────────────────────────────────
-function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
-  current: string
+//
+// Lo que se VE y lo que se MUEVE son dos cosas distintas, y confundirlas era el
+// bug: esta barra mostraba el `stage` crudo, o sea el reloj del equipo, con su
+// propia lista de nombres. Un pedido que Shalom ya reporta EN_TRANSITO salía
+// acá como "En camino" —sin emoji— mientras el tablero lo ponía en "🚚 En
+// tránsito". El mismo pedido, dos nombres, dos pantallas.
+//
+// Ahora se ve el PASO del eje (`pasoActual`), que funde los dos relojes y es lo
+// que pinta el tablero, con el nombre y el emoji de `PASOS` — una sola
+// definición. Lo que se mueve sigue siendo el `stage`: las fases del courier no
+// son nuestras para marcarlas.
+function StageSelector({ pedido, sessionId, canWrite, onAdvanced }: {
+  /** El pedido entero y no solo su `stage`: el paso del eje se calcula con el
+   *  tipo de envío y lo que reporta el courier, no solo con lo que marcó una
+   *  persona. */
+  pedido: PedidoRastreable & { stage?: string | null }
   sessionId: string
   canWrite: boolean
   onAdvanced: (next: string, handedOff: boolean) => void
@@ -252,14 +267,18 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
   const [busy, setBusy] = useState(false)
   // Qué se está por hacer, mientras se pregunta. `null` = no se preguntó nada.
   const [porConfirmar, setPorConfirmar] = useState<string | null>(null)
-  const stageLabel: Record<string, string> = {
-    nuevo: 'Pedido creado', validando: 'Validando', confirmado: 'Confirmado', en_camino: 'En camino', entregado: 'Entregado',
-    no_entregado: 'No entregado',
-  }
+  const current = pedido.stage ?? 'nuevo'
   // Lo que la BD diga, traducido al eje de hoy. Todo lo de abajo mira `actual`,
   // nunca `current`: un `preparando` viejo fuera de `STAGES` daba índice -1 y
   // el botón de avanzar ofrecía la PRIMERA etapa como "siguiente".
   const actual = stageVigente(current)
+  // El paso del eje, con su etiqueta específica ("Registrado en Shalom", "En
+  // agencia de Shalom") que la genérica de `PASOS` no tiene.
+  const paso = pasoActual(pedido)
+  const nombreDePaso = (key: string) => {
+    const { label, emoji } = etiquetaDePaso(key)
+    return `${emoji} ${label}`.trim()
+  }
 
   const push = async (next: string) => {
     setBusy(true)
@@ -290,49 +309,36 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
     setPorConfirmar(STAGES[idx + 1])
   }
 
-  // Terminal de fracaso: es lo que alimenta la tasa de entrega, y marcarlo por
-  // error ensucia la métrica que la marca vende.
-  const markUndelivered = () => { if (!busy) setPorConfirmar('no_entregado') }
-
-  const fallido = porConfirmar === 'no_entregado'
-
+  // "No entregado" ya NO vive acá. Es un CIERRE, no un paso: termina el pedido
+  // igual que cancelarlo o anularlo, y estaba suelto en la fila del estado —
+  // junto al botón de avanzar, que es su contrario— donde se pulsa por error.
+  // Se fue abajo, con Cancelar y Anular, que es donde uno busca las cosas que
+  // no se deshacen (ver `OrderDetailModal`).
   const idx = STAGES.indexOf(actual)
   const terminal = actual === 'entregado' || actual === 'no_entregado'
-  // Solo tiene sentido rendirse cuando el pedido ya salió al mundo: antes de
-  // confirmado lo que corresponde es cancelar, no "no entregar".
-  const canFail = canWrite && !terminal && ['confirmado', 'en_camino'].includes(actual)
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-white border-b border-gray-100">
       <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Estado:</span>
-      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={stageChip(actual)}>
-        {stageLabel[actual] || actual}
+      {/* El paso del EJE, con el MISMO nombre y emoji que el tablero — que es
+          lo único que evita tener que traducir entre dos pantallas que hablan
+          de lo mismo. */}
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={stageChip(paso?.key ?? actual)}>
+        {nombreDePaso(paso?.key ?? actual)}
       </span>
-      {canFail && (
-        <button onClick={markUndelivered} disabled={busy}
-          className="ml-auto text-[10px] font-black px-2.5 py-1 rounded-full disabled:opacity-50"
-          style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
-          ✕ No entregado
-        </button>
-      )}
       {canWrite && !terminal && idx >= 0 && idx < STAGES.length - 1 && (
         <button onClick={advance} disabled={busy}
-          className={`${canFail ? '' : 'ml-auto '}text-[10px] font-black px-3 py-1 rounded-full disabled:opacity-50`}
+          className="ml-auto text-[10px] font-black px-3 py-1 rounded-full disabled:opacity-50"
           style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
-          {busy ? '…' : `→ ${stageLabel[STAGES[idx + 1]]}`}
+          {busy ? '…' : `→ ${nombreDePaso(STAGES[idx + 1])}`}
         </button>
       )}
 
       {porConfirmar && (
         <Confirmar
-          titulo={fallido
-            ? '¿Marcar como NO ENTREGADO?'
-            : `¿Ya está todo listo para "${stageLabel[porConfirmar]}"?`}
-          detalle={fallido
-            ? 'Cierra el pedido y cuenta en la tasa de entrega de la marca.'
-            : 'El pedido pasa a esa etapa y no se puede retroceder.'}
-          si={fallido ? 'Sí, no se entregó' : 'Sí, avanzar'}
+          titulo={`¿Ya está todo listo para "${etiquetaDePaso(porConfirmar).label}"?`}
+          detalle="El pedido pasa a esa etapa y no se puede retroceder."
+          si="Sí, avanzar"
           no="Todavía no"
-          peligro={fallido}
           ocupado={busy}
           onSi={() => { const n = porConfirmar; setPorConfirmar(null); push(n) }}
           onNo={() => setPorConfirmar(null)}
@@ -1016,7 +1022,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       {/* Stage selector */}
       {session.status !== 'cancelado' && (
       <StageSelector
-        current={session.stage}
+        pedido={session}
         sessionId={session.id}
         canWrite={canWrite}
         onAdvanced={(next, handedOff) => {

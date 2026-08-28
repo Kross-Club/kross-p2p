@@ -226,6 +226,24 @@ function fecha(iso: string | null | undefined): number | null {
  * Devuelve una copia: la lista de origen la comparten cuatro pantallas y
  * ordenarla en el sitio le cambiaría el orden a las otras tres.
  */
+/**
+ * En qué vista aparece este pedido.
+ *
+ * Existe por el botón *Ir al pedido seleccionado*: para llevar a alguien a una
+ * fila, la fila tiene que estar pintada, y cada vista recorta distinto. Si el
+ * pedido abierto está en "Sin responder" y uno se fue a "Favoritos", ahí no hay
+ * nada a lo que ir — el botón se quedaba quieto y parecía roto.
+ *
+ * Devuelve la PRIMERA vista de la lista que lo contiene, o sea la más
+ * específica: si un pedido está sin responder Y es favorito, se va a "Sin
+ * responder", que es la que dice por qué hay que mirarlo. Nunca devuelve `null`:
+ * "Chats recientes" no recorta nada, así que siempre hay dónde encontrarlo.
+ */
+export function vistaQueContiene(fila: FilaBandeja): Vista {
+  const cabe = (v: Vista): boolean => verBandeja([fila], v, x => x).length > 0
+  return VISTAS.find(v => cabe(v.key))?.key ?? 'chats'
+}
+
 export function verBandeja<T>(filas: T[], vista: Vista, de: (x: T) => FilaBandeja): T[] {
   const porChat = (a: T, b: T) => de(b).ultimoEn - de(a).ultimoEn
 

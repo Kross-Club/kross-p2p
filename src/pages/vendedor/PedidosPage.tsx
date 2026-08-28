@@ -6,8 +6,13 @@ import { useIsDesktop } from '../../lib/use-desktop'
 import { MODOS, modoDeUrl, pedidoDeUrl, urlConPedido, urlDeModo } from '../../lib/pedidos-modos'
 import type { Modo } from '../../lib/pedidos-modos'
 import { FILTRO_VACIO, aplicarFiltro } from '../../lib/pedidos-filtro'
+import { usePunteroAlMarcado } from '../../lib/puntero-marcado'
+import { datosDeFila, vistaQueContiene, VISTA_INICIAL } from '../../lib/bandeja'
+import type { Vista } from '../../lib/bandeja'
+import { useFavoritos } from '../../lib/favoritos'
 import type { Filtro } from '../../lib/pedidos-filtro'
 import FiltroPedidos from '../../components/FiltroPedidos'
+import PunteroAlPedido from '../../components/PunteroAlPedido'
 import PanelPedido from '../../components/PanelPedido'
 import PedidosLista from './PedidosLista'
 import PedidosTablero from './PedidosTablero'
@@ -82,6 +87,50 @@ export default function PedidosPage() {
   // estaba?", y varias marcas no la responden — la reparten.
   const marcado = abierto ?? ultimoAbierto
 
+  // ── El botón que trae de vuelta al pedido seleccionado ──
+  //
+  // La fila la pintan el Tablero y la Lista; el botón vive en la barra de
+  // filtros, una capa más arriba. Por eso el nodo sube hasta acá, que es el
+  // único sitio donde las dos cosas se ven a la vez. En Resumen no hay fila que
+  // entregar, así que `nodoMarcado` se queda en `null` y el botón no sale — sin
+  // que ninguna de las pantallas tenga que saber que existe.
+  //
+  // En la Lista funciona aunque el pedido esté más allá de las cien filas
+  // pintadas: la ventana se estira hasta alcanzarlo (`cuantasPintar`), así que
+  // la fila marcada siempre existe y siempre hay a dónde ir.
+  const [nodoMarcado, setNodoMarcado] = useState<HTMLElement | null>(null)
+  const puntero = usePunteroAlMarcado(nodoMarcado, marcado)
+
+  // La VISTA de la bandeja vive acá, con el modo y el filtro, y no dentro de la
+  // Lista. Subió por el botón de arriba: cada vista recorta distinto, así que
+  // si el pedido seleccionado está en "Sin responder" y uno se fue a
+  // "Favoritos", en la pantalla no hay ninguna fila a la que llevarlo — el
+  // botón se quedaba quieto y parecía roto. Para llevarlo hay que CAMBIAR de
+  // vista, y eso lo tiene que poder hacer quien pinta el botón.
+  const [vista, setVista] = useState<Vista>(VISTA_INICIAL)
+  const favoritos = useFavoritos(effective?.store_id)
+
+  /**
+   * Ir al pedido seleccionado, esté donde esté.
+   *
+   * Si hace falta cambia de vista primero. El desplazamiento no se pierde: el
+   * puntero anota la petición y la cumple en cuanto la fila aparece, un
+   * instante después (ver `usePunteroAlMarcado`).
+   *
+   * Se calcula solo para el pedido marcado, no para la lista entera: es una
+   * fila, y hacerlo al pulsar y no en cada pintada.
+   */
+  const irAlMarcado = () => {
+    const suyo = marcado ? filtrada.pedidos.find(p => p.token === marcado) : null
+    if (suyo) {
+      // `sinLeer` en 0 a propósito: ninguna de las cinco vistas recorta por
+      // mensajes sin leer, así que no cambia en cuál cae.
+      const donde = vistaQueContiene(datosDeFila(suyo, lista.leidoEn, 0, favoritos.has(suyo.id)))
+      if (donde !== vista) setVista(donde)
+    }
+    puntero.ir()
+  }
+
   // El tablero en escritorio se queda con el alto que le sobra y scrollea él
   // mismo (ver PedidosTablero): para eso esta pantalla tiene que ser una
   // columna con alto definido. Los otros modos scrollean la página, como
@@ -123,12 +172,18 @@ export default function PedidosPage() {
             onCambio={setFiltro}
             base={lista.pedidos}
             mostrados={filtrada.pedidos.length}
+            extra={marcado && modo !== 'resumen'
+              ? <PunteroAlPedido direccion={puntero.direccion} onIr={irAlMarcado} />
+              : undefined}
           />
         </div>
       </div>
 
-      {modo === 'lista' && <PedidosLista lista={filtrada} onAbrir={abrir} marcado={marcado} />}
-      {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} marcado={marcado} />}
+      {modo === 'lista' && (
+        <PedidosLista lista={filtrada} onAbrir={abrir} marcado={marcado} refMarcado={setNodoMarcado}
+          vista={vista} onVista={setVista} />
+      )}
+      {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} marcado={marcado} refMarcado={setNodoMarcado} />}
       {modo === 'resumen' && <PedidosResumen lista={filtrada} />}
 
       {abierto && <PanelPedido token={abierto} onCerrar={cerrar} />}

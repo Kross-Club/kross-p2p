@@ -115,7 +115,7 @@ el tablero los agrupa aparte y el resumen los cuenta en las notas, y los dos mod
 quieren —bandeja y mapa— los descartan al pintar, que es gratis. Cambiar de modo no vuelve a
 pedir nada.
 
-⚠️ **El precio, anotado para cuando importe:** el `limit(80)` del servidor se aplica **antes**
+⚠️ **El precio, anotado para cuando importe:** el `limit` del servidor se aplica **antes**
 de filtrar, así que los cancelados ocupan lugar en esa ventana y la bandeja puede mostrar
 menos de 80 pedidos vivos. Con los volúmenes de hoy (4 pedidos en la marca más grande) no
 roza; el arreglo real cuando roce es paginar o subir el límite en `get-store-sessions`, no
@@ -1305,18 +1305,27 @@ scrollea en **dos ejes** —nueve columnas de ancho, treinta tarjetas de alto—
 arrastrar un poco para que el pedido abierto quede fuera de la pantalla, sin nada que diga
 hacia dónde.
 
-Ahora aparece un puntero abajo a la izquierda —**Ir al pedido abierto**— con una flecha que
-apunta hacia donde está de verdad. Tocarlo lo centra.
+En la barra de filtros, pegado a la derecha, está **Ir al pedido seleccionado**. Tocarlo lo
+trae al centro de la pantalla.
 
 Tres decisiones que lo hacen usable:
 
-- **Solo cuando no se ve.** Un botón permanente ocuparía sitio las nueve de cada diez veces
-  en que el pedido está delante de los ojos, y se aprendería a ignorar justo para la décima.
+- **Está siempre que haya un pedido seleccionado en pantalla**, no solo cuando se pierde de
+  vista. Vive en una barra, y un control que aparece y desaparece dentro de una barra se lee
+  como un error de la barra: uno aprende dónde están las cosas y espera encontrarlas ahí.
+  Lo que cambia es el **énfasis** — apagado mientras el pedido está a la vista, encendido y
+  con una flecha cuando no.
 - **La flecha apunta al eje donde está MÁS lejos.** Un pedido un poco abajo y mucho a la
   izquierda se encuentra yendo a la izquierda; una flecha hacia abajo mandaría a buscar
   donde no está.
-- **Abajo a la izquierda**, porque el cajón del pedido entra por la derecha. Un puntero
-  debajo del cajón es un puntero que no se ve.
+- **Pegado a la derecha del todo** (`ml-auto`), separado de los desplegables: no es un
+  filtro y no debe leerse como uno más de la fila.
+
+Vive en la barra y no en la pantalla que pinta la fila. El nodo sube hasta `PedidosPage`,
+que es el único sitio donde la barra, el Tablero y la Lista se ven a la vez; en Resumen no
+hay fila que entregar, así que el botón no sale sin que ninguna de las pantallas tenga que
+saber que existe. **El Tablero y la Lista lo usan igual** — el mismo botón, el mismo hook,
+la misma flecha.
 
 "Se ve" se mide **por área** y con un mínimo del 35 %: una tarjeta asomando un píxel por el
 borde está técnicamente visible y en la práctica no se ve. La geometría vive aparte
@@ -1334,6 +1343,132 @@ Los dos pasan por la misma medición, limitada a **una por cuadro** (`requestAni
 y guardando **solo cuando la dirección cambia**. Sin lo segundo, cada evento de scroll
 crearía un objeto nuevo y repintaría las cien tarjetas del tablero sesenta veces por
 segundo — el estado se devuelve idéntico para que React se salte el render.
+
+### El bug que el puntero destapó: dos cajas peleándose
+
+La primera versión avanzaba **unos píxeles por clic**. Hacían falta cincuenta para llegar.
+
+No era del puntero: era de `ScrollHorizontal`, que arrastra dos contenedores a la vez —el
+riel de 10 px de arriba y la caja de verdad— y los mantiene sincronizados copiándose la
+posición en el `onScroll` del otro. Ahí había escrito que *"no hace falta guardia contra el
+rebote: asignar el mismo `scrollLeft` no dispara otro evento, así que el ping-pong se corta
+solo"*.
+
+Cierto **mientras el que mueve es un dedo**. Deja de serlo en cuanto la caja se mueve sola:
+
+1. `scrollIntoView` arranca un desplazamiento suave. La caja avanza y dispara su evento.
+2. Se copia esa posición al riel. El evento del riel llega **un cuadro después**, cuando la
+   animación ya avanzó más.
+3. Los valores ya no coinciden, así que se le escribe `scrollLeft` a la caja — y **escribir
+   `scrollLeft` cancela la animación en curso** y la devuelve a la posición vieja.
+
+Cada clic: avanza un poco, rebota, se para.
+
+La guardia es de una línea —quien recibe un ajuste sabe que el evento que le va a llegar no
+es del usuario, y lo deja pasar sin devolverlo— pero la regla vive en `scroll-espejo.ts`,
+fuera del componente, porque es **lo único de todo esto que se puede probar sin un
+navegador**: la prueba corre la secuencia de eventos que dispara un desplazamiento suave y
+comprueba que a la caja no se le escribe nunca.
+
+### La Lista pinta de a cien (28-ago-2026)
+
+Una bandeja se lee de arriba abajo hasta que se acaba el tiempo, así que pintar mil filas
+para que alguien mire quince es trabajo que el navegador hace para nadie. Se pintan cien y
+se suman cien más al bajar.
+
+**Sin botones de página**, y no por moda: en una bandeja, "siguiente" obliga a decidir
+cuándo dejar de leer, y lo que uno quiere es seguir leyendo. El centinela del final pide las
+siguientes con 400 px de anticipación, así que las filas ya están cuando el scroll llega —
+pedirlas al tocar el fondo se ve como un tirón. Y **solo existe mientras falten filas**: un
+centinela sin nada que cargar volvería a estar visible al montarse y pediría más para
+siempre.
+
+La ventana se guarda **etiquetada con la vista** que la pidió, así que cambiar de vista
+vuelve a cien sin un efecto que lo limpie un render tarde — que es el render en el que se
+verían trescientas filas de la vista nueva.
+
+**La fila marcada siempre se pinta**, esté en la página que esté. Es a la que lleva *Ir al
+pedido seleccionado*, y para centrarla tiene que existir en la pantalla: si el pedido
+abierto es el número 340 y solo hay cien pintadas, no hay nada a lo que ir. La ventana se
+estira hasta alcanzarlo (`cuantasPintar`). No es un caso raro — es justo lo que pasa cuando
+uno abre un pedido, se va a otra cosa y vuelve.
+
+### Y esté en la vista que esté
+
+La página no era el único sitio donde se podía perder. **Cada vista recorta distinto**: si el
+pedido abierto está en "Sin responder" y uno se fue a "Favoritos", en la pantalla no hay
+ninguna fila a la que llevarlo. El botón se quedaba quieto y parecía roto.
+
+Ahora, al pulsarlo, **cambia de vista si hace falta**. Se busca la primera vista que lo
+contenga (`vistaQueContiene`), o sea la más específica: si está sin responder Y es favorito,
+va a "Sin responder", que es la que dice por qué hay que mirarlo. Nunca falla — "Chats
+recientes" no recorta nada, así que siempre hay dónde encontrarlo.
+
+Dos cosas tuvieron que moverse para eso:
+
+- **La vista subió a `PedidosPage`**, con el modo y el filtro. Quien pinta el botón tiene que
+  poder cambiarla; quien la tenía estaba una capa más abajo.
+- **El desplazamiento aprendió a esperar.** Al cambiar de vista, la fila todavía no existe
+  cuando el clic termina. La petición queda anotada y se cumple en cuanto el nodo aparece, un
+  instante después (`usePunteroAlMarcado`). De regalo, también funciona cuando la fila aún no
+  ha llegado porque la lista estaba cargando.
+
+El tope del servidor subió de **80 a 500** el mismo día (`get-store-sessions`). Con 80, el
+panel enseñaba una rebanada sin decirlo: una tienda que despacha cien al día perdía de vista
+lo de anteayer, y el filtro de "30 días" contaba sobre lo que había llegado, no sobre lo que
+hay. Ese era el costo caro — el `limit` se aplica **antes** de filtrar por estado, así que
+cortar bajo también decide QUÉ entra.
+
+500 filas con su chat son unos cuantos cientos de kilobytes: caro para pedirlo en cada
+pantalla, barato una vez por carga. Cuando una marca lo pase de largo, lo que toca no es
+subirlo otra vez — es paginar en el servidor con un cursor por `created_at`.
+
+### Y se fue el buscador de la Lista
+
+La Lista tenía su propia caja de búsqueda por nombre y teléfono. Desde que el buscador de la
+barra encuentra por nombre, N° de pedido, DNI, teléfono y guía, aquella pasó a ser un
+subconjunto estricto de esta. Dos cajas de búsqueda en la misma pantalla, una peor que la
+otra, es peor que una sola.
+
+## El mismo pedido, dos nombres (28-ago-2026)
+
+La cabecera del chat mostraba **`ESTADO: En camino`**, sin emoji, mientras el tablero ponía
+ese mismo pedido en **🚚 En tránsito**.
+
+No era un descuido de redacción: eran dos ejes. La barra del chat pintaba el `stage` crudo
+—el reloj del equipo— con una lista de nombres escrita ahí mismo, y el tablero pintaba la
+COLUMNA, que funde el reloj del equipo con el del courier (ver [El eje del
+pedido](#el-eje-del-pedido-dónde-termina-lo-nuestro-y-empieza-el-courier)). Un pedido que
+Shalom ya reporta `EN_TRANSITO` está en tránsito aunque nadie del equipo haya tocado nada, y
+el chat decía lo que decía el reloj que no manda.
+
+Ahora la barra muestra el **paso del eje** (`pasoActual`), que es lo mismo que pinta el
+tablero.
+
+Y con el MISMO nombre, que fue el segundo hallazgo: las etiquetas se especializaban con el
+courier —"Registrado en Shalom", "En agencia de Shalom", "En agencia de destino"—. Se leían
+bien de a uno y mal de a cien: el tablero decía **En origen** y la cabecera del mismo pedido
+decía **En agencia de Shalom**, obligando a traducir entre dos pantallas que hablan de lo
+mismo. De qué courier es ya lo dice la barra del envío, que está dos tarjetas más abajo. Un
+solo juego de nombres: el del tablero.
+
+Y los nombres salen de **una sola definición**: `PASOS` en `order-tracking.ts`, de donde
+`COLUMNAS` ahora se deriva en vez de repetirlos. El detalle del pedido tira del mismo sitio.
+Tres pantallas nombrando lo mismo, escrito una vez.
+
+> Lo que se VE y lo que se MUEVE siguen siendo cosas distintas, y ahí estaba la trampa: el
+> botón *avanzar* sigue moviendo el `stage`, porque las fases del courier no son nuestras
+> para marcarlas. Lo único que cambió es que el estado que se lee es el del eje completo.
+
+### Los tres cierres, juntos y al final
+
+"No entregado" estaba suelto en la fila del estado, **pegado al botón de avanzar** — que es
+justo su contrario. Ahí se pulsa por error.
+
+Es un cierre, no un paso: termina el pedido igual que cancelarlo o anularlo. Así que se fue
+abajo con los otros dos, los tres en rojo y del mismo tamaño, que es donde uno busca las
+cosas que no se deshacen. La regla de cuándo se ofrece no cambió: solo desde `confirmado` —
+antes de que el pedido salga al mundo, lo que corresponde es cancelar, no "no entregar".
 
 ## Ver también
 

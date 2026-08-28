@@ -56,8 +56,6 @@ export function courierDelPedido(p: PedidoRastreable): 'SHALOM' | 'OLVA' | null 
   return c === 'SHALOM' || c === 'OLVA' ? c : null
 }
 
-const NOMBRE_COURIER: Record<string, string> = { SHALOM: 'Shalom', OLVA: 'Olva' }
-
 /**
  * Los pasos que le tocan a ESTE pedido, con cuál está activo.
  *
@@ -68,7 +66,6 @@ const NOMBRE_COURIER: Record<string, string> = { SHALOM: 'Shalom', OLVA: 'Olva' 
 export function pasosDelPedido(p: PedidoRastreable): Paso[] {
   const stage = toStage(p.stage)
   const porAgencia = isPickupDispatch(p.dispatch_type)
-  const courier = courierDelPedido(p)
   const conAdelanto = Number(p.advance_amount ?? 0) > 0
 
   const claves: PasoKey[] = ['nuevo']
@@ -78,20 +75,20 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
   else claves.push('en_camino')
   claves.push('entregado')
 
-  const etiquetas: Record<PasoKey, string> = {
-    nuevo: 'Pedido creado', validando: 'Validando pago', confirmado: 'Confirmado',
-    registrado: courier ? `Registrado en ${NOMBRE_COURIER[courier]}` : 'Registrado',
-    en_origen: courier ? `En agencia de ${NOMBRE_COURIER[courier]}` : 'En agencia de origen',
-    transito: 'En tránsito', en_agencia: 'En agencia de destino',
-    en_camino: 'En camino', entregado: 'Entregado', no_entregado: 'No entregado',
-  }
+  // Los nombres salen de `PASOS` y no se especializan con el courier. Los tuvo:
+  // "Registrado en Shalom", "En agencia de Shalom", "En agencia de destino". Se
+  // leían bien de a uno y mal de a cien — el tablero decía "En origen" y la
+  // cabecera del mismo pedido decía "En agencia de Shalom", y eso obliga a
+  // traducir mentalmente entre dos pantallas que hablan de lo mismo. De qué
+  // courier es ya lo dice la barra del envío, que está justo debajo.
+  const etiquetas = PASOS
 
   // El fracaso no es un paso más: cierra la línea donde haya quedado.
   if (stage === 'no_entregado') {
     const hasta = Math.max(0, claves.length - 2)
     return [
-      ...claves.slice(0, hasta).map(key => paso(key, etiquetas[key], 'hecho')),
-      paso('no_entregado', etiquetas.no_entregado, 'activo'),
+      ...claves.slice(0, hasta).map(key => paso(key, etiquetas[key].label, 'hecho')),
+      paso('no_entregado', etiquetas.no_entregado.label, 'activo'),
     ]
   }
 
@@ -103,7 +100,7 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
 
   return claves.map((key, i) => paso(
     key,
-    etiquetas[key],
+    etiquetas[key].label,
     i < actual ? 'hecho' : i === actual ? 'activo' : 'pendiente',
   ))
 }
@@ -126,26 +123,53 @@ const paso = (key: PasoKey, label: string, estado: Paso['estado']): Paso => ({ k
 // Acá la columna se deriva de `pasosDelPedido`, que siempre devuelve exactamente
 // un paso activo: por construcción, todo pedido cae en una columna y solo una.
 
-/** Las columnas del tablero, en orden. Es el eje canónico del pedido. */
-export const COLUMNAS: { key: PasoKey; label: string; emoji: string }[] = [
-  { key: 'nuevo',      label: 'Pedido creado', emoji: '📋' },
-  { key: 'validando',  label: 'Validando',   emoji: '🔎' },
+/**
+ * Cómo se llama y con qué emoji se pinta CADA paso del eje. Una sola vez.
+ *
+ * De acá salen las columnas del tablero y el estado que se ve al abrir el chat.
+ * Estaban escritos por separado, y se separaron: el tablero decía "🚚 En
+ * tránsito" y la cabecera del pedido "En camino", sin emoji, para el mismo
+ * pedido — dos pantallas nombrando distinto la misma cosa es exactamente lo que
+ * este archivo existe para evitar.
+ *
+ * `en_camino` y `no_entregado` están acá aunque NO sean columnas: el primero
+ * comparte casilla con `transito` en el tablero pero es su propio paso en la
+ * línea de un pedido a domicilio, y el segundo es el cierre de fracaso, que va
+ * en su propio grupo. Los dos se rotulan igual en todas partes.
+ */
+export const PASOS: Record<PasoKey, { label: string; emoji: string }> = {
+  nuevo:        { label: 'Pedido creado', emoji: '📋' },
+  validando:    { label: 'Validando',     emoji: '🔎' },
   // 💰 y no 📞: acá lo que pasó es que ENTRÓ PLATA. La llamada es el medio, el
   // adelanto es el hecho — y es el hecho el que decide si esto se despacha.
   //
   // Es también donde se atasca lo que ya está pagado pero el API del courier
   // no aceptó: sin `preparando` en medio, un pedido cobrado y sin guía se ve
   // exactamente por lo que es — plata cobrada que todavía no salió.
-  { key: 'confirmado', label: 'Confirmado',  emoji: '💰' },
+  confirmado:   { label: 'Confirmado',    emoji: '💰' },
   // `registrado` es nuestro: hay guía. De `en origen` para abajo manda el
   // courier. El salto entre esos dos es el paquete saliendo del almacén, y es
   // el que más plata cuesta cuando no ocurre.
-  { key: 'registrado', label: 'Registrado',  emoji: '🧾' },
-  { key: 'en_origen',  label: 'En origen',   emoji: '🏬' },
-  { key: 'transito',   label: 'En tránsito', emoji: '🚚' },
-  { key: 'en_agencia', label: 'En destino',  emoji: '📍' },
-  { key: 'entregado',  label: 'Entregado',   emoji: '✅' },
-]
+  registrado:   { label: 'Registrado',    emoji: '🧾' },
+  en_origen:    { label: 'En origen',     emoji: '🏬' },
+  transito:     { label: 'En tránsito',   emoji: '🚚' },
+  en_agencia:   { label: 'En destino',    emoji: '📍' },
+  en_camino:    { label: 'En camino',     emoji: '🚚' },
+  entregado:    { label: 'Entregado',     emoji: '✅' },
+  no_entregado: { label: 'No entregado',  emoji: '⚠️' },
+}
+
+/** El paso rotulado como se dice. Un `key` desconocido no revienta la pantalla:
+ *  devuelve el texto crudo, que es más útil que un hueco. */
+export function etiquetaDePaso(key: string): { label: string; emoji: string } {
+  return PASOS[key as PasoKey] ?? { label: key, emoji: '' }
+}
+
+/** Las columnas del tablero, en orden. Es el eje canónico del pedido.
+ *  Los nombres salen de `PASOS`, no se escriben otra vez. */
+export const COLUMNAS: { key: PasoKey; label: string; emoji: string }[] =
+  (['nuevo', 'validando', 'confirmado', 'registrado', 'en_origen', 'transito', 'en_agencia', 'entregado'] as PasoKey[])
+    .map(key => ({ key, ...PASOS[key] }))
 
 /**
  * En qué columna del tablero está este pedido.

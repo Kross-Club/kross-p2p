@@ -22,11 +22,27 @@ describe('línea de vida del pedido', () => {
     expect(claves({ stage: 'nuevo', dispatch_type: 'MOTORIZADO_LIMA', advance_amount: 12 })).toContain('validando')
   })
 
-  it('el paso del courier lleva su nombre', () => {
+  // Los pasos se llaman IGUAL en todas partes, venga el pedido por Shalom o por
+  // Olva. Antes se especializaban —"Registrado en Shalom", "En agencia de
+  // Shalom"— y se leía bien de a uno y mal de a cien: el tablero decía "En
+  // origen" y la cabecera del mismo pedido otra cosa, obligando a traducir
+  // entre dos pantallas que hablan de lo mismo.
+  it('los pasos se llaman igual sea cual sea el courier', () => {
     const shalom = pasosDelPedido({ stage: 'preparando', dispatch_type: 'AGENCIA_PROVINCIA', tracking_courier: 'SHALOM' })
     const olva = pasosDelPedido({ stage: 'preparando', dispatch_type: 'AGENCIA_PROVINCIA', tracking_courier: 'OLVA' })
-    expect(shalom.find(p => p.key === 'registrado')?.label).toBe('Registrado en Shalom')
-    expect(olva.find(p => p.key === 'registrado')?.label).toBe('Registrado en Olva')
+    expect(shalom.map(p => p.label)).toEqual(olva.map(p => p.label))
+  })
+
+  // Y son los MISMOS que rotula el tablero, letra por letra: es lo único que
+  // evita que las dos pantallas vuelvan a separarse.
+  it('y son los mismos que usa el tablero', () => {
+    const pasos = pasosDelPedido({ stage: 'confirmado', dispatch_type: 'AGENCIA_PROVINCIA', tracking_courier: 'SHALOM' })
+    for (const c of COLUMNAS) {
+      const p = pasos.find(x => x.key === c.key)
+      if (p) expect(p.label).toBe(c.label)
+    }
+    expect(pasos.find(x => x.key === 'en_origen')?.label).toBe('En origen')
+    expect(pasos.find(x => x.key === 'en_agencia')?.label).toBe('En destino')
   })
 
   // El vendedor marca a mano; el courier reporta solo. Cuando discrepan, que el
