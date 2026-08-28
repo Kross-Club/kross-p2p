@@ -11,10 +11,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, content-type',
 }
 
-const STAGES = ['nuevo', 'confirmado', 'preparando', 'en_camino', 'entregado']
+// El eje del pedido, en orden. `preparando` SALIÓ (ago-2026): no describía un
+// hecho verificable —nadie marca "ya lo empaqué"— y lo que de verdad separa
+// cobrar de despachar es que exista la guía. `validando` ENTRA: lo escribe
+// `register-buyer` en todo pedido con adelanto y no estaba en esta lista, así
+// que un pedido ahí daba índice -1 y el "siguiente" salía la PRIMERA etapa.
+const STAGES = ['nuevo', 'validando', 'confirmado', 'en_camino', 'entregado']
+
+// Etapas que la base todavía guarda y ya no están en el eje. Se leen como la
+// que las reemplazó — traducirlas es lo que evita que "avanzar" retroceda.
+const VIGENTE: Record<string, string> = { preparando: 'confirmado' }
+const vigente = (stage: string | null | undefined) => VIGENTE[String(stage ?? '')] ?? String(stage ?? '')
+
 // Lead hand-off (pipeline COD): reaching this stage cedes the order to the role.
-//  nuevo → Ventas · confirmado → Logística · preparando → Soporte · en_camino → Motorizado
-const HANDOFF: Record<string, string> = { confirmado: 'logist', preparando: 'soporte', en_camino: 'motoriz' }
+//  nuevo → Ventas · confirmado → Logística · en_camino → Motorizado
+//
+// Sin `preparando` ya no hay entrega a Soporte: la etapa que la disparaba no
+// existe. Logística se queda con el pedido desde que entra la plata hasta que
+// sale el paquete, que es justo el tramo donde su trabajo ocurre (emitir la
+// guía). A Soporte se le sigue pudiendo invitar al chat.
+const HANDOFF: Record<string, string> = { confirmado: 'logist', en_camino: 'motoriz' }
 
 // role keyword → the role_label patterns that match it (logística also matches the
 // legacy "Despacho" label so old teams keep working).
@@ -96,7 +112,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'cancel' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking'
+    action: 'advance' | 'invite' | 'expel' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'mark_answered'
     session_id: string
     stage?: string
     invite_seller_id?: string
@@ -125,6 +141,33 @@ Deno.serve(async (req) => {
     await supabase.from('order_sessions').update({ nota: body.nota ?? null }).eq('id', session.id)
     await broadcast(session.id, 'nota_update', { nota: body.nota ?? null })
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── ANULAR ────────────────────────────────────────────────────────────────
+  //
+  // No es cancelar. Un CANCELADO es una venta que existió y se perdió: duele, y
+  // tiene que doler en la tasa de conversión. Un ANULADO nunca fue una venta —
+  // se creó por error, o es una prueba— y contarlo junto al otro ensucia el
+  // único número que la marca usa para decidir cuánto invertir.
+  //
+  // `restore` lo devuelve a activo: anular por error tiene que poder desandarse,
+  // porque el estado se pone justamente cuando alguien se equivocó.
+  if (body.action === 'anular' || body.action === 'restore') {
+    const anular = body.action === 'anular'
+    await supabase.from('order_sessions')
+      .update({ status: anular ? 'anulado' : 'active' })
+      .eq('id', session.id)
+
+    await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'system', type: 'status_update',
+      // Solo para el equipo: al comprador no le decimos que su pedido era una
+      // prueba nuestra.
+      visibility: 'sellers',
+      body: anular ? '🚫 Pedido anulado (no cuenta en estadísticas)' : '↩️ Pedido restaurado',
+    })
+
+    await broadcast(session.id, 'status_update', { status: anular ? 'anulado' : 'active' })
+    return new Response(JSON.stringify({ ok: true, status: anular ? 'anulado' : 'active' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   // ─── MARCAR COMO RESPONDIDO ────────────────────────────────────────────────
@@ -419,8 +462,11 @@ Deno.serve(async (req) => {
   }
 
   // ─── ADVANCE STAGE ──────────────────────────────────────────────────────────
-  const idx = STAGES.indexOf(session.stage)
-  const next = body.stage ?? STAGES[idx + 1]
+  const idx = STAGES.indexOf(vigente(session.stage))
+  // `idx < 0` solo puede pasar con una etapa que no conocemos: entonces no hay
+  // "siguiente" que calcular y el pedido se queda donde está, en vez de saltar
+  // a `nuevo` — que es lo que hacía antes con un índice -1.
+  const next = body.stage ?? (idx >= 0 ? STAGES[idx + 1] : undefined)
   // `no_entregado` es TERMINAL y solo EXPLÍCITO: jamás es el "siguiente" de
   // nada (no vive en STAGES) — lo pide una persona desde el selector, con
   // confirmación. Es lo que vuelve computable la tasa de entrega.
@@ -457,7 +503,7 @@ Deno.serve(async (req) => {
 
       // 3) Value-chain arrays (new columns) — best effort, don't block the rest.
       //    A hand-off resets the invited list (new owner starts clean).
-      //    En 'en_camino', Soporte (el dueño previo, de 'preparando') SIGUE
+      //    En 'en_camino', el dueño previo (Logística, desde 'confirmado') SIGUE
       //    acompañando: queda como co-escritor junto al Motorizado.
       const prevOwner = session.assigned_seller_id
       const keepCowriter = next === 'en_camino' && prevOwner ? [prevOwner] : []

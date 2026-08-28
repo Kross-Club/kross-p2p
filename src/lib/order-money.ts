@@ -66,6 +66,35 @@ export function plataDe(pedidos: PedidoConPlata[]): Plata {
   return { valor, cobrado, saldo: Math.max(0, valor - cobrado) }
 }
 
+export interface AvancePago {
+  /** Cuánto del pedido ya está cobrado, de 0 a 1. */
+  fraccion: number
+  /** Ya está pagado entero: no queda nada por cobrar en la entrega. */
+  completo: boolean
+  /** No ha entrado nada todavía. */
+  vacio: boolean
+}
+
+/**
+ * Cuánto de este pedido ya está pagado.
+ *
+ * Es lo que decide a qué pedido correr primero cuando hay cincuenta en la
+ * columna: uno pagado entero es plata que ya está en la casa y solo falta
+ * despachar; uno a medias es plata que todavía depende de que el cliente
+ * aparezca. Un número solo no se compara de un vistazo — una fracción sí.
+ *
+ * Se apoya en `cobradoDelPedido`, o sea que **solo cuenta lo que 360pay cruzó**:
+ * un anillo lleno con un adelanto declarado y no verificado sería la peor
+ * mentira posible, porque es justo la que hace despachar.
+ */
+export function avanceDelPago(p: PedidoConPlata): AvancePago {
+  const valor = valorDelPedido(p)
+  const cobrado = cobradoDelPedido(p)
+  if (valor <= 0) return { fraccion: cobrado > 0 ? 1 : 0, completo: cobrado > 0, vacio: cobrado <= 0 }
+  const fraccion = Math.min(1, Math.max(0, cobrado / valor))
+  return { fraccion, completo: fraccion >= 1, vacio: cobrado <= 0 }
+}
+
 /**
  * Soles, como se escriben en Perú.
  *

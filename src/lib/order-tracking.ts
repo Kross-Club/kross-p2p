@@ -14,8 +14,8 @@ import { isPickupDispatch } from './session'
 // El vendedor no piensa en dos relojes: piensa "¿dónde está el pedido?". Acá
 // se funden en una sola línea, y cuál se arma depende de cómo se entrega:
 //
-//   Domicilio  →  … preparando → en camino → entregado
-//   Agencia    →  … preparando → registrado en {courier} → en tránsito →
+//   Domicilio  →  … confirmado → en camino → entregado
+//   Agencia    →  … confirmado → registrado en {courier} → en tránsito →
 //                 en agencia de destino → entregado
 //
 // Si los dos relojes discrepan gana el que va más adelante: que el courier
@@ -23,7 +23,7 @@ import { isPickupDispatch } from './session'
 // salió, no que no salió.
 
 export type PasoKey =
-  | 'nuevo' | 'validando' | 'confirmado' | 'preparando'
+  | 'nuevo' | 'validando' | 'confirmado'
   | 'registrado' | 'en_origen' | 'transito' | 'en_agencia'   // solo envíos por agencia
   | 'en_camino'                                 // solo domicilio
   | 'entregado' | 'no_entregado'
@@ -73,14 +73,13 @@ export function pasosDelPedido(p: PedidoRastreable): Paso[] {
 
   const claves: PasoKey[] = ['nuevo']
   if (conAdelanto) claves.push('validando')
-  claves.push('confirmado', 'preparando')
+  claves.push('confirmado')
   if (porAgencia) claves.push('registrado', 'en_origen', 'transito', 'en_agencia')
   else claves.push('en_camino')
   claves.push('entregado')
 
   const etiquetas: Record<PasoKey, string> = {
-    nuevo: 'Pedido', validando: 'Validando pago', confirmado: 'Confirmado',
-    preparando: 'Preparando',
+    nuevo: 'Pedido creado', validando: 'Validando pago', confirmado: 'Confirmado',
     registrado: courier ? `Registrado en ${NOMBRE_COURIER[courier]}` : 'Registrado',
     en_origen: courier ? `En agencia de ${NOMBRE_COURIER[courier]}` : 'En agencia de origen',
     transito: 'En tránsito', en_agencia: 'En agencia de destino',
@@ -129,10 +128,15 @@ const paso = (key: PasoKey, label: string, estado: Paso['estado']): Paso => ({ k
 
 /** Las columnas del tablero, en orden. Es el eje canónico del pedido. */
 export const COLUMNAS: { key: PasoKey; label: string; emoji: string }[] = [
-  { key: 'nuevo',      label: 'Pedido',      emoji: '📋' },
+  { key: 'nuevo',      label: 'Pedido creado', emoji: '📋' },
   { key: 'validando',  label: 'Validando',   emoji: '🔎' },
-  { key: 'confirmado', label: 'Confirmado',  emoji: '📞' },
-  { key: 'preparando', label: 'Preparando',  emoji: '📦' },
+  // 💰 y no 📞: acá lo que pasó es que ENTRÓ PLATA. La llamada es el medio, el
+  // adelanto es el hecho — y es el hecho el que decide si esto se despacha.
+  //
+  // Es también donde se atasca lo que ya está pagado pero el API del courier
+  // no aceptó: sin `preparando` en medio, un pedido cobrado y sin guía se ve
+  // exactamente por lo que es — plata cobrada que todavía no salió.
+  { key: 'confirmado', label: 'Confirmado',  emoji: '💰' },
   // `registrado` es nuestro: hay guía. De `en origen` para abajo manda el
   // courier. El salto entre esos dos es el paquete saliendo del almacén, y es
   // el que más plata cuesta cuando no ocurre.
@@ -168,7 +172,31 @@ export const COLUMNAS: { key: PasoKey; label: string; emoji: string }[] = [
  * pura no debería cargar con eso para preguntar por un `status`.
  */
 export function estaVivo(o: { status?: string | null; stage?: string | null }): boolean {
-  return o.status !== 'cancelado'
+  return o.status !== 'cancelado' && o.status !== 'anulado'
+}
+
+/**
+ * ¿Es un pedido ANULADO? O sea: creado por error, o una prueba.
+ *
+ * No es lo mismo que cancelado, y por eso es un estado aparte: un cancelado es
+ * una venta que existió y se perdió —duele, y tiene que doler en la tasa de
+ * conversión—; un anulado nunca fue una venta. Contarlos juntos ensucia el
+ * único número que la marca usa para decidir cuánto invertir.
+ *
+ * Ver `contable()`: es lo que los saca de las estadísticas.
+ */
+export function esAnulado(o: { status?: string | null }): boolean {
+  return o.status === 'anulado'
+}
+
+/**
+ * ¿Este pedido cuenta para las estadísticas de conversión?
+ *
+ * Todo menos lo anulado. Los cancelados SÍ cuentan: alguien pidió y se arrepintió,
+ * y esconderlo maquillaría la conversión.
+ */
+export function contable(o: { status?: string | null }): boolean {
+  return !esAnulado(o)
 }
 
 /**
@@ -184,6 +212,34 @@ export function pedidoAbierto(p: PedidoRastreable & { status?: string | null }):
   return col !== 'entregado' && col !== 'no_entregado'
 }
 
+/**
+ * ¿De `confirmado` en adelante? O sea: ya entró plata.
+ *
+ * Es la frontera del anillo de pago: antes de confirmar no hay nada cobrado que
+ * mostrar, y un anillo vacío en cada tarjeta de las dos primeras columnas es
+ * ruido que enseña a ignorar el anillo justo donde después importa.
+ */
+/**
+ * ¿Este pedido está cobrado y esperando que alguien emita la guía A MANO?
+ *
+ * Es el atasco más caro del pipeline y el más invisible: la plata ya entró, el
+ * API de Shalom u Olva rechazó el registro, y el pedido se queda en `confirmado`
+ * — donde se ve exactamente igual que uno que todavía no se ha procesado. Uno
+ * espera a la máquina; el otro espera a una persona que no sabe que le toca.
+ *
+ * Se pregunta por `FAILED` y no por "no tiene guía": un pedido recién cobrado
+ * tampoco la tiene, y marcarlos a todos convertiría la alerta en decoración.
+ */
+export function esperaGuiaManual(p: { shalom_order_status?: string | null }): boolean {
+  return String(p.shalom_order_status ?? '').toUpperCase() === 'FAILED'
+}
+
+export function conPlataEnJuego(col: PasoKey): boolean {
+  const i = COLUMNAS.findIndex(c => c.key === col)
+  const desde = COLUMNAS.findIndex(c => c.key === 'confirmado')
+  return i >= 0 && desde >= 0 && i >= desde
+}
+
 export function columnaDelPedido(p: PedidoRastreable): PasoKey {
   const key = pasoActual(p)?.key ?? 'nuevo'
   return key === 'en_camino' ? 'transito' : key
@@ -193,7 +249,12 @@ export function columnaDelPedido(p: PedidoRastreable): PasoKey {
 /** Dónde deja la línea el reloj interno del equipo. */
 function indicePorStage(stage: OrderStage, claves: PasoKey[]): number {
   const equivalente: Partial<Record<OrderStage, PasoKey>> = {
-    nuevo: 'nuevo', validando: 'validando', confirmado: 'confirmado', preparando: 'preparando',
+    nuevo: 'nuevo', validando: 'validando', confirmado: 'confirmado',
+    // `preparando` se fue del eje: no describía un hecho verificable —nadie
+    // marca "ya lo empaqué"— y su sitio lo ocupa mejor `confirmado`, que sí
+    // dice algo comprobable (entró plata). Los pedidos que la BD todavía tiene
+    // en `preparando` caen acá: pagados y sin guía, que es lo que son.
+    preparando: 'confirmado',
     // Despachado: en domicilio va en la calle; por agencia, ya se registró la guía.
     en_camino: claves.includes('en_camino') ? 'en_camino' : 'registrado',
     entregado: 'entregado',

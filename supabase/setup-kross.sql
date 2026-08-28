@@ -1149,3 +1149,68 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_pickup_code text;
 -- Vive en `stores` (no en store_secrets) porque no es un secreto y el panel lo
 -- lee para pintar el switch.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS shalom_auto_guide_enabled boolean DEFAULT false;
+
+
+-- ─── 28. `anulado`: el pedido que nunca fue una venta ───────────────────────
+--
+-- Un CANCELADO es una venta que existió y se perdió: el comprador se arrepintió,
+-- no contestó, se cayó el pago. Duele, y tiene que doler — cuenta en la tasa de
+-- conversión, que es el número con el que la marca decide cuánto invertir.
+--
+-- Un ANULADO nunca fue una venta: el pedido de prueba, el dedazo del vendedor,
+-- el formulario enviado dos veces. Contarlo junto al cancelado ensucia justo ese
+-- número, y como se hace más a menudo de lo que uno cree —cada demo, cada
+-- prueba de despliegue— el ruido no es marginal.
+--
+-- `status` no tiene CHECK: es texto libre desde el inicio, así que este valor no
+-- necesita migración. Se documenta acá porque el archivo es el registro del
+-- esquema, y un estado que solo existe en el código de la app es un estado que
+-- la siguiente consulta SQL va a ignorar.
+--
+--   status = 'active'    → vivo
+--            'cancelado' → se perdió. Cuenta en conversión.
+--            'anulado'   → nunca existió. NO cuenta en nada. (`contable()`)
+--            'delivered' | 'rejected' | 'expired' → históricos del checkout
+--
+-- El código: `estaVivo` / `esAnulado` / `contable` en src/lib/order-tracking.ts.
+-- Se pone y se quita desde el panel (order-manage, acciones `anular`/`restore`):
+-- anular por error tiene que poder desandarse, porque el estado se pone
+-- justamente cuando alguien se equivocó.
+--
+-- Ver también: la etapa `preparando` salió del eje del pedido (ago-2026). NO se
+-- borra del CHECK de `stage` —las filas viejas siguen siendo válidas— pero la
+-- app ya no la escribe y la lee como `confirmado` (`stageVigente` en
+-- src/lib/order-stages.ts). Un pedido en `preparando` es lo que siempre fue:
+-- cobrado y sin guía.
+--
+-- Los pedidos anulados de una tienda, para revisarlos:
+--   SELECT order_id, buyer_name, product_name, created_at
+--   FROM order_sessions WHERE store_id = '<tienda>' AND status = 'anulado'
+--   ORDER BY created_at DESC;
+
+
+-- ─── 29. CURIOSOS: los leads del checkout, ahora visibles en el panel ────────
+--
+-- `checkout_drafts` (bloque 12) existía desde hace meses y NADIE la miraba: el
+-- checkout escribía el lead y ahí se quedaba. Desde ago-2026 es la primera
+-- columna del tablero de pedidos —"Curiosos"— y la lee `get-store-drafts`.
+--
+-- Un curioso es quien dejó DNI y WhatsApp y no siguió. Los dos datos importan y
+-- por eso son el filtro: con el DNI se le crea la cuenta, con el WhatsApp se le
+-- escribe. Sin uno de los dos la fila no se puede accionar, y una columna llena
+-- de filas sobre las que no se puede hacer nada enseña a ignorar la columna.
+--
+-- Sigue FUERA de order_sessions, por lo mismo que decía el bloque 12: ahí
+-- contaminaría el CRM y el round-robin le asignaría un vendedor a cada lead que
+-- nunca compró. Se lee aparte y el tablero lo pinta como lo que es —gente por
+-- llamar, no pedidos—: sin etapa, sin chat, sin suma de plata.
+--
+-- El índice de recuperación del bloque 12 ya sirve a esta consulta
+-- (store_id + converted_at IS NULL). No hace falta uno nuevo.
+--
+-- Los curiosos accionables de una tienda:
+--   SELECT buyer_name, document_number, phone, district, last_step, updated_at
+--   FROM checkout_drafts
+--   WHERE store_id = '<tienda>' AND converted_at IS NULL
+--     AND document_number IS NOT NULL AND document_number <> ''
+--   ORDER BY updated_at DESC;

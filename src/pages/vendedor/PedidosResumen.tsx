@@ -1,7 +1,7 @@
 import { Package } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { NOTA_META, stageBar } from '../../lib/order-chips'
-import { COLUMNAS, columnaDelPedido } from '../../lib/order-tracking'
+import { COLUMNAS, columnaDelPedido, contable } from '../../lib/order-tracking'
 import { estaVivo } from '../../lib/store-orders'
 import type { StoreOrders } from '../../lib/store-orders'
 
@@ -25,7 +25,8 @@ function roleCat(role: string) {
 export default function PedidosResumen({ lista }: { lista: StoreOrders }) {
   const { effective, isAdmin, impersonating } = useSeller()
   // Los cancelados llegan en la lista y acá SÍ se usan: el desglose de notas
-  // los cuenta (una nota "cancelado" solo existe en un pedido cancelado).
+  // los cuenta (una nota "cancelado" solo existe en un pedido cancelado). Los
+  // anulados llegan también y NO se usan en ningún conteo.
   const { pedidos: sessions, cargando: loading } = lista
   const adminView = isAdmin && !impersonating
 
@@ -43,9 +44,12 @@ export default function PedidosResumen({ lista }: { lista: StoreOrders }) {
   const caidos = active.filter(x => columnaDe.get(x.id) === 'no_entregado').length
   const maxStage = Math.max(1, ...byStage.map(s => s.count), caidos)
 
-  // Notas breakdown (across active + cancelled)
+  // Notas breakdown (activos + cancelados). Los ANULADOS no: nunca fueron una
+  // venta —error o prueba— y no cuentan en ningún número de conversión. Los
+  // cancelados sí, que es medio punto distinto: una venta que se perdió tiene
+  // que doler. Ver `contable()` en order-tracking.
   const notaMap: Record<string, number> = {}
-  for (const s of sessions) { if (s.nota) notaMap[s.nota] = (notaMap[s.nota] ?? 0) + 1 }
+  for (const s of sessions.filter(contable)) { if (s.nota) notaMap[s.nota] = (notaMap[s.nota] ?? 0) + 1 }
   const notaKeys = Object.keys(NOTA_META).filter(k => notaMap[k])
 
   const memberMap: Record<string, { name: string; role: string; count: number }> = {}

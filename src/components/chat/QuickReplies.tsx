@@ -12,6 +12,8 @@
 // semana después de que el pago cuadró. Así la ficha siempre corresponde a lo
 // que le pasa al pedido en este momento.
 
+import { stageVigente } from '../../lib/order-stages'
+
 interface QuickRepliesProps {
   stage: string | null | undefined
   /** Se ocultan en cuanto el comprador escribe: ya cumplieron su trabajo, y
@@ -40,14 +42,17 @@ function repliesFor(
   const saldoChip = saldoPendiente > 0
     ? [esRecojo ? 'Quiero pagar mi saldo' : '¿Cuánto me falta pagar?']
     : []
-  switch (stage) {
+  // La etapa de la BD, traducida al eje vigente: un `preparando` viejo tiene que
+  // ofrecer las mismas fichas que `confirmado`, no caer al `default`.
+  switch (stageVigente(stage)) {
     // Pagó y estamos cuadrando. Las dos dudas reales de ese momento —y la
     // segunda además nos trae el comprobante justo cuando puede hacer falta,
     // en vez de pedírselo a todos por si acaso en el checkout.
     case 'validando':
       return ['¿Ya llegó mi pago?', 'Te envío mi comprobante']
+    // `preparando` entra acá traducido (`stageVigente`): mismo momento del
+    // pedido —cobrado, sin salir todavía— y por eso las mismas preguntas.
     case 'confirmado':
-    case 'preparando':
       // En recojo la espera es por la GUÍA (prometida en la bienvenida), no por
       // un timbrazo en la puerta.
       return esRecojo

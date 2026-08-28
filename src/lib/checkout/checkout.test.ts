@@ -16,7 +16,7 @@ import { AgencyService, LISTED_AGENCIES, describePickupDistance, pointKey, sugge
 import { DistrictCoverageService, methodForCoverage } from './services/DistrictCoverageService'
 import type { LatLng } from '../geo/haversine'
 import type { CheckoutState } from './types'
-import { stagesFor, stageIndex, toStage } from '../order-stages'
+import { stagesFor, stageIndex, toStage, stageVigente } from '../order-stages'
 import { abModeOf, resolveVariant } from './variant'
 import { repliesFor } from '../../components/chat/QuickReplies'
 
@@ -1165,7 +1165,31 @@ describe('último pedido', () => {
 describe('etapas del pedido', () => {
   it('con adelanto incluye Validando entre Pedido y Confirmado', () => {
     const keys = stagesFor(10).map(s => s.key)
-    expect(keys).toEqual(['nuevo', 'validando', 'confirmado', 'preparando', 'en_camino', 'entregado'])
+    expect(keys).toEqual(['nuevo', 'validando', 'confirmado', 'en_camino', 'entregado'])
+  })
+
+  // `preparando` salió del eje (ago-2026): no describía un hecho verificable
+  // —nadie marca "ya lo empaqué"— y lo que separa cobrar de despachar es que
+  // exista la guía. Pero la BD tiene miles de filas con ese valor y su CHECK lo
+  // sigue permitiendo, así que NO puede tratarse como desconocido.
+  it('preparando ya no es un paso de la barra', () => {
+    expect(stagesFor(10).map(s => s.key)).not.toContain('preparando')
+    expect(stagesFor(0).map(s => s.key)).not.toContain('preparando')
+  })
+
+  it('un preparando guardado en la BD se lee como confirmado, no como nuevo', () => {
+    expect(stageVigente('preparando')).toBe('confirmado')
+    // Y por eso la barra lo pinta donde va. Sin la traducción, `findIndex`
+    // devolvía -1, el fallback lo mandaba a 0 y un pedido cobrado aparecía
+    // recién creado.
+    expect(stageIndex('preparando', stagesFor(10))).toBe(2)
+    expect(stageIndex('preparando', stagesFor(0))).toBe(1)
+  })
+
+  it('lo desconocido sigue cayendo a nuevo: traducir lo viejo no es aceptar basura', () => {
+    expect(stageVigente('inventada')).toBe('nuevo')
+    expect(stageVigente(null)).toBe('nuevo')
+    expect(stageVigente('confirmado')).toBe('confirmado')
   })
 
   it('sin adelanto (Lima) no muestra Validando', () => {
@@ -1223,6 +1247,11 @@ describe('respuestas rápidas del chat', () => {
       expect(joined).not.toMatch(/dirección|venir después/i)
     }
     expect(repliesFor('preparando', { esRecojo: true }).join(' ')).toMatch(/guía/i)
+    // El `preparando` viejo entra traducido y cae en las fichas de `confirmado`:
+    // mismo momento del pedido, mismas dudas. Sin `stageVigente` caía al
+    // `default` y le ofrecía el par genérico.
+    expect(repliesFor('preparando', { esRecojo: true }))
+      .toEqual(repliesFor('confirmado', { esRecojo: true }))
   })
 
   it('la ficha del saldo aparece solo cuando de verdad queda saldo', () => {

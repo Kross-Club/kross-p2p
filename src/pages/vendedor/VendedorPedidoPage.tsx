@@ -17,6 +17,9 @@ import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
+import { stageVigente } from '../../lib/order-stages'
+import { conPlataEnJuego, columnaDelPedido } from '../../lib/order-tracking'
+import AnilloAvance from '../../components/AnilloAvance'
 import { useUbicacion } from '../../lib/ubicacion'
 import CustomerCard from '../../components/CustomerCard'
 import Confirmar from '../../components/Confirmar'
@@ -35,7 +38,11 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 // Ventas SÍ ve `validando` siempre: necesita distinguir un pedido que espera
 // cruce de uno recién creado, aunque el comprador de Lima nunca pase por ahí.
-const STAGES = ['nuevo','validando','confirmado','preparando','en_camino','entregado']
+//
+// `preparando` ya no está: salió del eje (ver `order-stages.ts`). Los pedidos
+// que la BD todavía tiene ahí entran por `stageVigente` y se leen como
+// `confirmado` — sin eso, "avanzar" los mandaba a `nuevo`.
+const STAGES = ['nuevo','validando','confirmado','en_camino','entregado']
 
 // ─── Seller-initiated call modal ──────────────────────────────────────────────
 type CallState = 'connecting' | 'connected' | 'ended' | 'error'
@@ -246,9 +253,13 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
   // Qué se está por hacer, mientras se pregunta. `null` = no se preguntó nada.
   const [porConfirmar, setPorConfirmar] = useState<string | null>(null)
   const stageLabel: Record<string, string> = {
-    nuevo: 'Nuevo', validando: 'Validando', confirmado: 'Confirmado', preparando: 'Preparando', en_camino: 'En camino', entregado: 'Entregado',
+    nuevo: 'Pedido creado', validando: 'Validando', confirmado: 'Confirmado', en_camino: 'En camino', entregado: 'Entregado',
     no_entregado: 'No entregado',
   }
+  // Lo que la BD diga, traducido al eje de hoy. Todo lo de abajo mira `actual`,
+  // nunca `current`: un `preparando` viejo fuera de `STAGES` daba índice -1 y
+  // el botón de avanzar ofrecía la PRIMERA etapa como "siguiente".
+  const actual = stageVigente(current)
 
   const push = async (next: string) => {
     setBusy(true)
@@ -274,8 +285,8 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
   // dedo que resbala en el móvil del vendedor deja un pedido en una etapa que
   // no le toca y sin manera de volver. Por eso se pregunta antes.
   const advance = () => {
-    const idx = STAGES.indexOf(current)
-    if (idx >= STAGES.length - 1 || busy) return
+    const idx = STAGES.indexOf(actual)
+    if (idx < 0 || idx >= STAGES.length - 1 || busy) return
     setPorConfirmar(STAGES[idx + 1])
   }
 
@@ -285,16 +296,16 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
 
   const fallido = porConfirmar === 'no_entregado'
 
-  const idx = STAGES.indexOf(current)
-  const terminal = current === 'entregado' || current === 'no_entregado'
+  const idx = STAGES.indexOf(actual)
+  const terminal = actual === 'entregado' || actual === 'no_entregado'
   // Solo tiene sentido rendirse cuando el pedido ya salió al mundo: antes de
   // confirmado lo que corresponde es cancelar, no "no entregar".
-  const canFail = canWrite && !terminal && ['confirmado', 'preparando', 'en_camino'].includes(current)
+  const canFail = canWrite && !terminal && ['confirmado', 'en_camino'].includes(actual)
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-white border-b border-gray-100">
       <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Estado:</span>
-      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={stageChip(current)}>
-        {stageLabel[current] || current}
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={stageChip(actual)}>
+        {stageLabel[actual] || actual}
       </span>
       {canFail && (
         <button onClick={markUndelivered} disabled={busy}
@@ -303,7 +314,7 @@ function StageSelector({ current, sessionId, canWrite, onAdvanced }: {
           ✕ No entregado
         </button>
       )}
-      {canWrite && !terminal && idx < STAGES.length - 1 && (
+      {canWrite && !terminal && idx >= 0 && idx < STAGES.length - 1 && (
         <button onClick={advance} disabled={busy}
           className={`${canFail ? '' : 'ml-auto '}text-[10px] font-black px-3 py-1 rounded-full disabled:opacity-50`}
           style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
@@ -824,6 +835,14 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
                   style={{ color: 'rgba(255,255,255,0.55)' }}>
                   {session.buyer_contact.document_number}
                 </span>
+              )}
+              {/* Cuánto de este pedido está cobrado. El mismo anillo del
+                  tablero, y por la misma razón: al abrir el chat lo primero que
+                  decide el tono de la conversación es si ya pagó, si pagó la
+                  mitad o si no ha entrado nada. Desde `confirmado` en adelante,
+                  igual que allá — antes no hay nada cobrado que mostrar. */}
+              {conPlataEnJuego(columnaDelPedido(session)) && (
+                <AnilloAvance pedido={session} size={15} sobreOscuro />
               )}
             </p>
             {/* DE DÓNDE es el pedido. Decide el courier, el costo del envío y

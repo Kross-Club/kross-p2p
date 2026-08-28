@@ -254,11 +254,15 @@ toda la capa de checkout importa tipos de ahí.
 Un pedido tiene **un solo eje**, y ese eje **cambia de dueño a la mitad**:
 
 ```
-     NUESTRO — lo mueve una persona      │      DEL COURIER — lo mueve la API
- nuevo → validando → confirmado → preparando │ registrado → en origen → en tránsito → en destino → entregado
-                                        ▲
-                              la costura: existe la guía
+     NUESTRO — lo mueve una persona   │      DEL COURIER — lo mueve la API
+ nuevo → validando → confirmado       │ registrado → en origen → en tránsito → en destino → entregado
+                                      ▲
+                            la costura: existe la guía
 ```
+
+> `preparando` estaba entre `confirmado` y la costura hasta ago-2026. Salió del eje —ver
+> [El pipeline, revisado](#el-pipeline-revisado-28-ago-2026)— y las filas que la BD todavía
+> tiene se leen como `confirmado`.
 
 Antes de la costura todo es **intención**: lo que nosotros decidimos que pasó. Después es
 **observación**: lo que un tercero reporta. Son dos naturalezas distintas, y de ahí sale la
@@ -272,7 +276,7 @@ escribe un job) pero **sí son la misma línea en la pantalla**.
 ### Esto ya está construido — y el CRM es el único que no lo usa ✅🟡
 
 `src/lib/order-tracking.ts` → `pasosDelPedido()` **ya funde los dos relojes en una sola
-línea**: por agencia arma `… preparando → registrado en {courier} → en tránsito → en agencia
+línea**: por agencia arma `… confirmado → registrado en {courier} → en tránsito → en agencia
 de destino → entregado`, y ya tiene la regla de desempate correcta —
 `Math.max(indicePorStage, indicePorFase)`: si los relojes discrepan gana el que va más
 adelante, porque que Shalom diga EN_TRANSITO cuando nadie marcó "despachado" significa que el
@@ -321,7 +325,7 @@ de vida:
 
 | Reloj | Quién lo mueve | Qué paso abre |
 |---|---|---|
-| `stage` | una persona del equipo | hasta `preparando` |
+| `stage` | una persona del equipo | hasta `confirmado` |
 | `tracking_numero` | nosotros, al emitir la guía | `registrado` |
 | `tracking_phase` | el courier | `en origen` → `en tránsito` → `en destino` → `entregado` |
 
@@ -379,8 +383,8 @@ columna" cuando lo que sabe es "tres días desde que entró el pedido". El rojo 
 
 ### Qué NO se borra
 
-`stage` se queda. Es el dueño de la mitad de arriba (`nuevo`, `validando`, `confirmado`,
-`preparando`) y del cierre de fracaso `no_entregado` — que lo marca una persona y **ningún
+`stage` se queda. Es el dueño de la mitad de arriba (`nuevo`, `validando`, `confirmado`) y del
+cierre de fracaso `no_entregado` — que lo marca una persona y **ningún
 courier va a reportar jamás**, porque el courier no sabe que el cliente nunca recogió.
 
 Lo que sí sale, **solo para pedidos por agencia**, es `en_camino`: hoy es un humano adivinando
@@ -406,7 +410,7 @@ const ES_AGENCIA = ['AGENCIA_PROVINCIA', 'AGENCIA', 'RECOJO_AGENCIA']   // falta
 `AGENCIA_LIMA` lo escribe el checkout (`OrderService.ts`) y lo acepta `register-buyer`. O sea
 es un valor real en producción. Consecuencias, las dos directas a este tema:
 
-1. `pasosDelPedido` le da la línea de **domicilio** (`… preparando → en camino → entregado`)
+1. `pasosDelPedido` le da la línea de **domicilio** (`… confirmado → en camino → entregado`)
    a un pedido que va por Shalom → las fases del courier **nunca se muestran**, ni al
    vendedor ni al comprador (`OrderTrackingMap`).
 2. `vaEnElMapa` (`live-map.ts`) devuelve `false` → **ese pedido nunca aparece en En vivo.**
@@ -1047,6 +1051,121 @@ por el **silencio**: cuánto lleva el hilo sin que hable una persona. La más ca
 
 Solo la deuda NUESTRA lleva color: si los dos lados se pintan de rojo, el rojo deja de querer
 decir "esto te toca a ti" (§6.1).
+
+## El pipeline, revisado (28-ago-2026)
+
+El eje llevaba meses describiendo el checkout de hace un año. Cuatro cambios, y ninguno es
+cosmético: cada uno le quita al tablero una columna que mentía o le agrega una que faltaba.
+
+```
+ 👀 Curiosos │ 📋 Pedido creado → 🔎 Validando → 💰 Confirmado │ 🧾 Registrado → 🏬 En origen →
+  (no es un  │                                        ▲        │  🚚 En tránsito → 📍 En destino →
+    pedido)  │                            ahí está la plata    │  ✅ Entregado
+             │                                                 └── manda el courier
+                        ⚠️ No entregado · ❌ Cancelado · 🚫 Anulado (cierres, al final)
+```
+
+### 👀 Curiosos: la columna que ya existía en la base y nadie miraba
+
+`checkout_drafts` guarda desde hace meses al que llenó el formulario a medias. **El checkout lo
+escribía y ahí se quedaba.** Ahora es la primera columna.
+
+Un curioso es quien dejó **DNI y WhatsApp** y no siguió. Los dos datos son el filtro, y no por
+capricho: con el DNI se le crea la cuenta, con el WhatsApp se le escribe —el fallback y el
+masivo salen por ahí—. Sin uno de los dos la fila no se puede accionar, y una columna llena de
+filas sobre las que no se puede hacer nada enseña a ignorar la columna entera.
+
+De un curioso **se sabe qué producto miró**. **No** necesariamente el distrito ni la agencia:
+esos campos van después en el formulario, y quien se fue antes no los dejó. La tarjeta lo dice
+—`sin distrito`— en vez de rellenarlo; el área comercial lo completa a mano al convertirlo, y
+saber a quién le falta qué es justamente lo que decide a quién llamar primero.
+
+Sigue **fuera de `order_sessions`**, por la misma razón que lo sacó de ahí el día que se creó la
+tabla: contaminaría el CRM y el round-robin le asignaría un vendedor a cada lead que nunca
+compró. Se lee aparte (`get-store-drafts` → `useStoreDrafts`) y el tablero lo pinta como lo que
+es: gente por llamar. Sin etapa, sin chat, y **sin suma de plata** — un curioso no debe nada, y
+ponerle precio a lo que nadie pidió infla el número que decide la operación.
+
+La columna se muestra **siempre, incluso vacía**: en cero significa "nadie abandonó el
+formulario", y esconderla haría que un embudo con fugas se vea igual que uno sin ellas.
+
+### 💰 Confirmado: donde está la plata (y donde se atasca)
+
+El emoji era 📞. La llamada es el **medio**; lo que pasó en esa columna es que **entró plata**, y
+es el hecho —no el medio— el que decide si esto se despacha. De ahí el 💰.
+
+Es también donde ahora se acumula lo que **pagó pero el API de Shalom u Olva rechazó**. Sin
+`preparando` en medio, ese pedido se ve exactamente por lo que es: plata cobrada que todavía no
+tiene guía. Antes se escondía en una columna que decía "se está empacando" — que era, además,
+la única etapa del eje que nadie podía verificar.
+
+Y esos llevan chip propio: **⚠️ Guía manual** (`esperaGuiaManual`, `shalom_order_status ===
+'FAILED'`). Es el atasco más caro del tablero y el más invisible, porque en la columna se lee
+igual que un pedido recién cobrado — y son cosas distintas: uno espera a la máquina, el otro
+espera a **una persona que no sabe que le toca**. La alerta pregunta por el rechazo, no por "no
+tiene guía": un pedido recién cobrado tampoco la tiene, y marcarlos a todos convertiría el chip
+en decoración.
+
+### El anillo: cuánto de este pedido ya está cobrado
+
+De `confirmado` en adelante cada pedido lleva un anillo. Lleno = pagado entero; medio = falta
+cobrar el saldo; vacío = no ha entrado nada verificado.
+
+Un anillo y no un número, porque con cincuenta pedidos en una columna la pregunta no es "cuánto
+adelantó este" sino **a cuál corro primero** — y una fracción se compara de un vistazo, un monto
+no. Se ve en el **tablero** y al **abrir el chat**, que son los dos sitios donde se decide.
+
+Solo cuenta lo que 360pay cruzó (`cobradoDelPedido`, `payment_verification === 'MATCHED'`). Un
+anillo lleno con un adelanto declarado y sin verificar sería la peor mentira posible, porque es
+justo la que hace despachar.
+
+Y arranca en `confirmado`, no antes: en las dos primeras columnas no hay nada cobrado que
+mostrar, y un anillo vacío en cada tarjeta enseña a ignorarlo justo donde después importa. La
+frontera se calcula contra `COLUMNAS` (`conPlataEnJuego`), no con una lista aparte.
+
+### 📦 Preparando: fuera del eje
+
+No describía un hecho verificable. Nadie marca "ya lo empaqué", el comprador que veía ese punto
+encendido no sabía nada que no supiera antes, y lo que de verdad separa cobrar de despachar es
+otra cosa: **que exista la guía** — que ya es su propia columna (`registrado`).
+
+No se borra de la base. El CHECK de `stage` la sigue aceptando y hay miles de filas con ese
+valor: se **traduce**. `stageVigente()` en `order-stages.ts` la lee como `confirmado`, que es lo
+que esos pedidos son —cobrados y sin guía—.
+
+> Es la diferencia entre normalizar **lo desconocido** y normalizar **lo viejo**, y confundirlas
+> costaba caro: `toStage` manda lo desconocido a `nuevo`, y con eso un `preparando` guardado en
+> marzo se pintaba como recién creado. Peor en el selector del vendedor: con la etapa fuera de
+> la lista, `indexOf` daba −1 y el botón "avanzar" ofrecía la **primera** etapa como siguiente.
+> O sea que el botón de avanzar retrocedía.
+
+Consecuencia de operación: **ya no hay entrega automática a Soporte** — la etapa que la
+disparaba no existe. Logística se queda con el pedido desde que entra la plata hasta que sale el
+paquete, que es justo el tramo donde su trabajo ocurre. A Soporte se le sigue pudiendo invitar
+al chat.
+
+### 🚫 Anulado: el pedido que nunca fue una venta
+
+Un **cancelado** es una venta que existió y se perdió: se arrepintió, no contestó, se cayó el
+pago. Duele, y **tiene que doler** — cuenta en la conversión, que es el número con el que la
+marca decide cuánto invertir.
+
+Un **anulado** nunca fue una venta: el pedido de prueba, el dedazo, el formulario enviado dos
+veces. Contarlo junto al cancelado ensucia justo ese número — y como se hace más seguido de lo
+que uno cree (cada demo, cada prueba de despliegue), el ruido no es marginal.
+
+Por eso son **dos preguntas y no una**:
+
+| | ¿se ve en las vistas vivas? | ¿cuenta en las estadísticas? |
+|---|---|---|
+| `active` | sí | sí |
+| `cancelado` | no (columna aparte) | **sí** |
+| `anulado` | no (columna aparte) | **no** (`contable()`) |
+| `no_entregado` | **sí** | **sí** — es la mitad de la tasa de entrega |
+
+Se pone y se quita desde el detalle del pedido (`order-manage`, acciones `anular` / `restore`).
+Desandarlo importa: el estado se pone justamente cuando alguien se equivocó, y un botón que no
+se puede deshacer se usa menos de lo que hace falta.
 
 ## Ver también
 

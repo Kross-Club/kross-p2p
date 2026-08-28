@@ -2,6 +2,7 @@ import { AgencyService } from '../checkout/services/AgencyService'
 import { agregarPorComprador, segmentoDe } from '../../../supabase/functions/_shared/clientes.ts'
 import type { StoreOrder } from '../store-orders'
 import type { Cliente, PedidoDeCliente } from '../store-clients'
+import type { Curioso } from '../store-drafts'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
@@ -106,8 +107,11 @@ const DESTINOS = [
 const REPARTO: { stage: string; fase: string | null; peso: number }[] = [
   { stage: 'nuevo', fase: null, peso: 8 },
   { stage: 'validando', fase: null, peso: 10 },
-  { stage: 'confirmado', fase: null, peso: 12 },
-  { stage: 'preparando', fase: null, peso: 14 },
+  // El montón de `confirmado` es el peso que tenía `preparando` más el suyo: es
+  // la columna donde de verdad se acumula la operación —plata cobrada que
+  // todavía no tiene guía, incluido lo que el API del courier rechazó— y el
+  // tablero tiene que enseñarla llena, porque llena es como se ve.
+  { stage: 'confirmado', fase: null, peso: 26 },
   { stage: 'en_camino', fase: null, peso: 8 },            // guía emitida, sin reporte
   { stage: 'en_camino', fase: 'EN_ORIGEN', peso: 10 },
   { stage: 'en_camino', fase: 'EN_TRANSITO', peso: 16 },
@@ -365,7 +369,13 @@ async function construir(): Promise<TiendaDemo> {
     const conGuia = t.stage === 'en_camino' || t.stage === 'entregado'
     // Mitad y mitad es el reparto típico del adelanto; algunos pagan todo.
     const adelanto = r() < 0.25 ? prod.precio : Math.round(prod.precio / 2)
-    const cruzado = r() < 0.8
+    // Que el adelanto esté CRUZADO depende de la etapa, y no al revés que antes.
+    // `validando` significa exactamente "hay un yapeo que todavía no cuadra", y
+    // de `confirmado` en adelante el pedido está ahí PORQUE la plata entró. Con
+    // un 80% plano el anillo de avance mentía en las dos puntas: pedidos en
+    // tránsito con el anillo vacío y pedidos en validación ya cobrados.
+    const antesDeCobrar = t.stage === 'nuevo' || t.stage === 'validando'
+    const cruzado = antesDeCobrar ? r() < 0.15 : r() < 0.92
     const miembro = elige(r, EQUIPO)
     const faseAt = t.fase ? new Date(ahora - entre(r, 0, 6) * DIA).toISOString() : null
 
@@ -383,7 +393,10 @@ async function construir(): Promise<TiendaDemo> {
       product_name: prod.nombre,
       product_price: prod.precio,
       pack_name: elige(r, ['Pack 1', 'Pack 2', 'Pack 3']),
-      status: r() < 0.04 ? 'cancelado' : 'active',
+      // Cancelado ≠ anulado: el primero fue una venta que se perdió (y pesa en
+      // la conversión), el segundo nunca fue una venta —una prueba, un dedazo—.
+      // Los dos existen en cualquier tienda real y el tablero los separa.
+      status: r() < 0.04 ? 'cancelado' : r() < 0.03 ? 'anulado' : 'active',
       stage: t.stage,
       nota: r() < 0.12 ? elige(r, ['no_contesta', 'recuperado']) : null,
       dispatch_type: r() < 0.35 ? 'AGENCIA_LIMA' : 'AGENCIA_PROVINCIA',
@@ -399,6 +412,11 @@ async function construir(): Promise<TiendaDemo> {
       // no enseña a mirar el rojo.
       tracking_demora_at: t.fase === 'EN_TRANSITO' && r() < 0.08
         ? new Date(ahora - entre(r, 1, 3) * DIA).toISOString() : null,
+      // Cobrado y sin guía porque el proveedor rechazó el registro. Pasa de
+      // verdad y es el atasco más caro del tablero: sin un par de estos en el
+      // demo, la alerta que existe para verlo no se ve nunca.
+      shalom_order_status: t.stage === 'confirmado' && r() < 0.18 ? 'FAILED' : conGuia ? 'CREATED' : null,
+      shalom_order_reason: null,
       assigned_seller_id: miembro.auth_user_id,
       seller_name: miembro.nombre,
       seller_role: miembro.role_label,
@@ -575,4 +593,47 @@ export async function marcarRespondidoDemo(sessionId: string): Promise<string | 
  *  pantalla del pedido sabe a quién preguntarle antes de preguntar. */
 export function esTokenDemo(token: string | null | undefined): boolean {
   return !!token && /^demo-(\d+|h-\d+)$/.test(token)
+}
+
+/**
+ * Los CURIOSOS de la tienda de ejemplo: dejaron DNI y WhatsApp y no siguieron.
+ *
+ * Se arman aparte de la ventana viva porque no son pedidos —no tienen etapa, ni
+ * chat, ni vendedor— y meterlos en `pedidos` los haría contar en cada total del
+ * panel. Son leads, y el tablero los enseña en su propia columna.
+ *
+ * Se reparten por `last_step`: la mayoría se cae temprano y unos pocos llegan
+ * hasta el pago. Es la forma que tiene un embudo de verdad, y es la que hace
+ * útil la columna — el área comercial llama primero a los que llegaron lejos.
+ */
+export async function curiososDemo(): Promise<Curioso[]> {
+  const t = await tiendaDemo()
+  const r = azar(880725)
+  const ahora = Date.now()
+  const DISTRITOS = [
+    'San Juan de Lurigancho', 'Comas', 'Villa El Salvador', 'Ate', 'Los Olivos',
+    'San Martín de Porres', 'Trujillo', 'Arequipa', 'Chiclayo', 'Huancayo',
+  ]
+
+  return Array.from({ length: 14 }, (_, i) => {
+    const prod = elige(r, t.productos)
+    // Hasta el paso 2 no se pregunta la ubicación: quien se fue antes no la
+    // dejó, y la columna tiene que decirlo en vez de inventarla.
+    const paso = entre(r, 2, 4)
+    const conZona = paso >= 3
+    return {
+      order_id: `demo-draft-${i}`,
+      store_id: 'demo',
+      phone: `519${entre(r, 10000000, 99999999)}`,
+      buyer_name: `${elige(r, NOMBRES).split(' ')[0]} ${elige(r, APELLIDOS)}`,
+      document_number: String(entre(r, 10000000, 79999999)),
+      product_id: prod.id,
+      pack_name: elige(r, ['Pack 1', 'Pack 2', 'Pack 3']),
+      location_type: conZona ? (r() < 0.55 ? 'LIMA' : 'PROVINCIA') : null,
+      district: conZona ? elige(r, DISTRITOS) : null,
+      last_step: paso,
+      created_at: new Date(ahora - entre(r, 1, 14) * DIA).toISOString(),
+      updated_at: new Date(ahora - entre(r, 0, 5) * DIA - entre(r, 0, 23) * 3_600_000).toISOString(),
+    }
+  }).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
 }

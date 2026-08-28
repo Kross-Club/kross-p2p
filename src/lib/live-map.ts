@@ -1,5 +1,6 @@
 import { isPickupDispatch } from './session'
 import { cobradoDelPedido, valorDelPedido } from './order-money'
+import { estaVivo } from './order-tracking'
 
 // ─── El mapa de pedidos en vivo ──────────────────────────────────────────────
 // Reglas de lo que se ve moverse por el país. Puro y testeable: la pantalla
@@ -67,7 +68,10 @@ export function avanceDelPaquete(p: PedidoEnVivo): number {
  */
 export function vaEnElMapa(p: PedidoEnVivo): boolean {
   const stage = String(p.stage ?? '').toLowerCase()
-  return p.status !== 'cancelado' && stage !== 'no_entregado' && isPickupDispatch(p.dispatch_type)
+  // `estaVivo` y no `status !== 'cancelado'`: desde que existe `anulado` —el
+  // pedido de prueba, o el creado por error— hay dos maneras de estar muerto, y
+  // preguntarlas por separado acá es cómo una se queda atrás.
+  return estaVivo(p) && stage !== 'no_entregado' && isPickupDispatch(p.dispatch_type)
 }
 
 export interface Caja { minLng: number; maxLng: number; minLat: number; maxLat: number }
