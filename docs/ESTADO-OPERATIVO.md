@@ -51,7 +51,7 @@ alter table sellers        add column if not exists is_operator       boolean de
 
 | Función | Qué destraba | Nota |
 |---|---|---|
-| `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
+| `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual, y el **DNI** que necesita el buscador | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
 | `order-manage` | `mark_answered`, `anular` / `restore`, y el eje sin `preparando` | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
 | `get-session` | la llamada en el hilo, `answered_at`, y si el cliente está en la app | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) · [app](#get-session-otra-vez-saber-si-el-cliente-está-en-la-app-27-ago-2026) |
 | `get-store-drafts` 🆕 | la columna **Curiosos** del tablero | [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
@@ -321,7 +321,7 @@ Qué pasa si estos deploys no entran:
 |---|---|
 | `get-store-drafts` | la columna **Curiosos** sale vacía. El lector trata el 404 como lista vacía a propósito: el tablero sigue funcionando entero. |
 | `order-manage` | el botón **🚫 Anular** falla y avisa. Nada más cambia — avanzar de etapa sigue igual. |
-| `get-store-sessions` | los anulados no llegan al panel, así que la columna 🚫 no aparece (los que ya estén anulados en la base quedan invisibles, no perdidos), y el chip **⚠️ Guía manual** no se pinta en ninguna tarjeta. |
+| `get-store-sessions` | los anulados no llegan al panel, así que la columna 🚫 no aparece (los que ya estén anulados en la base quedan invisibles, no perdidos), y el chip **⚠️ Guía manual** no se pinta en ninguna tarjeta. El buscador del filtro tampoco encuentra por **DNI** —el resto de campos sí—. |
 
 **`preparando` no se borra de la base.** El CHECK de `stage` la sigue aceptando y las filas
 viejas siguen siendo válidas: la app las lee como `confirmado` (`stageVigente`), que es lo que

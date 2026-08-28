@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   FILTRO_VACIO, ventanaDe, pasaFiltro, aplicarFiltro,
-  cuantosFiltros, resumenDelRango, opcionesDe,
+  cuantosFiltros, resumenDelRango, opcionesDe, clave, textoDe, coincide,
 } from './pedidos-filtro'
 import type { Filtro } from './pedidos-filtro'
 import type { StoreOrder } from './store-orders'
@@ -125,5 +125,109 @@ describe('las opciones del desplegable', () => {
     ])
     expect(vendedores).toEqual([{ id: 'a', nombre: 'Andrea Flores' }, { id: 'k', nombre: 'Kevin Ramos' }])
     expect(productos).toEqual(['Colchón', 'Faja'])
+  })
+})
+
+// ─── El buscador ─────────────────────────────────────────────────────────────
+//
+// Los desplegables REBANAN; esto ENCUENTRA. Se busca con lo que uno tiene en la
+// mano cuando llega a la pantalla: un nombre, el N° que el cliente lee de su
+// pantalla, un DNI dictado por teléfono, el número del que llamó, o la guía por
+// la que pregunta el courier.
+const ROSA = pedido({
+  buyer_name: 'Rosa Sánchez',
+  order_id: 'ORD-17563450000000',
+  buyer_phone: '912345678',
+  tracking_numero: '448812',
+  buyers: { document_number: '48296862' },
+  product_name: 'Faja Reductora Premium',
+})
+
+describe('normalizar para comparar', () => {
+  it('quita acentos, mayúsculas y separadores', () => {
+    expect(clave('Rosa Sánchez')).toBe('ROSASANCHEZ')
+    expect(clave('ORD-1756 3450')).toBe('ORD17563450')
+    expect(clave('912 345 678')).toBe('912345678')
+    expect(clave(null)).toBe('')
+  })
+})
+
+describe('buscar un pedido', () => {
+  it('encuentra por nombre, aunque falte la tilde', () => {
+    expect(coincide(ROSA, 'sanchez')).toBe(true)
+    expect(coincide(ROSA, 'Sánchez')).toBe(true)
+    expect(coincide(ROSA, 'ROSA')).toBe(true)
+  })
+
+  it('encuentra por N° de pedido, con o sin el guion', () => {
+    expect(coincide(ROSA, 'ORD-1756345')).toBe(true)
+    expect(coincide(ROSA, 'ord 1756345')).toBe(true)
+    // Y por la cola, que es lo que uno alcanza a leer del final del número.
+    expect(coincide(ROSA, '450000000')).toBe(true)
+  })
+
+  it('encuentra por DNI, por teléfono y por guía', () => {
+    expect(coincide(ROSA, '48296862')).toBe(true)
+    expect(coincide(ROSA, '912 345 678')).toBe(true)
+    expect(coincide(ROSA, '448812')).toBe(true)
+  })
+
+  // Uno no recuerda en qué orden estaba escrito el nombre, y exigirlo convierte
+  // una búsqueda fallida en "este cliente no existe".
+  it('los términos van en cualquier orden', () => {
+    expect(coincide(ROSA, 'sanchez rosa')).toBe(true)
+    expect(coincide(ROSA, 'rosa sanchez')).toBe(true)
+  })
+
+  // Con OR, escribir dos palabras devolvería MÁS resultados que escribir una:
+  // lo contrario de lo que uno espera al seguir tecleando.
+  it('todos los términos tienen que estar, no uno cualquiera', () => {
+    expect(coincide(ROSA, 'rosa medina')).toBe(false)
+  })
+
+  it('vacío no filtra nada', () => {
+    expect(coincide(ROSA, '')).toBe(true)
+    expect(coincide(ROSA, '   ')).toBe(true)
+  })
+
+  // El producto ya tiene su desplegable al lado. Meterlo acá haría que escribir
+  // "faja" devuelva media tienda desde un control que promete encontrar uno.
+  it('NO busca por producto: para eso está el desplegable', () => {
+    expect(coincide(ROSA, 'faja')).toBe(false)
+  })
+
+  // Normalizado y pegado, "ROSASANCHEZ" + "ORD1756…" darían un solo texto donde
+  // "ZORD" encontraría un pedido que no dice eso en ninguna parte.
+  it('no encuentra a caballo entre dos campos', () => {
+    expect(textoDe(ROSA)).toContain('|')
+    expect(coincide(ROSA, 'zord')).toBe(false)
+  })
+
+  it('un pedido sin datos no revienta ni aparece en todo', () => {
+    const vacio = pedido({})
+    expect(coincide(vacio, '')).toBe(true)
+    expect(coincide(vacio, 'rosa')).toBe(false)
+  })
+})
+
+describe('el buscador dentro del filtro', () => {
+  it('recorta la lista y cuenta como filtro puesto', () => {
+    const otros = [ROSA, pedido({ buyer_name: 'Luis Ccahuana' })]
+    expect(aplicarFiltro(otros, con({ busca: 'rosa' }), AHORA)).toEqual([ROSA])
+    expect(cuantosFiltros(con({ busca: 'rosa' }))).toBe(1)
+  })
+
+  // Un buscador en blanco no puede contar como condición: el globito diría que
+  // hay un filtro puesto cuando no hay ninguno.
+  it('en blanco no cuenta ni recorta', () => {
+    expect(cuantosFiltros(con({ busca: '   ' }))).toBe(0)
+    const todos = [ROSA, pedido({ buyer_name: 'Luis' })]
+    expect(aplicarFiltro(todos, con({ busca: '  ' }), AHORA)).toBe(todos)
+  })
+
+  it('se acumula con las demás condiciones', () => {
+    const f = con({ busca: 'rosa', producto: 'Faja Reductora Premium' })
+    expect(pasaFiltro(ROSA, f, AHORA)).toBe(true)
+    expect(pasaFiltro({ ...ROSA, product_name: 'Otro' }, f, AHORA)).toBe(false)
   })
 })
