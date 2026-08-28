@@ -6,6 +6,7 @@ import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
 import { useFavoritos, alternarFavorito } from '../../lib/favoritos'
 import { esperaRespuesta } from '../../lib/bandeja'
+import { marcarRespondido } from '../../lib/order-answer'
 import type { StoreOrder } from '../../lib/store-orders'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
@@ -756,23 +757,13 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
   const debeRespuesta = esperaRespuesta(session as unknown as StoreOrder)
   const favorito = favoritos.has(session.id)
 
-  const marcarRespondido = async () => {
+  const alMarcarRespondido = async () => {
     if (marcando) return
     setMarcando(true)
-    const answered_at = new Date().toISOString()
-    try {
-      const res = await fetch(`${BASE}/order-manage`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'mark_answered', session_id: session.id }),
-      })
-      if (!res.ok) throw new Error('mark_failed')
-      setSession(s => s ? { ...s, answered_at } : s)
-    } catch {
-      alert('No se pudo marcar como respondido. Intenta de nuevo.')
-    } finally {
-      setMarcando(false)
-    }
+    const answered_at = await marcarRespondido(session.id, effective?.store_id)
+    if (answered_at) setSession(s => s ? { ...s, answered_at } : s)
+    else alert('No se pudo marcar como respondido. Intenta de nuevo.')
+    setMarcando(false)
   }
 
   // ── Las piezas del pedido, montadas distinto según la pantalla ───────────
@@ -857,7 +848,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
               sitio y hace dudar de si había algo pendiente. */}
           {debeRespuesta && canWrite && (
             <button
-              onClick={marcarRespondido}
+              onClick={alMarcarRespondido}
               disabled={marcando}
               className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-50"
               style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}

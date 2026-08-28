@@ -984,6 +984,31 @@ duplicado — si ya contestó Milagros, no hace falta que conteste nadie más. U
 sin nombre guardado (los de antes de que se guardara) dice `Tienda:`, que es verdad sin inventar
 a nadie.
 
+### 🟡 Deuda: lo automático se disfraza de persona
+
+`Tienda:` **no** quiere decir "automático" — es solo el respaldo para un mensaje sin nombre
+guardado. Hoy el reparto es:
+
+| Prefijo | Quién |
+|---|---|
+| `Cliente:` | el comprador (`sender_role: buyer`) |
+| `Sistema:` | avisos automáticos: pago cruzado, guía, cambio de etapa (`system`) |
+| `Bot:` | la IA closer, cuando exista (`bot` / `ia`) |
+| `Milagros:` | una persona del equipo (`seller` + `sender_name`) |
+| `Tienda:` | un `seller` sin nombre guardado — mensajes viejos |
+
+Y ahí está el hueco: **el mensaje de bienvenida que escribe `register-buyer`** cuando entra el
+pedido sale con `sender_role: 'seller'` y el nombre del asignado, o sea que se lee como si esa
+persona lo hubiera tecleado. Lo mismo hacen dos o tres mensajes de `order-manage` (oferta
+aceptada, pedido reactivado).
+
+Mientras eso siga así, **un porcentaje de "involucramiento del equipo" contado desde el chat
+saldría inflado**: cada pedido nace con un mensaje "de" su vendedor que su vendedor no escribió.
+
+Arreglarlo es marcar el mensaje en el origen —una columna `automatico` en `chat_messages`, o el
+rol `bot` para lo que no teclea nadie— y tocar las funciones que escriben. No es un cambio de
+pantalla: es de esquema y de despliegue, y por eso queda anotado y no hecho de paso.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

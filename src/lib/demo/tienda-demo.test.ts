@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tiendaDemo, fichaDemoDeCliente, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
+import { tiendaDemo, fichaDemoDeCliente, marcarRespondidoDemo, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
 import { columnaDelPedido, COLUMNAS } from '../order-tracking'
 import { estaVivo } from '../store-orders'
 
@@ -177,6 +177,49 @@ describe('la ficha de un cliente de ejemplo', () => {
     const uno = await pedidoDemoPorToken('demo-h-7')
     const otro = await pedidoDemoPorToken('demo-h-7')
     expect(uno).toEqual(otro)
+  })
+})
+
+describe('la bandeja del demo', () => {
+  // Sin esto NINGÚN pedido de ejemplo quedaba "sin responder": todas las
+  // conversaciones cerraban con la tienda o con un aviso del sistema, así que
+  // la vista salía siempre en cero y el botón de cerrarla no se veía nunca.
+  it('hay chats donde el último en escribir es el cliente', () => {
+    const ultimoDelCliente = t.pedidos.filter(p => {
+      const m = p.chat_messages ?? []
+      return m.length > 0 && m[m.length - 1].sender_role === 'buyer'
+    })
+    expect(ultimoDelCliente.length).toBeGreaterThan(5)
+    expect(ultimoDelCliente.length).toBeLessThan(t.pedidos.length)
+  })
+
+  // Los dos casos, porque piden cosas distintas: una pregunta hay que
+  // contestarla; un "gracias" se cierra a mano.
+  it('los hay que piden respuesta y los hay que no', () => {
+    const ultimos = t.pedidos
+      .map(p => (p.chat_messages ?? []).slice(-1)[0])
+      .filter(m => m?.sender_role === 'buyer')
+      .map(m => m.body ?? '')
+    expect(ultimos.some(b => b.includes('?'))).toBe(true)
+    expect(ultimos.some(b => /Gracias|Ok|Buenísimo/.test(b))).toBe(true)
+  })
+
+  it('algunos ya vienen cerrados a mano', () => {
+    const cerrados = t.pedidos.filter(p => p.answered_at)
+    expect(cerrados.length).toBeGreaterThan(5)
+    expect(cerrados.length).toBeLessThan(t.pedidos.length)
+  })
+
+  it('marcar como respondido en demo escribe sobre la tienda generada', async () => {
+    const sinCerrar = t.pedidos.find(p => !p.answered_at)!
+    const cuando = await marcarRespondidoDemo(sinCerrar.id)
+    expect(cuando).toBeTruthy()
+    const otra = await tiendaDemo()
+    expect(otra.pedidos.find(p => p.id === sinCerrar.id)?.answered_at).toBe(cuando)
+  })
+
+  it('un pedido que no existe no se marca', async () => {
+    expect(await marcarRespondidoDemo('demo-ped-999999')).toBeNull()
   })
 })
 
