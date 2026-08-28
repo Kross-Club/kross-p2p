@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Search, MessageCircle, ChevronRight, CornerUpLeft } from 'lucide-react'
+import { Search, MessageCircle, ChevronRight, CornerUpLeft, CheckCheck } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
@@ -11,6 +11,7 @@ import { horaOFecha, hace } from '../../lib/fechas'
 import { datosDeFila, verBandeja, VISTAS, VISTA_INICIAL } from '../../lib/bandeja'
 import type { Vista, FilaBandeja } from '../../lib/bandeja'
 import { useFavoritos } from '../../lib/favoritos'
+import { marcarRespondido } from '../../lib/order-answer'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 import type { SellerProfile } from '../../lib/seller-session'
 
@@ -212,6 +213,19 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
   // lo admite porque la respuesta del servidor manda, no nuestro deseo.
   const open = (token?: string) => { if (token) onAbrir(token) }
 
+  // Cerrar la deuda DESDE LA FILA, sin abrir el chat. Es el camino que pide el
+  // caso más común: el cliente escribió "Gracias 🙏" o un emoji, no hay nada que
+  // contestar, y abrir el chat para no escribir nada es puro peaje.
+  const [cerrando, setCerrando] = useState<string | null>(null)
+  const cerrarDeuda = async (id: string) => {
+    if (cerrando) return
+    setCerrando(id)
+    const ok = await marcarRespondido(id, effective?.store_id)
+    setCerrando(null)
+    if (ok) lista.recargar()
+    else alert('No se pudo marcar como respondido. Intenta de nuevo.')
+  }
+
   /** Los recuadros: cada uno es una vista, y su número es cuántos pedidos deja
    *  ver. `chips` los aprieta para el móvil, donde cuatro tarjetas no caben. */
   const selectorVista = (chips: boolean) => (
@@ -350,7 +364,21 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
                 )}
               </div>
 
-              <Actividad fila={r.fila} ahora={leidoEn} />
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Actividad fila={r.fila} ahora={leidoEn} />
+                {r.fila.esperando && (
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); cerrarDeuda(r.session.id) }}
+                    disabled={cerrando === r.session.id}
+                    title="Marcar como respondido — para un «gracias» que no hay que contestar"
+                    aria-label="Marcar como respondido"
+                    className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40"
+                    style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}>
+                    <CheckCheck size={12} />
+                  </button>
+                )}
+              </div>
 
               <p className="text-[11px] text-gray-400">{horaOFecha(r.session.created_at, leidoEn)}</p>
               <ChevronRight size={15} className="text-gray-300" />
@@ -413,6 +441,18 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
                     style={{ color: r.fila.esperando ? 'var(--danger-fg)' : 'var(--text-faint)' }}>
                     {hace(leidoEn - r.fila.ultimoEn)}
                   </span>
+                  {r.fila.esperando && (
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); cerrarDeuda(r.session.id) }}
+                      disabled={cerrando === r.session.id}
+                      title="Marcar como respondido"
+                      aria-label="Marcar como respondido"
+                      className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40"
+                      style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}>
+                      <CheckCheck size={12} />
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-1">
                   <Asesores ids={r.asesores} porId={porId} />

@@ -213,6 +213,29 @@ function conversacion(
     push('buyer', 'text', '¿Con qué documento lo recojo?')
     push('seller', 'text', 'Con tu DNI. Te paso la clave de recojo por acá.')
   }
+
+  // Y en una parte de los hilos, la última palabra es del comprador.
+  //
+  // Sin esto NINGÚN pedido de ejemplo quedaba "sin responder": todas las
+  // conversaciones cerraban con la tienda o con un aviso del sistema, así que la
+  // vista que ordena la bandeja salía siempre en cero y el botón de "marcar como
+  // respondido" —que solo aparece cuando hay deuda— no se veía nunca.
+  //
+  // Se mezclan los dos casos a propósito, porque piden cosas distintas: una
+  // pregunta hay que contestarla; un "gracias" no —ese se cierra a mano, y es
+  // justo para lo que existe el botón.
+  if (r() < 0.4) {
+    push('buyer', 'text', elige(r, [
+      // Piden respuesta
+      '¿Ya salió mi pedido?',
+      'Hola, ¿alguna novedad?',
+      '¿Me pueden cambiar la dirección?',
+      // No piden nada: se cierran marcándolos
+      'Gracias 🙏',
+      'Ok, perfecto 👍',
+      '¡Buenísimo! 😄',
+    ]))
+  }
   return msgs
 }
 
@@ -380,6 +403,10 @@ async function construir(): Promise<TiendaDemo> {
       seller_name: miembro.nombre,
       seller_role: miembro.role_label,
       created_at: new Date(ahora - entre(r, 0, 9) * DIA - entre(r, 0, 23) * 3_600_000).toISOString(),
+      // Uno de cada cuatro ya está cerrado a mano: se le llamó, se le contestó
+      // por WhatsApp, o era un "gracias". Sin alguno así, el estado "respondido"
+      // tampoco se vería nunca.
+      answered_at: r() < 0.25 ? new Date(ahora - entre(r, 0, 5) * 3_600_000).toISOString() : null,
       chat_messages: conversacion(r, ahora, `demo-ped-${i}`, persona.nombre, prod.nombre, miembro.nombre, t),
     }
   }).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
@@ -526,6 +553,22 @@ function pedidoHistorico(t: TiendaDemo, i: number): StoreOrder | null {
       r, Date.parse(h.created_at), `demo-hist-${i}`, nombre, h.product_name, miembro.nombre, cerrado,
     ),
   }
+}
+
+/**
+ * Marca un pedido de ejemplo como respondido.
+ *
+ * Escribe sobre la tienda generada —que está cacheada por sesión— en vez de
+ * llamar a `order-manage`: en el demo no hay base a la que escribir, y sin esto
+ * el botón se vería pero no haría nada, que es peor que no tenerlo.
+ */
+export async function marcarRespondidoDemo(sessionId: string): Promise<string | null> {
+  const t = await tiendaDemo()
+  const p = t.pedidos.find(x => x.id === sessionId)
+  if (!p) return null
+  const answered_at = new Date().toISOString()
+  p.answered_at = answered_at
+  return answered_at
 }
 
 /** Los tokens de ejemplo se reconocen por la forma, sin consultar nada: así la

@@ -132,6 +132,17 @@ export function esperaRespuesta(o: StoreOrder): boolean {
  * Decía "Tú:" para todo lo que salía de la tienda, y en un equipo de seis eso
  * es justo lo que no se puede saber de un vistazo: si ya contestó Milagros, no
  * hace falta que conteste nadie más.
+ *
+ * **`Tienda` NO quiere decir "automático".** Es el respaldo para un mensaje de
+ * vendedor que no trae nombre guardado —los de antes de que se guardara—, y
+ * dice la verdad sin inventar a nadie.
+ *
+ * Hoy lo automático es `Sistema` (avisos de pago, guía, etapa) y `Bot` (la IA,
+ * cuando exista). Pero hay un hueco conocido: el mensaje de bienvenida que
+ * escribe `register-buyer` al entrar el pedido sale con `sender_role: 'seller'`
+ * y el NOMBRE del asignado, así que se lee como si esa persona lo hubiera
+ * tecleado. Mientras eso siga así, "involucramiento del equipo" contado desde
+ * acá saldría inflado. Ver docs/11-RELACIONES.md.
  */
 function quienEscribio(m: { sender_role: string; sender_name?: string | null } | null | undefined): string | null {
   if (!m) return null
