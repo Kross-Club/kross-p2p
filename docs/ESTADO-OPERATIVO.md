@@ -192,6 +192,45 @@ Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabac
 siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
 
+### El pipeline nuevo: Curiosos y Anulado (28-ago-2026)
+
+**Un solo deploy nuevo y dos redeploys. No hay SQL que correr.**
+
+```
+supabase functions deploy get-store-drafts   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+```
+
+- **`get-store-drafts` es nueva.** Lee `checkout_drafts` —la tabla de leads que existe desde el
+  bloque §12 y que hasta hoy nadie miraba— y alimenta la columna **Curiosos** del tablero: los
+  que dejaron DNI y WhatsApp y no siguieron.
+- `order-manage` gana `anular` / `restore`, y su lista de etapas pierde `preparando`.
+- `get-store-sessions` ya traía cancelados; ahora trae también los **anulados**, que van a su
+  propia columna, y dos columnas más: `shalom_order_status` / `shalom_order_reason`, para marcar
+  en *Confirmado* los pedidos **cobrados cuya guía el courier rechazó** — los que hay que
+  registrar a mano.
+
+**Sin SQL porque no hace falta:** `status` es texto libre desde el inicio (no tiene CHECK), así
+que `'anulado'` se guarda tal cual; y `checkout_drafts` ya existe con su índice de recuperación.
+Los bloques §28 y §29 de `setup-kross.sql` documentan los dos, pero **no hay nada que correr**.
+
+Qué pasa si estos deploys no entran:
+
+| Sin desplegar | Qué se ve |
+|---|---|
+| `get-store-drafts` | la columna **Curiosos** sale vacía. El lector trata el 404 como lista vacía a propósito: el tablero sigue funcionando entero. |
+| `order-manage` | el botón **🚫 Anular** falla y avisa. Nada más cambia — avanzar de etapa sigue igual. |
+| `get-store-sessions` | los anulados no llegan al panel, así que la columna 🚫 no aparece (los que ya estén anulados en la base quedan invisibles, no perdidos), y el chip **⚠️ Guía manual** no se pinta en ninguna tarjeta. |
+
+**`preparando` no se borra de la base.** El CHECK de `stage` la sigue aceptando y las filas
+viejas siguen siendo válidas: la app las lee como `confirmado` (`stageVigente`), que es lo que
+esos pedidos son —cobrados y sin guía—. No hay migración de datos en este cambio.
+
+Un efecto de operación que conviene avisarle al equipo: **ya no hay entrega automática a
+Soporte**, porque la etapa que la disparaba (`preparando`) no existe. Logística se queda con el
+pedido desde `confirmado` hasta `en_camino`. A Soporte se le sigue pudiendo invitar al chat.
+
 ### Marcar un pedido como respondido (28-ago-2026)
 
 **1. SQL primero** (SQL Editor, proyecto PWA):

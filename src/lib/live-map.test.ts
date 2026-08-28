@@ -51,6 +51,12 @@ describe('mapa de pedidos en vivo', () => {
     expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'en_camino', status: 'active' })).toBe(true)
   })
 
+  // Un pedido de prueba paseándose por el mapa del país es exactamente el tipo
+  // de cosa que hace desconfiar de una pantalla entera.
+  it('un pedido anulado tampoco entra al mapa', () => {
+    expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'en_camino', status: 'anulado' })).toBe(false)
+  })
+
   it('el recojo en agencia de Lima también entra al mapa', () => {
     expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'preparando' })).toBe(true)
     expect(vaEnElMapa({ dispatch_type: 'AGENCIA_LIMA', stage: 'no_entregado' })).toBe(false)

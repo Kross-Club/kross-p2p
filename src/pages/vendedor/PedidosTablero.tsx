@@ -1,15 +1,18 @@
-import { ChevronRight, Package } from 'lucide-react'
+import { ChevronRight, MessageCircle, Package } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NOTA_META, CERRADO_SUAVE, NEUTRO, ALERTA } from '../../lib/order-chips'
-import { COLUMNAS, columnaDelPedido, antiguedad } from '../../lib/order-tracking'
+import { COLUMNAS, columnaDelPedido, antiguedad, conPlataEnJuego, esAnulado, esperaGuiaManual } from '../../lib/order-tracking'
 import { estaVivo } from '../../lib/store-orders'
 import { plataDe, soles } from '../../lib/order-money'
 import { horaOFecha } from '../../lib/fechas'
 import { useSeller } from '../../lib/seller-session'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { useCompradoresEnLinea } from '../../lib/presencia'
+import { useStoreDrafts, nombreDeCurioso, zonaDeCurioso } from '../../lib/store-drafts'
 import ScrollHorizontal from '../../components/ScrollHorizontal'
+import AnilloAvance from '../../components/AnilloAvance'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
+import type { Curioso } from '../../lib/store-drafts'
 
 // El tablero es UNA vista: las columnas del eje del pedido (`COLUMNAS` en
 // order-tracking), con la mitad de abajo en el idioma del courier. Tuvo un
@@ -43,6 +46,10 @@ function TarjetaPedido({ s, ahora, enLinea, marcado, chip, onAbrir }: {
   chip: (s: StoreOrder) => ReactNode
   onAbrir: (token: string) => void
 }) {
+  // El anillo solo desde `confirmado`: antes no hay nada cobrado que mostrar, y
+  // un anillo vacío en cada tarjeta de las dos primeras columnas enseña a
+  // ignorarlo justo donde después importa.
+  const conPlata = conPlataEnJuego(columnaDelPedido(s))
   return (
     <button onClick={() => s.token && onAbrir(s.token)} disabled={!s.token}
       className="w-full bg-white rounded-2xl p-3 shadow-sm text-left border"
@@ -61,14 +68,28 @@ function TarjetaPedido({ s, ahora, enLinea, marcado, chip, onAbrir }: {
             </p>
             {/* Cuándo entró: la cohorte a la que pertenece el pedido. Es lo que
                 el filtro de arriba recorta, así que se ve en la tarjeta. */}
-            <span className="text-[9px] text-gray-300 flex-shrink-0" title="Cuándo entró el pedido">
-              {horaOFecha(s.created_at, ahora)}
+            <span className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="text-[9px] text-gray-300" title="Cuándo entró el pedido">
+                {horaOFecha(s.created_at, ahora)}
+              </span>
+              {conPlata && <AnilloAvance pedido={s} size={16} />}
             </span>
           </div>
           <p className="text-xs text-gray-400 truncate">{s.product_name} · {s.pack_name || soles(s.product_price)}</p>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {s.seller_name && <span className="text-[10px] text-gray-400">Atiende: {s.seller_name.split(' ')[0]}</span>}
             {chip(s)}
+            {/* Cobrado y sin guía porque el proveedor la rechazó: no espera a la
+                máquina, espera a una persona. Es el atasco más caro y el que
+                menos se ve — en la columna se lee igual que uno recién cobrado. */}
+            {esperaGuiaManual(s) && (
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={ALERTA}
+                title={s.shalom_order_reason
+                  ? `El courier rechazó el registro: ${s.shalom_order_reason}. Hay que emitir la guía a mano.`
+                  : 'El courier rechazó el registro. Hay que emitir la guía a mano.'}>
+                ⚠️ Guía manual
+              </span>
+            )}
             {s.nota && NOTA_META[s.nota] && (
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
                 style={NOTA_META[s.nota].style}>
@@ -80,6 +101,61 @@ function TarjetaPedido({ s, ahora, enLinea, marcado, chip, onAbrir }: {
         <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1" />
       </div>
     </button>
+  )
+}
+
+/**
+ * La tarjeta de un CURIOSO. No es un pedido y no finge serlo.
+ *
+ * Sin etapa, sin chat y sin vendedor: lo único que hay acá es una persona a la
+ * que se puede escribir. Por eso la tarjeta no se abre —no hay nada detrás— y
+ * lleva en su lugar el botón que sí sirve: WhatsApp.
+ *
+ * A nivel de módulo por la misma razón que `TarjetaPedido`: un componente
+ * declarado dentro del render cambia de identidad en cada pintada y colapsa el
+ * scroll de la columna.
+ */
+function TarjetaCurioso({ c, ahora, producto }: {
+  c: Curioso
+  ahora: number
+  /** Nombre del producto que miró, si alguna venta de la tienda lo identifica.
+   *  El borrador solo guarda el `product_id`, y enseñar un id no es enseñar
+   *  nada. */
+  producto: string | null
+}) {
+  const celular = c.phone ? c.phone.slice(-9) : null
+  const zona = zonaDeCurioso(c)
+  return (
+    <div className="w-full bg-white rounded-2xl p-3 shadow-sm border"
+      style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-bold text-gray-800 text-sm truncate">{nombreDeCurioso(c)}</p>
+        <span className="text-[9px] text-gray-300 flex-shrink-0" title="Última vez que tocó el formulario">
+          {horaOFecha(c.updated_at ?? c.created_at, ahora)}
+        </span>
+      </div>
+      <p className="text-xs text-gray-400 truncate">
+        {producto ?? c.pack_name ?? 'Producto sin identificar'}
+      </p>
+      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+        {c.document_number && (
+          <span className="text-[10px] text-gray-400 tabular">DNI {c.document_number}</span>
+        )}
+        {/* Lo que FALTA, dicho como falta. El área comercial lo completa a mano
+            cuando lo convierte, y saber qué le falta a cuál es lo que decide a
+            quién llamar primero. */}
+        <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={zona ? NEUTRO : ALERTA}>
+          {zona ?? 'sin distrito'}
+        </span>
+      </div>
+      {celular && (
+        <a href={`https://wa.me/51${celular}`} target="_blank" rel="noreferrer"
+          className="mt-2 flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[11px]"
+          style={{ background: 'var(--surface-3)', color: 'var(--text)', fontWeight: 500 }}>
+          <MessageCircle size={12} /> Escribir
+        </a>
+      )}
+    </div>
   )
 }
 
@@ -97,6 +173,9 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
   // en el tablero.
   const enLinea = useCompradoresEnLinea(effective?.store_id)
   const desktop = useIsDesktop()
+  // Los curiosos son la primera columna y NO son pedidos: viven en
+  // `checkout_drafts` y se leen aparte. Ver `store-drafts.ts`.
+  const { curiosos, cargando: cargandoCuriosos } = useStoreDrafts(effective)
 
   // `leidoEn` es el instante en que llegaron los datos: medir la antigüedad
   // contra eso —y no contra cada pintada— hace que todas las tarjetas cuenten
@@ -141,7 +220,19 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
     if (enLaColumna) enLaColumna.push(s)
     else porColumna.set(col, [s])
   }
-  const cancelados = sessions.filter(s => !estaVivo(s))
+  // Anulado ≠ cancelado, y por eso son dos columnas: un cancelado es una venta
+  // que existió y se perdió —duele, y cuenta en la conversión—; un anulado
+  // nunca fue una venta (error o prueba) y no cuenta en ningún número.
+  const cancelados = sessions.filter(s => s.status === 'cancelado')
+  const anulados = sessions.filter(esAnulado)
+
+  // Del borrador solo llega el `product_id`. El nombre se saca de los pedidos
+  // que ya están en pantalla en vez de pedir el catálogo: si alguien compró ese
+  // producto —y si no, la columna no es donde importa— el nombre ya está acá.
+  const nombrePorProducto = new Map<string, string>()
+  for (const s of sessions) {
+    if (s.product_id && s.product_name) nombrePorProducto.set(s.product_id, s.product_name)
+  }
 
   // Los dos grupos de cierre van al final en vez de omitirse: en una vista de
   // columnas, "no aparece" y "no existe" se leen igual, y un pedido caído que
@@ -151,6 +242,7 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
     ...COLUMNAS.map(c => ({ ...c, style: etapaChip(c.key), items: porColumna.get(c.key) ?? [] })),
     ...(caidos.length ? [{ key: 'no_entregado', label: 'No entregados', emoji: '⚠️', style: ALERTA, items: caidos }] : []),
     ...(cancelados.length ? [{ key: 'cancelado', label: 'Cancelados', emoji: '❌', style: ALERTA, items: cancelados }] : []),
+    ...(anulados.length ? [{ key: 'anulado', label: 'Anulados', emoji: '🚫', style: ALERTA, items: anulados }] : []),
   ]
 
   // En escritorio el tablero se queda con el alto que le sobra y scrollea él
@@ -176,6 +268,38 @@ export default function PedidosTablero({ lista, onAbrir, marcado }: {
         // con nueve columnas y cinco en pantalla, una barra al pie de la
         // columna más larga esconde media operación.
         <ScrollHorizontal lleno={desktop} className="flex gap-3 pb-4">
+          {/* CURIOSOS · antes de la primera etapa del pedido.
+              Dejaron DNI y WhatsApp y no siguieron. No tienen etapa ni chat, así
+              que no entran en `columnas` —que se deriva del eje del pedido— y se
+              pintan acá con su propia tarjeta. La columna se muestra siempre,
+              incluso vacía: en cero significa "nadie abandonó el formulario", y
+              esconderla haría que un embudo con fugas se vea igual que uno sin
+              ellas. Sin suma de plata: un curioso no debe nada, y ponerle precio
+              a lo que nadie pidió infla el número que decide la operación. */}
+          <div className="flex-shrink-0 w-56">
+            <div className="sticky top-0 z-10 pb-2" style={{ background: 'var(--surface-2)' }}>
+              <div className="px-3 py-1.5 rounded-xl" style={NEUTRO}
+                title="Dejaron DNI y WhatsApp y no terminaron el formulario. Se les puede escribir; el distrito y la agencia los completa el área comercial.">
+                <div className="flex items-center justify-between gap-1 text-[11px] font-black">
+                  <span className="truncate">👀 Curiosos</span>
+                  <span className="tabular flex-shrink-0">{curiosos.length}</span>
+                </div>
+                <div className="text-[10px] font-bold opacity-70">por contactar</div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {curiosos.map(c => (
+                <TarjetaCurioso key={c.order_id} c={c} ahora={ahora}
+                  producto={(c.product_id && nombrePorProducto.get(c.product_id)) || null} />
+              ))}
+              {!cargandoCuriosos && curiosos.length === 0 && (
+                <div className="bg-gray-50 rounded-xl p-4 text-center text-[10px] text-gray-300 flex flex-col items-center gap-1">
+                  <Package size={16} className="opacity-40" /> vacío
+                </div>
+              )}
+            </div>
+          </div>
+
           {columnas.map(col => {
             const plata = plataDe(col.items)
             return (

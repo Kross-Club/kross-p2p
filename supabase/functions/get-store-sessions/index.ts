@@ -31,11 +31,12 @@ Deno.serve(async (req) => {
       address, address_lat, address_lng,
       advance_amount, payment_verification,
       tracking_courier, tracking_numero, tracking_phase, tracking_phase_at, tracking_demora_at,
+      shalom_order_status, shalom_order_reason,
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       answered_at,
       chat_messages ( id, sender_role, sender_name, type, body, created_at, read_at )
     `)
-    .in('status', includeCancelled ? ['active', 'cancelado'] : ['active'])
+    .in('status', includeCancelled ? ['active', 'cancelado', 'anulado'] : ['active'])
     .order('created_at', { ascending: false })
     .limit(80)
 

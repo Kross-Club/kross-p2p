@@ -4,13 +4,15 @@ import { X, Package, AlertTriangle, RefreshCw, Trash2, Eye } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
 import { NOTA_META, NOTA_KEYS } from '../lib/order-chips'
+import { stageVigente } from '../lib/order-stages'
 import Confirmar from './Confirmar'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
+// `preparando` ya no está en el eje: se lee como `confirmado` vía `stageVigente`.
 const STAGE_LABEL: Record<string, string> = {
-  nuevo: '📋 Pedido creado', validando: '🔎 Validando pago', confirmado: '📞 Confirmado', preparando: '📦 Preparando',
+  nuevo: '📋 Pedido creado', validando: '🔎 Validando pago', confirmado: '💰 Confirmado',
   en_camino: '🚚 En camino', entregado: '✅ Entregado',
 }
 
@@ -40,6 +42,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
   // Un cambio de cantidad se guarda solo y le cambia el total al comprador. Se
   // pregunta antes: `{ i, qty }` es lo que está esperando el sí.
   const [cambioQty, setCambioQty] = useState<{ i: number; nombre: string; de: number; a: number } | null>(null)
+  const [porAnular, setPorAnular] = useState(false)
   const [viewerImgs, setViewerImgs] = useState<string[]>([])
   const [viewerIdx, setViewerIdx] = useState<number | null>(null)
   const [removingIdx, setRemovingIdx] = useState<number | null>(null)
@@ -76,6 +79,20 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
     } finally { setBusy(false) }
   }
 
+  // Anular ≠ cancelar. Un cancelado es una venta que existió y se perdió: duele
+  // y tiene que doler en la conversión. Un anulado nunca fue una venta —error o
+  // prueba— y no cuenta en ningún número. Se puede desandar, porque el estado se
+  // pone justamente cuando alguien se equivocó.
+  const anular = async (volver: boolean) => {
+    setBusy(true)
+    try {
+      const res = await post({ action: volver ? 'restore' : 'anular', session_id: session.id })
+      if (!res.ok) { alert(volver ? 'No se pudo restaurar.' : 'No se pudo anular.'); return }
+      onPatch({ status: volver ? 'active' : 'anulado' })
+      setPorAnular(false)
+    } finally { setBusy(false) }
+  }
+
   const setNota = async (nota: string | null) => {
     onPatch({ nota })
     await post({ action: 'set_nota', session_id: session.id, nota })
@@ -109,7 +126,10 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
   }
 
   const cancelled = session.status === 'cancelado'
-  const stageText = cancelled ? '❌ Pedido cancelado' : (STAGE_LABEL[session.stage] ?? session.stage)
+  const anulado = session.status === 'anulado'
+  const stageText = anulado ? '🚫 Pedido anulado'
+    : cancelled ? '❌ Pedido cancelado'
+    : (STAGE_LABEL[stageVigente(session.stage)] ?? session.stage)
 
   const cuerpo = (
     <>
@@ -203,7 +223,17 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
           )}
 
           {/* Acciones */}
-          {cancelled ? (
+          {anulado ? (
+            role === 'seller' ? (
+              <button onClick={() => anular(true)} disabled={busy}
+                className="w-full py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
+                <RefreshCw size={15} /> {busy ? 'Restaurando…' : 'Restaurar pedido'}
+              </button>
+            ) : (
+              <div className="text-center py-2 text-sm font-bold" style={{ color: 'var(--danger-fg)' }}>Este pedido está anulado</div>
+            )
+          ) : cancelled ? (
             role === 'seller' ? (
               <button onClick={recreate} disabled={busy}
                 className="w-full py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
@@ -213,10 +243,21 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
               <div className="text-center py-2 text-sm font-bold" style={{ color: 'var(--danger-fg)' }}>Este pedido está cancelado</div>
             )
           ) : !confirming ? (
-            <button onClick={() => setConfirming(true)}
-              className="w-full py-3 rounded-2xl font-black text-sm" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
-              Cancelar pedido
-            </button>
+            <div className="space-y-2">
+              <button onClick={() => setConfirming(true)}
+                className="w-full py-3 rounded-2xl font-black text-sm" style={{ background: 'var(--danger-bg)', color: 'var(--danger-fg)' }}>
+                Cancelar pedido
+              </button>
+              {/* En gris y debajo: anular no es la acción normal, es la salida
+                  para lo que nunca debió existir. */}
+              {role === 'seller' && (
+                <button onClick={() => setPorAnular(true)}
+                  className="w-full py-2 rounded-2xl text-[11px] font-bold"
+                  style={{ background: 'transparent', color: 'var(--text-faint)' }}>
+                  🚫 Anular — fue un error o una prueba
+                </button>
+              )}
+            </div>
           ) : (
             <div className="rounded-2xl p-4" style={{ background: 'var(--danger-bg-soft)', border: '0.5px solid var(--danger-border)' }}>
               <div className="flex items-start gap-2 mb-2">
@@ -262,6 +303,19 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
             {cuerpo}
           </div>
         </div>
+      )}
+
+      {porAnular && (
+        <Confirmar
+          titulo="¿Anular este pedido?"
+          detalle="Se usa para pedidos creados por error o de prueba: sale del tablero y NO cuenta en las estadísticas de conversión. Se puede restaurar."
+          si="Sí, anular"
+          no="No"
+          peligro
+          ocupado={busy}
+          onSi={() => anular(false)}
+          onNo={() => setPorAnular(false)}
+        />
       )}
 
       {cambioQty && (

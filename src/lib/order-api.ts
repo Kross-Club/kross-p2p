@@ -12,7 +12,10 @@ export interface OrderSession {
   product_name: string | null
   product_price: number | null
   pack_name: string | null
-  status: 'active' | 'delivered' | 'rejected' | 'expired' | 'cancelado'
+  /** `anulado` = creado por error o de prueba. Aparte de `cancelado` a
+   *  propósito: un cancelado fue una venta que se perdió y tiene que pesar en
+   *  la conversión; un anulado nunca fue una venta. Ver `contable()`. */
+  status: 'active' | 'delivered' | 'rejected' | 'expired' | 'cancelado' | 'anulado'
   stage: OrderStage
   expires_at: string | null
   seller_name: string | null

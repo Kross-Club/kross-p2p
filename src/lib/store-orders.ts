@@ -64,6 +64,13 @@ export interface StoreOrder {
   tracking_phase?: string | null
   tracking_phase_at?: string | null
   tracking_demora_at?: string | null
+  /** Cómo le fue al generador de guías Shalom (bloque 27.c del esquema):
+   *  `CREATED` la emitió, `FAILED` el proveedor la rechazó, `SIMULADO` se armó
+   *  sin llamar. Un `FAILED` es un pedido COBRADO que no va a salir hasta que
+   *  alguien registre la guía a mano — y sin esto no se distingue de uno que
+   *  simplemente todavía no se procesó. */
+  shalom_order_status?: string | null
+  shalom_order_reason?: string | null
   assigned_seller_id?: string | null
   involved_seller_ids?: string[] | null
   writer_seller_ids?: string[] | null

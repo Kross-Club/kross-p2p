@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { valorDelPedido, cobradoDelPedido, saldoDelPedido, plataDe, soles } from './order-money'
+import { valorDelPedido, cobradoDelPedido, saldoDelPedido, plataDe, soles, avanceDelPago } from './order-money'
 
 describe('la plata de un pedido', () => {
   it('el valor es el precio, y nunca negativo', () => {
@@ -51,5 +51,34 @@ describe('la plata de un pedido', () => {
     expect(soles(0)).toBe('S/ 0')
     expect(soles(null)).toBe('S/ 0')
     expect(soles('180')).toBe('S/ 180')
+  })
+})
+
+describe('cuánto del pedido ya está pagado', () => {
+  it('la mitad es media vuelta', () => {
+    const a = avanceDelPago({ product_price: 180, advance_amount: 90, payment_verification: 'MATCHED' })
+    expect(a.fraccion).toBeCloseTo(0.5)
+    expect(a.completo).toBe(false)
+    expect(a.vacio).toBe(false)
+  })
+
+  it('pagado entero cierra el anillo', () => {
+    const a = avanceDelPago({ product_price: 180, advance_amount: 180, payment_verification: 'MATCHED' })
+    expect(a.fraccion).toBe(1)
+    expect(a.completo).toBe(true)
+  })
+
+  // La mentira más cara sería un anillo lleno con un adelanto que nadie cruzó:
+  // es justo la que hace despachar.
+  it('lo declarado y no cruzado no llena nada', () => {
+    const a = avanceDelPago({ product_price: 180, advance_amount: 90 })
+    expect(a.fraccion).toBe(0)
+    expect(a.vacio).toBe(true)
+  })
+
+  it('un precio raro no rompe el anillo', () => {
+    expect(avanceDelPago({}).fraccion).toBe(0)
+    expect(avanceDelPago({ product_price: 0, advance_amount: 50, payment_verification: 'MATCHED' }).completo).toBe(true)
+    expect(avanceDelPago({ product_price: 100, advance_amount: 900, payment_verification: 'MATCHED' }).fraccion).toBe(1)
   })
 })

@@ -25,9 +25,15 @@ export interface StageStep {
 
 const NUEVO: StageStep      = { key: 'nuevo',      label: 'Pedido',     emoji: '📋' }
 const VALIDANDO: StageStep  = { key: 'validando',  label: 'Validando',  emoji: '🔎' }
+// `preparando` SALIÓ del eje (ago-2026). No describía un hecho verificable
+// —nadie marca "ya lo empaqué", y el comprador que veía ese punto encendido no
+// sabía nada que no supiera antes— y el paso que de verdad importa entre cobrar
+// y despachar es que exista la guía. Su sitio lo ocupa `confirmado`, que sí dice
+// algo comprobable: entró plata. Las filas que la BD todavía tiene en
+// `preparando` se leen como `confirmado` — ver `stageVigente`.
 const RESTO: StageStep[] = [
-  { key: 'confirmado', label: 'Confirmado', emoji: '📞' },
-  { key: 'preparando', label: 'Preparando', emoji: '📦' },
+  // 💰 y no 📞: lo que pasó acá es que entró plata. La llamada es el medio.
+  { key: 'confirmado', label: 'Confirmado', emoji: '💰' },
   { key: 'en_camino',  label: 'En camino',  emoji: '🚚' },
   { key: 'entregado',  label: 'Entregado',  emoji: '✅' },
 ]
@@ -54,11 +60,31 @@ export function stagesFor(advanceAmount: number | string | null | undefined): St
  * pintaría la barra al revés.
  */
 export function stageIndex(stage: string | null | undefined, steps: StageStep[]): number {
-  const i = steps.findIndex(s => s.key === stage)
+  const i = steps.findIndex(s => s.key === stageVigente(stage))
   return i >= 0 ? i : 0
 }
 
-/** Normaliza lo que venga de la BD. Una etapa desconocida cae a `nuevo`. */
+/**
+ * La etapa vigente de un valor de la base.
+ *
+ * `toStage` normaliza lo DESCONOCIDO; esto normaliza lo VIEJO. Son cosas
+ * distintas: un `preparando` guardado en marzo no es basura —describe un pedido
+ * real, cobrado y sin guía— y tratarlo como desconocido lo mandaría a `nuevo`,
+ * o sea le pintaría la barra al revés. Peor en el selector del vendedor: con la
+ * etapa fuera de la lista, "avanzar" calculaba el siguiente desde el índice -1 y
+ * el pedido RETROCEDÍA a la primera etapa.
+ *
+ * Es la única traducción de etapas retiradas del eje. Si mañana sale otra, va
+ * acá y no en cada pantalla.
+ */
+export function stageVigente(value: string | null | undefined): OrderStage {
+  const s = toStage(value)
+  return s === 'preparando' ? 'confirmado' : s
+}
+
+/** Normaliza lo que venga de la BD. Una etapa desconocida cae a `nuevo`.
+ *  `preparando` sigue acá porque la BD todavía lo tiene y su CHECK lo permite:
+ *  reconocerlo es lo que deja que `stageVigente` lo traduzca en vez de perderlo. */
 export function toStage(value: string | null | undefined): OrderStage {
   const all: OrderStage[] = ['nuevo', 'validando', 'confirmado', 'preparando', 'en_camino', 'entregado', 'no_entregado']
   return all.includes(value as OrderStage) ? (value as OrderStage) : 'nuevo'

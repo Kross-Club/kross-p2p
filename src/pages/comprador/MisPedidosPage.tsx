@@ -4,15 +4,18 @@ import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle, RefreshCw, Sh
 import { subscribePush, notifPermission } from '../../lib/push'
 import { supabase } from '../../lib/supabase'
 import { useStore } from '../../lib/store-context'
+import { stageVigente } from '../../lib/order-stages'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
+// Sin `preparando`: salió del eje (ver `stageVigente` en order-stages). Los
+// pedidos que la BD todavía tiene ahí se leen como `confirmado` — que es lo que
+// son, cobrados y sin guía— en vez de caer al gris de "etapa desconocida".
 const STAGE_LABEL: Record<string, string> = {
   nuevo:      '📋 Pedido creado',
   validando: '🔎 Validando pago',
-  confirmado: '📞 Confirmado',
-  preparando: '📦 Preparando',
+  confirmado: '💰 Confirmado',
   en_camino:  '🚚 En camino',
   entregado:  '✅ Entregado',
   cancelado:  '❌ Cancelado',
@@ -22,7 +25,6 @@ const STAGE_COLOR: Record<string, string> = {
   nuevo:      '#FFD400',
   validando: '#F59E0B',
   confirmado: '#55C8F5',
-  preparando: '#863bff',
   en_camino:  '#FF8C00',
   entregado:  '#4ADE80',
   cancelado:  '#EF4444',
@@ -263,8 +265,9 @@ export default function MisPedidosPage() {
                 day: 'numeric', month: 'short', year: 'numeric'
               })
               const isCancelled = s.status === 'cancelado'
-              const stageColor = isCancelled ? '#EF4444' : (STAGE_COLOR[s.stage] ?? '#ccc')
-              const stageLabel = isCancelled ? '❌ Pedido cancelado' : (STAGE_LABEL[s.stage] ?? s.stage)
+              const etapa = stageVigente(s.stage)
+              const stageColor = isCancelled ? '#EF4444' : (STAGE_COLOR[etapa] ?? '#ccc')
+              const stageLabel = isCancelled ? '❌ Pedido cancelado' : (STAGE_LABEL[etapa] ?? etapa)
               const unread = (s.unread_count ?? 0) + (bumps[s.id] ?? 0)
 
               return (
