@@ -8,8 +8,9 @@ import { useIsDesktop } from '../../lib/use-desktop'
 import { NOTA_META } from '../../lib/order-chips'
 import { estaVivo } from '../../lib/store-orders'
 import { horaOFecha, hace } from '../../lib/fechas'
-import { datosDeFila, ordenarBandeja, PRIORIDADES, PRIORIDAD_INICIAL } from '../../lib/bandeja'
-import type { Prioridad, FilaBandeja } from '../../lib/bandeja'
+import { datosDeFila, verBandeja, VISTAS, VISTA_INICIAL } from '../../lib/bandeja'
+import type { Vista, FilaBandeja } from '../../lib/bandeja'
+import { useFavoritos } from '../../lib/favoritos'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 import type { SellerProfile } from '../../lib/seller-session'
 
@@ -125,7 +126,8 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
   const onlineBuyers = useCompradoresEnLinea(effective?.store_id)
   const { porId } = useEquipo(effective)
   const [search, setSearch] = useState('')
-  const [prioridad, setPrioridad] = useState<Prioridad>(PRIORIDAD_INICIAL)
+  const [vista, setVista] = useState<Vista>(VISTA_INICIAL)
+  const favoritos = useFavoritos(effective?.store_id)
   // `gen` = el `leidoEn` de la lista sobre la que se contaron estos bumps.
   const [bumpsRef, setBumps] = useState<{ gen: number; por: Record<string, number> }>({ gen: 0, por: {} })
   const seenRef = useRef<Set<string>>(new Set())
@@ -156,6 +158,10 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
     const suscripciones = sessions.map(s =>
       escuchar(`order:${s.id}`, {
         broadcast: {
+          // Alguien lo dio por respondido desde otro sitio: la fila tiene que
+          // salir de "Sin responder" sin que nadie recargue, o dos personas
+          // trabajarían sobre la misma deuda.
+          answered_update: () => lista.recargar(),
           new_message: ({ payload }) => {
             const m = payload as { id: string; sender_role: string }
             if (m.sender_role !== 'buyer' || seenRef.current.has(m.id)) return
@@ -186,7 +192,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
       || s.buyer_phone?.includes(search))
     .map(session => ({
       session,
-      fila: datosDeFila(session, leidoEn, unreadOf(session)),
+      fila: datosDeFila(session, leidoEn, unreadOf(session), favoritos.has(session.id)),
       readOnly: !isAdmin
         && session.assigned_seller_id !== meId
         && !(session.writer_seller_ids ?? []).includes(meId ?? ''),
@@ -195,37 +201,54 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
       asesores: involucradosDe(session),
     }))
 
-  const rows = ordenarBandeja(filas, prioridad, r => r.fila)
+  const rows = verBandeja(filas, vista, r => r.fila)
 
-  // Pulso de la bandeja: lo que decide si hay que ponerse a contestar. Nada de
-  // etapas — eso es la pregunta del Tablero, y contarlo acá era invitar a
-  // comparar dos pantallas que cuentan cosas distintas.
-  const todas = sessions.map(s => datosDeFila(s, leidoEn, unreadOf(s)))
-  const esperando = todas.filter(f => f.esperando)
-  const esperaMax = esperando.length ? Math.max(...esperando.map(f => f.esperaMs)) : 0
-  const kpis = [
-    { label: 'Pedidos', value: String(sessions.length), color: 'var(--text)' },
-    { label: 'Sin leer', value: String(todas.filter(f => f.sinLeer > 0).length), color: 'var(--text)' },
-    { label: 'Sin responder', value: String(esperando.length), color: esperando.length ? 'var(--danger-fg)' : 'var(--text)' },
-    { label: 'La más vieja', value: esperando.length ? hace(esperaMax).replace('hace ', '') : '—', color: 'var(--text)' },
-  ]
+  // Los recuadros SON las vistas, con su número: un contador que no se puede
+  // tocar invita a buscar dónde está lo que cuenta, y el sitio donde estaba era
+  // el chip de al lado. Ahora es lo mismo, una sola vez.
+  const cuantos = (v: Vista) => verBandeja(filas, v, r => r.fila).length
 
   // Un pedido sin token no tiene nada que abrir. No debería pasar, pero el tipo
   // lo admite porque la respuesta del servidor manda, no nuestro deseo.
   const open = (token?: string) => { if (token) onAbrir(token) }
 
-  const selectorPrioridad = (
-    <div className="flex items-center gap-0.5 rounded-xl p-0.5 flex-shrink-0" style={{ background: 'var(--surface-3)' }}>
-      {PRIORIDADES.map(p => {
-        const activo = p.key === prioridad
+  /** Los recuadros: cada uno es una vista, y su número es cuántos pedidos deja
+   *  ver. `chips` los aprieta para el móvil, donde cuatro tarjetas no caben. */
+  const selectorVista = (chips: boolean) => (
+    <div className={chips
+      ? 'flex items-center gap-0.5 rounded-xl p-0.5 w-max'
+      : 'grid grid-cols-4 gap-3'}
+      style={chips ? { background: 'var(--surface-3)' } : undefined}>
+      {VISTAS.map(v => {
+        const activo = v.key === vista
+        const n = cuantos(v.key)
+        // Solo la deuda con el cliente se pinta: si todo tiene color, nada
+        // resalta (§6.1). Y en cero no alarma — no hay nada que atender.
+        const urge = v.key === 'sin_responder' && n > 0
+        if (chips) {
+          return (
+            <button key={v.key} type="button" onClick={() => setVista(v.key)}
+              title={v.pregunta} aria-pressed={activo}
+              className="text-[11px] px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap"
+              style={activo
+                ? { background: 'var(--surface)', color: 'var(--text)', fontWeight: 700 }
+                : { color: 'var(--text-faint)', fontWeight: 500 }}>
+              {v.label} <span className="tabular">{n}</span>
+            </button>
+          )
+        }
         return (
-          <button key={p.key} type="button" onClick={() => setPrioridad(p.key)}
-            title={p.pregunta} aria-pressed={activo}
-            className="text-[11px] px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap"
+          <button key={v.key} type="button" onClick={() => setVista(v.key)}
+            title={v.pregunta} aria-pressed={activo}
+            className="bg-white border rounded-2xl px-4 py-3 text-left transition-colors"
             style={activo
-              ? { background: 'var(--surface)', color: 'var(--text)', fontWeight: 700 }
-              : { color: 'var(--text-faint)', fontWeight: 500 }}>
-            {p.label}
+              ? { borderColor: 'var(--brand)', boxShadow: 'inset 0 0 0 1px var(--brand)' }
+              : { borderColor: 'var(--border)' }}>
+            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-faint)' }}>
+              {v.label}
+            </p>
+            <p className="text-2xl font-black leading-tight mt-0.5 tabular"
+              style={{ color: urge ? 'var(--danger-fg)' : 'var(--text)' }}>{n}</p>
           </button>
         )
       })}
@@ -254,10 +277,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
     return (
       <div className="px-6 pt-4 pb-5">
         <div className="flex items-end justify-between gap-4 mb-4">
-          <div className="min-w-0">
-            <p className="text-xs text-gray-400 mb-1.5">{scopeLabel}</p>
-            {selectorPrioridad}
-          </div>
+          <p className="text-xs text-gray-400 min-w-0">{scopeLabel}</p>
           <div className="relative w-72 flex-shrink-0">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -269,14 +289,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-3 mb-4">
-          {kpis.map(k => (
-            <div key={k.label} className="bg-white border border-gray-100 rounded-2xl px-4 py-3">
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">{k.label}</p>
-              <p className="text-2xl font-black leading-tight mt-0.5 tabular" style={{ color: k.color }}>{k.value}</p>
-            </div>
-          ))}
-        </div>
+        <div className="mb-4">{selectorVista(false)}</div>
 
         <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
           <div className="grid items-center gap-3 px-4 py-2 border-b border-gray-100 bg-gray-50/70"
@@ -317,10 +330,16 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
               <Asesores ids={r.asesores} porId={porId} />
 
               <div className="flex items-center gap-2 min-w-0">
-                {/* Quién habló último. Sin esto, "Listo, ya pagué" y "Confirmo
-                    tu pedido" se leen igual, y son lo contrario. */}
-                {r.fila.ultimoDe === 'seller' && (
-                  <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--text-faint)' }}>Tú:</span>
+                {/* Quién habló último, CON NOMBRE. Sin esto, "Listo, ya pagué" y
+                    "Confirmo tu pedido" se leen igual y son lo contrario; y
+                    decir "Tú:" para todo lo que sale de la tienda esconde lo
+                    que importa en un equipo de seis: si ya contestó Milagros,
+                    no hace falta que conteste nadie más. */}
+                {r.fila.quienEscribio && (
+                  <span className="text-[10px] flex-shrink-0 font-semibold whitespace-nowrap"
+                    style={{ color: r.fila.ultimoDe === 'buyer' ? 'var(--text-muted)' : 'var(--text-faint)' }}>
+                    {r.fila.quienEscribio}:
+                  </span>
                 )}
                 <p className={`text-xs truncate flex-1 ${r.fila.sinLeer > 0 ? 'text-gray-800 font-semibold' : 'text-gray-500'}`}>
                   {r.fila.vistaPrevia}
@@ -346,7 +365,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
   return (
     <div className="px-4 pt-3 pb-4">
       <p className="text-xs text-gray-400 mb-2">{scopeLabel}</p>
-      <div className="overflow-x-auto -mx-4 px-4 mb-3">{selectorPrioridad}</div>
+      <div className="overflow-x-auto -mx-4 px-4 mb-3">{selectorVista(true)}</div>
 
       <div className="relative mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -387,7 +406,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-gray-500 truncate flex-1">
-                    {r.fila.ultimoDe === 'seller' && <span className="text-gray-400">Tú: </span>}
+                    {r.fila.quienEscribio && <span className="text-gray-400">{r.fila.quienEscribio}: </span>}
                     {r.fila.vistaPrevia}
                   </p>
                   <span className="text-[10px] flex-shrink-0"

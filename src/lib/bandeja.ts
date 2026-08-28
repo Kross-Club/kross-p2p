@@ -16,32 +16,47 @@ import type { StoreOrder } from './store-orders'
 
 const DIA = 86_400_000
 
-export type Prioridad = 'sin_responder' | 'sin_leer' | 'demorados' | 'recientes'
+export type Vista = 'sin_responder' | 'favoritos' | 'chats' | 'pedidos'
 
-/** `pregunta` es lo que ese orden pone arriba, y sale como `title` del botón.
- *  Un orden que no cambia quién queda primero no debería existir. */
-export const PRIORIDADES: { key: Prioridad; label: string; pregunta: string }[] = [
-  { key: 'sin_responder', label: 'Sin responder', pregunta: 'el cliente escribió último y nadie contestó — primero el que más lleva esperando' },
-  { key: 'sin_leer', label: 'Sin leer', pregunta: 'lo que llegó y nadie abrió' },
-  { key: 'demorados', label: 'Parados', pregunta: 'lo que lleva más tiempo sin moverse de etapa' },
-  { key: 'recientes', label: 'Recientes', pregunta: 'lo último que se movió' },
+/**
+ * Las cuatro maneras de mirar la bandeja. Dos **recortan** y dos **ordenan**:
+ *
+ *   · Sin responder → solo los que deben respuesta
+ *   · Favoritos     → solo los marcados
+ *   · Chats / Pedidos → todos, ordenados por lo último que pasó en cada eje
+ *
+ * "Recientes" a secas era ambiguo: un chat reciente y un pedido reciente son
+ * dos cosas distintas —un pedido de hace un mes puede tener el chat más nuevo
+ * de la lista—, y una bandeja que no dice cuál de las dos ordena no se puede
+ * usar para decidir.
+ */
+export const VISTAS: { key: Vista; label: string; pregunta: string; recorta: boolean }[] = [
+  { key: 'sin_responder', label: 'Sin responder', pregunta: 'el cliente escribió y nadie contestó — primero el que más lleva esperando', recorta: true },
+  { key: 'favoritos', label: 'Favoritos', pregunta: 'los que marcaste para volver', recorta: true },
+  { key: 'chats', label: 'Chats recientes', pregunta: 'el último mensaje primero, sea de quien sea', recorta: false },
+  { key: 'pedidos', label: 'Pedidos recientes', pregunta: 'el pedido que entró último primero', recorta: false },
 ]
 
 /** Sin responder primero: es la deuda del panel con el cliente, y la única que
  *  crece sola mientras nadie mira. */
-export const PRIORIDAD_INICIAL: Prioridad = 'sin_responder'
+export const VISTA_INICIAL: Vista = 'sin_responder'
 
-export function esPrioridad(v: string | null | undefined): v is Prioridad {
-  return PRIORIDADES.some(p => p.key === v)
+export function esVista(v: string | null | undefined): v is Vista {
+  return VISTAS.some(p => p.key === v)
 }
 
 export interface FilaBandeja {
   /** El último mensaje, ya escrito para la fila. */
   vistaPrevia: string
-  /** Quién habló último: `buyer`, `seller` o `system`. */
+  /** Quién habló último, ya escrito: `Cliente`, `Milagros`, `Sistema`, `Bot`. */
+  quienEscribio: string | null
+  /** El rol de quien habló último: `buyer`, `seller`, `system`, `bot`. */
   ultimoDe: string | null
   /** Cuándo se movió el hilo por última vez (ms). Sin mensajes, cuándo entró. */
   ultimoEn: number
+  /** Cuándo entró el pedido (ms). Es el OTRO eje: un pedido viejo puede tener
+   *  el chat más nuevo de la lista. */
+  creadoEn: number
   /** El último que habló fue el comprador: hay una pregunta sin responder. */
   esperando: boolean
   /** Cuánto lleva esperando respuesta. `0` cuando no espera. */
@@ -51,6 +66,8 @@ export interface FilaBandeja {
   demorado: boolean
   /** Días parados en la etapa actual (`antiguedad`). */
   diasParado: number
+  /** Marcado con estrella en este dispositivo. */
+  favorito: boolean
 }
 
 /**
@@ -59,27 +76,71 @@ export interface FilaBandeja {
  * `sinLeer` entra como dato y no se calcula acá porque la pantalla lo suma con
  * lo que llega por realtime: la mitad del número vive fuera de esta función.
  */
-export function datosDeFila(o: StoreOrder, ahora: number, sinLeer: number): FilaBandeja {
+export function datosDeFila(
+  o: StoreOrder, ahora: number, sinLeer: number, favorito = false,
+): FilaBandeja {
   const mensajes = o.chat_messages ?? []
   const ultimo = mensajes.length ? mensajes[mensajes.length - 1] : null
   const ultimoEn = fecha(ultimo?.created_at) ?? fecha(o.created_at) ?? ahora
-
-  // "Esperando" es que el ÚLTIMO en hablar haya sido el comprador. No es lo
-  // mismo que "sin leer": un mensaje leído y no contestado sigue siendo una
-  // deuda, y es justo el que se olvida.
-  const esperando = ultimo?.sender_role === 'buyer'
+  const esperando = esperaRespuesta(o)
   const a = antiguedad(o, ahora)
 
   return {
     vistaPrevia: vistaPrevia(ultimo),
+    quienEscribio: quienEscribio(ultimo),
     ultimoDe: ultimo?.sender_role ?? null,
     ultimoEn,
+    creadoEn: fecha(o.created_at) ?? ultimoEn,
     esperando,
     esperaMs: esperando ? Math.max(0, ahora - ultimoEn) : 0,
     sinLeer,
     demorado: !!a?.demorado,
     diasParado: a?.dias ?? Math.max(0, Math.floor((ahora - ultimoEn) / DIA)),
+    favorito,
   }
+}
+
+/**
+ * ¿Este pedido le debe una respuesta al cliente?
+ *
+ * Dos condiciones, y la segunda es la que hace que la lista sirva:
+ *
+ *  1. el ÚLTIMO en hablar fue el comprador;
+ *  2. nadie lo dio por respondido DESPUÉS de ese mensaje.
+ *
+ * Lo segundo existe porque no toda respuesta pasa por el chat: se le llamó, se
+ * le contestó por WhatsApp, o la pregunta no necesitaba respuesta. Sin poder
+ * cerrarlo a mano, esos pedidos se quedan arriba para siempre y la lista deja
+ * de significar algo. Y comparar contra la FECHA —y no contra una bandera—
+ * hace que un mensaje nuevo del comprador lo devuelva solo a la lista: no hay
+ * nada que reabrir.
+ */
+export function esperaRespuesta(o: StoreOrder): boolean {
+  const mensajes = o.chat_messages ?? []
+  const ultimo = mensajes.length ? mensajes[mensajes.length - 1] : null
+  if (ultimo?.sender_role !== 'buyer') return false
+
+  const respondidoEn = fecha(o.answered_at)
+  const preguntadoEn = fecha(ultimo.created_at)
+  if (respondidoEn === null || preguntadoEn === null) return respondidoEn === null
+  return preguntadoEn > respondidoEn
+}
+
+/**
+ * Quién escribió el último mensaje, con nombre y no con rol.
+ *
+ * Decía "Tú:" para todo lo que salía de la tienda, y en un equipo de seis eso
+ * es justo lo que no se puede saber de un vistazo: si ya contestó Milagros, no
+ * hace falta que conteste nadie más.
+ */
+function quienEscribio(m: { sender_role: string; sender_name?: string | null } | null | undefined): string | null {
+  if (!m) return null
+  if (m.sender_role === 'buyer') return 'Cliente'
+  if (m.sender_role === 'system') return 'Sistema'
+  if (m.sender_role === 'bot' || m.sender_role === 'ia') return 'Bot'
+  // Un vendedor sin nombre guardado es un mensaje viejo, de antes de que se
+  // guardara: "Tienda" dice la verdad sin inventar a nadie.
+  return m.sender_name?.split(' ')[0] || 'Tienda'
 }
 
 function vistaPrevia(m: { type: string; body: string | null } | null | undefined): string {
@@ -102,43 +163,32 @@ function fecha(iso: string | null | undefined): number | null {
  * Devuelve una copia: la lista de origen la comparten cuatro pantallas y
  * ordenarla en el sitio le cambiaría el orden a las otras tres.
  */
-export function ordenarBandeja<T>(
-  filas: T[], prioridad: Prioridad, de: (x: T) => FilaBandeja,
-): T[] {
-  const copia = [...filas]
-  const reciente = (a: T, b: T) => de(b).ultimoEn - de(a).ultimoEn
+/**
+ * Recorta y ordena la bandeja según la vista elegida.
+ *
+ * Devuelve una copia: la lista de origen la comparten cuatro pantallas y
+ * ordenarla en el sitio le cambiaría el orden a las otras tres.
+ */
+export function verBandeja<T>(filas: T[], vista: Vista, de: (x: T) => FilaBandeja): T[] {
+  const porChat = (a: T, b: T) => de(b).ultimoEn - de(a).ultimoEn
 
-  switch (prioridad) {
+  switch (vista) {
+    // Recorta: solo los que deben respuesta, y primero el que más lleva
+    // esperando — la deuda más vieja es la que más caro sale.
     case 'sin_responder':
-      // Primero quien espera, y de esos el que más lleva esperando: la deuda
-      // más vieja es la que más caro sale.
-      return copia.sort((a, b) => {
-        const x = de(a), y = de(b)
-        if (x.esperando !== y.esperando) return x.esperando ? -1 : 1
-        if (x.esperando) return y.esperaMs - x.esperaMs
-        return reciente(a, b)
-      })
+      return filas.filter(x => de(x).esperando)
+        .sort((a, b) => de(b).esperaMs - de(a).esperaMs)
 
-    case 'sin_leer':
-      return copia.sort((a, b) => {
-        const x = de(a), y = de(b)
-        const hayX = x.sinLeer > 0, hayY = y.sinLeer > 0
-        if (hayX !== hayY) return hayX ? -1 : 1
-        if (hayX && x.sinLeer !== y.sinLeer) return y.sinLeer - x.sinLeer
-        return reciente(a, b)
-      })
+    // Recorta: solo los marcados. Dentro, lo último que se movió.
+    case 'favoritos':
+      return filas.filter(x => de(x).favorito).sort(porChat)
 
-    case 'demorados':
-      // La demora que reporta el courier manda sobre el conteo de días: es el
-      // único atraso que no estamos infiriendo nosotros.
-      return copia.sort((a, b) => {
-        const x = de(a), y = de(b)
-        if (x.demorado !== y.demorado) return x.demorado ? -1 : 1
-        if (x.diasParado !== y.diasParado) return y.diasParado - x.diasParado
-        return reciente(a, b)
-      })
+    case 'chats':
+      return [...filas].sort(porChat)
 
-    case 'recientes':
-      return copia.sort(reciente)
+    // El OTRO eje: cuándo entró el pedido, no cuándo se habló. Un pedido de
+    // hace un mes puede tener el chat más nuevo de la lista.
+    case 'pedidos':
+      return [...filas].sort((a, b) => de(b).creadoEn - de(a).creadoEn)
   }
 }

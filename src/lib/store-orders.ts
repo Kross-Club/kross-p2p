@@ -70,9 +70,16 @@ export interface StoreOrder {
   seller_name?: string | null
   seller_role?: string | null
   created_at?: string
+  /** Cuándo se dio por respondida la última pregunta del comprador. `null` =
+   *  nunca. Ver `esperaRespuesta` en bandeja.ts. */
+  answered_at?: string | null
   chat_messages?: {
     id: string
     sender_role: string
+    /** Quién lo escribió, del lado de la tienda. La bandeja lo pinta en vez de
+     *  "Tú:": en un equipo de seis, saber si ya contestó Milagros es justo lo
+     *  que evita que conteste nadie más. */
+    sender_name?: string | null
     type: string
     body: string | null
     created_at: string

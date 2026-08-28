@@ -35,6 +35,7 @@ Deno.serve(async (req) => {
       payment_verification, payment_reason, payment_event_id,
       pay360_coupon_id, pay360_consumer_code,
       advance_amount, payment_provider,
+      answered_at,
       expires_at, created_at
     `)
     .eq('token', token)

@@ -127,6 +127,26 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
+  // ─── MARCAR COMO RESPONDIDO ────────────────────────────────────────────────
+  //
+  // La bandeja llama "sin responder" a un pedido cuyo ÚLTIMO mensaje es del
+  // comprador. Casi siempre eso se resuelve escribiéndole, y entonces el estado
+  // se arregla solo. Pero no siempre: se le llamó por teléfono, se le contestó
+  // por WhatsApp, o la pregunta no necesitaba respuesta. Sin una forma de
+  // cerrarlo a mano, esos pedidos se quedan arriba de la lista para siempre y la
+  // lista deja de significar algo.
+  //
+  // Es del PEDIDO y no del dispositivo a propósito: si Andrea lo cierra, Kevin
+  // no tiene que volver a mirarlo. Y no borra nada — si el comprador escribe
+  // otra vez, su mensaje es posterior a `answered_at` y el pedido vuelve solo a
+  // la lista (ver `esperaRespuesta` en src/lib/bandeja.ts).
+  if (body.action === 'mark_answered') {
+    const answered_at = new Date().toISOString()
+    await supabase.from('order_sessions').update({ answered_at }).eq('id', session.id)
+    await broadcast(session.id, 'answered_update', { answered_at })
+    return new Response(JSON.stringify({ ok: true, answered_at }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
   // ─── SET TRACKING (Logistics registra la guía del courier en el pedido) ─────
   // Contrato `shipment` de 00-CORE. Cada courier con su regla, la de su API
   // real: Shalom exige numero (8–10 dígitos) Y codigo (4 alfanum) juntos, o

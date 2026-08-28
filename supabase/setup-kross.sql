@@ -896,6 +896,20 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_phase_at   timestam
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_demora_at  timestamptz;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS tracking_checked_at timestamptz;
 
+-- 23.a-bis  Cuándo se dio por RESPONDIDA la última pregunta del comprador.
+--
+-- La bandeja llama "sin responder" a un pedido cuyo último mensaje es del
+-- comprador. Casi siempre eso se resuelve escribiéndole; pero a veces se le
+-- llamó, se le contestó por WhatsApp, o la pregunta no necesitaba respuesta.
+-- Sin una forma de cerrarlo a mano, esos pedidos se quedan arriba para siempre
+-- y la lista deja de significar algo.
+--
+-- Es del PEDIDO y no de quien lo marca: si Andrea lo cierra, Kevin no tiene que
+-- volver a mirarlo. Y no borra nada: un mensaje posterior del comprador vuelve
+-- a dejarlo sin responder, porque la comparación es contra esta marca de tiempo
+-- (ver `esperaRespuesta` en src/lib/bandeja.ts).
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS answered_at         timestamptz;
+
 -- 23.b Los envíos VIVOS que el job va a barrer: con guía y sin entregar.
 CREATE INDEX IF NOT EXISTS idx_order_sessions_tracking_active
   ON order_sessions(tracking_checked_at)
