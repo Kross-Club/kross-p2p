@@ -23,10 +23,13 @@ const ETIQUETA: Record<string, string> = {
   no_entregado: 'No entregado',
 }
 
-export default function PedidosLista({ lista, onAbrir }: {
+export default function PedidosLista({ lista, onAbrir, marcado }: {
   lista: StoreOrders
   /** Abre el pedido en el panel de la derecha, sin salir de la lista. */
   onAbrir: (token: string) => void
+  /** El token del pedido abierto —o del último que lo estuvo—. Se marca su
+   *  borde para no perder el sitio al cerrar el cajón. */
+  marcado?: string | null
 }) {
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
@@ -218,7 +221,15 @@ export default function PedidosLista({ lista, onAbrir }: {
               key={r.session.id}
               onClick={() => open(r.session.token)}
               className="w-full grid items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50 transition-colors"
-              style={{ gridTemplateColumns: COLS }}
+              // El pedido que se abrió queda marcado también después de cerrar
+              // el cajón: sin eso, la lista vuelve a ser cincuenta filas
+              // iguales y uno pierde en cuál estaba.
+              style={{
+                gridTemplateColumns: COLS,
+                ...(!!marcado && r.session.token === marcado
+                  ? { background: 'var(--brand-tint)', boxShadow: 'inset 2px 0 0 var(--brand)' }
+                  : null),
+              }}
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <Avatar name={r.session.buyer_name} online={r.online} size={34} />
@@ -284,7 +295,9 @@ export default function PedidosLista({ lista, onAbrir }: {
               key={r.session.id}
               onClick={() => open(r.session.token)}
               className="w-full bg-white border rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
-              style={{ borderColor: 'var(--brand)', borderWidth: '0.5px' }}
+              style={!!marcado && r.session.token === marcado
+                ? { borderColor: 'var(--brand)', borderWidth: '1.5px' }
+                : { borderColor: 'var(--border)', borderWidth: '0.5px' }}
             >
               <Avatar name={r.session.buyer_name} online={r.online} size={44} />
               <div className="flex-1 min-w-0">

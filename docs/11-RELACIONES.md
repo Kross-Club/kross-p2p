@@ -838,6 +838,33 @@ imposible de estar en dos sitios a la vez.
 **Y el monto va a la altura del `+`.** Colgado de la primera línea quedaba a otra altura que el
 botón de al lado, y dos cosas que se leen juntas tienen que estar juntas.
 
+## Ganar sitio, y no perder el sitio (28-ago-2026)
+
+### El menú se pliega a íconos
+
+El panel en PC es una tarjeta 16:9: todo lo que ocupa el menú se lo quita al tablero, que es
+donde de verdad se trabaja. Plegado son **148 píxeles menos**, o sea media columna de etapas
+más a la vista.
+
+La elección vive en el dispositivo, donde el tema y el modo demo (`src/lib/menu-lateral.ts`):
+es una forma de MIRAR y no una preferencia de la marca. Quien trabaja en una laptop chica lo
+quiere plegado; quien tiene un monitor grande, no. Ninguno de los dos debería decidir por el
+otro.
+
+Plegado, la firma de arriba muestra **solo el logo** —que es 1:1, así que cabe— y cada entrada
+lleva su `title`: un ícono sin nombre es un acertijo la primera vez, y el `title` es lo que lo
+convierte en un recordatorio.
+
+### El pedido que abriste queda marcado
+
+Abrir un pedido y cerrarlo devolvía a una lista de cincuenta filas iguales, sin saber en cuál
+estabas. Ahora el pedido abierto se marca **y la marca se queda** al cerrar el cajón, en Lista y
+en Tablero: es la miga de pan para seguir por donde ibas.
+
+Es **una sola** marca y no una lista de visitados: la pregunta es *"¿dónde estaba?"*, y varias
+marcas no la responden — la reparten. Mientras el pedido está abierto lo marca su propio token;
+al cerrarse queda el último, en `PedidosPage`, que es quien ya sabía cuál se abrió.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

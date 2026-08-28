@@ -20,10 +20,13 @@ import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 // §6.1: la etapa la dice la columna, no el color. Solo la última lleva lima.
 const etapaChip = (key: string) => (key === 'entregado' ? CERRADO_SUAVE : NEUTRO)
 
-export default function PedidosTablero({ lista, onAbrir }: {
+export default function PedidosTablero({ lista, onAbrir, marcado }: {
   lista: StoreOrders
   /** Abre el pedido en el panel de la derecha, sin salir del tablero. */
   onAbrir: (token: string) => void
+  /** El token del pedido abierto —o del último que lo estuvo—. Se marca su
+   *  borde para no perder el sitio al cerrar el cajón. */
+  marcado?: string | null
 }) {
   const { effective } = useSeller()
   // El mismo puntito verde que la Lista y el chat: quien está mirando la app
@@ -65,7 +68,10 @@ export default function PedidosTablero({ lista, onAbrir }: {
 
   const Card = ({ s }: { s: StoreOrder }) => (
     <button onClick={() => s.token && onAbrir(s.token)} disabled={!s.token}
-      className="w-full bg-white border border-gray-100 rounded-2xl p-3 shadow-sm text-left">
+      className="w-full bg-white rounded-2xl p-3 shadow-sm text-left border"
+      style={!!marcado && s.token === marcado
+        ? { borderColor: 'var(--brand)', boxShadow: '0 0 0 1px var(--brand)' }
+        : { borderColor: 'var(--border)' }}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-baseline justify-between gap-2">

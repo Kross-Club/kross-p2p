@@ -10,11 +10,18 @@ import { KrossIcon, KrossLockup } from './KrossLogo'
 export default function BrandMark({
   brand,
   size = 28,
+  soloLogo = false,
 }: {
   brand: { nombre: string; logo_url: string | null } | null
   size?: number
+  /** Sin el nombre. El logo de una marca es 1:1, así que solo cabe él cuando el
+   *  menú está plegado — y con el símbolo basta para saber dónde estás parado,
+   *  que es todo lo que esta firma tiene que responder. */
+  soloLogo?: boolean
 }) {
-  if (!brand || brand.nombre === 'Kross') return <KrossLockup size={size * 0.86} />
+  if (!brand || brand.nombre === 'Kross') {
+    return soloLogo ? <KrossIcon size={size} /> : <KrossLockup size={size * 0.86} />
+  }
 
   return (
     <span className="flex items-center gap-2 min-w-0">
@@ -26,9 +33,11 @@ export default function BrandMark({
       ) : (
         <KrossIcon size={size} />
       )}
-      <span className="truncate" style={{ color: 'var(--text)', fontWeight: 500, fontSize: size * 0.58 }}>
-        {brand.nombre}
-      </span>
+      {!soloLogo && (
+        <span className="truncate" style={{ color: 'var(--text)', fontWeight: 500, fontSize: size * 0.58 }}>
+          {brand.nombre}
+        </span>
+      )}
     </span>
   )
 }
