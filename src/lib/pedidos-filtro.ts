@@ -1,6 +1,5 @@
 import { cobrosDelPedido } from './order-money'
 import type { StoreOrder } from './store-orders'
-import type { TipoDeCobro } from './order-money'
 
 // ─── El filtro de Pedidos ────────────────────────────────────────────────────
 //
@@ -45,8 +44,9 @@ export interface Filtro {
   /** Texto libre: nombre, N° de pedido, DNI, teléfono o guía. Vacío = todos.
    *  Ver `coincide` para por qué esos cinco y no el producto. */
   busca: string
-  /** En qué quedó el cobro de este pedido. Lista vacía = todos. Ver `PAGOS`. */
-  pagos: TipoDeCobro[]
+  /** En qué quedó el cobro de este pedido. Lista vacía = todos.
+   *  Ver `ESTADOS_DE_COBRO`. */
+  pagos: EstadoDeCobro[]
 }
 
 /** ¿Este valor pasa una condición de lista? Vacía = no filtra. Es la misma
@@ -65,43 +65,70 @@ export const FILTRO_VACIO: Filtro = {
 // El tablero ya lo dice pedido por pedido —el anillo, las tarjetas verdes— pero
 // no se podía preguntar al revés: *cuáles* van por cada camino.
 //
-// Acá el pedido cae en UNA sola casilla, la de hasta dónde llegó su cobro:
+// Acá el pedido cae en UNA de cuatro casillas, y las cuatro **parten la lista**:
+// todo pedido está en exactamente una, y las cuatro suman el total. Eso es lo
+// que hace que las cuentas del desplegable se puedan sumar sin miedo.
 //
-//   Adelanto → adelantaron una parte y **todavía deben el saldo**.
-//   Total    → pagaron el precio entero de una. Nada que cobrar después.
-//   Saldo    → adelantaron y después pagaron el saldo: hicieron los DOS pagos.
+//   Sin cobrar       → no entró nada por la pasarela.
+//   Solo adelanto    → adelantó y TODAVÍA DEBE el saldo.
+//   Pago total       → pagó el precio entero de una. Nada que cobrar después.
+//   Adelanto y saldo → adelantó y después pagó el saldo: los dos pagos hechos.
 //
-// Una casilla y no una etiqueta por operación, que era como estaba y estaba
-// mal: quien adelantó y después pagó su saldo salía en "Adelanto" y en
-// "Saldo", así que pedir "los que adelantaron" —la pregunta de verdad, la de a
-// quién hay que cobrarle— devolvía también a los que ya no deben nada. Sin
-// solape, marcar *Adelanto* y no marcar *Saldo* dice exactamente eso.
+// ── Por qué son combinaciones con nombre y no un Y/O ──
 //
-// Y con casillas que no se pisan, elegir varias es sumar listas, igual que en
-// producto y en vendedor. Una sola forma de leer los tres filtros.
+// Este filtro pasó por dos formas equivocadas antes de esta, y las dos fallaban
+// por lo mismo: pedían **componer** en vez de elegir.
+//
+//   1. Una etiqueta por operación. Quien adelantó y después pagó su saldo salía
+//      en "Adelanto" Y en "Saldo", así que marcar "Adelanto" —la pregunta de
+//      verdad, la de a quién hay que cobrarle— devolvía también a los que ya no
+//      deben nada.
+//   2. Casillas de estado, pero con los nombres de las operaciones. Marcar
+//      "Adelanto" + "Saldo" se leía como "los que hicieron las dos cosas" y en
+//      realidad devolvía la unión: los que solo adelantaron TAMBIÉN.
+//
+// La salida no es un interruptor Y/O encima, y conviene decir por qué: sobre
+// casillas que no se pisan, una Y **siempre da vacío** —ningún pedido está en
+// dos a la vez—, así que sería un modo roto ocupando sitio. Y no hace falta:
+// como las cuatro parten la lista, **cualquier** pregunta con Y y O sobre las
+// operaciones es una suma de estas casillas.
+//
+//   "los que tienen un adelanto"   → Solo adelanto + Adelanto y saldo
+//   "los que pagaron el saldo"     → Adelanto y saldo
+//   "los que no deben nada"        → Pago total + Adelanto y saldo
+//   "los que deben algo"           → Sin cobrar + Solo adelanto
+//
+// Elegir de una lista con nombres no se equivoca; componer con operadores sí,
+// y el error no avisa: devuelve una lista creíble y de más.
 //
 // **Solo cuenta lo cruzado por la pasarela**, la misma regla del anillo
-// (`cobradoDelPedido`). Un cupón emitido y sin pagar no es un pago, y este
-// filtro dice "pagos": listarlo acá haría contar como cobrado lo que todavía
-// no entró, que es exactamente el error que hace despachar de más.
+// (`cobradoDelPedido`). Un cupón emitido y sin pagar no es un pago: un pedido
+// con el cupón del saldo emitido y sin pagar sigue en "Solo adelanto", porque
+// sigue debiendo.
 
-export const PAGOS: { key: TipoDeCobro; label: string }[] = [
-  { key: 'adelanto', label: 'Adelanto' },
-  { key: 'total', label: 'Total' },
-  { key: 'saldo', label: 'Saldo' },
+export type EstadoDeCobro = 'sin_cobrar' | 'adelanto' | 'total' | 'saldo'
+
+/** En orden de a quién hay que perseguir: primero los que deben. */
+export const ESTADOS_DE_COBRO: { key: EstadoDeCobro; label: string }[] = [
+  { key: 'sin_cobrar', label: 'Sin cobrar' },
+  { key: 'adelanto', label: 'Solo adelanto' },
+  { key: 'total', label: 'Pago total' },
+  { key: 'saldo', label: 'Adelanto y saldo' },
 ]
 
 /**
- * Hasta dónde llegó el cobro de este pedido. `null` = no entró nada.
+ * En qué quedó el cobro de este pedido.
  *
- * Es la ÚLTIMA operación que cruzó, que es justo lo que responde "en qué
+ * Es la ÚLTIMA operación que cruzó, que es justo lo que significa "en qué
  * quedó": con el saldo pagado da `saldo` aunque antes hubiera un adelanto,
- * porque el pedido ya no debe nada. Un cupón de saldo emitido y sin pagar no
- * mueve la casilla — sigue siendo un pedido que adelantó y debe.
+ * porque el pedido ya no debe nada.
+ *
+ * Total a propósito —siempre devuelve una casilla, nunca `null`—: es lo que
+ * garantiza que las cuatro partan la lista y que las cuentas sumen el total.
  */
-export function estadoDeCobro(p: StoreOrder): TipoDeCobro | null {
+export function estadoDeCobro(p: StoreOrder): EstadoDeCobro {
   const entrados = cobrosDelPedido(p).filter(c => c.verificado)
-  return entrados.length ? entrados[entrados.length - 1].tipo : null
+  return entrados.length ? entrados[entrados.length - 1].tipo : 'sin_cobrar'
 }
 
 // ─── Buscar UN pedido ────────────────────────────────────────────────────────
@@ -259,28 +286,46 @@ export function resumenDelRango(f: Filtro): string {
  * un desplegable con veinte productos donde diecinueve no tienen pedidos hace
  * que el vendedor filtre a una pantalla vacía y crea que algo se rompió.
  */
+export interface OpcionDeFiltro {
+  valor: string
+  label: string
+  /** Cuántos pedidos de la lista caen acá. Va en el desplegable porque es media
+   *  respuesta antes de filtrar: "Solo adelanto 34 · Adelanto y saldo 30" ya
+   *  dice dónde está el trabajo, sin tener que marcar y contar. */
+  cuenta: number
+}
+
 export function opcionesDe(pedidos: StoreOrder[]): {
-  vendedores: { id: string; nombre: string }[]
-  productos: string[]
-  pagos: TipoDeCobro[]
+  vendedores: OpcionDeFiltro[]
+  productos: OpcionDeFiltro[]
+  pagos: OpcionDeFiltro[]
 } {
-  const vendedores = new Map<string, string>()
-  const productos = new Set<string>()
-  const pagos = new Set<TipoDeCobro>()
+  const vendedores = new Map<string, { nombre: string; cuenta: number }>()
+  const productos = new Map<string, number>()
+  const pagos = new Map<EstadoDeCobro, number>()
   for (const p of pedidos) {
-    if (p.assigned_seller_id) vendedores.set(p.assigned_seller_id, p.seller_name || 'Sin nombre')
-    if (p.product_name) productos.add(p.product_name)
+    if (p.assigned_seller_id) {
+      const v = vendedores.get(p.assigned_seller_id)
+      vendedores.set(p.assigned_seller_id, {
+        nombre: p.seller_name || v?.nombre || 'Sin nombre',
+        cuenta: (v?.cuenta ?? 0) + 1,
+      })
+    }
+    if (p.product_name) productos.set(p.product_name, (productos.get(p.product_name) ?? 0) + 1)
     const cobro = estadoDeCobro(p)
-    if (cobro) pagos.add(cobro)
+    pagos.set(cobro, (pagos.get(cobro) ?? 0) + 1)
   }
   return {
-    vendedores: [...vendedores].map(([id, nombre]) => ({ id, nombre }))
-      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
-    productos: [...productos].sort((a, b) => a.localeCompare(b, 'es')),
-    // En el orden de `PAGOS` —adelanto, total, saldo— y no en el que aparecieron:
-    // un desplegable que se reordena solo según qué pedido entró primero obliga
-    // a leerlo entero cada vez.
-    pagos: PAGOS.map(x => x.key).filter(k => pagos.has(k)),
+    vendedores: [...vendedores].map(([valor, v]) => ({ valor, label: v.nombre, cuenta: v.cuenta }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es')),
+    productos: [...productos].map(([valor, cuenta]) => ({ valor, label: valor, cuenta }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es')),
+    // En el orden de `ESTADOS_DE_COBRO` y no en el que aparecieron: un
+    // desplegable que se reordena solo según qué pedido entró primero obliga a
+    // leerlo entero cada vez.
+    pagos: ESTADOS_DE_COBRO
+      .filter(x => pagos.has(x.key))
+      .map(x => ({ valor: x.key, label: x.label, cuenta: pagos.get(x.key)! })),
   }
 }
 

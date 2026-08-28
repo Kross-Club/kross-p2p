@@ -1560,22 +1560,22 @@ El anillo y las tarjetas verdes lo dicen **pedido por pedido**. Faltaba la pregu
 que es la que se hace un lunes por la mañana: *¿cuáles van por cada camino?* Para responderla
 había que abrir el tablero y contar anillos a ojo, columna por columna.
 
-Ahora hay un desplegable al lado del de productos —**Todos los pagos · Adelanto · Total ·
-Saldo**— que rebana igual que él. Va después porque la pregunta llega después: primero qué se
-vende, luego cómo se cobró.
+Ahora hay un desplegable al lado del de productos —**Todos los pagos · Sin cobrar · Solo
+adelanto · Pago total · Adelanto y saldo**— que rebana igual que él. Va después porque la
+pregunta llega después: primero qué se vende, luego cómo se cobró.
 
 Lo que responde cada opción:
 
-- **Adelanto** — adelantaron una parte. Son los que todavía deben algo.
-- **Total** — pagaron el precio entero de una. No hay nada que cobrar después.
-- **Saldo** — pagaron el saldo en una segunda operación. O sea: **los que hicieron los dos
+- **Solo adelanto** — adelantaron una parte y todavía deben.
+- **Pago total** — pagaron el precio entero de una. No hay nada que cobrar después.
+- **Adelanto y saldo** — pagaron el saldo en una segunda operación: **los que hicieron los dos
   pagos**, que es la lista que no existía en ninguna pantalla.
 
 > Al salir, este filtro etiquetaba el pedido **por operación**, así que quien adelantó y
 > después pagó su saldo caía en *Adelanto* y en *Saldo* a la vez. Duró un día: marcar solo
 > *Adelanto* devolvía también a los que ya no deben nada, que es lo contrario de la pregunta.
-> Ahora cada pedido cae en una sola casilla — ver [Y el filtro de pagos dejó de
-> solaparse](#y-el-filtro-de-pagos-dejó-de-solaparse).
+> Ahora cada pedido cae en una sola casilla, con el nombre de la combinación — ver [tres
+> formas hasta dar con la buena](#y-el-filtro-de-pagos-tres-formas-hasta-dar-con-la-buena).
 
 Y **solo cuenta lo que cruzó la pasarela**, la misma regla del anillo: un cupón emitido y sin
 pagar no es un pago. El desplegable dice *pagos*, y listar ahí lo que todavía no entró es
@@ -1629,30 +1629,64 @@ un filtro, no tres.
 > no dice cuántas cosas hay marcadas sin abrirla. Acá el botón cerrado ya lo dice —"Kevin",
 > "2 productos"—, que es lo que uno lee de pasada para no creer que la tienda dejó de vender.
 
-### Y el filtro de pagos dejó de solaparse
+### Y el filtro de pagos: tres formas hasta dar con la buena
 
-Estaba mal, y la petición lo destapó: *"si quiero ver solo los que han adelantado, selecciono
-ello y sin seleccionar Saldo"*.
+Este filtro se equivocó dos veces antes de quedar bien, y las dos veces por lo mismo: **pedía
+componer en vez de elegir**.
 
-Como estaba, cada pedido llevaba una etiqueta **por operación**: quien adelantó y después pagó
-su saldo salía en *Adelanto* **y** en *Saldo*. Marcar solo *Adelanto* devolvía entonces también
-a los que ya no deben nada — o sea, lo contrario de la pregunta que uno hace al marcarlo, que
-es **a quién hay que cobrarle**.
+**Primera forma — una etiqueta por operación.** Quien adelantó y después pagó su saldo salía en
+*Adelanto* **y** en *Saldo*. Marcar *Adelanto* —la pregunta de verdad, la de a quién hay que
+cobrarle— devolvía entonces también a los que ya no deben nada.
 
-Ahora cada pedido cae en **una sola casilla**, la de hasta dónde llegó su cobro:
+**Segunda forma — casillas de estado, con los nombres de las operaciones.** El pedido pasó a
+caer en una sola casilla, que era lo correcto, pero las casillas seguían llamándose *Adelanto*,
+*Total* y *Saldo*. Con *Adelanto* ✓ y *Saldo* ✓ marcados salía un pedido con **un** recuadro
+verde al lado de otro con **dos**, y eso se lee como "los que hicieron las dos cosas" cuando lo
+que devuelve es la unión. El nombre prometía una intersección que el filtro no hacía.
 
-| | Qué es | La pregunta que responde |
+**La forma buena — la casilla se llama como la combinación.** Cuatro, y las cuatro **parten la
+lista**: todo pedido está en exactamente una, y las cuatro suman el total.
+
+| Casilla | Qué es | La decisión que desbloquea |
 |---|---|---|
-| **Adelanto** | adelantó y **todavía debe** el saldo | a quién le cobro |
-| **Total** | pagó el precio entero de una | quién ya no debe nada desde el checkout |
-| **Saldo** | adelantó **y después pagó el saldo** | quiénes hicieron los dos pagos |
+| **Sin cobrar** | no entró nada por la pasarela | perseguir el yapeo, o anular |
+| **Solo adelanto** | adelantó y **todavía debe** | a quién le cobro el saldo |
+| **Pago total** | pagó el precio entero de una | despachar, nada pendiente |
+| **Adelanto y saldo** | adelantó **y después pagó** | despachar; le costó dos operaciones |
 
-Es la última operación que cruzó (`estadoDeCobro`), que es exactamente lo que significa "en
-qué quedó". Un cupón de saldo emitido y sin pagar no mueve la casilla: sigue siendo un pedido
-que adelantó y debe.
+La casilla es la **última operación que cruzó** (`estadoDeCobro`), que es justo lo que significa
+"en qué quedó". Un cupón de saldo emitido y sin pagar no la mueve: sigue siendo *Solo adelanto*,
+porque sigue debiendo.
 
-Y como las casillas ya no se pisan, marcar varias es sumar listas — igual que en producto y en
-vendedor. **Una sola forma de leer los tres filtros** en vez de dos.
+#### Por qué no un interruptor Y/O
+
+Era la salida obvia y es la equivocada, por dos razones:
+
+1. Sobre casillas que no se pisan, **una Y siempre da vacío**: ningún pedido está en dos a la
+   vez. Sería un modo roto ocupando sitio en la barra.
+2. **No hace falta.** Como las cuatro parten la lista, cualquier pregunta con Y y O sobre las
+   operaciones es una suma de casillas:
+
+   | La pregunta | Se marca |
+   |---|---|
+   | los que tienen un adelanto | Solo adelanto + Adelanto y saldo |
+   | los que pagaron el saldo | Adelanto y saldo |
+   | los que no deben nada | Pago total + Adelanto y saldo |
+   | los que deben algo | Sin cobrar + Solo adelanto |
+
+Elegir de una lista con nombres no se equivoca. Componer con operadores sí — y el error no
+avisa: devuelve una lista creíble y de más, que es como este filtro se equivocó las dos veces
+anteriores.
+
+### Y cada casilla dice cuántos son
+
+En el desplegable, cada opción lleva su cuenta. Es media respuesta antes de marcar nada: leer
+*Solo adelanto 46 · Adelanto y saldo 26* ya dice dónde está el trabajo del día, sin filtrar y
+volver.
+
+En pagos las cuentas **suman el total**, porque las casillas parten la lista — o sea que se
+pueden leer juntas sin miedo a contar un pedido dos veces. En vendedor y producto es lo mismo
+por otra razón: un pedido tiene un solo vendedor y un solo producto.
 
 ### El upsell: el anillo se mide contra el total de hoy
 

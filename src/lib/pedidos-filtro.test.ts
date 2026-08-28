@@ -3,7 +3,7 @@ import {
   FILTRO_VACIO, ventanaDe, pasaFiltro, aplicarFiltro,
   cuantosFiltros, resumenDelRango, opcionesDe, clave, textoDe, coincide, estadoDeCobro,
 } from './pedidos-filtro'
-import type { Filtro } from './pedidos-filtro'
+import type { EstadoDeCobro, Filtro } from './pedidos-filtro'
 import type { StoreOrder } from './store-orders'
 
 const DIA = 86_400_000
@@ -123,8 +123,22 @@ describe('las opciones del desplegable', () => {
       pedido({ assigned_seller_id: 'a', seller_name: 'Andrea Flores', product_name: 'Colchón' }),
       pedido({}),
     ])
-    expect(vendedores).toEqual([{ id: 'a', nombre: 'Andrea Flores' }, { id: 'k', nombre: 'Kevin Ramos' }])
-    expect(productos).toEqual(['Colchón', 'Faja'])
+    expect(vendedores).toEqual([
+      { valor: 'a', label: 'Andrea Flores', cuenta: 1 },
+      { valor: 'k', label: 'Kevin Ramos', cuenta: 2 },
+    ])
+    expect(productos).toEqual([
+      { valor: 'Colchón', label: 'Colchón', cuenta: 1 },
+      { valor: 'Faja', label: 'Faja', cuenta: 2 },
+    ])
+  })
+
+  // La cuenta va en el desplegable porque es media respuesta antes de marcar
+  // nada. Y en pagos suma el total: las casillas parten la lista.
+  it('las cuentas de pagos suman todos los pedidos', () => {
+    const lista = [ADELANTO, TOTAL, DOBLE, SIN_CRUZAR]
+    const { pagos } = opcionesDe(lista)
+    expect(pagos.reduce((n, o) => n + o.cuenta, 0)).toBe(lista.length)
   })
 })
 
@@ -269,14 +283,15 @@ describe('el filtro de pagos', () => {
   // Un cupón emitido no es un pago. El filtro dice "pagos", así que listarlo ahí
   // haría contar como cobrado lo que todavía no entró — el error que hace
   // despachar de más.
-  it('lo que no cruzó la pasarela no es un pago', () => {
-    expect(estadoDeCobro(SIN_CRUZAR)).toBe(null)
+  it('lo que no cruzó la pasarela cae en "Sin cobrar"', () => {
+    expect(estadoDeCobro(SIN_CRUZAR)).toBe('sin_cobrar')
     // Cupón de saldo emitido y sin pagar: sigue siendo un pedido que debe.
     expect(estadoDeCobro(pedido({
       id: 'p', product_price: 150, advance_amount: 75, payment_verification: 'MATCHED',
       saldo_amount: 75, saldo_verification: 'PENDING',
     }))).toBe('adelanto')
     expect(aplicarFiltro([ADELANTO, SIN_CRUZAR], con({ pagos: ['adelanto'] }), AHORA)).toEqual([ADELANTO])
+    expect(aplicarFiltro([ADELANTO, SIN_CRUZAR], con({ pagos: ['sin_cobrar'] }), AHORA)).toEqual([SIN_CRUZAR])
   })
 
   it('cuenta como UNA condición aunque se marquen tres', () => {
@@ -288,10 +303,54 @@ describe('el filtro de pagos', () => {
 
   // Un desplegable que se reordena solo según qué pedido entró primero obliga a
   // leerlo entero cada vez.
-  it('ofrece solo las formas de cobro que existen, y siempre en el mismo orden', () => {
-    expect(opcionesDe([DOBLE, TOTAL]).pagos).toEqual(['total', 'saldo'])
-    expect(opcionesDe([ADELANTO, DOBLE, TOTAL]).pagos).toEqual(['adelanto', 'total', 'saldo'])
-    expect(opcionesDe([SIN_CRUZAR]).pagos).toEqual([])
+  it('ofrece solo las casillas que existen, y siempre en el mismo orden', () => {
+    const claves = (lista: StoreOrder[]) => opcionesDe(lista).pagos.map(o => o.valor)
+    expect(claves([DOBLE, TOTAL])).toEqual(['total', 'saldo'])
+    expect(claves([ADELANTO, DOBLE, TOTAL])).toEqual(['adelanto', 'total', 'saldo'])
+    expect(claves([SIN_CRUZAR, DOBLE])).toEqual(['sin_cobrar', 'saldo'])
+  })
+})
+
+// ─── El caso que lo destapó ──────────────────────────────────────────────────
+//
+// Con "Adelanto" y "Saldo" marcados salía un pedido con UN solo recuadro verde
+// (adelantó y debe), al lado de otro con dos (adelantó y pagó). Se leía como
+// "los que hicieron las dos cosas" y devolvía la unión. El arreglo no fue un
+// interruptor Y/O: fue ponerle a cada casilla el nombre de la combinación.
+
+describe('marcar dos casillas ya no se lee como "las dos cosas"', () => {
+  const SOLO_ADELANTO = ADELANTO   // un recuadro verde, queda saldo
+  const LOS_DOS = DOBLE            // dos recuadros verdes
+
+  it('"Adelanto y saldo" sola devuelve SOLO a los que hicieron los dos pagos', () => {
+    expect(aplicarFiltro([SOLO_ADELANTO, LOS_DOS], con({ pagos: ['saldo'] }), AHORA)).toEqual([LOS_DOS])
+  })
+
+  it('y marcando las dos casillas salen los dos, que es lo que dicen sus nombres', () => {
+    expect(aplicarFiltro([SOLO_ADELANTO, LOS_DOS], con({ pagos: ['adelanto', 'saldo'] }), AHORA))
+      .toEqual([SOLO_ADELANTO, LOS_DOS])
+  })
+
+  // La propiedad que hace innecesario el Y/O: las cuatro casillas parten la
+  // lista, así que cualquier pregunta con Y y O sobre las operaciones es una
+  // suma de casillas.
+  it('las cuatro casillas parten la lista: cada pedido en una y solo una', () => {
+    const lista = [SIN_CRUZAR, ADELANTO, TOTAL, DOBLE]
+    const todas: EstadoDeCobro[] = ['sin_cobrar', 'adelanto', 'total', 'saldo']
+    expect(aplicarFiltro(lista, con({ pagos: todas }), AHORA)).toEqual(lista)
+    let sumadas = 0
+    for (const casilla of todas) sumadas += aplicarFiltro(lista, con({ pagos: [casilla] }), AHORA).length
+    expect(sumadas).toBe(lista.length)
+  })
+
+  it('las preguntas con Y se responden sumando casillas', () => {
+    const lista = [SIN_CRUZAR, ADELANTO, TOTAL, DOBLE]
+    // "los que tienen un adelanto" (adelantaron, hayan pagado el saldo o no)
+    expect(aplicarFiltro(lista, con({ pagos: ['adelanto', 'saldo'] }), AHORA)).toEqual([ADELANTO, DOBLE])
+    // "los que no deben nada"
+    expect(aplicarFiltro(lista, con({ pagos: ['total', 'saldo'] }), AHORA)).toEqual([TOTAL, DOBLE])
+    // "los que deben algo"
+    expect(aplicarFiltro(lista, con({ pagos: ['sin_cobrar', 'adelanto'] }), AHORA)).toEqual([SIN_CRUZAR, ADELANTO])
   })
 })
 

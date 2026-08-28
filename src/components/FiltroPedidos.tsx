@@ -1,6 +1,6 @@
 import { CalendarRange, Search, SlidersHorizontal, X } from 'lucide-react'
 import FiltroMultiple from './FiltroMultiple'
-import { FILTRO_VACIO, PAGOS, RANGOS, cuantosFiltros, opcionesDe, resumenDelRango } from '../lib/pedidos-filtro'
+import { FILTRO_VACIO, RANGOS, cuantosFiltros, opcionesDe, resumenDelRango } from '../lib/pedidos-filtro'
 import type { ReactNode } from 'react'
 import type { Filtro, RangoKey } from '../lib/pedidos-filtro'
 import type { StoreOrder } from '../lib/store-orders'
@@ -107,7 +107,7 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados, extra
           titulo="quien atiende"
           todos="Todo el equipo"
           unidad="del equipo"
-          opciones={vendedores.map(v => ({ valor: v.id, label: v.nombre }))}
+          opciones={vendedores}
           elegidos={filtro.vendedores}
           onCambio={vs => set({ vendedores: vs })}
         />
@@ -118,7 +118,7 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados, extra
           titulo="producto"
           todos="Todos los productos"
           unidad="productos"
-          opciones={productos.map(p => ({ valor: p, label: p }))}
+          opciones={productos}
           elegidos={filtro.productos}
           onCambio={ps => set({ productos: ps })}
         />
@@ -127,13 +127,17 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados, extra
       {/* Al lado del producto porque rebana igual que él, y después porque la
           pregunta llega después: primero qué se vende, luego cómo se cobró.
           Solo si hay más de una forma de cobro en la lista — con todos los
-          pedidos cobrados igual, este filtro no rebana nada. */}
+          pedidos cobrados igual, este filtro no rebana nada.
+
+          Las opciones son COMBINACIONES con nombre —"Solo adelanto", "Adelanto
+          y saldo"— y no las operaciones sueltas, para que marcar una no haya
+          que interpretarlo. Ver `ESTADOS_DE_COBRO`. */}
       {pagos.length > 1 && (
         <FiltroMultiple
           titulo="lo que se cobró"
           todos="Todos los pagos"
           unidad="tipos de pago"
-          opciones={PAGOS.filter(x => pagos.includes(x.key)).map(x => ({ valor: x.key, label: x.label }))}
+          opciones={pagos}
           elegidos={filtro.pagos}
           onCambio={ps => set({ pagos: ps as Filtro['pagos'] })}
         />

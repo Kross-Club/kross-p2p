@@ -22,6 +22,10 @@ import { Check, ChevronDown } from 'lucide-react'
 export interface OpcionMultiple {
   valor: string
   label: string
+  /** Cuántos pedidos caen acá. Se pinta a la derecha de cada casilla: es media
+   *  respuesta antes de marcar nada, y en el filtro de pagos las cuentas suman
+   *  el total —las casillas parten la lista—, así que se pueden leer juntas. */
+  cuenta?: number
 }
 
 export default function FiltroMultiple({ titulo, todos, opciones, elegidos, onCambio, unidad }: {
@@ -125,7 +129,12 @@ export default function FiltroMultiple({ titulo, todos, opciones, elegidos, onCa
                       encima del lima solo va el verde oscuro del manual. */}
                   {marcado && <Check size={10} strokeWidth={3} style={{ color: 'var(--on-brand)' }} />}
                 </span>
-                <span className="truncate">{o.label}</span>
+                <span className="truncate flex-1">{o.label}</span>
+                {o.cuenta !== undefined && (
+                  <span className="tabular text-[10px] flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
+                    {o.cuenta}
+                  </span>
+                )}
               </label>
             )
           })}
