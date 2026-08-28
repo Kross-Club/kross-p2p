@@ -32,6 +32,10 @@ export default function PedidosPage() {
   const modo = modoDeUrl(params)
   const abierto = pedidoDeUrl(params)
   const [filtro, setFiltro] = useState<Filtro>(FILTRO_VACIO)
+  // El último pedido que se abrió, aunque ya esté cerrado. Al cerrar el cajón,
+  // la lista vuelve a ser cincuenta filas iguales y uno pierde en cuál estaba;
+  // el borde marcado es la miga de pan para seguir por donde iba.
+  const [ultimoAbierto, setUltimoAbierto] = useState<string | null>(null)
 
   // El super admin de la plataforma no es una tienda: no tiene pedidos que
   // mirar, tiene marcas que administrar.
@@ -68,8 +72,16 @@ export default function PedidosPage() {
 
   // Abrir SÍ apila —así "atrás" cierra el panel, que es lo que uno espera de
   // algo que se abrió encima—; cerrar no, para no dejar un paso vacío detrás.
-  const abrir = (token: string) => setParams(urlConPedido(modo, token))
+  const abrir = (token: string) => {
+    setUltimoAbierto(token)
+    setParams(urlConPedido(modo, token))
+  }
   const cerrar = () => setParams(urlDeModo(modo), { replace: true })
+
+  // Mientras el pedido está abierto lo marca su propio token; al cerrarse queda
+  // el último. Uno solo, y no una lista de visitados: la pregunta es "¿dónde
+  // estaba?", y varias marcas no la responden — la reparten.
+  const marcado = abierto ?? ultimoAbierto
 
   // El tablero en escritorio se queda con el alto que le sobra y scrollea él
   // mismo (ver PedidosTablero): para eso esta pantalla tiene que ser una
@@ -116,8 +128,8 @@ export default function PedidosPage() {
         </div>
       </div>
 
-      {modo === 'lista' && <PedidosLista lista={filtrada} onAbrir={abrir} />}
-      {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} />}
+      {modo === 'lista' && <PedidosLista lista={filtrada} onAbrir={abrir} marcado={marcado} />}
+      {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} marcado={marcado} />}
       {modo === 'mapa' && <PedidosMapa lista={filtrada} />}
       {modo === 'resumen' && <PedidosResumen lista={filtrada} />}
 
