@@ -6,8 +6,10 @@ import { useIsDesktop } from '../../lib/use-desktop'
 import { MODOS, modoDeUrl, pedidoDeUrl, urlConPedido, urlDeModo } from '../../lib/pedidos-modos'
 import type { Modo } from '../../lib/pedidos-modos'
 import { FILTRO_VACIO, aplicarFiltro } from '../../lib/pedidos-filtro'
+import { usePunteroAlMarcado } from '../../lib/puntero-marcado'
 import type { Filtro } from '../../lib/pedidos-filtro'
 import FiltroPedidos from '../../components/FiltroPedidos'
+import PunteroAlPedido from '../../components/PunteroAlPedido'
 import PanelPedido from '../../components/PanelPedido'
 import PedidosLista from './PedidosLista'
 import PedidosTablero from './PedidosTablero'
@@ -82,6 +84,16 @@ export default function PedidosPage() {
   // estaba?", y varias marcas no la responden — la reparten.
   const marcado = abierto ?? ultimoAbierto
 
+  // ── El botón que trae de vuelta al pedido seleccionado ──
+  //
+  // La tarjeta la pinta el Tablero y el botón vive en la barra de filtros, una
+  // capa más arriba: por eso el nodo sube hasta acá, que es el único sitio
+  // donde las dos cosas se ven a la vez. En Lista y Resumen no hay tarjeta que
+  // entregar, así que `nodoMarcado` se queda en `null` y el botón no sale —
+  // sin que ninguna de las dos pantallas tenga que saber que existe.
+  const [nodoMarcado, setNodoMarcado] = useState<HTMLElement | null>(null)
+  const puntero = usePunteroAlMarcado(nodoMarcado, marcado)
+
   // El tablero en escritorio se queda con el alto que le sobra y scrollea él
   // mismo (ver PedidosTablero): para eso esta pantalla tiene que ser una
   // columna con alto definido. Los otros modos scrollean la página, como
@@ -123,12 +135,15 @@ export default function PedidosPage() {
             onCambio={setFiltro}
             base={lista.pedidos}
             mostrados={filtrada.pedidos.length}
+            extra={nodoMarcado
+              ? <PunteroAlPedido direccion={puntero.direccion} onIr={puntero.ir} />
+              : undefined}
           />
         </div>
       </div>
 
       {modo === 'lista' && <PedidosLista lista={filtrada} onAbrir={abrir} marcado={marcado} />}
-      {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} marcado={marcado} />}
+      {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} marcado={marcado} refMarcado={setNodoMarcado} />}
       {modo === 'resumen' && <PedidosResumen lista={filtrada} />}
 
       {abierto && <PanelPedido token={abierto} onCerrar={cerrar} />}

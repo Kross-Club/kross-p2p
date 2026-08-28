@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { decidirEco } from '../lib/scroll-espejo'
+import type { Lado } from '../lib/scroll-espejo'
 
 // ─── Scroll horizontal con la barra ARRIBA ───────────────────────────────────
 //
@@ -55,17 +57,26 @@ export default function ScrollHorizontal({ children, className = '', alto = 10, 
   // promete contenido que no existe.
   const desborda = medida.ancho > medida.visible + 1
 
-  // No hace falta guardia contra el rebote: asignar el mismo `scrollLeft` no
-  // dispara otro evento, así que el ping-pong se corta solo.
-  const seguir = (de: HTMLDivElement | null, a: HTMLDivElement | null) => {
-    if (de && a) a.scrollLeft = de.scrollLeft
+  // El riel y la caja se siguen, y hay que callar el eco para que un scroll
+  // suave no se cancele a sí mismo. La regla —y el porqué, que es largo— vive
+  // en `scroll-espejo.ts`, que es lo único de esto que se puede probar sin un
+  // navegador.
+  const eco = useRef<Lado | null>(null)
+
+  const seguir = (quien: Lado) => {
+    const de = quien === 'riel' ? riel.current : caja.current
+    const a = quien === 'riel' ? caja.current : riel.current
+    if (!de || !a) return
+    const d = decidirEco(eco.current, quien, de.scrollLeft, a.scrollLeft)
+    eco.current = d.eco
+    if (d.copiar) a.scrollLeft = de.scrollLeft
   }
 
   return (
     <>
       <div
         ref={riel}
-        onScroll={() => seguir(riel.current, caja.current)}
+        onScroll={() => seguir('riel')}
         aria-hidden
         className="riel-scroll flex-shrink-0"
         style={{
@@ -78,7 +89,7 @@ export default function ScrollHorizontal({ children, className = '', alto = 10, 
       </div>
       <div
         ref={caja}
-        onScroll={() => seguir(caja.current, riel.current)}
+        onScroll={() => seguir('caja')}
         className={`sin-barra ${lleno ? 'flex-1 min-h-0 overflow-auto' : 'overflow-x-auto'}`}
       >
         <div ref={fila} className={`w-max ${className}`}>{children}</div>

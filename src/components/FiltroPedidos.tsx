@@ -1,5 +1,6 @@
 import { CalendarRange, Search, SlidersHorizontal, X } from 'lucide-react'
 import { FILTRO_VACIO, RANGOS, cuantosFiltros, opcionesDe, resumenDelRango } from '../lib/pedidos-filtro'
+import type { ReactNode } from 'react'
 import type { Filtro, RangoKey } from '../lib/pedidos-filtro'
 import type { StoreOrder } from '../lib/store-orders'
 
@@ -12,13 +13,18 @@ import type { StoreOrder } from '../lib/store-orders'
 // Se pinta con las opciones que EXISTEN en la lista (`opcionesDe`), así que un
 // vendedor sin pedidos esta semana no aparece para filtrar a una pantalla vacía.
 
-export default function FiltroPedidos({ filtro, onCambio, base, mostrados }: {
+export default function FiltroPedidos({ filtro, onCambio, base, mostrados, extra }: {
   filtro: Filtro
   onCambio: (f: Filtro) => void
   /** La lista SIN filtrar: de ahí salen las opciones. Con la lista ya filtrada,
    *  elegir a un vendedor borraría del desplegable a todos los demás. */
   base: StoreOrder[]
   mostrados: number
+  /** Lo que la pantalla quiera colgar al final de la barra, pegado a la
+   *  derecha. Hoy es el botón que centra el pedido seleccionado, que solo tiene
+   *  sentido en el Tablero — por eso lo pone quien sabe si el Tablero está
+   *  puesto, y no esta barra. */
+  extra?: ReactNode
 }) {
   const { vendedores, productos } = opcionesDe(base)
   const puestos = cuantosFiltros(filtro)
@@ -126,6 +132,11 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados }: {
           {mostrados} de {base.length}
         </span>
       )}
+
+      {/* Pegado a la derecha del todo: no es un filtro, así que no debe leerse
+          como uno más de la fila. `ml-auto` se lo come todo el espacio que
+          sobre; si la barra envuelve, baja solo y sigue a la derecha. */}
+      {extra && <div className="ml-auto flex-shrink-0">{extra}</div>}
     </div>
   )
 }

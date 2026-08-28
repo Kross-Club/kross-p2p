@@ -1305,18 +1305,26 @@ scrollea en **dos ejes** —nueve columnas de ancho, treinta tarjetas de alto—
 arrastrar un poco para que el pedido abierto quede fuera de la pantalla, sin nada que diga
 hacia dónde.
 
-Ahora aparece un puntero abajo a la izquierda —**Ir al pedido abierto**— con una flecha que
-apunta hacia donde está de verdad. Tocarlo lo centra.
+En la barra de filtros, pegado a la derecha, está **Ir al pedido seleccionado**. Tocarlo lo
+trae al centro de la pantalla.
 
 Tres decisiones que lo hacen usable:
 
-- **Solo cuando no se ve.** Un botón permanente ocuparía sitio las nueve de cada diez veces
-  en que el pedido está delante de los ojos, y se aprendería a ignorar justo para la décima.
+- **Está siempre que haya un pedido seleccionado en pantalla**, no solo cuando se pierde de
+  vista. Vive en una barra, y un control que aparece y desaparece dentro de una barra se lee
+  como un error de la barra: uno aprende dónde están las cosas y espera encontrarlas ahí.
+  Lo que cambia es el **énfasis** — apagado mientras el pedido está a la vista, encendido y
+  con una flecha cuando no.
 - **La flecha apunta al eje donde está MÁS lejos.** Un pedido un poco abajo y mucho a la
   izquierda se encuentra yendo a la izquierda; una flecha hacia abajo mandaría a buscar
   donde no está.
-- **Abajo a la izquierda**, porque el cajón del pedido entra por la derecha. Un puntero
-  debajo del cajón es un puntero que no se ve.
+- **Pegado a la derecha del todo** (`ml-auto`), separado de los desplegables: no es un
+  filtro y no debe leerse como uno más de la fila.
+
+Vive en la barra y no en el tablero, aunque la tarjeta la pinte el tablero. El nodo sube
+hasta `PedidosPage`, que es el único sitio donde la barra y el tablero se ven a la vez; en
+Lista y Resumen no hay tarjeta que entregar, así que el botón no sale sin que ninguna de las
+dos pantallas tenga que saber que existe.
 
 "Se ve" se mide **por área** y con un mínimo del 35 %: una tarjeta asomando un píxel por el
 borde está técnicamente visible y en la práctica no se ve. La geometría vive aparte
@@ -1334,6 +1342,32 @@ Los dos pasan por la misma medición, limitada a **una por cuadro** (`requestAni
 y guardando **solo cuando la dirección cambia**. Sin lo segundo, cada evento de scroll
 crearía un objeto nuevo y repintaría las cien tarjetas del tablero sesenta veces por
 segundo — el estado se devuelve idéntico para que React se salte el render.
+
+### El bug que el puntero destapó: dos cajas peleándose
+
+La primera versión avanzaba **unos píxeles por clic**. Hacían falta cincuenta para llegar.
+
+No era del puntero: era de `ScrollHorizontal`, que arrastra dos contenedores a la vez —el
+riel de 10 px de arriba y la caja de verdad— y los mantiene sincronizados copiándose la
+posición en el `onScroll` del otro. Ahí había escrito que *"no hace falta guardia contra el
+rebote: asignar el mismo `scrollLeft` no dispara otro evento, así que el ping-pong se corta
+solo"*.
+
+Cierto **mientras el que mueve es un dedo**. Deja de serlo en cuanto la caja se mueve sola:
+
+1. `scrollIntoView` arranca un desplazamiento suave. La caja avanza y dispara su evento.
+2. Se copia esa posición al riel. El evento del riel llega **un cuadro después**, cuando la
+   animación ya avanzó más.
+3. Los valores ya no coinciden, así que se le escribe `scrollLeft` a la caja — y **escribir
+   `scrollLeft` cancela la animación en curso** y la devuelve a la posición vieja.
+
+Cada clic: avanza un poco, rebota, se para.
+
+La guardia es de una línea —quien recibe un ajuste sabe que el evento que le va a llegar no
+es del usuario, y lo deja pasar sin devolverlo— pero la regla vive en `scroll-espejo.ts`,
+fuera del componente, porque es **lo único de todo esto que se puede probar sin un
+navegador**: la prueba corre la secuencia de eventos que dispara un desplazamiento suave y
+comprueba que a la caja no se le escribe nunca.
 
 ## Ver también
 
