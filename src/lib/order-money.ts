@@ -69,6 +69,10 @@ export function cobrosDelPedido(p: PedidoConPlata): Cobro[] {
   if (adelanto > 0) {
     // Si el primer pago cubre el pedido entero no es un adelanto: es EL pago.
     // Llamarlo adelanto haría buscar un saldo que no existe.
+    //
+    // Se decide contra el valor de HOY, así que un upsell puede convertir un
+    // "pago total" en un adelanto — y debe: el pedido volvió a deber algo, y
+    // seguir llamándolo total sería decir que no falta cobrar nada.
     out.push({
       tipo: valor > 0 && adelanto >= valor ? 'total' : 'adelanto',
       monto: Math.min(adelanto, valor || adelanto),
@@ -84,7 +88,21 @@ const num = (v: number | string | null | undefined): number => {
   return Number.isFinite(n) ? n : 0
 }
 
-/** Lo que cuesta el pedido. */
+/**
+ * Lo que cuesta el pedido **hoy**.
+ *
+ * `product_price` es el TOTAL del carrito, no el precio de un producto: el
+ * servidor lo reescribe cada vez que el carrito cambia —`accept_offer`,
+ * `set_qty`, `remove_item` en `order-manage`— con la suma de `items`. Por eso
+ * se lee de ahí y no se suman los `items` acá: una segunda forma de calcular el
+ * mismo total es una segunda forma de que dé distinto.
+ *
+ * Que sea el de HOY es lo que hace que un upsell se vea solo. Si al pedido de
+ * S/150 que ya estaba pagado entero se le agrega algo de S/80, el total pasa a
+ * S/230 y los mismos S/150 cobrados dejan de ser el 100%: el anillo baja a dos
+ * tercios y aparece un saldo de S/80 que antes no existía. Nadie tiene que
+ * acordarse de recalcular nada — cambia el total y todo lo demás se acomoda.
+ */
 export function valorDelPedido(p: PedidoConPlata): number {
   return Math.max(0, num(p.product_price))
 }

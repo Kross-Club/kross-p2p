@@ -1554,6 +1554,194 @@ la única mentira que `order-money.ts` no se puede permitir. **Entregar el pedid
 cobrar lo cobra.** Un anillo que se llenara al mover la etapa mediría el ánimo del vendedor,
 no la caja — y el anillo existe justo para responder cuánta plata está adentro y cuánta
 todavía depende de que alguien aparezca.
+### Y se puede preguntar al revés: quiénes pagaron qué
+
+El anillo y las tarjetas verdes lo dicen **pedido por pedido**. Faltaba la pregunta al revés,
+que es la que se hace un lunes por la mañana: *¿cuáles van por cada camino?* Para responderla
+había que abrir el tablero y contar anillos a ojo, columna por columna.
+
+Ahora hay un desplegable al lado del de productos —**Todos los pagos · Sin cobrar · Solo
+adelanto · Pago total · Adelanto y saldo**— que rebana igual que él. Va después porque la
+pregunta llega después: primero qué se vende, luego cómo se cobró.
+
+Lo que responde cada opción:
+
+- **Solo adelanto** — adelantaron una parte y todavía deben.
+- **Pago total** — pagaron el precio entero de una. No hay nada que cobrar después.
+- **Adelanto y saldo** — pagaron el saldo en una segunda operación: **los que hicieron los dos
+  pagos**, que es la lista que no existía en ninguna pantalla.
+
+> Al salir, este filtro etiquetaba el pedido **por operación**, así que quien adelantó y
+> después pagó su saldo caía en *Adelanto* y en *Saldo* a la vez. Duró un día: marcar solo
+> *Adelanto* devolvía también a los que ya no deben nada, que es lo contrario de la pregunta.
+> Ahora cada pedido cae en una sola casilla, con el nombre de la combinación — ver [tres
+> formas hasta dar con la buena](#y-el-filtro-de-pagos-tres-formas-hasta-dar-con-la-buena).
+
+Y **solo cuenta lo que cruzó la pasarela**, la misma regla del anillo: un cupón emitido y sin
+pagar no es un pago. El desplegable dice *pagos*, y listar ahí lo que todavía no entró es
+exactamente el error que hace despachar de más.
+
+Se ofrece solo cuando hay más de una forma de cobro en la lista, como el de vendedores y el de
+productos: con todos los pedidos cobrados igual, ese desplegable no rebana nada y solo estorba.
+
+> Vive en la barra de filtros, o sea que también está en Lista y en Resumen. Es a propósito y
+> es la regla de esta pantalla desde el principio: Lista, Tablero y Resumen son la misma lista
+> mirada distinto, y un filtro por modo haría que el tablero de "esta semana" y el resumen de
+> "todo" convivan sin que nada avise que están contando cosas distintas.
+
+### Y la tienda de ejemplo cobra el saldo
+
+El demo no tenía saldos: todos sus pedidos habían hecho una sola operación. Con eso, media
+pantalla nueva no se podía enseñar —el segundo recuadro verde, el anillo lleno, la opción
+*Saldo* del filtro— justo en la tienda que existe para enseñar la herramienta.
+
+Ahora un pedido del demo paga el saldo cuando **puede pagarlo de verdad**: queda algo por
+cobrar, el adelanto ya cruzó y hay guía. Las mismas tres condiciones que `puedePagarSaldo`, no
+una moneda al aire — un demo que generara un saldo sobre un adelanto sin cruzar enseñaría una
+pantalla que en producción no puede ocurrir.
+
+Y no lo paga todo el mundo, que es el punto: **quedan entregados con el anillo a medias**, los
+que arreglaron el resto con el comercio por fuera. Si en el demo todos pagaran el saldo, un
+anillo lleno no significaría nada — hace falta el contraste para que se vea qué está midiendo.
+También hay unos cuantos con el cupón emitido y sin pagar, que son los ámbar: sin ellos no se
+ve que un cupón **no** es plata que entró.
+## Marcar de a varios, y el upsell que mueve el anillo (28-ago-2026)
+
+### Los filtros eran de a uno, y la pregunta nunca lo es
+
+Vendedor, producto y pago se elegían de a uno. La pregunta de verdad casi nunca es de a uno:
+*los de Kevin y Milagros*, *las dos fajas*, *los que adelantaron y los que pagaron todo*. Con
+un valor único había que mirar dos veces y sumar de cabeza — justo lo que un filtro existe
+para evitar.
+
+Los tres son ahora de marcar varias casillas. **Nada marcado = todos**, así que desmarcar la
+última equivale a quitar el filtro; no hace falta una casilla de "Todos" que se apague sola al
+marcar otra, que confunde más de lo que ayuda.
+
+Entre casillas del mismo filtro es **O** —Kevin *o* Milagros—; entre filtros distintos sigue
+siendo **Y** —los de Kevin *y* de las fajas—. Es la única lectura que no sorprende: dentro de
+una pregunta se suman respuestas, y dos preguntas se acumulan.
+
+Y el globito cuenta **preguntas puestas, no casillas marcadas**: tres productos marcados son
+un filtro, no tres.
+
+> No es un `<select multiple>`. Ese control se pinta como una caja con scroll de cinco filas y
+> no dice cuántas cosas hay marcadas sin abrirla. Acá el botón cerrado ya lo dice —"Kevin",
+> "2 productos"—, que es lo que uno lee de pasada para no creer que la tienda dejó de vender.
+
+### Y el filtro de pagos: tres formas hasta dar con la buena
+
+Este filtro se equivocó dos veces antes de quedar bien, y las dos veces por lo mismo: **pedía
+componer en vez de elegir**.
+
+**Primera forma — una etiqueta por operación.** Quien adelantó y después pagó su saldo salía en
+*Adelanto* **y** en *Saldo*. Marcar *Adelanto* —la pregunta de verdad, la de a quién hay que
+cobrarle— devolvía entonces también a los que ya no deben nada.
+
+**Segunda forma — casillas de estado, con los nombres de las operaciones.** El pedido pasó a
+caer en una sola casilla, que era lo correcto, pero las casillas seguían llamándose *Adelanto*,
+*Total* y *Saldo*. Con *Adelanto* ✓ y *Saldo* ✓ marcados salía un pedido con **un** recuadro
+verde al lado de otro con **dos**, y eso se lee como "los que hicieron las dos cosas" cuando lo
+que devuelve es la unión. El nombre prometía una intersección que el filtro no hacía.
+
+**La forma buena — la casilla se llama como la combinación.** Cuatro, y las cuatro **parten la
+lista**: todo pedido está en exactamente una, y las cuatro suman el total.
+
+| Casilla | Qué es | La decisión que desbloquea |
+|---|---|---|
+| **Sin cobrar** | no entró nada por la pasarela | perseguir el yapeo, o anular |
+| **Solo adelanto** | adelantó y **todavía debe** | a quién le cobro el saldo |
+| **Pago total** | pagó el precio entero de una | despachar, nada pendiente |
+| **Adelanto y saldo** | adelantó **y después pagó** | despachar; le costó dos operaciones |
+
+La casilla es la **última operación que cruzó** (`estadoDeCobro`), que es justo lo que significa
+"en qué quedó". Un cupón de saldo emitido y sin pagar no la mueve: sigue siendo *Solo adelanto*,
+porque sigue debiendo.
+
+#### Por qué no un interruptor Y/O
+
+Era la salida obvia y es la equivocada, por dos razones:
+
+1. Sobre casillas que no se pisan, **una Y siempre da vacío**: ningún pedido está en dos a la
+   vez. Sería un modo roto ocupando sitio en la barra.
+2. **No hace falta.** Como las cuatro parten la lista, cualquier pregunta con Y y O sobre las
+   operaciones es una suma de casillas:
+
+   | La pregunta | Se marca |
+   |---|---|
+   | los que tienen un adelanto | Solo adelanto + Adelanto y saldo |
+   | los que pagaron el saldo | Adelanto y saldo |
+   | los que no deben nada | Pago total + Adelanto y saldo |
+   | los que deben algo | Sin cobrar + Solo adelanto |
+
+Elegir de una lista con nombres no se equivoca. Componer con operadores sí — y el error no
+avisa: devuelve una lista creíble y de más, que es como este filtro se equivocó las dos veces
+anteriores.
+
+### Y cada casilla dice cuántos son
+
+En el desplegable, cada opción lleva su cuenta. Es media respuesta antes de marcar nada: leer
+*Solo adelanto 46 · Adelanto y saldo 26* ya dice dónde está el trabajo del día, sin filtrar y
+volver.
+
+En pagos las cuentas **suman el total**, porque las casillas parten la lista — o sea que se
+pueden leer juntas sin miedo a contar un pedido dos veces. En vendedor y producto es lo mismo
+por otra razón: un pedido tiene un solo vendedor y un solo producto.
+
+### El upsell: el anillo se mide contra el total de hoy
+
+Si al pedido se le agrega un producto —en el chat, o armándolo en logística—, lo ya cobrado
+deja de ser lo mismo *en proporción*. Un pedido de S/150 pagado entero al que se le suman S/80
+no está pagado entero: está pagado en dos tercios y debe S/80.
+
+Eso ya funciona solo, y vale la pena decir por qué: **`product_price` es el total del carrito,
+no el precio de un producto**. El servidor lo reescribe con la suma de `items` cada vez que el
+carrito cambia (`accept_offer`, `set_qty`, `remove_item` en `order-manage`), así que el anillo,
+el saldo y el botón de pagar se acomodan sin que nadie recalcule nada. Por eso `valorDelPedido`
+lee esa columna en vez de sumar los `items` otra vez: una segunda forma de calcular el mismo
+total es una segunda forma de que dé distinto.
+
+Dos consecuencias que caen solas y son correctas:
+
+- un **pago total pasa a ser un adelanto** en cuanto el pedido vuelve a deber algo. Seguir
+  llamándolo total sería decir que no falta cobrar nada;
+- el **botón de pagar el saldo reaparece** por la diferencia nueva, y 360pay la cobra igual que
+  cualquier otro saldo.
+
+### Lo que no cabía en el mismo pedido, y por qué ahora sí
+
+Lo que **no** funcionaba era llegar hasta ahí. Al aceptar una oferta, el pedido se partía en
+dos salvo en dos etapas: la regla era `stage === 'nuevo' || stage === 'confirmado'`, escrita
+dentro del `if` que la usaba.
+
+La pregunta de verdad no es en qué etapa está: es **¿la caja todavía está acá?** Y así deja
+fuera dos casos que sí caben:
+
+- **`validando`** — el yapeo no cuadra todavía; la caja ni se ha tocado;
+- **`registrado`** — la guía existe pero el paquete **sigue en la tienda**. Es justo el momento
+  en que se arma el pedido, o sea cuando más se agrega algo.
+
+Un upsell en cualquiera de los dos abría un pedido paralelo, con su propio envío por cobrar:
+la manera cara de resolverlo.
+
+Ahora la regla vive en `_shared/upsell.ts` con su nombre —`cabeEnElMismoPaquete`— y pregunta a
+las **dos agujas del eje**, porque con una sola no alcanza: la guía se emite *antes* de
+entregarle el paquete al courier, así que hay `registrado` que ya salieron y `en_camino` que
+nadie ha movido. Cabe cuando la etapa dice que el paquete sigue en la tienda **y** el courier
+todavía no ha reportado nada.
+
+Pasado eso, se sigue abriendo un pedido aparte, y no es una limitación que convenga quitar:
+nadie puede meter un producto en un paquete que ya está viajando, y decir que sí es prometer
+una entrega que no va a ocurrir.
+
+### Y la tienda de ejemplo tiene upsells
+
+Sin ninguno, el anillo parecería tener tres posiciones —vacío, mitad, lleno— cuando lo que
+enseña es una proporción. Ahora una parte de los pedidos del demo lleva un producto agregado
+después del adelanto, así que se ven anillos en fracciones raras: 150 de 230.
+
+Ninguno mezcla upsell con saldo cobrado, a propósito: el saldo se cobra contra el total del
+momento, y un dato de ejemplo con las dos cosas encima enseñaría una cuenta que no cuadra.
 
 ## Ver también
 

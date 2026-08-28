@@ -377,6 +377,38 @@ async function construir(): Promise<TiendaDemo> {
     // tránsito con el anillo vacío y pedidos en validación ya cobrados.
     const antesDeCobrar = t.stage === 'nuevo' || t.stage === 'validando'
     const cruzado = antesDeCobrar ? r() < 0.15 : r() < 0.92
+
+    // ── El SALDO: la segunda operación ──
+    // No es el adelanto con otro monto. Ocurre después —cuando la guía ya
+    // existe— con su propio cupón, y es lo que suelta la clave de recojo. Tres
+    // condiciones, las mismas que `puedePagarSaldo`: que quede algo por cobrar,
+    // que el adelanto YA esté cruzado (el banco cobra siempre el cupón
+    // pendiente más antiguo) y que haya guía.
+    //
+    // Y no lo paga todo el mundo, a propósito: el que no lo paga por acá lo
+    // arregla con el comercio por fuera y llega a `entregado` con el anillo a
+    // medias. Ese contraste es justo lo que el anillo existe para enseñar —si
+    // en el demo todos pagaran el saldo, un anillo lleno no significaría nada.
+    const falta = prod.precio - adelanto
+    const puedeSaldo = falta > 0 && cruzado && conGuia
+    const saldoPagado = puedeSaldo && r() < 0.55
+    // Y unos cuantos con el cupón emitido y SIN pagar: es el estado ámbar, el
+    // que no se puede leer como plata que entró.
+    const saldoEmitido = puedeSaldo && !saldoPagado && r() < 0.3
+
+    // ── El upsell ──
+    // Un producto que se le agregó al pedido DESPUÉS de cobrar el adelanto: en
+    // el chat, o armándolo en logística. El total sube y el adelanto, que no
+    // cambió, deja de ser la mitad — así que el anillo de esos pedidos se ve en
+    // fracciones raras (150 de 230), que es justo como se ve en la tienda real.
+    // Sin ninguno, el anillo parecería tener solo tres posiciones.
+    //
+    // Solo sobre pedidos sin saldo en juego: el saldo se cobra contra el total
+    // del momento, y mezclar las dos cosas en un dato de ejemplo enseñaría una
+    // cuenta que no cuadra.
+    const upsell = cruzado && !saldoPagado && !saldoEmitido && r() < 0.12 ? elige(r, CATALOGO) : null
+    const valorPedido = prod.precio + (upsell?.precio ?? 0)
+
     const miembro = elige(r, EQUIPO)
     const faseAt = t.fase ? new Date(ahora - entre(r, 0, 6) * DIA).toISOString() : null
 
@@ -396,7 +428,11 @@ async function construir(): Promise<TiendaDemo> {
       buyers: { document_number: persona.document_number },
       product_id: prod.id,
       product_name: prod.nombre,
-      product_price: prod.precio,
+      // El TOTAL del pedido, no el precio de un producto: con upsell son dos.
+      // Es lo mismo que hace el servidor —`order-manage` reescribe
+      // `product_price` con la suma del carrito— y lo que hace que el anillo se
+      // mida contra el total de hoy.
+      product_price: valorPedido,
       pack_name: elige(r, ['Pack 1', 'Pack 2', 'Pack 3']),
       // Cancelado ≠ anulado: el primero fue una venta que se perdió (y pesa en
       // la conversión), el segundo nunca fue una venta —una prueba, un dedazo—.
@@ -409,6 +445,8 @@ async function construir(): Promise<TiendaDemo> {
       agency_branch_id: ruta.destinoId,
       advance_amount: adelanto,
       payment_verification: cruzado ? 'MATCHED' : 'PENDING',
+      saldo_amount: saldoPagado || saldoEmitido ? falta : null,
+      saldo_verification: saldoPagado ? 'MATCHED' : saldoEmitido ? 'PENDING' : null,
       tracking_courier: conGuia ? ruta.courier : null,
       tracking_numero: conGuia ? String(entre(r, 100000, 999999)) : null,
       tracking_phase: t.fase,

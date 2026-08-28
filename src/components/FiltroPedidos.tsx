@@ -1,4 +1,5 @@
 import { CalendarRange, Search, SlidersHorizontal, X } from 'lucide-react'
+import FiltroMultiple from './FiltroMultiple'
 import { FILTRO_VACIO, RANGOS, cuantosFiltros, opcionesDe, resumenDelRango } from '../lib/pedidos-filtro'
 import type { ReactNode } from 'react'
 import type { Filtro, RangoKey } from '../lib/pedidos-filtro'
@@ -26,7 +27,7 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados, extra
    *  puesto, y no esta barra. */
   extra?: ReactNode
 }) {
-  const { vendedores, productos } = opcionesDe(base)
+  const { vendedores, productos, pagos } = opcionesDe(base)
   const puestos = cuantosFiltros(filtro)
   const aMano = filtro.rango === 'rango'
 
@@ -98,22 +99,48 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados, extra
         </div>
       )}
 
+      {/* Los tres se marcan de a varios: la pregunta real casi nunca es de a uno
+          —"los de Kevin y Milagros", "las dos fajas"— y con un valor único eso
+          obligaba a mirar dos veces y sumar de cabeza. */}
       {vendedores.length > 1 && (
-        <select value={filtro.vendedor} onChange={e => set({ vendedor: e.target.value })}
-          aria-label="Filtrar por quien atiende"
-          className={`${select} flex-shrink-0`} style={selectStyle}>
-          <option value="">Todo el equipo</option>
-          {vendedores.map(v => <option key={v.id} value={v.id}>{v.nombre}</option>)}
-        </select>
+        <FiltroMultiple
+          titulo="quien atiende"
+          todos="Todo el equipo"
+          unidad="del equipo"
+          opciones={vendedores}
+          elegidos={filtro.vendedores}
+          onCambio={vs => set({ vendedores: vs })}
+        />
       )}
 
       {productos.length > 1 && (
-        <select value={filtro.producto} onChange={e => set({ producto: e.target.value })}
-          aria-label="Filtrar por producto"
-          className={`${select} flex-shrink-0`} style={selectStyle}>
-          <option value="">Todos los productos</option>
-          {productos.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
+        <FiltroMultiple
+          titulo="producto"
+          todos="Todos los productos"
+          unidad="productos"
+          opciones={productos}
+          elegidos={filtro.productos}
+          onCambio={ps => set({ productos: ps })}
+        />
+      )}
+
+      {/* Al lado del producto porque rebana igual que él, y después porque la
+          pregunta llega después: primero qué se vende, luego cómo se cobró.
+          Solo si hay más de una forma de cobro en la lista — con todos los
+          pedidos cobrados igual, este filtro no rebana nada.
+
+          Las opciones son COMBINACIONES con nombre —"Solo adelanto", "Adelanto
+          y saldo"— y no las operaciones sueltas, para que marcar una no haya
+          que interpretarlo. Ver `ESTADOS_DE_COBRO`. */}
+      {pagos.length > 1 && (
+        <FiltroMultiple
+          titulo="lo que se cobró"
+          todos="Todos los pagos"
+          unidad="tipos de pago"
+          opciones={pagos}
+          elegidos={filtro.pagos}
+          onCambio={ps => set({ pagos: ps as Filtro['pagos'] })}
+        />
       )}
 
       {puestos > 0 && (

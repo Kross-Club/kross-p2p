@@ -60,8 +60,8 @@ create index if not exists idx_order_sessions_saldo_coupon
 
 | Función | Qué destraba | Nota |
 |---|---|---|
-| `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual, y el **DNI** que necesita el buscador | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
-| `order-manage` | `mark_answered`, `anular` / `restore`, y el eje sin `preparando` | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
+| `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual, el **DNI** que necesita el buscador y el **saldo** (anillo y filtro de pagos). ⚠️ Pide el SQL §31 **antes**: sin esas columnas el select falla entero y el tablero queda en blanco | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
+| `order-manage` | `mark_answered`, `anular` / `restore`, el eje sin `preparando`, y que un **upsell** entre al mismo pedido mientras la caja siga en la tienda (antes abría un pedido aparte desde `validando` y `registrado`) | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
 | `get-session` | la llamada en el hilo, `answered_at`, si el cliente está en la app, y el rastro del **saldo** |
 | `pay360-coupon` · `pay360-webhook` | el cobro del **saldo**: emitir su cupón y confirmarlo | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) · [app](#get-session-otra-vez-saber-si-el-cliente-está-en-la-app-27-ago-2026) |
 | `get-store-drafts` 🆕 | la columna **Curiosos** del tablero | [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
@@ -262,9 +262,10 @@ create index if not exists idx_order_sessions_saldo_coupon
 **2. Los deploys:**
 
 ```
-supabase functions deploy pay360-coupon  --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy pay360-webhook --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy get-session    --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-coupon      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
 ```
 
 El pedido se cobra en dos momentos y hasta hoy la fila solo sabía del primero. Ahora
@@ -273,15 +274,24 @@ distingue cuál de los dos se pagó **por el id del cupón** —el `external_ref
 pedido en ambos, y el monto no sirve: la mitad de un pedido de S/180 es 90, igual que su
 saldo—; `get-session` devuelve el rastro de los dos.
 
-**Corre el SQL antes que los deploys**, y acá el orden importa más que de costumbre: sin las
-columnas, `pay360-coupon` emitiría un cupón real en 360pay y fallaría al anotarlo. Un cupón
-emitido y no anotado no es un registro que falta — **es plata mal cobrada**: el banco paga
-siempre el pendiente más antiguo, así que el huérfano se lleva el pago del próximo pedido de
-ese mismo comprador.
+`get-store-sessions` entra en la lista porque el **tablero** también necesita el saldo: sin él
+el anillo de un pedido ya pagado entero se queda a la mitad y el filtro de pagos no ofrece la
+opción *Saldo*.
+
+**Corre el SQL antes que los deploys**, y acá el orden importa más que de costumbre, por dos
+razones distintas:
+
+- sin las columnas, `pay360-coupon` emitiría un cupón real en 360pay y fallaría al anotarlo. Un
+  cupón emitido y no anotado no es un registro que falta — **es plata mal cobrada**: el banco
+  paga siempre el pendiente más antiguo, así que el huérfano se lleva el pago del próximo
+  pedido de ese mismo comprador;
+- y PostgREST rechaza un `select` entero si una sola columna no existe, así que
+  `get-store-sessions` desplegada antes del SQL **deja el panel en blanco** — el mismo golpe
+  que el DNI.
 
 Sin los deploys no se rompe nada: el botón de pagar el saldo no aparece (el panel solo lo
-ofrece cuando la tienda cobra en línea y el adelanto ya cruzó) y el saldo se sigue coordinando
-por el chat, como hasta ahora.
+ofrece cuando la tienda cobra en línea y el adelanto ya cruzó), el filtro de pagos se queda con
+*Adelanto* y *Total*, y el saldo se sigue coordinando por el chat, como hasta ahora.
 
 Qué es y por qué son dos operaciones: [`11-RELACIONES.md`](./11-RELACIONES.md).
 
@@ -551,6 +561,7 @@ Anotada donde vive, para que no haya que redescubrirla:
 | La key de prueba de Olva API Perú viajó por el chat al recibirse. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Rotarla al pasar a producción (se pide por el WhatsApp del proveedor) y recargar Vault/secret. Misma familia que el bloqueo #2. |
 | La **clave de retiro** que genera el envío (`shalom_pickup_code`) no tiene todavía quién se la entregue al comprador cuando paga el saldo. | `27.d` del esquema · `pay360-webhook` | El checkout la promete desde el día 1 ("apenas pagues te enviamos tu clave"). Hoy queda guardada en el pedido y la manda una persona; el paso natural es que el pago del saldo la suelte solo. **No puede ir por `visibility: 'sellers'`**: con el token del comprador se lee igual (`?viewer=seller`). |
 | Los mensajes automáticos salen como si los hubiera tecleado el vendedor asignado (`sender_role: 'seller'` + su nombre). | `register-buyer` (bienvenida) · algunos de `order-manage` · detalle en [`11-RELACIONES.md`](./11-RELACIONES.md) | Mientras siga así, un **% de involucramiento del equipo** contado desde el chat sale inflado: cada pedido nace con un mensaje "de" su vendedor que su vendedor no escribió. El arreglo es marcarlo en el origen —una columna `automatico` en `chat_messages`, o el rol `bot`— y redesplegar las funciones que escriben. |
+| Un **upsell después de haber cobrado el saldo** deja un saldo nuevo que la pasarela no cobra sola. | `src/lib/order-money.ts` · `puedePagarSaldo` | Las columnas guardan UNA operación de saldo, y el botón exige que no haya un saldo ya cruzado. Si al pedido se le agrega algo después, el anillo baja y el saldo aparece —eso sí funciona—, pero el cobro lo coordina el asesor por el chat. Arreglarlo pide un historial de cobros, no una columna más. |
 | `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. |
 
 ## Limpieza pendiente

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { tiendaDemo, fichaDemoDeCliente, marcarRespondidoDemo, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
 import { columnaDelPedido, COLUMNAS } from '../order-tracking'
+import { avanceDelPago, cobrosDelPedido, saldoDelPedido } from '../order-money'
 import { estaVivo } from '../store-orders'
 
 const t = await tiendaDemo()
@@ -250,5 +251,92 @@ describe('quién está en línea', () => {
 
   it('no se repiten', () => {
     expect(new Set(t.enLinea).size).toBe(t.enLinea.length)
+  })
+})
+
+// ─── Las dos operaciones de cobro ────────────────────────────────────────────
+//
+// Sin pedidos que hayan pagado el saldo, media pantalla no se puede enseñar: el
+// segundo recuadro verde, el anillo lleno y el filtro de pagos quedarían vacíos
+// en la única tienda que se usa para enseñar la herramienta.
+
+describe('el saldo en la tienda de ejemplo', () => {
+  const dobles = t.pedidos.filter(p => {
+    const c = cobrosDelPedido(p)
+    return c.length === 2 && c.every(x => x.verificado)
+  })
+
+  it('hay pedidos que hicieron los dos pagos, el adelanto y el saldo', () => {
+    expect(dobles.length).toBeGreaterThan(10)
+    expect(dobles.every(p => p.buyers?.document_number)).toBe(true)
+  })
+
+  // Los tres caminos, porque el desplegable de pagos ofrece solo los que existen:
+  // sin uno de ellos, la opción no aparecería y el demo enseñaría de menos.
+  it('enseña los tres cobros: adelanto, pago total y saldo', () => {
+    const tipos = new Set(t.pedidos.flatMap(p => cobrosDelPedido(p).filter(c => c.verificado).map(c => c.tipo)))
+    expect([...tipos].sort()).toEqual(['adelanto', 'saldo', 'total'])
+  })
+
+  // El cupón emitido y sin pagar es el estado ámbar. Tiene que existir para que
+  // se vea que un cupón NO es plata que entró.
+  it('tiene cupones de saldo emitidos y sin pagar', () => {
+    expect(t.pedidos.some(p => p.saldo_verification === 'PENDING')).toBe(true)
+  })
+
+  // El banco cobra siempre el cupón pendiente más antiguo: con el adelanto sin
+  // cruzar, quien paga su saldo termina pagando el adelanto por otro monto. Un
+  // demo que generara esa combinación enseñaría una pantalla imposible.
+  it('nunca hay saldo sin un adelanto ya cruzado, ni saldo sobre un pago total', () => {
+    for (const p of t.pedidos.filter(x => x.saldo_amount)) {
+      expect(p.payment_verification).toBe('MATCHED')
+      expect(Number(p.advance_amount)).toBeLessThan(Number(p.product_price))
+      expect(Number(p.saldo_amount)).toBe(Number(p.product_price) - Number(p.advance_amount))
+    }
+  })
+
+  it('el saldo llena el anillo, y no pagarlo lo deja a medias', () => {
+    expect(dobles.every(p => avanceDelPago(p).completo)).toBe(true)
+    const aMedias = t.pedidos.filter(p => p.saldo_verification === 'PENDING')
+    expect(aMedias.every(p => !avanceDelPago(p).completo)).toBe(true)
+  })
+
+  // El contraste es el punto: si todos los entregados tuvieran el anillo lleno,
+  // el anillo no distinguiría nada. Los que cobraron por fuera y solo movieron
+  // la etapa existen, y así se ven.
+  it('hay entregados con el anillo a medias: cobraron por fuera', () => {
+    const entregados = t.pedidos.filter(p => p.stage === 'entregado')
+    expect(entregados.some(p => avanceDelPago(p).completo)).toBe(true)
+    expect(entregados.some(p => !avanceDelPago(p).completo)).toBe(true)
+  })
+})
+
+// ─── El upsell ───────────────────────────────────────────────────────────────
+
+describe('los pedidos con upsell', () => {
+  // Sin ninguno, el anillo parecería tener solo tres posiciones —vacío, mitad,
+  // lleno— y lo que enseña es justamente que mide una proporción.
+  it('hay pedidos donde el adelanto no es ni la mitad ni el total', () => {
+    const raros = t.pedidos.filter(p => {
+      const f = avanceDelPago(p).fraccion
+      return f > 0 && Math.abs(f - 0.5) > 0.02 && f < 0.99
+    })
+    expect(raros.length).toBeGreaterThan(3)
+  })
+
+  // El adelanto se cobró sobre el total de ANTES, así que sobre el de ahora
+  // queda corto: el anillo baja y aparece un saldo que antes no existía.
+  it('el anillo de un upsell nunca está lleno, y deja saldo', () => {
+    for (const p of t.pedidos.filter(x => avanceDelPago(x).fraccion > 0 && !avanceDelPago(x).completo)) {
+      expect(saldoDelPedido(p)).toBeGreaterThan(0)
+    }
+  })
+
+  // El saldo se cobra contra el total del momento. Un pedido de ejemplo con las
+  // dos cosas mezcladas enseñaría una cuenta que no cuadra.
+  it('ningún pedido mezcla upsell con saldo cobrado', () => {
+    for (const p of t.pedidos.filter(x => x.saldo_amount)) {
+      expect(Number(p.advance_amount) + Number(p.saldo_amount)).toBe(Number(p.product_price))
+    }
   })
 })

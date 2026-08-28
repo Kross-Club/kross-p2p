@@ -64,6 +64,12 @@ export interface StoreOrder {
   address_lng?: number | null
   advance_amount?: number | string | null
   payment_verification?: string | null
+  /** El SALDO, que es la SEGUNDA operación de cobro y no la misma de arriba con
+   *  otro monto: ocurre después, cuando ya hay guía, con su propio cupón y su
+   *  propio número de operación bancaria. Sin estos dos campos el anillo del
+   *  tablero se quedaría a medias en un pedido que ya está pagado entero. */
+  saldo_amount?: number | string | null
+  saldo_verification?: string | null
   tracking_courier?: string | null
   tracking_numero?: string | null
   tracking_phase?: string | null
