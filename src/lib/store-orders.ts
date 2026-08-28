@@ -105,17 +105,10 @@ export function alcanceDePedidos(
   return { sellerId: effective.is_admin ? null : effective.auth_user_id }
 }
 
-/**
- * ¿Este pedido sigue vivo?
- *
- * Solo `cancelado` lo mata. `no_entregado` **no**: es el cierre de fracaso —el
- * pedido existió, salió y no llegó— y es la mitad de la tasa de entrega
- * (`entregado / (entregado + no_entregado)`), así que esconderlo junto a los
- * cancelados borraría el número que más duele.
- */
-export function estaVivo(o: Pick<StoreOrder, 'status' | 'stage'>): boolean {
-  return o.status !== 'cancelado'
-}
+/** ¿Este pedido sigue vivo? La definición está en `order-tracking` —es una
+ *  pregunta sobre el pedido, no sobre quién lo lee— y se reexporta acá para no
+ *  tocar a las cuatro pantallas que ya la importaban de este módulo. */
+export { estaVivo } from './order-tracking'
 
 export interface StoreOrders {
   pedidos: StoreOrder[]

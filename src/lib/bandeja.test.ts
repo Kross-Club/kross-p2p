@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { datosDeFila, esperaRespuesta, verBandeja, VISTAS, esVista } from './bandeja'
+import { datosDeFila, esperaRespuesta, esperaAlCliente, verBandeja, VISTAS, esVista } from './bandeja'
 import type { FilaBandeja, Vista } from './bandeja'
 import type { StoreOrder } from './store-orders'
 
@@ -20,13 +20,31 @@ describe('lo que la bandeja sabe de un pedido', () => {
   it('espera respuesta cuando el último en hablar fue el comprador', () => {
     const f = datosDeFila(pedido({ chat_messages: [msg('seller', 2 * H), msg('buyer', 1 * H)] }), AHORA, 0)
     expect(f.esperando).toBe(true)
-    expect(f.esperaMs).toBe(H)
+    expect(f.silencioMs).toBe(H)
   })
 
   it('no espera cuando el último en hablar fue la tienda', () => {
     const f = datosDeFila(pedido({ chat_messages: [msg('buyer', 2 * H), msg('seller', 1 * H)] }), AHORA, 0)
     expect(f.esperando).toBe(false)
-    expect(f.esperaMs).toBe(0)
+    expect(f.esperandoCliente).toBe(true)
+  })
+
+  // ESTE es el caso que se colaba: el cliente preguntó, después entró el pago y
+  // el sistema lo anunció. Contando el aviso como turno, el pedido se leía como
+  // si la tienda ya hubiera contestado — y desaparecía de los pendientes con la
+  // pregunta intacta.
+  it('los avisos del sistema no cuentan como turno', () => {
+    const o = pedido({ chat_messages: [
+      msg('seller', 5 * H),
+      msg('buyer', 3 * H),
+      msg('system', 2 * H, { type: 'call_log', body: 'Llamada de voz · 2:28' }),
+      msg('system', 1 * H, { type: 'status_update', body: 'Adelanto verificado' }),
+    ] })
+    expect(esperaRespuesta(o)).toBe(true)
+    // El silencio se mide desde la última PERSONA, no desde el aviso.
+    expect(datosDeFila(o, AHORA, 0).silencioMs).toBe(3 * H)
+    // Pero la fila sigue mostrando el aviso: es el contexto de qué pasó.
+    expect(datosDeFila(o, AHORA, 0).vistaPrevia).toBe('Adelanto verificado')
   })
 
   // No toda respuesta pasa por el chat: se le llamó, se le contestó por
@@ -41,6 +59,35 @@ describe('lo que la bandeja sabe de un pedido', () => {
   it('un mensaje posterior lo devuelve a la deuda solo', () => {
     const o = pedido({ chat_messages: [msg('buyer', 30 * MIN)], answered_at: hace(2 * H) })
     expect(esperaRespuesta(o)).toBe(true)
+  })
+
+  describe('el espejo: esperando al cliente', () => {
+    const conStage = (stage: string, extra: Partial<StoreOrder> = {}) =>
+      pedido({ stage, chat_messages: [msg('buyer', 3 * H), msg('seller', H)], ...extra })
+
+    it('contestamos y el cliente no volvió, con el pedido abierto', () => {
+      expect(esperaAlCliente(conStage('confirmado'))).toBe(true)
+    })
+
+    // En un pedido terminado nadie espera nada: meterlo llenaría la lista de
+    // pedidos cerrados.
+    it('no aplica a lo que ya terminó', () => {
+      expect(esperaAlCliente(conStage('entregado'))).toBe(false)
+      expect(esperaAlCliente(conStage('no_entregado'))).toBe(false)
+      expect(esperaAlCliente(conStage('confirmado', { status: 'cancelado' }))).toBe(false)
+    })
+
+    it('los dos lados se excluyen', () => {
+      const debe = pedido({ stage: 'confirmado', chat_messages: [msg('seller', 3 * H), msg('buyer', H)] })
+      expect(esperaRespuesta(debe)).toBe(true)
+      expect(esperaAlCliente(debe)).toBe(false)
+    })
+
+    it('un hilo sin personas no espera a nadie', () => {
+      const solo = pedido({ stage: 'confirmado', chat_messages: [msg('system', H, { type: 'status_update' })] })
+      expect(esperaRespuesta(solo)).toBe(false)
+      expect(esperaAlCliente(solo)).toBe(false)
+    })
   })
 
   it('sin marca de respondido, la deuda es la de siempre', () => {
@@ -84,7 +131,8 @@ describe('lo que la bandeja sabe de un pedido', () => {
 describe('las cuatro vistas de la bandeja', () => {
   const fila = (p: Partial<FilaBandeja>): FilaBandeja => ({
     vistaPrevia: '', quienEscribio: null, ultimoDe: null, ultimoEn: AHORA, creadoEn: AHORA,
-    esperando: false, esperaMs: 0, sinLeer: 0, demorado: false, diasParado: 0, favorito: false, ...p,
+    esperando: false, esperandoCliente: false, silencioMs: 0,
+    sinLeer: 0, demorado: false, diasParado: 0, favorito: false, ...p,
   })
   const items = (...fs: FilaBandeja[]) => fs.map((f, i) => ({ id: String(i), f }))
   const ver = (xs: { id: string; f: FilaBandeja }[], v: Vista) =>
@@ -94,10 +142,19 @@ describe('las cuatro vistas de la bandeja', () => {
   it('sin responder: solo los que deben, el que más espera arriba', () => {
     const xs = items(
       fila({ ultimoEn: AHORA }),
-      fila({ esperando: true, esperaMs: 30 * MIN }),
-      fila({ esperando: true, esperaMs: 5 * H }),
+      fila({ esperando: true, silencioMs: 30 * MIN }),
+      fila({ esperando: true, silencioMs: 5 * H }),
     )
     expect(ver(xs, 'sin_responder')).toEqual(['2', '1'])
+  })
+
+  it('esperando respuesta: solo los que nos deben, el silencio más largo arriba', () => {
+    const xs = items(
+      fila({ esperando: true, silencioMs: 9 * H }),
+      fila({ esperandoCliente: true, silencioMs: 30 * MIN }),
+      fila({ esperandoCliente: true, silencioMs: 6 * H }),
+    )
+    expect(ver(xs, 'esperando_cliente')).toEqual(['2', '1'])
   })
 
   it('favoritos: solo los marcados', () => {

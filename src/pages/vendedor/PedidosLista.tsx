@@ -105,8 +105,15 @@ function Actividad({ fila, ahora }: { fila: FilaBandeja; ahora: number }) {
         {fila.esperando && <CornerUpLeft size={11} className="inline mr-1 -mt-0.5" />}
         {hace(ahora - fila.ultimoEn)}
       </p>
+      {/* Solo la deuda NUESTRA lleva color: si los dos lados se pintan, el rojo
+          deja de querer decir "esto te toca a ti" (§6.1). */}
       {fila.esperando && (
         <p className="text-[10px] whitespace-nowrap" style={{ color: 'var(--danger-fg)' }}>sin responder</p>
+      )}
+      {fila.esperandoCliente && (
+        <p className="text-[10px] whitespace-nowrap" style={{ color: 'var(--text-faint)' }}>
+          esperando al cliente
+        </p>
       )}
     </div>
   )
@@ -231,7 +238,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
   const selectorVista = (chips: boolean) => (
     <div className={chips
       ? 'flex items-center gap-0.5 rounded-xl p-0.5 w-max'
-      : 'grid grid-cols-4 gap-3'}
+      : 'grid grid-cols-5 gap-3'}
       style={chips ? { background: 'var(--surface-3)' } : undefined}>
       {VISTAS.map(v => {
         const activo = v.key === vista

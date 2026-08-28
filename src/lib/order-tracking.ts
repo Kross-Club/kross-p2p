@@ -154,6 +154,36 @@ export const COLUMNAS: { key: PasoKey; label: string; emoji: string }[] = [
  * fracaso y va en su propio grupo, igual que los cancelados. Un tablero donde
  * la derrota es una columna más invita a arrastrar pedidos hacia ella.
  */
+/**
+ * ¿Este pedido sigue vivo?
+ *
+ * Solo `cancelado` lo mata. `no_entregado` **no**: es el cierre de fracaso —el
+ * pedido existió, salió y no llegó— y es la mitad de la tasa de entrega
+ * (`entregado / (entregado + no_entregado)`), así que esconderlo junto a los
+ * cancelados borraría el número que más duele.
+ *
+ * Vive acá y no en `store-orders` —que lo reexporta para no tocar a quien ya lo
+ * usaba— porque es una pregunta sobre el PEDIDO, no sobre quién lo lee, y
+ * `store-orders` arrastra React y el generador del demo: un módulo de lógica
+ * pura no debería cargar con eso para preguntar por un `status`.
+ */
+export function estaVivo(o: { status?: string | null; stage?: string | null }): boolean {
+  return o.status !== 'cancelado'
+}
+
+/**
+ * ¿El pedido sigue ABIERTO? O sea: ni entregado, ni caído, ni cancelado.
+ *
+ * Es lo que separa "todavía pasa algo acá" de "esto ya terminó". Un pedido
+ * entregado en el que la tienda escribió último no está esperando nada: está
+ * cerrado, y meterlo en una lista de pendientes la llena de ruido.
+ */
+export function pedidoAbierto(p: PedidoRastreable & { status?: string | null }): boolean {
+  if (!estaVivo(p)) return false
+  const col = columnaDelPedido(p)
+  return col !== 'entregado' && col !== 'no_entregado'
+}
+
 export function columnaDelPedido(p: PedidoRastreable): PasoKey {
   const key = pasoActual(p)?.key ?? 'nuevo'
   return key === 'en_camino' ? 'transito' : key
