@@ -936,6 +936,54 @@ instante desde una caché por tienda y revalida detrás. De paso, su `cargando` 
 resuelve —incluso si la consulta falla—, que es el caso que el watchdog de cuatro segundos de
 Equipo venía tapando.
 
+### Las cuatro vistas, y el recuadro que se puede tocar (28-ago-2026)
+
+Primer uso real, y tres de las cuatro prioridades no aguantaron:
+
+| Antes | Ahora | Por qué |
+|---|---|---|
+| Sin leer | ❌ se fue | "Leído" es del buzón, no del CRM: lo que decide si hay trabajo es si **contestaste**, no si abriste |
+| Sin responder | ✅ y ahora **recorta** | Ordenar no bastaba: la vista tiene que dar SOLO los que deben respuesta |
+| Parados | **Favoritos** | La demora del courier ya se ve en el Tablero; lo que faltaba era "vuelvo a este" |
+| Recientes | **Chats recientes** + **Pedidos recientes** | Eran dos cosas: un pedido de hace un mes puede tener el chat más nuevo de la lista |
+
+Y **los recuadros son las vistas**. Antes había un contador arriba y un chip abajo que decían lo
+mismo: un número que no se puede tocar invita a buscar dónde está lo que cuenta, y lo que
+contaba estaba al lado. Ahora es una sola cosa — se toca, se ve cuántos hay, y el activo lleva
+el borde lima.
+
+### "Sin responder" necesitaba poder cerrarse
+
+La regla —el último en hablar fue el comprador— deja fuera un caso común: **no toda respuesta
+pasa por el chat**. Se le llamó, se le contestó por WhatsApp, o la pregunta no necesitaba
+respuesta. Sin poder cerrarlo a mano, esos pedidos se quedan arriba para siempre y la lista deja
+de significar algo.
+
+De ahí `answered_at` en `order_sessions` y el botón ✓ del chat, que aparece **solo cuando hay
+deuda** — un botón que no hace falta ocupa sitio y hace dudar de si había algo pendiente.
+
+Dos decisiones que el código deja escritas:
+
+- **Es del PEDIDO, no de quien lo marca.** Si Andrea lo cierra, Kevin no tiene que volver a
+  mirarlo. Por eso es una columna y no `localStorage`.
+- **Es una FECHA, no una bandera.** Un mensaje posterior del comprador es más nuevo que
+  `answered_at`, así que el pedido vuelve solo a la lista: no hay nada que reabrir, y no existe
+  el estado "marcado como respondido pero con una pregunta encima".
+
+En cambio **favoritos sí es del dispositivo** (`src/lib/favoritos.ts`), y por la razón contraria:
+dos vendedores de la misma tienda tienen pendientes distintos, y una estrella compartida se
+llenaría de las marcas de todos hasta no decir nada. Si algún día tiene que seguir a la persona
+entre sus dispositivos, pasa a ser una tabla `seller_favorites` — y ese cambio es de servidor,
+no de esta pantalla.
+
+### "Tú:" no dice nada en un equipo de seis
+
+El último mensaje se prefijaba con "Tú:" para todo lo que saliera de la tienda. Ahora dice
+**quién**: `Cliente:`, `Milagros:`, `Sistema:`, `Bot:`. Es justo lo que evita el trabajo
+duplicado — si ya contestó Milagros, no hace falta que conteste nadie más. Un mensaje de vendedor
+sin nombre guardado (los de antes de que se guardara) dice `Tienda:`, que es verdad sin inventar
+a nadie.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

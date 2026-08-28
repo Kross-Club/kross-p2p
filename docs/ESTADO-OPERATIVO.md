@@ -192,6 +192,32 @@ Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabac
 siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
 
+### Marcar un pedido como respondido (28-ago-2026)
+
+**1. SQL primero** (SQL Editor, proyecto PWA):
+
+```sql
+alter table order_sessions
+  add column if not exists answered_at timestamptz;
+```
+
+**2. Luego los tres deploys:**
+
+```
+supabase functions deploy order-manage       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session        --project-ref ofdjghntvmrdfjhazfvz
+```
+
+- `order-manage` gana la acción `mark_answered`.
+- `get-store-sessions` devuelve `answered_at` y el `sender_name` de cada mensaje (para que la
+  Lista diga **quién** escribió en vez de "Tú:").
+- `get-session` devuelve `answered_at`, para que el botón del chat sepa si hay deuda.
+
+Sin la columna, `mark_answered` falla y el botón avisa. Sin los deploys: la Lista sigue diciendo
+"Tienda:" en vez del nombre, y "Sin responder" no reconoce lo marcado a mano — no rompe nada,
+pero la vista no sirve para lo que se hizo. **Corre el SQL antes que los deploys.**
+
 ### ~~`list-clients`: el número de pedido en la ficha del cliente~~ — revertido el mismo día
 
 Se añadió `order_id` al `select` y se quitó horas después: el número de pedido en cada fila

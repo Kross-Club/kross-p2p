@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
+import { useFavoritos, alternarFavorito } from '../../lib/favoritos'
+import { esperaRespuesta } from '../../lib/bandeja'
+import type { StoreOrder } from '../../lib/store-orders'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import TrackingBar from '../../components/TrackingBar'
@@ -457,8 +460,10 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
   const [sending, setSending] = useState(false)
   const [showCall, setShowCall] = useState(false)
   const [verClienteAbierto, setVerCliente] = useState(false)
+  const [marcando, setMarcando] = useState(false)
   // El puntito verde, de la misma fuente que Lista y Tablero.
   const enLinea = useCompradoresEnLinea(effective?.store_id)
+  const favoritos = useFavoritos(effective?.store_id)
   const buyerOnline = !!session?.buyer_id && enLinea.has(session.buyer_id)
   // "Está en la app" = hoy puede recibir una push. Haber entrado alguna vez no
   // basta: se desinstala sin avisar, y lo que decide si el aviso llega es la
@@ -591,6 +596,9 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         },
         order_recreated: () => {
           setSession(prev => prev ? { ...prev, status: 'active', stage: 'nuevo' } : prev)
+        },
+        answered_update: ({ payload }) => {
+          setSession(prev => prev ? { ...prev, answered_at: payload.answered_at as string } : prev)
         },
         nota_update: ({ payload }) => {
           setSession(prev => prev ? { ...prev, nota: payload.nota as string } : prev)
@@ -741,6 +749,32 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     reloadSession()
   }
 
+  // ¿Este pedido le debe una respuesta al cliente? Es la MISMA regla que ordena
+  // la bandeja (lib/bandeja.ts): el último en hablar fue el comprador y nadie
+  // lo dio por respondido después. Una segunda copia acá haría que el botón y
+  // la lista discreparan sobre el mismo pedido.
+  const debeRespuesta = esperaRespuesta(session as unknown as StoreOrder)
+  const favorito = favoritos.has(session.id)
+
+  const marcarRespondido = async () => {
+    if (marcando) return
+    setMarcando(true)
+    const answered_at = new Date().toISOString()
+    try {
+      const res = await fetch(`${BASE}/order-manage`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_answered', session_id: session.id }),
+      })
+      if (!res.ok) throw new Error('mark_failed')
+      setSession(s => s ? { ...s, answered_at } : s)
+    } catch {
+      alert('No se pudo marcar como respondido. Intenta de nuevo.')
+    } finally {
+      setMarcando(false)
+    }
+  }
+
   // ── Las piezas del pedido, montadas distinto según la pantalla ───────────
   const overlay = (
     <>
@@ -811,6 +845,41 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
             {!desktop && (
               <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.7)' }}><ShoppingCart size={11} /> Ver pedido</p>
             )}
+          </button>
+
+          {/* La deuda con el cliente se cierra acá. La bandeja llama "sin
+              responder" a un pedido cuyo último mensaje es del comprador, y eso
+              casi siempre se arregla escribiéndole — pero no siempre: se le
+              llamó, se le contestó por WhatsApp, o la pregunta no necesitaba
+              respuesta. Sin esto, esos pedidos se quedan arriba de la lista
+              para siempre y la lista deja de significar algo.
+              Solo aparece cuando hay deuda: un botón que no hace falta ocupa
+              sitio y hace dudar de si había algo pendiente. */}
+          {debeRespuesta && canWrite && (
+            <button
+              onClick={marcarRespondido}
+              disabled={marcando}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-50"
+              style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}
+              aria-label="Marcar como respondido"
+              title="Marcar como respondido — sale de «Sin responder» hasta que el cliente vuelva a escribir">
+              <CheckCheck size={16} />
+            </button>
+          )}
+
+          {/* La estrella es de quien mira, no del pedido: dos vendedores tienen
+              pendientes distintos, y una estrella compartida se llenaría de las
+              marcas de todos hasta no decir nada. Ver lib/favoritos.ts */}
+          <button
+            onClick={() => alternarFavorito(effective?.store_id, session.id)}
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+            style={favorito
+              ? { background: 'var(--brand)', color: 'var(--on-brand)' }
+              : { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.75)' }}
+            aria-pressed={favorito}
+            aria-label={favorito ? 'Quitar de favoritos' : 'Marcar como favorito'}
+            title={favorito ? 'Quitar de favoritos' : 'Guardar para volver — sale en «Favoritos»'}>
+            <Star size={16} fill={favorito ? 'currentColor' : 'none'} />
           </button>
 
           {/* Antes era una campana genérica. Ahora dice lo que de verdad

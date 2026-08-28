@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { datosDeFila, ordenarBandeja, PRIORIDADES, esPrioridad } from './bandeja'
-import type { FilaBandeja } from './bandeja'
+import { datosDeFila, esperaRespuesta, verBandeja, VISTAS, esVista } from './bandeja'
+import type { FilaBandeja, Vista } from './bandeja'
 import type { StoreOrder } from './store-orders'
 
 const MIN = 60_000
@@ -9,21 +9,18 @@ const AHORA = new Date(2026, 7, 28, 15, 0).getTime()
 
 const hace = (ms: number) => new Date(AHORA - ms).toISOString()
 
-const msg = (rol: string, ms: number, body = 'hola', type = 'text') => ({
-  id: `m-${rol}-${ms}`, sender_role: rol, type, body,
-  created_at: hace(ms), read_at: null,
+const msg = (rol: string, ms: number, extra: Record<string, unknown> = {}) => ({
+  id: `m-${rol}-${ms}`, sender_role: rol, type: 'text', body: 'hola',
+  created_at: hace(ms), read_at: null, ...extra,
 })
 
 const pedido = (p: Partial<StoreOrder>): StoreOrder => ({ id: 'x', created_at: hace(3 * H), ...p })
 
 describe('lo que la bandeja sabe de un pedido', () => {
-  // "Esperando" no es lo mismo que "sin leer": un mensaje leído y no contestado
-  // sigue siendo una deuda, y es justo el que se olvida.
   it('espera respuesta cuando el último en hablar fue el comprador', () => {
     const f = datosDeFila(pedido({ chat_messages: [msg('seller', 2 * H), msg('buyer', 1 * H)] }), AHORA, 0)
     expect(f.esperando).toBe(true)
     expect(f.esperaMs).toBe(H)
-    expect(f.sinLeer).toBe(0)
   })
 
   it('no espera cuando el último en hablar fue la tienda', () => {
@@ -32,85 +29,114 @@ describe('lo que la bandeja sabe de un pedido', () => {
     expect(f.esperaMs).toBe(0)
   })
 
+  // No toda respuesta pasa por el chat: se le llamó, se le contestó por
+  // WhatsApp, o la pregunta no necesitaba respuesta.
+  it('marcarlo como respondido lo saca de la deuda', () => {
+    const o = pedido({ chat_messages: [msg('buyer', 2 * H)], answered_at: hace(1 * H) })
+    expect(esperaRespuesta(o)).toBe(false)
+  })
+
+  // Y si el comprador vuelve a escribir DESPUÉS, vuelve solo: no hay nada que
+  // reabrir, porque la comparación es contra la fecha y no contra una bandera.
+  it('un mensaje posterior lo devuelve a la deuda solo', () => {
+    const o = pedido({ chat_messages: [msg('buyer', 30 * MIN)], answered_at: hace(2 * H) })
+    expect(esperaRespuesta(o)).toBe(true)
+  })
+
+  it('sin marca de respondido, la deuda es la de siempre', () => {
+    expect(esperaRespuesta(pedido({ chat_messages: [msg('buyer', H)] }))).toBe(true)
+    expect(esperaRespuesta(pedido({ chat_messages: [msg('buyer', H)], answered_at: 'cualquier cosa' }))).toBe(true)
+  })
+
+  // "Tú:" para todo lo que sale de la tienda es justo lo que no se puede saber
+  // de un vistazo en un equipo de seis.
+  it('dice QUIÉN escribió, con nombre', () => {
+    const quien = (m: Record<string, unknown>) =>
+      datosDeFila(pedido({ chat_messages: [m as never] }), AHORA, 0).quienEscribio
+    expect(quien(msg('buyer', H))).toBe('Cliente')
+    expect(quien(msg('seller', H, { sender_name: 'Milagros Cruz' }))).toBe('Milagros')
+    expect(quien(msg('system', H))).toBe('Sistema')
+    expect(quien(msg('bot', H))).toBe('Bot')
+    // Un mensaje viejo, de antes de que se guardara el nombre.
+    expect(quien(msg('seller', H))).toBe('Tienda')
+    expect(datosDeFila(pedido({}), AHORA, 0).quienEscribio).toBeNull()
+  })
+
   it('sin mensajes, el hilo se movió cuando entró el pedido', () => {
     const f = datosDeFila(pedido({ created_at: hace(5 * H) }), AHORA, 0)
     expect(f.vistaPrevia).toBe('Sin mensajes')
     expect(f.ultimoEn).toBe(AHORA - 5 * H)
-    expect(f.esperando).toBe(false)
+    expect(f.creadoEn).toBe(AHORA - 5 * H)
   })
 
   it('escribe lo que no es texto en vez de dejar la fila vacía', () => {
-    expect(datosDeFila(pedido({ chat_messages: [msg('buyer', H, null as unknown as string, 'audio')] }), AHORA, 0).vistaPrevia).toBe('🎵 Audio')
-    expect(datosDeFila(pedido({ chat_messages: [msg('system', H, 'Llamada de voz · 3:20', 'call_log')] }), AHORA, 0).vistaPrevia).toBe('📞 Llamada de voz · 3:20')
+    const previa = (m: Record<string, unknown>) =>
+      datosDeFila(pedido({ chat_messages: [m as never] }), AHORA, 0).vistaPrevia
+    expect(previa({ ...msg('buyer', H), type: 'audio', body: null })).toBe('🎵 Audio')
+    expect(previa({ ...msg('system', H), type: 'call_log', body: 'Llamada de voz · 3:20' })).toBe('📞 Llamada de voz · 3:20')
   })
 
   it('una fecha ilegible no rompe la fila', () => {
-    const f = datosDeFila(pedido({ created_at: 'ayer', chat_messages: [] }), AHORA, 0)
-    expect(f.ultimoEn).toBe(AHORA)
+    expect(datosDeFila(pedido({ created_at: 'ayer', chat_messages: [] }), AHORA, 0).ultimoEn).toBe(AHORA)
   })
 })
 
-describe('el orden de la bandeja', () => {
+describe('las cuatro vistas de la bandeja', () => {
   const fila = (p: Partial<FilaBandeja>): FilaBandeja => ({
-    vistaPrevia: '', ultimoDe: null, ultimoEn: AHORA, esperando: false,
-    esperaMs: 0, sinLeer: 0, demorado: false, diasParado: 0, ...p,
+    vistaPrevia: '', quienEscribio: null, ultimoDe: null, ultimoEn: AHORA, creadoEn: AHORA,
+    esperando: false, esperaMs: 0, sinLeer: 0, demorado: false, diasParado: 0, favorito: false, ...p,
   })
   const items = (...fs: FilaBandeja[]) => fs.map((f, i) => ({ id: String(i), f }))
-  const orden = (xs: { id: string; f: FilaBandeja }[], p: Parameters<typeof ordenarBandeja>[1]) =>
-    ordenarBandeja(xs, p, x => x.f).map(x => x.id)
+  const ver = (xs: { id: string; f: FilaBandeja }[], v: Vista) =>
+    verBandeja(xs, v, x => x.f).map(x => x.id)
 
-  it('sin responder: primero quien más lleva esperando', () => {
-    const xs = items(
-      fila({ ultimoEn: AHORA }),                          // 0 · no espera, reciente
-      fila({ esperando: true, esperaMs: 30 * MIN }),       // 1 · espera poco
-      fila({ esperando: true, esperaMs: 5 * H }),          // 2 · espera mucho
-    )
-    expect(orden(xs, 'sin_responder')).toEqual(['2', '1', '0'])
-  })
-
-  it('sin leer: primero lo que nadie abrió, y de eso lo que más se acumuló', () => {
+  // Recorta, no solo ordena: la lista tiene que dar SOLO los que deben respuesta.
+  it('sin responder: solo los que deben, el que más espera arriba', () => {
     const xs = items(
       fila({ ultimoEn: AHORA }),
-      fila({ sinLeer: 1 }),
-      fila({ sinLeer: 4 }),
+      fila({ esperando: true, esperaMs: 30 * MIN }),
+      fila({ esperando: true, esperaMs: 5 * H }),
     )
-    expect(orden(xs, 'sin_leer')).toEqual(['2', '1', '0'])
+    expect(ver(xs, 'sin_responder')).toEqual(['2', '1'])
   })
 
-  // La demora que reporta el courier manda sobre el conteo de días: es el único
-  // atraso que no estamos infiriendo nosotros.
-  it('parados: la demora del courier manda sobre los días', () => {
+  it('favoritos: solo los marcados', () => {
     const xs = items(
-      fila({ diasParado: 9 }),
-      fila({ demorado: true, diasParado: 2 }),
-      fila({ diasParado: 4 }),
+      fila({ favorito: true, ultimoEn: AHORA - H }),
+      fila({}),
+      fila({ favorito: true, ultimoEn: AHORA }),
     )
-    expect(orden(xs, 'demorados')).toEqual(['1', '0', '2'])
+    expect(ver(xs, 'favoritos')).toEqual(['2', '0'])
   })
 
-  it('recientes: lo último que se movió', () => {
+  // Los dos ejes son distintos a propósito: un pedido de hace un mes puede
+  // tener el chat más nuevo de la lista.
+  it('chats y pedidos ordenan por ejes distintos', () => {
     const xs = items(
-      fila({ ultimoEn: AHORA - 5 * H }),
-      fila({ ultimoEn: AHORA }),
-      fila({ ultimoEn: AHORA - H }),
+      fila({ ultimoEn: AHORA, creadoEn: AHORA - 30 * 24 * H }),   // chat nuevo, pedido viejo
+      fila({ ultimoEn: AHORA - 5 * H, creadoEn: AHORA }),          // chat viejo, pedido nuevo
     )
-    expect(orden(xs, 'recientes')).toEqual(['1', '2', '0'])
+    expect(ver(xs, 'chats')).toEqual(['0', '1'])
+    expect(ver(xs, 'pedidos')).toEqual(['1', '0'])
   })
 
-  // La lista la comparten cuatro pantallas: ordenarla en el sitio le cambiaría
-  // el orden a las otras tres.
+  it('los que ordenan no recortan', () => {
+    const xs = items(fila({}), fila({}), fila({}))
+    expect(ver(xs, 'chats')).toHaveLength(3)
+    expect(ver(xs, 'pedidos')).toHaveLength(3)
+  })
+
   it('no toca la lista original', () => {
     const xs = items(fila({ ultimoEn: AHORA - H }), fila({ ultimoEn: AHORA }))
     const antes = xs.map(x => x.id)
-    ordenarBandeja(xs, 'recientes', x => x.f)
+    verBandeja(xs, 'chats', x => x.f)
     expect(xs.map(x => x.id)).toEqual(antes)
   })
 
-  it('cada prioridad responde una pregunta distinta', () => {
-    const preguntas = PRIORIDADES.map(p => p.pregunta)
-    expect(new Set(preguntas).size).toBe(PRIORIDADES.length)
-    expect(esPrioridad('sin_leer')).toBe(true)
-    expect(esPrioridad('inventada')).toBe(false)
-    expect(esPrioridad(null)).toBe(false)
+  it('cada vista responde una pregunta distinta', () => {
+    expect(new Set(VISTAS.map(v => v.pregunta)).size).toBe(VISTAS.length)
+    expect(esVista('favoritos')).toBe(true)
+    expect(esVista('sin_leer')).toBe(false)
+    expect(esVista(null)).toBe(false)
   })
 })

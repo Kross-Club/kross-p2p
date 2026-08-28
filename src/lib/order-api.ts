@@ -46,6 +46,8 @@ export interface OrderSession {
   payment_verification?: string | null
   /** Motivo escrito por el cobro. Solo llega al vendedor. */
   payment_reason?: string | null
+  /** Cuándo se dio por respondida la última pregunta del comprador. */
+  answered_at?: string | null
   advance_amount?: number | string | null
   /** '360PAY' = el adelanto se cobra en línea; NULL = sin cobro en línea. */
   payment_provider?: string | null
