@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   FILTRO_VACIO, ventanaDe, pasaFiltro, aplicarFiltro,
-  cuantosFiltros, resumenDelRango, opcionesDe, clave, textoDe, coincide,
+  cuantosFiltros, resumenDelRango, opcionesDe, clave, textoDe, coincide, pagosDe,
 } from './pedidos-filtro'
 import type { Filtro } from './pedidos-filtro'
 import type { StoreOrder } from './store-orders'
@@ -229,5 +229,60 @@ describe('el buscador dentro del filtro', () => {
     const f = con({ busca: 'rosa', producto: 'Faja Reductora Premium' })
     expect(pasaFiltro(ROSA, f, AHORA)).toBe(true)
     expect(pasaFiltro({ ...ROSA, product_name: 'Otro' }, f, AHORA)).toBe(false)
+  })
+})
+
+// ─── Rebanar por lo que se cobró ─────────────────────────────────────────────
+
+/** Los cuatro casos que existen de verdad en una tienda. */
+const ADELANTO = pedido({ id: 'a', product_price: 150, advance_amount: 75, payment_verification: 'MATCHED' })
+const TOTAL = pedido({ id: 't', product_price: 150, advance_amount: 150, payment_verification: 'MATCHED' })
+const DOBLE = pedido({
+  id: 'd', product_price: 150, advance_amount: 75, payment_verification: 'MATCHED',
+  saldo_amount: 75, saldo_verification: 'MATCHED',
+})
+const SIN_CRUZAR = pedido({ id: 's', product_price: 150, advance_amount: 75, payment_verification: 'PENDING' })
+
+describe('el filtro de pagos', () => {
+  it('separa adelanto, pago total y saldo', () => {
+    expect(pagosDe(ADELANTO)).toEqual(['adelanto'])
+    expect(pagosDe(TOTAL)).toEqual(['total'])
+    expect(pagosDe(DOBLE)).toEqual(['adelanto', 'saldo'])
+  })
+
+  // Quien adelantó y después pagó su saldo hizo LAS DOS operaciones, y las dos
+  // ocurrieron de verdad. Esconder una para que las listas no se solapen sería
+  // inventar: "Saldo" es justo la lista de los que pagaron dos veces.
+  it('un pedido con los dos pagos sale en las dos listas', () => {
+    const todos = [ADELANTO, TOTAL, DOBLE]
+    expect(aplicarFiltro(todos, con({ pago: 'adelanto' }), AHORA)).toEqual([ADELANTO, DOBLE])
+    expect(aplicarFiltro(todos, con({ pago: 'saldo' }), AHORA)).toEqual([DOBLE])
+    expect(aplicarFiltro(todos, con({ pago: 'total' }), AHORA)).toEqual([TOTAL])
+  })
+
+  // Un cupón emitido no es un pago. El desplegable dice "pagos", así que
+  // listarlo ahí haría contar como cobrado lo que todavía no entró — que es
+  // exactamente el error que hace despachar de más.
+  it('lo que no cruzó la pasarela no es un pago', () => {
+    expect(pagosDe(SIN_CRUZAR)).toEqual([])
+    expect(pagosDe(pedido({
+      id: 'p', product_price: 150, advance_amount: 75, payment_verification: 'MATCHED',
+      saldo_amount: 75, saldo_verification: 'PENDING',
+    }))).toEqual(['adelanto'])
+    expect(aplicarFiltro([ADELANTO, SIN_CRUZAR], con({ pago: 'adelanto' }), AHORA)).toEqual([ADELANTO])
+  })
+
+  it('cuenta como filtro puesto y se acumula con los demás', () => {
+    expect(cuantosFiltros(con({ pago: 'saldo' }))).toBe(1)
+    expect(cuantosFiltros(con({ pago: 'saldo', producto: 'Faja' }))).toBe(2)
+    expect(cuantosFiltros(FILTRO_VACIO)).toBe(0)
+  })
+
+  // Un desplegable que se reordena solo según qué pedido entró primero obliga a
+  // leerlo entero cada vez.
+  it('ofrece solo las formas de cobro que existen, y siempre en el mismo orden', () => {
+    expect(opcionesDe([DOBLE, TOTAL]).pagos).toEqual(['adelanto', 'total', 'saldo'])
+    expect(opcionesDe([TOTAL]).pagos).toEqual(['total'])
+    expect(opcionesDe([SIN_CRUZAR]).pagos).toEqual([])
   })
 })

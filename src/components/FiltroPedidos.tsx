@@ -1,5 +1,5 @@
 import { CalendarRange, Search, SlidersHorizontal, X } from 'lucide-react'
-import { FILTRO_VACIO, RANGOS, cuantosFiltros, opcionesDe, resumenDelRango } from '../lib/pedidos-filtro'
+import { FILTRO_VACIO, PAGOS, RANGOS, cuantosFiltros, opcionesDe, resumenDelRango } from '../lib/pedidos-filtro'
 import type { ReactNode } from 'react'
 import type { Filtro, RangoKey } from '../lib/pedidos-filtro'
 import type { StoreOrder } from '../lib/store-orders'
@@ -26,7 +26,7 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados, extra
    *  puesto, y no esta barra. */
   extra?: ReactNode
 }) {
-  const { vendedores, productos } = opcionesDe(base)
+  const { vendedores, productos, pagos } = opcionesDe(base)
   const puestos = cuantosFiltros(filtro)
   const aMano = filtro.rango === 'rango'
 
@@ -113,6 +113,22 @@ export default function FiltroPedidos({ filtro, onCambio, base, mostrados, extra
           className={`${select} flex-shrink-0`} style={selectStyle}>
           <option value="">Todos los productos</option>
           {productos.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+      )}
+
+      {/* Al lado del producto porque rebana igual que él, y después porque la
+          pregunta llega después: primero qué se vende, luego cómo se cobró.
+          Solo si hay más de una forma de cobro en la lista — con todos los
+          pedidos cobrados igual, este desplegable no rebana nada. */}
+      {pagos.length > 1 && (
+        <select value={filtro.pago} onChange={e => set({ pago: e.target.value as Filtro['pago'] })}
+          aria-label="Filtrar por lo que se cobró"
+          title="Solo cuenta lo que cruzó la pasarela"
+          className={`${select} flex-shrink-0`} style={selectStyle}>
+          <option value="">Todos los pagos</option>
+          {PAGOS.filter(x => pagos.includes(x.key)).map(x => (
+            <option key={x.key} value={x.key}>{x.label}</option>
+          ))}
         </select>
       )}
 

@@ -1554,6 +1554,55 @@ la única mentira que `order-money.ts` no se puede permitir. **Entregar el pedid
 cobrar lo cobra.** Un anillo que se llenara al mover la etapa mediría el ánimo del vendedor,
 no la caja — y el anillo existe justo para responder cuánta plata está adentro y cuánta
 todavía depende de que alguien aparezca.
+### Y se puede preguntar al revés: quiénes pagaron qué
+
+El anillo y las tarjetas verdes lo dicen **pedido por pedido**. Faltaba la pregunta al revés,
+que es la que se hace un lunes por la mañana: *¿cuáles van por cada camino?* Para responderla
+había que abrir el tablero y contar anillos a ojo, columna por columna.
+
+Ahora hay un desplegable al lado del de productos —**Todos los pagos · Adelanto · Total ·
+Saldo**— que rebana igual que él. Va después porque la pregunta llega después: primero qué se
+vende, luego cómo se cobró.
+
+Lo que responde cada opción:
+
+- **Adelanto** — adelantaron una parte. Son los que todavía deben algo.
+- **Total** — pagaron el precio entero de una. No hay nada que cobrar después.
+- **Saldo** — pagaron el saldo en una segunda operación. O sea: **los que hicieron los dos
+  pagos**, que es la lista que no existía en ninguna pantalla.
+
+Un pedido puede caer en dos: quien adelantó y después pagó su saldo sale en *Adelanto* y en
+*Saldo*, porque las dos operaciones ocurrieron de verdad. Esconder una para que las listas no
+se solapen sería inventar un dato para que cuadre una suma que nadie pidió.
+
+Y **solo cuenta lo que cruzó la pasarela**, la misma regla del anillo: un cupón emitido y sin
+pagar no es un pago. El desplegable dice *pagos*, y listar ahí lo que todavía no entró es
+exactamente el error que hace despachar de más.
+
+Se ofrece solo cuando hay más de una forma de cobro en la lista, como el de vendedores y el de
+productos: con todos los pedidos cobrados igual, ese desplegable no rebana nada y solo estorba.
+
+> Vive en la barra de filtros, o sea que también está en Lista y en Resumen. Es a propósito y
+> es la regla de esta pantalla desde el principio: Lista, Tablero y Resumen son la misma lista
+> mirada distinto, y un filtro por modo haría que el tablero de "esta semana" y el resumen de
+> "todo" convivan sin que nada avise que están contando cosas distintas.
+
+### Y la tienda de ejemplo cobra el saldo
+
+El demo no tenía saldos: todos sus pedidos habían hecho una sola operación. Con eso, media
+pantalla nueva no se podía enseñar —el segundo recuadro verde, el anillo lleno, la opción
+*Saldo* del filtro— justo en la tienda que existe para enseñar la herramienta.
+
+Ahora un pedido del demo paga el saldo cuando **puede pagarlo de verdad**: queda algo por
+cobrar, el adelanto ya cruzó y hay guía. Las mismas tres condiciones que `puedePagarSaldo`, no
+una moneda al aire — un demo que generara un saldo sobre un adelanto sin cruzar enseñaría una
+pantalla que en producción no puede ocurrir.
+
+Y no lo paga todo el mundo, que es el punto: **quedan entregados con el anillo a medias**, los
+que arreglaron el resto con el comercio por fuera. Si en el demo todos pagaran el saldo, un
+anillo lleno no significaría nada — hace falta el contraste para que se vea qué está midiendo.
+También hay unos cuantos con el cupón emitido y sin pagar, que son los ámbar: sin ellos no se
+ve que un cupón **no** es plata que entró.
 
 ## Ver también
 

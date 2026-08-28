@@ -1,4 +1,6 @@
+import { cobrosDelPedido } from './order-money'
 import type { StoreOrder } from './store-orders'
+import type { TipoDeCobro } from './order-money'
 
 // ─── El filtro de Pedidos ────────────────────────────────────────────────────
 //
@@ -39,9 +41,48 @@ export interface Filtro {
   /** Texto libre: nombre, N° de pedido, DNI, teléfono o guía. Vacío = todos.
    *  Ver `coincide` para por qué esos cinco y no el producto. */
   busca: string
+  /** Qué se le cobró a este pedido. Vacío = todos. Ver `PAGOS`. */
+  pago: '' | TipoDeCobro
 }
 
-export const FILTRO_VACIO: Filtro = { rango: 'todo', desde: '', hasta: '', vendedor: '', producto: '', busca: '' }
+export const FILTRO_VACIO: Filtro = {
+  rango: 'todo', desde: '', hasta: '', vendedor: '', producto: '', busca: '', pago: '',
+}
+
+// ─── Rebanar por lo que se cobró ─────────────────────────────────────────────
+//
+// Un pedido se cobra hasta dos veces y son operaciones distintas (§ "Un
+// adelanto, un pago total y un saldo son tres cosas" en docs/11-RELACIONES.md).
+// El tablero ya lo dice pedido por pedido —el anillo, las tarjetas verdes— pero
+// no se podía preguntar al revés: *cuáles* van por cada camino.
+//
+// Las tres preguntas que este desplegable responde, y que antes había que
+// contar a ojo columna por columna:
+//
+//   Adelanto → adelantaron una parte. Son los que todavía deben algo.
+//   Total    → pagaron el precio entero de una. No hay nada que cobrar después.
+//   Saldo    → pagaron el saldo en una SEGUNDA operación. O sea: los que
+//              hicieron los dos pagos, que es la lista que no existía.
+//
+// Un pedido puede caer en dos —quien adelantó y después pagó su saldo está en
+// "Adelanto" y en "Saldo"—, y así debe ser: las dos operaciones ocurrieron de
+// verdad, y esconder una para que las listas no se solapen sería inventar.
+//
+// **Solo cuenta lo cruzado por la pasarela**, la misma regla del anillo
+// (`cobradoDelPedido`). Un cupón emitido y sin pagar no es un pago, y este
+// desplegable dice "pagos": listarlo acá haría contar como cobrado lo que
+// todavía no entró, que es exactamente el error que hace despachar de más.
+
+export const PAGOS: { key: TipoDeCobro; label: string }[] = [
+  { key: 'adelanto', label: 'Adelanto' },
+  { key: 'total', label: 'Total' },
+  { key: 'saldo', label: 'Saldo' },
+]
+
+/** Las operaciones de este pedido que de verdad entraron. */
+export function pagosDe(p: StoreOrder): TipoDeCobro[] {
+  return cobrosDelPedido(p).filter(c => c.verificado).map(c => c.tipo)
+}
 
 // ─── Buscar UN pedido ────────────────────────────────────────────────────────
 //
@@ -153,6 +194,7 @@ export function pasaFiltro(p: StoreOrder, f: Filtro, ahora: number): boolean {
   if (f.vendedor && (p.assigned_seller_id ?? '') !== f.vendedor) return false
   if (f.producto && (p.product_name ?? '') !== f.producto) return false
   if (f.busca.trim() && !coincide(p, f.busca)) return false
+  if (f.pago && !pagosDe(p).includes(f.pago)) return false
 
   const { desde, hasta } = ventanaDe(f, ahora)
   if (desde === null && hasta === null) return true
@@ -173,7 +215,7 @@ export function aplicarFiltro(pedidos: StoreOrder[], f: Filtro, ahora: number): 
  *  de vender. */
 export function cuantosFiltros(f: Filtro): number {
   const fecha = f.rango === 'rango' ? (f.desde || f.hasta ? 1 : 0) : f.rango === 'todo' ? 0 : 1
-  return fecha + (f.vendedor ? 1 : 0) + (f.producto ? 1 : 0) + (f.busca.trim() ? 1 : 0)
+  return fecha + (f.vendedor ? 1 : 0) + (f.producto ? 1 : 0) + (f.busca.trim() ? 1 : 0) + (f.pago ? 1 : 0)
 }
 
 /** Cómo se lee el rango puesto, para decirlo sin abrir el panel. */
@@ -197,17 +239,24 @@ export function resumenDelRango(f: Filtro): string {
 export function opcionesDe(pedidos: StoreOrder[]): {
   vendedores: { id: string; nombre: string }[]
   productos: string[]
+  pagos: TipoDeCobro[]
 } {
   const vendedores = new Map<string, string>()
   const productos = new Set<string>()
+  const pagos = new Set<TipoDeCobro>()
   for (const p of pedidos) {
     if (p.assigned_seller_id) vendedores.set(p.assigned_seller_id, p.seller_name || 'Sin nombre')
     if (p.product_name) productos.add(p.product_name)
+    for (const tipo of pagosDe(p)) pagos.add(tipo)
   }
   return {
     vendedores: [...vendedores].map(([id, nombre]) => ({ id, nombre }))
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
     productos: [...productos].sort((a, b) => a.localeCompare(b, 'es')),
+    // En el orden de `PAGOS` —adelanto, total, saldo— y no en el que aparecieron:
+    // un desplegable que se reordena solo según qué pedido entró primero obliga
+    // a leerlo entero cada vez.
+    pagos: PAGOS.map(x => x.key).filter(k => pagos.has(k)),
   }
 }
 

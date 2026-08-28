@@ -60,7 +60,7 @@ create index if not exists idx_order_sessions_saldo_coupon
 
 | Función | Qué destraba | Nota |
 |---|---|---|
-| `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual, y el **DNI** que necesita el buscador | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
+| `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual, el **DNI** que necesita el buscador y el **saldo** (anillo y filtro de pagos). ⚠️ Pide el SQL §31 **antes**: sin esas columnas el select falla entero y el tablero queda en blanco | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
 | `order-manage` | `mark_answered`, `anular` / `restore`, y el eje sin `preparando` | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
 | `get-session` | la llamada en el hilo, `answered_at`, si el cliente está en la app, y el rastro del **saldo** |
 | `pay360-coupon` · `pay360-webhook` | el cobro del **saldo**: emitir su cupón y confirmarlo | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) · [app](#get-session-otra-vez-saber-si-el-cliente-está-en-la-app-27-ago-2026) |
@@ -262,9 +262,10 @@ create index if not exists idx_order_sessions_saldo_coupon
 **2. Los deploys:**
 
 ```
-supabase functions deploy pay360-coupon  --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy pay360-webhook --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy get-session    --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-coupon      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
 ```
 
 El pedido se cobra en dos momentos y hasta hoy la fila solo sabía del primero. Ahora
@@ -273,15 +274,24 @@ distingue cuál de los dos se pagó **por el id del cupón** —el `external_ref
 pedido en ambos, y el monto no sirve: la mitad de un pedido de S/180 es 90, igual que su
 saldo—; `get-session` devuelve el rastro de los dos.
 
-**Corre el SQL antes que los deploys**, y acá el orden importa más que de costumbre: sin las
-columnas, `pay360-coupon` emitiría un cupón real en 360pay y fallaría al anotarlo. Un cupón
-emitido y no anotado no es un registro que falta — **es plata mal cobrada**: el banco paga
-siempre el pendiente más antiguo, así que el huérfano se lleva el pago del próximo pedido de
-ese mismo comprador.
+`get-store-sessions` entra en la lista porque el **tablero** también necesita el saldo: sin él
+el anillo de un pedido ya pagado entero se queda a la mitad y el filtro de pagos no ofrece la
+opción *Saldo*.
+
+**Corre el SQL antes que los deploys**, y acá el orden importa más que de costumbre, por dos
+razones distintas:
+
+- sin las columnas, `pay360-coupon` emitiría un cupón real en 360pay y fallaría al anotarlo. Un
+  cupón emitido y no anotado no es un registro que falta — **es plata mal cobrada**: el banco
+  paga siempre el pendiente más antiguo, así que el huérfano se lleva el pago del próximo
+  pedido de ese mismo comprador;
+- y PostgREST rechaza un `select` entero si una sola columna no existe, así que
+  `get-store-sessions` desplegada antes del SQL **deja el panel en blanco** — el mismo golpe
+  que el DNI.
 
 Sin los deploys no se rompe nada: el botón de pagar el saldo no aparece (el panel solo lo
-ofrece cuando la tienda cobra en línea y el adelanto ya cruzó) y el saldo se sigue coordinando
-por el chat, como hasta ahora.
+ofrece cuando la tienda cobra en línea y el adelanto ya cruzó), el filtro de pagos se queda con
+*Adelanto* y *Total*, y el saldo se sigue coordinando por el chat, como hasta ahora.
 
 Qué es y por qué son dos operaciones: [`11-RELACIONES.md`](./11-RELACIONES.md).
 

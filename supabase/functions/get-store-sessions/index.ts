@@ -28,6 +28,10 @@ Deno.serve(async (req) => {
   // la identidad del comprador en Kross —un mismo número junta sus pedidos
   // aunque cambie de teléfono— y es lo que alguien dicta cuando reclama. Va a
   // la MISMA puerta que ya cruzaban su nombre y su teléfono, no a una nueva.
+  // ⚠️ Orden de despliegue: `saldo_amount` y `saldo_verification` son del bloque
+  // §31 del esquema. PostgREST rechaza el select ENTERO si una sola columna no
+  // existe, así que subir esta función antes de correr el SQL deja el tablero en
+  // blanco — el mismo golpe que el DNI. Primero el SQL, después la función.
   let query = supabase
     .from('order_sessions')
     .select(`
@@ -35,7 +39,7 @@ Deno.serve(async (req) => {
       product_id, product_name, product_price, pack_name, status, stage, nota,
       dispatch_type, agency_name, agency_branch_id, delivery_reference,
       address, address_lat, address_lng,
-      advance_amount, payment_verification,
+      advance_amount, payment_verification, saldo_amount, saldo_verification,
       tracking_courier, tracking_numero, tracking_phase, tracking_phase_at, tracking_demora_at,
       shalom_order_status, shalom_order_reason,
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,

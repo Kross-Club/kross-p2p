@@ -377,6 +377,25 @@ async function construir(): Promise<TiendaDemo> {
     // tránsito con el anillo vacío y pedidos en validación ya cobrados.
     const antesDeCobrar = t.stage === 'nuevo' || t.stage === 'validando'
     const cruzado = antesDeCobrar ? r() < 0.15 : r() < 0.92
+
+    // ── El SALDO: la segunda operación ──
+    // No es el adelanto con otro monto. Ocurre después —cuando la guía ya
+    // existe— con su propio cupón, y es lo que suelta la clave de recojo. Tres
+    // condiciones, las mismas que `puedePagarSaldo`: que quede algo por cobrar,
+    // que el adelanto YA esté cruzado (el banco cobra siempre el cupón
+    // pendiente más antiguo) y que haya guía.
+    //
+    // Y no lo paga todo el mundo, a propósito: el que no lo paga por acá lo
+    // arregla con el comercio por fuera y llega a `entregado` con el anillo a
+    // medias. Ese contraste es justo lo que el anillo existe para enseñar —si
+    // en el demo todos pagaran el saldo, un anillo lleno no significaría nada.
+    const falta = prod.precio - adelanto
+    const puedeSaldo = falta > 0 && cruzado && conGuia
+    const saldoPagado = puedeSaldo && r() < 0.55
+    // Y unos cuantos con el cupón emitido y SIN pagar: es el estado ámbar, el
+    // que no se puede leer como plata que entró.
+    const saldoEmitido = puedeSaldo && !saldoPagado && r() < 0.3
+
     const miembro = elige(r, EQUIPO)
     const faseAt = t.fase ? new Date(ahora - entre(r, 0, 6) * DIA).toISOString() : null
 
@@ -409,6 +428,8 @@ async function construir(): Promise<TiendaDemo> {
       agency_branch_id: ruta.destinoId,
       advance_amount: adelanto,
       payment_verification: cruzado ? 'MATCHED' : 'PENDING',
+      saldo_amount: saldoPagado || saldoEmitido ? falta : null,
+      saldo_verification: saldoPagado ? 'MATCHED' : saldoEmitido ? 'PENDING' : null,
       tracking_courier: conGuia ? ruta.courier : null,
       tracking_numero: conGuia ? String(entre(r, 100000, 999999)) : null,
       tracking_phase: t.fase,
