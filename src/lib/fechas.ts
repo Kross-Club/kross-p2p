@@ -30,6 +30,23 @@ export function fechaCorta(iso: string | null | undefined): string {
   return fecha(iso)?.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: '2-digit' }) ?? '—'
 }
 
+/**
+ * Cuánto hace, en palabras: `hace 5 min`, `hace 3 h`, `hace 2 d`.
+ *
+ * La bandeja pregunta "¿desde cuándo espera este cliente?", y ahí un timestamp
+ * exacto obliga a restar de cabeza. La unidad sube en cuanto el número deja de
+ * caber: 90 minutos se leen mejor como "1 h" que como "90 min".
+ */
+export function hace(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 60_000) return 'recién'
+  const min = Math.floor(ms / 60_000)
+  if (min < 60) return `hace ${min} min`
+  const horas = Math.floor(min / 60)
+  if (horas < 24) return `hace ${horas} h`
+  const dias = Math.floor(horas / 24)
+  return `hace ${dias} d`
+}
+
 /** Una fecha inválida no es una excepción: el servidor manda, y una tarjeta en
  *  blanco es mejor que un "Invalid Date" o una pantalla rota. */
 function fecha(iso: string | null | undefined): Date | null {

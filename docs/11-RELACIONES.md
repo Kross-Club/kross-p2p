@@ -865,6 +865,77 @@ Es **una sola** marca y no una lista de visitados: la pregunta es *"¿dónde est
 marcas no la responden — la reparten. Mientras el pedido está abierto lo marca su propio token;
 al cerrarse queda el último, en `PedidosPage`, que es quien ya sabía cuál se abrió.
 
+## La Lista deja de repetir al Tablero (28-ago-2026)
+
+### El bug de "la primera columna"
+
+En el Tablero, hacer clic en una tarjeta devolvía el scroll al principio — pero **solo en la
+columna de más a la izquierda**. La causa no tenía nada que ver con la posición:
+
+```tsx
+export default function PedidosTablero(...) {
+  const Card = ({ s }) => (...)   // ← declarado DENTRO del render
+```
+
+Un componente declarado ahí adentro **cambia de identidad en cada pintada**, así que React
+desmonta y vuelve a montar TODAS las tarjetas cada vez que el tablero se re-renderiza — y
+abrir el cajón lo re-renderiza. Con el tablero scrolleando en su propia caja, ese momento sin
+tarjetas colapsa su alto, el navegador recorta el `scrollTop` a cero, y la vista salta arriba.
+
+Se notaba "solo en la primera columna" porque **el scroll vertical es del tablero entero**: la
+única columna con tarjetas allá abajo es la más alta, y la más alta era la primera. Cualquier
+columna igual de larga habría hecho lo mismo.
+
+El repo ya explicaba esta trampa **dos veces** —en `chipAntiguedad` y en el grupo de cierre, los
+dos convertidos a helper por este motivo—; `Card` era la que se había quedado. Ahora es
+`TarjetaPedido`, a nivel de módulo.
+
+### La Lista pregunta otra cosa, y ahora lo muestra
+
+| Vista | Pregunta | Y por eso muestra |
+|---|---|---|
+| **Tablero** | ¿dónde se atora la **operación**? | etapa, producto, plata |
+| **Lista** | ¿a quién le debo un **mensaje**? | conversación, espera, quién atiende |
+
+La Lista mostraba producto y etapa: lo que ya está resuelto dos clics más allá. Sus columnas
+son ahora **Cliente · Atiende · Último mensaje · Actividad · Creado**, y aparece lo que faltaba:
+
+- **quién habló último** — sin eso, *"Listo, ya pagué"* y *"Confirmo tu pedido"* se leen igual, y
+  son lo contrario;
+- **hace cuánto**, y en rojo si el cliente escribió y nadie contestó;
+- **quiénes atienden**, con los avatares superpuestos del asignado y los invitados.
+
+### Y sobre todo: el orden
+
+Una bandeja no se lee entera. Se lee de arriba abajo hasta que se acaba el tiempo, así que **lo
+que está arriba es la pantalla**. Ese orden ahora se elige (`src/lib/bandeja.ts`):
+
+| Prioridad | Pone arriba |
+|---|---|
+| **Sin responder** (por defecto) | el cliente escribió último y nadie contestó — primero el que más lleva esperando |
+| **Sin leer** | lo que llegó y nadie abrió |
+| **Parados** | la demora que reporta el courier, y después lo más viejo en su etapa |
+| **Recientes** | lo último que se movió |
+
+*Sin responder* no es lo mismo que *sin leer*, y por eso son dos: **un mensaje leído y no
+contestado sigue siendo una deuda**, y es justo el que se olvida.
+
+No hay "se entrega hoy" porque no existe el dato: ningún courier nos da fecha estimada, y
+prometerla en la pantalla sería inventarla. Lo más cercano que sí es real —el atraso que Shalom
+reporta— es *Parados*.
+
+Los KPI de arriba dejaron de contar etapas (eso lo cuenta el Tablero, y dos pantallas contando
+lo mismo invitan a compararlas) y cuentan lo de la bandeja: pedidos, sin leer, sin responder, y
+cuánto lleva esperando el más viejo.
+
+### Un lector de equipo, como el de pedidos y el de clientes
+
+Para pintar quién atiende hacían falta los nombres, y la consulta vivía dentro de la pantalla de
+Equipo. Ahora es `src/lib/store-team.ts`, hermano de `store-orders` y `store-clients`: pinta al
+instante desde una caché por tienda y revalida detrás. De paso, su `cargando` **siempre**
+resuelve —incluso si la consulta falla—, que es el caso que el watchdog de cuatro segundos de
+Equipo venía tapando.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

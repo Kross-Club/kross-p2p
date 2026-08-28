@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { horaOFecha, diaMes, fechaCorta } from './fechas'
+import { horaOFecha, diaMes, fechaCorta, hace } from './fechas'
 
 // Las fechas se construyen en hora local a propósito: es la que ve el vendedor,
 // y es la que decide si algo "es de hoy".
@@ -30,5 +30,30 @@ describe('fechas del panel', () => {
   it('día y mes, y la versión con año', () => {
     expect(diaMes(local(2026, 8, 27).toISOString())).toMatch(/27/)
     expect(fechaCorta(local(2026, 8, 27).toISOString())).toMatch(/26/)
+  })
+})
+
+describe('cuánto hace', () => {
+  const MIN = 60_000
+  const H = 60 * MIN
+
+  it('lo de hace un momento no se cuenta', () => {
+    expect(hace(0)).toBe('recién')
+    expect(hace(59_000)).toBe('recién')
+  })
+
+  // La unidad sube en cuanto el número deja de caber: 90 minutos se leen mejor
+  // como "1 h" que como "90 min".
+  it('sube de unidad cuando el número deja de caber', () => {
+    expect(hace(5 * MIN)).toBe('hace 5 min')
+    expect(hace(59 * MIN)).toBe('hace 59 min')
+    expect(hace(90 * MIN)).toBe('hace 1 h')
+    expect(hace(23 * H)).toBe('hace 23 h')
+    expect(hace(50 * H)).toBe('hace 2 d')
+  })
+
+  it('un número imposible no rompe la fila', () => {
+    expect(hace(NaN)).toBe('recién')
+    expect(hace(-1000)).toBe('recién')
   })
 })

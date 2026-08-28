@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Users, Eye, LogIn, UserPlus, X, Pencil } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
 import { escuchar } from '../../lib/realtime'
-import { demoActivo } from '../../lib/demo/modo-demo'
-import { tiendaDemo } from '../../lib/demo/tienda-demo'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
+import { useEquipo } from '../../lib/store-team'
 import PushSettings from '../../components/PushSettings'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -32,8 +30,10 @@ function roleColor(role: string) {
 export default function EquipoPage() {
   const navigate = useNavigate()
   const { real, effective, isAdmin, impersonating, loading: sellerLoading, actAs, stopActing } = useSeller()
-  const [team, setTeam] = useState<SellerProfile[]>([])
-  const [loading, setLoading] = useState(true)
+  // El equipo sale del lector compartido: la Lista de pedidos también lo
+  // necesita —para pintar quién atiende cada pedido— y dos copias de la misma
+  // consulta son dos oportunidades de que una traiga un campo que la otra no.
+  const { equipo: team, cargando: cargandoEquipo, recargar: loadTeam } = useEquipo(effective)
   const [online, setOnline] = useState<Set<string>>(new Set())
   const [profile, setProfile] = useState<SellerProfile | null>(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -41,40 +41,6 @@ export default function EquipoPage() {
   const [emails, setEmails] = useState<Record<string, string>>({})
 
   const storeId = effective?.store_id
-  const loadTeam = async () => {
-    // En demo el equipo es el de la tienda de ejemplo: seis personas con los
-    // roles reales de una operación de contraentrega.
-    if (demoActivo(storeId)) {
-      const t = await tiendaDemo()
-      setTeam(t.equipo as unknown as SellerProfile[])
-      setLoading(false)
-      return
-    }
-    if (!storeId) return
-    try {
-      const { data } = await supabase.from('sellers')
-        .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, available')
-        .eq('store_id', storeId)
-      const list = (data as SellerProfile[]) ?? []
-      setTeam(list)
-      try { localStorage.setItem(`team:${storeId}`, JSON.stringify(list)) } catch { /* ignore */ }
-    } catch { /* keep whatever we have (e.g. cache) */ }
-    finally { setLoading(false) } // ALWAYS clear — a rejected query must never hang the spinner
-  }
-  // Scope to the store being acted in (effective). Seed from a per-store cache so
-  // the page paints instantly on a client-side nav, then revalidate — the finally
-  // above + the watchdog guarantee we never get stuck spinning.
-  useEffect(() => {
-    if (!effective) { if (!sellerLoading) setLoading(false); return }
-    try {
-      const raw = storeId ? localStorage.getItem(`team:${storeId}`) : null
-      if (raw) { setTeam(JSON.parse(raw) as SellerProfile[]); setLoading(false) }
-    } catch { /* ignore */ }
-    loadTeam()
-    const t = setTimeout(() => setLoading(false), 4000)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, sellerLoading])
 
   // El correo de cada miembro vive en `auth.users` y solo lo puede leer el
   // service role, así que lo trae la función. Es la única forma de que un admin
@@ -139,7 +105,7 @@ export default function EquipoPage() {
     } finally { setBusy(false) }
   }
 
-  if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
+  if (sellerLoading || (cargandoEquipo && team.length === 0)) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
   if (!isAdmin) {
     return (
