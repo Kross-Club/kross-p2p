@@ -204,6 +204,18 @@ describe('la bandeja del demo', () => {
     expect(ultimos.some(b => /Gracias|Ok|Buenísimo/.test(b))).toBe(true)
   })
 
+  // El caso que motivó separar turnos de avisos: el cliente pregunta, después
+  // entra el pago y el sistema lo anuncia. El turno sigue siendo del cliente.
+  it('hay hilos donde el cliente habló último aunque el sistema cerrara', () => {
+    const conAviso = t.pedidos.filter(p => {
+      const m = p.chat_messages ?? []
+      if (!m.length || m[m.length - 1].sender_role !== 'system') return false
+      const humano = [...m].reverse().find(x => x.sender_role === 'buyer' || x.sender_role === 'seller')
+      return humano?.sender_role === 'buyer'
+    })
+    expect(conAviso.length).toBeGreaterThan(0)
+  })
+
   it('algunos ya vienen cerrados a mano', () => {
     const cerrados = t.pedidos.filter(p => p.answered_at)
     expect(cerrados.length).toBeGreaterThan(5)

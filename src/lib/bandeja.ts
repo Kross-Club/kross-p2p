@@ -1,4 +1,4 @@
-import { antiguedad } from './order-tracking'
+import { antiguedad, pedidoAbierto } from './order-tracking'
 import type { StoreOrder } from './store-orders'
 
 // ─── La bandeja: qué atender primero ─────────────────────────────────────────
@@ -16,7 +16,7 @@ import type { StoreOrder } from './store-orders'
 
 const DIA = 86_400_000
 
-export type Vista = 'sin_responder' | 'favoritos' | 'chats' | 'pedidos'
+export type Vista = 'sin_responder' | 'esperando_cliente' | 'favoritos' | 'chats' | 'pedidos'
 
 /**
  * Las cuatro maneras de mirar la bandeja. Dos **recortan** y dos **ordenan**:
@@ -32,6 +32,7 @@ export type Vista = 'sin_responder' | 'favoritos' | 'chats' | 'pedidos'
  */
 export const VISTAS: { key: Vista; label: string; pregunta: string; recorta: boolean }[] = [
   { key: 'sin_responder', label: 'Sin responder', pregunta: 'el cliente escribió y nadie contestó — primero el que más lleva esperando', recorta: true },
+  { key: 'esperando_cliente', label: 'Esperando respuesta', pregunta: 'contestamos y el cliente no ha vuelto — solo pedidos abiertos', recorta: true },
   { key: 'favoritos', label: 'Favoritos', pregunta: 'los que marcaste para volver', recorta: true },
   { key: 'chats', label: 'Chats recientes', pregunta: 'el último mensaje primero, sea de quien sea', recorta: false },
   { key: 'pedidos', label: 'Pedidos recientes', pregunta: 'el pedido que entró último primero', recorta: false },
@@ -46,7 +47,8 @@ export function esVista(v: string | null | undefined): v is Vista {
 }
 
 export interface FilaBandeja {
-  /** El último mensaje, ya escrito para la fila. */
+  /** El último mensaje, ya escrito para la fila. Incluye los del sistema: son
+   *  el contexto —qué tipo de contacto hubo— aunque no cuenten como turno. */
   vistaPrevia: string
   /** Quién habló último, ya escrito: `Cliente`, `Milagros`, `Sistema`, `Bot`. */
   quienEscribio: string | null
@@ -57,10 +59,13 @@ export interface FilaBandeja {
   /** Cuándo entró el pedido (ms). Es el OTRO eje: un pedido viejo puede tener
    *  el chat más nuevo de la lista. */
   creadoEn: number
-  /** El último que habló fue el comprador: hay una pregunta sin responder. */
+  /** El último en HABLAR fue el comprador: hay una pregunta sin responder. */
   esperando: boolean
-  /** Cuánto lleva esperando respuesta. `0` cuando no espera. */
-  esperaMs: number
+  /** Contestamos nosotros y el cliente no ha vuelto, con el pedido abierto. */
+  esperandoCliente: boolean
+  /** Cuánto lleva el hilo sin que hable una persona. Es el silencio, y sirve a
+   *  los dos lados: quien espera nuestra respuesta y quien nos hace esperar. */
+  silencioMs: number
   sinLeer: number
   /** El courier reporta demora en este envío. */
   demorado: boolean
@@ -82,7 +87,8 @@ export function datosDeFila(
   const mensajes = o.chat_messages ?? []
   const ultimo = mensajes.length ? mensajes[mensajes.length - 1] : null
   const ultimoEn = fecha(ultimo?.created_at) ?? fecha(o.created_at) ?? ahora
-  const esperando = esperaRespuesta(o)
+  const humano = ultimoHumano(o)
+  const humanoEn = fecha(humano?.created_at) ?? ultimoEn
   const a = antiguedad(o, ahora)
 
   return {
@@ -91,8 +97,9 @@ export function datosDeFila(
     ultimoDe: ultimo?.sender_role ?? null,
     ultimoEn,
     creadoEn: fecha(o.created_at) ?? ultimoEn,
-    esperando,
-    esperaMs: esperando ? Math.max(0, ahora - ultimoEn) : 0,
+    esperando: esperaRespuesta(o),
+    esperandoCliente: esperaAlCliente(o),
+    silencioMs: Math.max(0, ahora - humanoEn),
     sinLeer,
     demorado: !!a?.demorado,
     diasParado: a?.dias ?? Math.max(0, Math.floor((ahora - ultimoEn) / DIA)),
@@ -101,11 +108,34 @@ export function datosDeFila(
 }
 
 /**
+ * El último mensaje que escribió una PERSONA: el comprador, alguien de la
+ * tienda, o el bot.
+ *
+ * Los del sistema no cuentan como turno. "Adelanto verificado", "va en camino",
+ * el registro de una llamada: eso lo escribe la máquina para contar qué pasó, y
+ * un aviso automático no responde una pregunta. Contándolos, un pedido donde el
+ * cliente preguntó algo y después entró el pago se leía como si la tienda ya
+ * hubiera contestado — y desaparecía de la lista de pendientes con la pregunta
+ * intacta.
+ *
+ * Siguen viéndose en la fila (`vistaPrevia`): son el contexto de qué tipo de
+ * contacto hubo. Solo no deciden de quién es el turno.
+ */
+function ultimoHumano(o: StoreOrder) {
+  const mensajes = o.chat_messages ?? []
+  for (let i = mensajes.length - 1; i >= 0; i--) {
+    const rol = mensajes[i].sender_role
+    if (rol === 'buyer' || rol === 'seller' || rol === 'bot' || rol === 'ia') return mensajes[i]
+  }
+  return null
+}
+
+/**
  * ¿Este pedido le debe una respuesta al cliente?
  *
  * Dos condiciones, y la segunda es la que hace que la lista sirva:
  *
- *  1. el ÚLTIMO en hablar fue el comprador;
+ *  1. la última PERSONA en hablar fue el comprador;
  *  2. nadie lo dio por respondido DESPUÉS de ese mensaje.
  *
  * Lo segundo existe porque no toda respuesta pasa por el chat: se le llamó, se
@@ -116,14 +146,30 @@ export function datosDeFila(
  * nada que reabrir.
  */
 export function esperaRespuesta(o: StoreOrder): boolean {
-  const mensajes = o.chat_messages ?? []
-  const ultimo = mensajes.length ? mensajes[mensajes.length - 1] : null
+  const ultimo = ultimoHumano(o)
   if (ultimo?.sender_role !== 'buyer') return false
 
   const respondidoEn = fecha(o.answered_at)
   const preguntadoEn = fecha(ultimo.created_at)
   if (respondidoEn === null || preguntadoEn === null) return respondidoEn === null
   return preguntadoEn > respondidoEn
+}
+
+/**
+ * ¿Estamos esperando al cliente?
+ *
+ * El espejo de la anterior: contestamos nosotros y el cliente no ha vuelto. Y
+ * **solo si el pedido sigue abierto** — en uno entregado o caído nadie espera
+ * nada, y meterlo acá llenaría la lista de pedidos terminados.
+ *
+ * Es la otra mitad del trabajo: la primera lista es la deuda que tenemos; esta
+ * es la que hay que empujar —volver a llamar, mandar el recordatorio— antes de
+ * que se enfríe.
+ */
+export function esperaAlCliente(o: StoreOrder): boolean {
+  const ultimo = ultimoHumano(o)
+  if (!ultimo || ultimo.sender_role === 'buyer') return false
+  return pedidoAbierto(o)
 }
 
 /**
@@ -188,7 +234,13 @@ export function verBandeja<T>(filas: T[], vista: Vista, de: (x: T) => FilaBandej
     // esperando — la deuda más vieja es la que más caro sale.
     case 'sin_responder':
       return filas.filter(x => de(x).esperando)
-        .sort((a, b) => de(b).esperaMs - de(a).esperaMs)
+        .sort((a, b) => de(b).silencioMs - de(a).silencioMs)
+
+    // El espejo: nosotros contestamos y el cliente no volvió. Primero el
+    // silencio más largo, que es el que está más cerca de enfriarse.
+    case 'esperando_cliente':
+      return filas.filter(x => de(x).esperandoCliente)
+        .sort((a, b) => de(b).silencioMs - de(a).silencioMs)
 
     // Recorta: solo los marcados. Dentro, lo último que se movió.
     case 'favoritos':

@@ -1009,6 +1009,45 @@ Arreglarlo es marcar el mensaje en el origen —una columna `automatico` en `cha
 rol `bot` para lo que no teclea nadie— y tocar las funciones que escriben. No es un cambio de
 pantalla: es de esquema y de despliegue, y por eso queda anotado y no hecho de paso.
 
+### Un aviso automático no es un turno (28-ago-2026)
+
+`esperaRespuesta` miraba el **último mensaje** del hilo. Con eso, esta conversación salía de los
+pendientes:
+
+```
+Cliente   ¿en cuánto tiempo me llega?
+Kevin     ¡Hola Rosa! Confirmo tu pedido…
+Cliente   Listo, adelanté la mitad          ← el turno es del cliente
+Sistema   Adelanto verificado               ← y esto lo tapaba
+```
+
+El pago entró, el sistema lo anunció, y el pedido se leyó como si la tienda ya hubiera
+contestado. **Desapareció de la lista con la pregunta intacta**, que es la peor manera de
+fallar: en silencio.
+
+Ahora el turno lo decide la última **persona** —comprador, alguien del equipo, o el bot—. Los
+del sistema siguen viéndose en la fila: son el contexto de *qué tipo de contacto hubo* (una
+llamada, un pago, una guía). Solo no deciden de quién es el turno.
+
+### Y su espejo: "Esperando respuesta"
+
+Si "Sin responder" es la deuda que tenemos, faltaba la otra mitad del trabajo: **contestamos y
+el cliente no volvió**. Ese es el pedido que hay que empujar —volver a llamar, mandar el
+recordatorio— antes de que se enfríe.
+
+Con una condición que lo hace útil: **solo pedidos abiertos**. En uno entregado o caído nadie
+espera nada, y meterlos llenaría la lista de pedidos terminados. De ahí `pedidoAbierto` en
+`order-tracking.ts`, junto a `estaVivo` — que se mudó ahí desde `store-orders` (y se reexporta
+para no tocar a quien ya lo usaba): es una pregunta sobre el PEDIDO, no sobre quién lo lee, y un
+módulo de lógica pura no debería cargar con React y el generador del demo para preguntar por un
+`status`.
+
+Las dos listas se excluyen por construcción —el turno es de uno o del otro— y las dos ordenan
+por el **silencio**: cuánto lleva el hilo sin que hable una persona. La más callada arriba.
+
+Solo la deuda NUESTRA lleva color: si los dos lados se pintan de rojo, el rojo deja de querer
+decir "esto te toca a ti" (§6.1).
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)
