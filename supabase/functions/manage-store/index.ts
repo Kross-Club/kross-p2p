@@ -110,12 +110,14 @@ Deno.serve(async (req) => {
 
   const { data: me } = await supabase
     .from('sellers')
-    .select('is_admin, is_super_admin, store_id')
+    .select('is_admin, is_super_admin, is_operator, store_id')
     .eq('auth_user_id', callerId)
     .maybeSingle()
 
   if (!me?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
   const isSuper = !!me.is_super_admin
+  /** Operador: administra igual, pero no destruye. Ver §30 de setup-kross.sql. */
+  const puedeDestruir = !me.is_operator
 
   // ─── LIST STORES ───────────────────────────────────────────────────────────
   // Super admin sees every brand; a store admin sees only their own.
@@ -283,6 +285,14 @@ Deno.serve(async (req) => {
     if (typeof body.winback_days === 'number') patch.winback_days = Math.max(1, Math.floor(body.winback_days))
     if (typeof body.color_primary === 'string') patch.color_primary = body.color_primary
     if (typeof body.color_dark === 'string') patch.color_dark = body.color_dark
+    // Apagar una marca es lo más destructivo que tiene este panel: su app deja
+    // de vender ese mismo segundo. El operador puede volver a encenderla —eso
+    // no rompe nada y desatasca— pero no apagarla. Se mira la DIRECCIÓN del
+    // cambio, no solo el campo.
+    //
+    // Y se responde con un error en vez de ignorarlo callado: un guardado que
+    // dice "listo" y no guardó lo que le pediste es peor que uno que falla.
+    if (body.active === false && !puedeDestruir) return json({ error: 'operador_no_apaga' }, 403)
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active
     // ¿Reparte a domicilio, o solo recojo en agencia? Es super-admin only a
     // propósito: depende de si la marca tiene operación de última milla

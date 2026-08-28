@@ -84,6 +84,26 @@ Ejemplos:
 2. Antes de cada commit, `git status` para confirmar que estás en una rama `feat/*`/`fix/*`.
 3. Una **rama = una tarea = un tema** (no mezclar features en la misma rama).
 4. El autor de la rama **no** aprueba su propio PR sin revisión (equipo de 3 devs).
+5. **El merge a `main` lo hace Uxbriel.** Cualquiera del equipo abre PR y revisa; el
+   botón de mergear es de una sola persona.
+
+   No es jerarquía por gusto: mergear a `main` **despliega a producción** (Vercel lo
+   hace solo, paso 5 de arriba) y varios cambios de este repo además necesitan que
+   alguien corra un SQL o despliegue una Edge Function *antes* de que el código llegue
+   —la lista viva está en [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md#lo-que-falta-desplegar-al-28-ago-2026)—.
+   Un merge sin ese paso deja producción con el frontend nuevo pidiéndole a un backend
+   viejo cosas que no sabe dar. Quien mergea es quien sabe si el backend ya está listo.
+
+   El mismo reparto que en el panel: el **operador** hace todo el trabajo diario; lo
+   que no se puede deshacer lo hace el administrador. Un deploy a producción es
+   exactamente eso.
+
+> **Esto es GitHub, no el panel.** El rol *Operador* del panel (ver
+> [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md)) no da ni quita permisos en
+> este repo: para que el reparto se cumpla de verdad hay que dejarlo escrito en
+> **Settings → Branches → branch protection rule** de `main` (requerir PR, y restringir
+> quién puede mergear). Mientras eso no esté puesto, esta regla es un acuerdo, no un
+> candado.
 
 ---
 

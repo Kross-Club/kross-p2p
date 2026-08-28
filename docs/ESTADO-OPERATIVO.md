@@ -44,6 +44,7 @@ día. Nada de esto rompe la app si falta: el frontend sale con `main` y degrada 
 ```sql
 alter table chat_messages  add column if not exists call_recording_id uuid references call_recordings(id);
 alter table order_sessions add column if not exists answered_at       timestamptz;
+alter table sellers        add column if not exists is_operator       boolean default false;
 ```
 
 **2. Después los deploys.** Cada función una sola vez, aunque la pidan varias notas:
@@ -57,7 +58,8 @@ alter table order_sessions add column if not exists answered_at       timestampt
 | `delivery-map` 🆕 | el **mapa de entregas** de la libreta de clientes | [mapa](#el-mapa-de-entregas-por-distrito-28-ago-2026) |
 | `create-call-token` · `seller-call-token` · `livekit-webhook` | que la llamada quede escrita en el hilo del pedido | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) — `livekit-webhook` va con `--no-verify-jwt` |
 | `list-clients` · `retention-metrics` · `run-campaign` | la libreta de clientes y las campañas | [libreta](#la-libreta-de-clientes-necesita-un-deploy-27-ago-2026) |
-| `admin-team` | los correos en *Equipo* | [marca v2](#marca-v20--el-rediseño-entró-al-panel-25-ago-2026) |
+| `admin-team` | los correos en *Equipo*, y el rol **Operador** | [marca v2](#marca-v20--el-rediseño-entró-al-panel-25-ago-2026) · [operador](#el-rol-operador-y-el-equipo-de-la-plataforma-28-ago-2026) |
+| `manage-store` · `manage-product` | que un operador no pueda apagar tiendas ni borrar productos | [operador](#el-rol-operador-y-el-equipo-de-la-plataforma-28-ago-2026) |
 | `shalom-tracking-sync` · `shalom-order` · `olva-tracking` · `olva-tracking-sync` · `manage-store` · `shalom-webhook` | el mapeo `registrado` ≠ `EN_ORIGEN`; vive en `_shared/`, que se empaqueta dentro de cada función | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) — `shalom-webhook` va con `--no-verify-jwt` |
 
 Para comprobar cuáles entraron de verdad, la consulta está en
@@ -231,6 +233,42 @@ registrada en el hilo — **corre el SQL antes que el deploy**. Sin el deploy, l
 Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabaciones viejas
 siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
+
+### El rol Operador, y el equipo de la plataforma (28-ago-2026)
+
+**1. SQL primero** (idempotente, nadie se vuelve operador por correrlo):
+
+```sql
+alter table sellers add column if not exists is_operator boolean default false;
+```
+
+**2. Los tres deploys:**
+
+```
+supabase functions deploy admin-team     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-product --project-ref ofdjghntvmrdfjhazfvz
+```
+
+- `admin-team` aprende a crear operadores — y a **rechazar** que un operador cree
+  administradores, que es lo que sostiene todo lo demás.
+- `manage-store` rechaza que un operador apague una tienda.
+- `manage-product` rechaza que un operador borre un producto.
+
+**Corre el SQL antes que los deploys.** Sin la columna, `admin-team` falla al insertar el
+miembro nuevo, y las otras dos leen `is_operator` como `undefined` — o sea que tratarían a
+todo el mundo como administrador. **Ese es el orden que importa: sin la columna la
+restricción no existe**, aunque el panel ya la muestre.
+
+Sin los deploys: el panel ya ofrece el rol pero `admin-team` lo ignora y crea un admin
+normal. Es la única ventana fea de este cambio, así que conviene no dejarla abierta.
+
+Qué es el rol y por qué está partido así: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#el-operador-el-nivel-que-faltaba-entre-admin-y-miembro--28-ago-2026).
+
+**Y una cosa que NO es código.** El reparto equivalente en el repo —quién mergea a
+`main`— es una configuración de GitHub, no de este panel: *Settings → Branches → branch
+protection* de `main`, requerir PR y restringir quién puede mergear. Mientras no esté
+puesta, la regla escrita en [`GIT-FLOW.md`](./GIT-FLOW.md) es un acuerdo, no un candado.
 
 ### El mapa de entregas por distrito (28-ago-2026)
 

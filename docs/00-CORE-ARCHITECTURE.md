@@ -26,10 +26,11 @@ y actualizan.
 ## Autenticación & roles ✅
 
 - **Supabase Auth** para el equipo (`sellers.auth_user_id`).
-- **Super Admin (plataforma Kross):** `sellers.is_super_admin`. Solo ve "Marcas" y
-  **Entra** a una marca para operarla (impersonación `acting`/`effective` en
-  `src/lib/seller-session.ts`).
+- **Super Admin (plataforma Kross):** `sellers.is_super_admin`. Ve **Tiendas** y
+  **Equipo**, y **Entra** a una tienda para operarla (impersonación
+  `acting`/`effective` en `src/lib/seller-session.ts`).
 - **Admin de tienda:** `is_admin`, scoped a su `store_id`. Lo ve todo.
+- **Operador:** `is_admin` + `is_operator` (28-ago-2026). Ver más abajo.
 - **Roles de equipo (`role_label`):** el modelo por defecto solo usa **Logística**,
   que supervisa que el seguimiento automático (checkout → cobro → tracking) esté
   funcionando bien; la venta la cierra la app sola y el reparto lo hace la agencia,
@@ -39,6 +40,53 @@ y actualizan.
   reciben los pedidos nuevos primero; sin Ventas, se asignan a Logística.
 - **Comprador:** identificado por DNI/teléfono (`buyers`), sin login de contraseña; entra
   por su subdominio (`/acceso`). NO hay login de comprador en el host de plataforma.
+
+### El operador: el nivel que faltaba entre admin y miembro ✅ (28-ago-2026)
+
+Había DOS niveles, y con eso dar de alta a alguien que ayude a operar obligaba a elegir
+entre darle todo —incluido apagar la tienda de un cliente— o darle nada.
+
+| | Banderas | Alcance | Puede |
+|---|---|---|---|
+| **miembro** | — | sus pedidos | atender lo suyo |
+| **operador** | `is_admin` + `is_operator` | su tienda, o la plataforma | todo lo del admin **menos destruir** |
+| **admin** | `is_admin` | íd. | todo |
+
+**Los dos ejes son independientes**, y ahí está lo que lo hace barato:
+
+- `is_admin` / `is_super_admin` dicen **hasta dónde llega** — una tienda, o la plataforma.
+- `is_operator` dice **qué NO puede** dentro de ese alcance.
+
+Así "operador de una marca" y "operador de la plataforma" son la misma regla en distinto
+alcance, sin una tercera columna ni un segundo camino. Y como el operador ES `is_admin`,
+**los `is_admin` que ya estaban escritos por todo el repo siguen valiendo tal cual** —
+que es exactamente la promesa del rol: *hace todo lo que hace el admin*.
+
+Lo que le queda vedado:
+
+| No puede | Dónde se aplica |
+|---|---|
+| apagar la tienda de una marca | `manage-store` — `active: false` |
+| borrar un producto | `manage-product` — acción `delete` |
+| **crear o promover administradores** | `admin-team` — acción `create` |
+
+El tercero no es "otra cosa que también restringimos": **sin él los dos primeros no valen
+nada**. Un operador que puede nombrar admins se nombra a sí mismo, o crea uno y entra con
+él. Una restricción que el restringido puede levantar no es una restricción.
+
+Lo que **sí** puede, a propósito: anular y cancelar pedidos (`restore` y `recreate` los
+deshacen, así que no destruyen nada, y son trabajo diario), sacar un producto de la venta
+con `active: false`, y volver a **encender** una tienda apagada — se mira la dirección del
+cambio, no solo el campo.
+
+Las reglas viven en **`src/lib/permisos.ts`**, una sola vez, y cada una tiene su gemela en
+la Edge Function correspondiente. **La del servidor es la que manda**: ocultar un botón no
+protege nada, el POST llega igual. La del panel existe para no ofrecer lo que va a ser
+rechazado.
+
+Al **entrar a una tienda**, el perfil que se actúa arrastra `is_operator` (`...real` en
+`enterStore`): un operador sigue siendo operador adentro. Y aunque no lo arrastrara, el
+servidor mira al vendedor REAL — el perfil de impersonación vive en `localStorage`.
 
 ### Recuperar contraseña del panel ✅ (implementado)
 
@@ -127,7 +175,7 @@ y `MisPedidosPage` son justamente las pantallas que lo justifican.
 
 - `stores` — una marca por fila: branding, slug, `active`, config WhatsApp (`wa_*`),
   retención (`welcome_points`, `points_rate`, `restock_days`, `winback_days`).
-- `sellers` — equipo: `role_label`, `is_admin`, `is_super_admin`, `available`.
+- `sellers` — equipo: `role_label`, `is_admin`, `is_operator`, `is_super_admin`, `available`.
 - `buyers` — clientes: `document_number`, `phone`, `nombre`, `score`, `puntos`,
   `address_lat/lng/verified`, `source`, `activated_at`.
 - `order_sessions` — pedidos: `stage` (`nuevo→confirmado→preparando→en_camino→entregado`),
