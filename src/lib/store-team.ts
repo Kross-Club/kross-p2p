@@ -63,7 +63,7 @@ export function useEquipo(effective: SellerProfile | null | undefined): StoreTea
       let lista: SellerProfile[] | null = null
       try {
         const { data } = await supabase.from('sellers')
-          .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, available')
+          .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, is_operator, is_super_admin, available')
           .eq('store_id', storeId)
         lista = (data as SellerProfile[]) ?? null
       } catch { /* nos quedamos con la caché */ }

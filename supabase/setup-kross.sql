@@ -1214,3 +1214,53 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS shalom_auto_guide_enabled boolean DE
 --   WHERE store_id = '<tienda>' AND converted_at IS NULL
 --     AND document_number IS NOT NULL AND document_number <> ''
 --   ORDER BY updated_at DESC;
+
+
+-- ─── 30. OPERADOR: el nivel que faltaba entre admin y miembro ────────────────
+--
+-- El panel tenía DOS niveles y con eso, dar de alta a alguien que ayude a
+-- operar la plataforma obligaba a elegir entre darle todo —incluido apagar la
+-- tienda de un cliente— o darle nada.
+--
+--   miembro     is_admin = false                      · lo suyo: sus pedidos
+--   operador    is_admin = true,  is_operator = true  · todo lo del admin, menos destruir
+--   admin       is_admin = true,  is_operator = false · todo
+--
+-- Los dos ejes son independientes a propósito:
+--
+--   · `is_admin` / `is_super_admin` dicen HASTA DÓNDE llega: su tienda, o toda
+--     la plataforma.
+--   · `is_operator` dice QUÉ NO PUEDE hacer dentro de ese alcance.
+--
+-- Así "operador de una marca" y "operador de la plataforma" son la misma regla
+-- aplicada a distinto alcance, sin una tercera columna ni un segundo camino. Y
+-- todos los `is_admin` que ya estaban escritos siguen valiendo tal cual para un
+-- operador, que es exactamente la promesa del rol: hace todo lo que hace el
+-- admin.
+--
+-- Qué le queda vedado (lo aplica el servidor, no el panel — ver más abajo):
+--
+--   · apagar la tienda de una marca            `manage-store`   (active = false)
+--   · borrar un producto                       `manage-product` (action delete)
+--   · crear o promover administradores         `admin-team`
+--
+-- El tercero no es "otra cosa que también restringimos": sin él los dos
+-- primeros no valen nada. Un operador que puede nombrar admins se nombra a sí
+-- mismo, o crea uno y entra con él. Una restricción que el restringido puede
+-- levantar no es una restricción.
+--
+-- NO le quita: anular o cancelar un pedido. Los dos se deshacen (`restore`,
+-- `recreate`), así que no destruyen nada — y son trabajo diario de quien opera.
+--
+-- El default es `false`: nadie se vuelve operador por correr esto. Los que ya
+-- existen siguen siendo lo que eran.
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS is_operator boolean DEFAULT false;
+
+-- Quién es qué, para revisarlo de un vistazo:
+--   SELECT nombre, store_id, role_label, is_admin, is_operator, is_super_admin, active
+--   FROM sellers ORDER BY is_super_admin DESC, is_admin DESC, nombre;
+--
+-- Y si hiciera falta hacer operador a alguien que ya existe (lo normal es
+-- crearlo desde el panel, en Equipo):
+--   UPDATE sellers SET is_admin = true, is_operator = true, role_label = 'Operador'
+--   WHERE auth_user_id = '<uuid>';

@@ -13,14 +13,28 @@ export interface SellerNavLink {
 // escritorio usa la misma lista para saber en qué sección estás.
 //
 // El menú sigue a QUIÉN estás actuando:
-//  · super admin (plataforma Kross, fuera de una tienda) → solo Marcas
+//  · super admin (plataforma Kross, fuera de una tienda) → Tiendas y Equipo
 //  · admin de tienda (o super admin que entró a una) → todo el toolset
 //  · miembro del equipo → Pedidos
+//
+// **Tiendas**, no "Marcas": desde la plataforma lo que se administra son las
+// tiendas clientes —encenderlas, cobrarles, entrar a operarlas—. *Marca* es
+// otra cosa y por eso conserva su nombre un nivel más abajo: la identidad de
+// UNA de ellas (su logo, sus colores, su subdominio), que es lo que edita su
+// propio admin.
+//
+// **Equipo** en la plataforma es el equipo de Kross, no el de una tienda. Es la
+// misma pantalla: `sellers` filtrado por `store_id`, y el de la plataforma es
+// `platform`. Una segunda pantalla para la misma tabla se habría separado de la
+// primera en la primera semana.
 export function sellerNavLinks(effective: SellerProfile | null | undefined): SellerNavLink[] {
   const platform = !!effective?.is_super_admin
   const storeAdmin = !!effective?.is_admin && !effective?.is_super_admin
 
-  if (platform) return [{ to: '/vendedor/marca', icon: Store, label: 'Marcas' }]
+  if (platform) return [
+    { to: '/vendedor/marca', icon: Store, label: 'Tiendas' },
+    { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
+  ]
 
   if (storeAdmin) return [
     { to: '/vendedor/pedidos', icon: ShoppingBag, label: 'Pedidos' },

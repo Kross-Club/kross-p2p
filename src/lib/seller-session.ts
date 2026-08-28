@@ -10,6 +10,9 @@ export interface SellerProfile {
   avatar_url: string | null
   is_admin: boolean
   is_super_admin?: boolean
+  /** Operador: administra igual que el admin pero no destruye. Las reglas viven
+   *  en `permisos.ts` — acá solo viaja el dato. */
+  is_operator?: boolean
   available: boolean
 }
 
@@ -51,7 +54,7 @@ export function useSeller() {
       if (!data.session) { cachedReal = null; if (alive) { setReal(null); setLoading(false) } return }
       const { data: profile } = await supabase
         .from('sellers')
-        .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, is_super_admin, available')
+        .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, is_super_admin, is_operator, available')
         .eq('auth_user_id', data.session.user.id)
         .maybeSingle()
       cachedReal = (profile as SellerProfile) ?? null

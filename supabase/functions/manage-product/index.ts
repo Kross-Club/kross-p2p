@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   }
 
   const { data: admin } = await supabase
-    .from('sellers').select('is_admin, is_super_admin, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
+    .from('sellers').select('is_admin, is_super_admin, is_operator, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
   if (!admin?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
 
   // A store admin manages their own store; the super admin may target any store.
@@ -43,6 +43,15 @@ Deno.serve(async (req) => {
 
   if (body.action === 'delete') {
     if (!body.id) return new Response('Missing id', { status: 400, headers: corsHeaders })
+    // El operador edita productos, pero no los borra: es un DELETE sin papelera
+    // ni deshacer, y con pedidos viejos apuntando al producto que desaparece.
+    // Para sacar uno de la venta está `active: false`, que sí puede y sí se
+    // deshace. Ver el bloque §30 de setup-kross.sql.
+    if (admin.is_operator) {
+      return new Response(JSON.stringify({ error: 'operador_no_borra' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     await supabase.from('products').delete().eq('id', body.id)
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }

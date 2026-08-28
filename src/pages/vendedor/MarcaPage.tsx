@@ -4,6 +4,7 @@ import { mensajePanel } from '../../lib/panel-errors'
 import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck, BarChart3, Sparkles } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
+import { puedeBorrar } from '../../lib/permisos'
 import { useDemo, setDemo } from '../../lib/demo/modo-demo'
 import { PEDIDOS_POR_DIA } from '../../lib/demo/tienda-demo'
 
@@ -96,6 +97,13 @@ export default function MarcaPage() {
   // Super admin "enters" a brand → acts as itself but scoped to that store, so the
   // full store toolset (Chats, Productos, CRM, Equipo, Stats) works even for a brand
   // with no team yet (that's exactly when you enter — to set it up).
+  //
+  // El `...real` de adelante NO es decorativo: arrastra `is_operator`, así que
+  // un operador que entra a una tienda sigue siendo operador ahí. Escribir el
+  // objeto campo por campo lo perdería y le daría, dentro de la tienda, lo que
+  // no tiene fuera. (El servidor lo rechazaría igual —mira al vendedor REAL, no
+  // a este objeto, que vive en localStorage— pero el panel le ofrecería botones
+  // que fallan.)
   const enterStore = (storeId: string) => {
     if (!real) { alert('Sesión no lista, recarga la página e intenta de nuevo.'); return }
     actAs({ ...real, store_id: storeId, is_admin: true, is_super_admin: false, role_label: 'Admin' } as SellerProfile)
@@ -128,16 +136,16 @@ export default function MarcaPage() {
   return (
     <div className="px-4 py-4">
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-black text-gray-900 flex items-center gap-2"><StoreIcon size={20} /> {isSuper ? 'Marcas' : 'Mi marca'}</h1>
+        <h1 className="text-xl font-black text-gray-900 flex items-center gap-2"><StoreIcon size={20} /> {isSuper ? 'Tiendas' : 'Mi marca'}</h1>
         {isSuper && (
           <button onClick={() => setCreating(true)}
             className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#55C8F5', color: '#fff' }}>
-            <Plus size={13} /> Nueva marca
+            <Plus size={13} /> Nueva tienda
           </button>
         )}
       </div>
       <p className="text-xs text-gray-400 mb-4">
-        {isSuper ? 'Cada marca tiene su app en su subdominio, con su logo y colores.' : 'Personaliza el logo, nombre y colores de tu app.'}
+        {isSuper ? 'Cada tienda tiene su app en su subdominio, con su logo y colores.' : 'Personaliza el logo, nombre y colores de tu app.'}
       </p>
 
       {isSuper && Object.values(waUsage).reduce((a, b) => a + b, 0) > 0 && (
@@ -200,7 +208,7 @@ export default function MarcaPage() {
         ))}
       </div>
 
-      {editing && <BrandEditor store={editing} isSuper={isSuper} adminId={real?.auth_user_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+      {editing && <BrandEditor store={editing} isSuper={isSuper} puedeApagar={puedeBorrar(real)} adminId={real?.auth_user_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {creating && <CreateBrand adminId={real?.auth_user_id ?? ''} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load() }} />}
     </div>
   )
@@ -276,8 +284,13 @@ function LogoPicker({ logo, uploading, onPick, round, help }: { logo: string | n
   )
 }
 
-function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
-  store: StoreRow; isSuper: boolean; adminId: string; onClose: () => void; onSaved: () => void
+function BrandEditor({ store, isSuper, puedeApagar, adminId, onClose, onSaved }: {
+  store: StoreRow; isSuper: boolean
+  /** Apagar una tienda deja de venderle ese mismo segundo, y no lo hace un
+   *  operador. El servidor lo rechaza igual (`manage-store`); acá se oculta
+   *  para no ofrecer un botón que va a fallar. */
+  puedeApagar: boolean
+  adminId: string; onClose: () => void; onSaved: () => void
 }) {
   const [nombre, setNombre] = useState(store.nombre)
   const [slug, setSlug] = useState(store.slug)
@@ -510,15 +523,23 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
           <ColorRow label="Fondo oscuro" value={cd} onChange={setCd} />
         </div>
 
-        {isSuper && (
+        {/* Volver a encender sí puede el operador —eso desatasca y no rompe
+            nada—; apagar no. Por eso el botón se ofrece cuando la tienda está
+            apagada aunque no pueda apagarla. */}
+        {isSuper && (puedeApagar || !active) && (
           <button onClick={() => setActive(a => !a)}
             className="w-full flex items-center justify-between rounded-2xl px-4 py-3 mb-4"
             style={{ background: active ? '#DCFCE7' : '#FEE2E2' }}>
             <span className="text-xs font-black" style={{ color: active ? '#16A34A' : '#DC2626' }}>
-              {active ? 'Marca activa' : 'Marca inactiva'}
+              {active ? 'Tienda activa' : 'Tienda inactiva'}
             </span>
             <Power size={16} style={{ color: active ? '#16A34A' : '#DC2626' }} />
           </button>
+        )}
+        {isSuper && !puedeApagar && active && (
+          <p className="text-[10px] text-gray-400 mb-4 px-1">
+            Apagar una tienda lo hace el administrador.
+          </p>
         )}
 
         {/* Cómo entrega esta marca. El recojo en agencia SIEMPRE está disponible

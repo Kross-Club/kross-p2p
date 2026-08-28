@@ -1,6 +1,10 @@
 # Estado operativo
 
-> **Última verificación contra la base: 21-ago-2026.**
+> **Última verificación contra la base: 21-ago-2026** · **texto actualizado: 28-ago-2026.**
+> Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
+> consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
+> mueve la segunda; solo mirar la base mueve la primera.
+>
 > Qué marca está viva, qué le falta, y qué deudas hay abiertas. Lo que el código no dice.
 
 ## Cómo leer esto (y por qué no miente)
@@ -24,6 +28,42 @@ from stores s order by s.id;
 
 Si el resultado no cuadra con la tabla, **gana el resultado**: actualiza el doc y cambia la
 fecha de arriba.
+
+## Lo que falta desplegar (al 28-ago-2026)
+
+**Léelo primero.** Los deploys están explicados uno por uno más abajo, cada uno con qué se ve
+si no entra; acá está la lista junta, que es lo que hace falta para saber si producción está al
+día. Nada de esto rompe la app si falta: el frontend sale con `main` y degrada avisando.
+
+> Los comandos van con el `--project-ref` **literal en cada línea**, sin variable de shell: el
+> equipo trabaja en Windows y `REF=...` es sintaxis de bash — en PowerShell falla y el CLI
+> termina abriendo el selector interactivo de proyectos.
+
+**1. SQL primero** (SQL Editor del proyecto PWA). Los dos son idempotentes:
+
+```sql
+alter table chat_messages  add column if not exists call_recording_id uuid references call_recordings(id);
+alter table order_sessions add column if not exists answered_at       timestamptz;
+alter table sellers        add column if not exists is_operator       boolean default false;
+```
+
+**2. Después los deploys.** Cada función una sola vez, aunque la pidan varias notas:
+
+| Función | Qué destraba | Nota |
+|---|---|---|
+| `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
+| `order-manage` | `mark_answered`, `anular` / `restore`, y el eje sin `preparando` | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
+| `get-session` | la llamada en el hilo, `answered_at`, y si el cliente está en la app | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) · [app](#get-session-otra-vez-saber-si-el-cliente-está-en-la-app-27-ago-2026) |
+| `get-store-drafts` 🆕 | la columna **Curiosos** del tablero | [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
+| `delivery-map` 🆕 | el **mapa de entregas** de la libreta de clientes | [mapa](#el-mapa-de-entregas-por-distrito-28-ago-2026) |
+| `create-call-token` · `seller-call-token` · `livekit-webhook` | que la llamada quede escrita en el hilo del pedido | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) — `livekit-webhook` va con `--no-verify-jwt` |
+| `list-clients` · `retention-metrics` · `run-campaign` | la libreta de clientes y las campañas | [libreta](#la-libreta-de-clientes-necesita-un-deploy-27-ago-2026) |
+| `admin-team` | los correos en *Equipo*, y el rol **Operador** | [marca v2](#marca-v20--el-rediseño-entró-al-panel-25-ago-2026) · [operador](#el-rol-operador-y-el-equipo-de-la-plataforma-28-ago-2026) |
+| `manage-store` · `manage-product` | que un operador no pueda apagar tiendas ni borrar productos | [operador](#el-rol-operador-y-el-equipo-de-la-plataforma-28-ago-2026) |
+| `shalom-tracking-sync` · `shalom-order` · `olva-tracking` · `olva-tracking-sync` · `manage-store` · `shalom-webhook` | el mapeo `registrado` ≠ `EN_ORIGEN`; vive en `_shared/`, que se empaqueta dentro de cada función | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) — `shalom-webhook` va con `--no-verify-jwt` |
+
+Para comprobar cuáles entraron de verdad, la consulta está en
+[Cómo comprobar que un deploy entró](#cómo-comprobar-que-un-deploy-entró).
 
 ## Marcas
 
@@ -193,6 +233,42 @@ registrada en el hilo — **corre el SQL antes que el deploy**. Sin el deploy, l
 Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabaciones viejas
 siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
+
+### El rol Operador, y el equipo de la plataforma (28-ago-2026)
+
+**1. SQL primero** (idempotente, nadie se vuelve operador por correrlo):
+
+```sql
+alter table sellers add column if not exists is_operator boolean default false;
+```
+
+**2. Los tres deploys:**
+
+```
+supabase functions deploy admin-team     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-product --project-ref ofdjghntvmrdfjhazfvz
+```
+
+- `admin-team` aprende a crear operadores — y a **rechazar** que un operador cree
+  administradores, que es lo que sostiene todo lo demás.
+- `manage-store` rechaza que un operador apague una tienda.
+- `manage-product` rechaza que un operador borre un producto.
+
+**Corre el SQL antes que los deploys.** Sin la columna, `admin-team` falla al insertar el
+miembro nuevo, y las otras dos leen `is_operator` como `undefined` — o sea que tratarían a
+todo el mundo como administrador. **Ese es el orden que importa: sin la columna la
+restricción no existe**, aunque el panel ya la muestre.
+
+Sin los deploys: el panel ya ofrece el rol pero `admin-team` lo ignora y crea un admin
+normal. Es la única ventana fea de este cambio, así que conviene no dejarla abierta.
+
+Qué es el rol y por qué está partido así: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#el-operador-el-nivel-que-faltaba-entre-admin-y-miembro--28-ago-2026).
+
+**Y una cosa que NO es código.** El reparto equivalente en el repo —quién mergea a
+`main`— es una configuración de GitHub, no de este panel: *Settings → Branches → branch
+protection* de `main`, requerir PR y restringir quién puede mergear. Mientras no esté
+puesta, la regla escrita en [`GIT-FLOW.md`](./GIT-FLOW.md) es un acuerdo, no un candado.
 
 ### El mapa de entregas por distrito (28-ago-2026)
 
@@ -423,6 +499,7 @@ Anotada donde vive, para que no haya que redescubrirla:
 | Catálogo de distritos incompleto 🟡 | `02-SMART-LOGISTICS.md` § Deuda conocida | Afecta la cobertura de reparto. |
 | La key de prueba de Olva API Perú viajó por el chat al recibirse. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Rotarla al pasar a producción (se pide por el WhatsApp del proveedor) y recargar Vault/secret. Misma familia que el bloqueo #2. |
 | La **clave de retiro** que genera el envío (`shalom_pickup_code`) no tiene todavía quién se la entregue al comprador cuando paga el saldo. | `27.d` del esquema · `pay360-webhook` | El checkout la promete desde el día 1 ("apenas pagues te enviamos tu clave"). Hoy queda guardada en el pedido y la manda una persona; el paso natural es que el pago del saldo la suelte solo. **No puede ir por `visibility: 'sellers'`**: con el token del comprador se lee igual (`?viewer=seller`). |
+| Los mensajes automáticos salen como si los hubiera tecleado el vendedor asignado (`sender_role: 'seller'` + su nombre). | `register-buyer` (bienvenida) · algunos de `order-manage` · detalle en [`11-RELACIONES.md`](./11-RELACIONES.md) | Mientras siga así, un **% de involucramiento del equipo** contado desde el chat sale inflado: cada pedido nace con un mensaje "de" su vendedor que su vendedor no escribió. El arreglo es marcarlo en el origen —una columna `automatico` en `chat_messages`, o el rol `bot`— y redesplegar las funciones que escriben. |
 | `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. |
 
 ## Limpieza pendiente
@@ -435,5 +512,12 @@ Anotada donde vive, para que no haya que redescubrirla:
 ## Cuándo tocar este doc
 
 Cuando cambie algo que la BD no explica sola: se enciende o apaga un cobro, entra una marca
-nueva, se destraba o aparece un bloqueo, se salda una deuda. **Y siempre la fecha de
+nueva, se destraba o aparece un bloqueo, se salda una deuda. **Y siempre las fechas de
 arriba** — un doc de estado sin fecha no se puede creer.
+
+Son dos y no se mueven juntas: *texto actualizado* la mueve cualquier cambio de estos; *última
+verificación contra la base* solo la mueve haber corrido de verdad la consulta de arriba contra
+producción. Subirla sin haberla corrido convierte el doc en lo que dice no ser.
+
+Y cuando un deploy entre, **táchalo de [Lo que falta desplegar](#lo-que-falta-desplegar-al-28-ago-2026)**:
+una lista de pendientes que ya no lo son deja de leerse a la semana.

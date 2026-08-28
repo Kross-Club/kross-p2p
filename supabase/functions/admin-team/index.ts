@@ -76,12 +76,29 @@ Deno.serve(async (req) => {
     nombre?: string
     store_id?: string
     is_admin?: boolean          // create: make this member the brand admin
+    /** create: operador — administra igual que el admin PERO no destruye.
+     *  Ver el bloque §30 de setup-kross.sql y `src/lib/permisos.ts`. */
+    is_operator?: boolean
+    /** create: super admin — alcance plataforma, no una marca. Solo lo puede
+     *  otorgar un super admin que NO sea operador. */
+    is_super_admin?: boolean
   }
 
   // Only an admin may run these
   const { data: admin } = await supabase
-    .from('sellers').select('is_admin, is_super_admin, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
+    .from('sellers').select('is_admin, is_super_admin, is_operator, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
   if (!admin?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
+
+  // ─── El operador administra, pero no nombra ────────────────────────────────
+  //
+  // Sin esta línea el rol entero es decorativo: un operador que puede crear un
+  // administrador se crea uno y entra con él, y lo que no podía hacer lo hace
+  // igual dando un rodeo. Una restricción que el restringido puede levantar no
+  // es una restricción.
+  //
+  // Va en el SERVIDOR y no solo en el panel porque el panel es una manija: el
+  // POST a esta función llega igual sin pasar por ningún botón.
+  const puedeNombrar = !admin.is_operator
 
   // A store admin may only touch members of their OWN store. The super admin
   // (platform owner) is allowed to reach across stores.
@@ -164,6 +181,10 @@ Deno.serve(async (req) => {
   if (body.action === 'set_role') {
     if (!body.seller_id || !body.role_label) return new Response('Missing fields', { status: 400, headers: corsHeaders })
     if (!(await targetInScope(body.seller_id))) return new Response('Forbidden', { status: 403, headers: corsHeaders })
+    // `set_role` SOLO escribe la etiqueta, nunca las banderas — así ha sido
+    // siempre y por eso no es una vía de escalada. Se deja dicho porque es lo
+    // primero que uno mira al preguntarse si un operador puede ascender a
+    // alguien: no puede, ni a otro ni a sí mismo.
     await supabase.from('sellers').update({ role_label: body.role_label }).eq('auth_user_id', body.seller_id)
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
@@ -184,6 +205,27 @@ Deno.serve(async (req) => {
     // A store admin can only create members in their own store; only the super
     // admin may target another store explicitly.
     const storeId = (admin.is_super_admin && body.store_id) ? body.store_id : admin.store_id
+
+    // Qué nivel se está pidiendo, y quién puede otorgarlo.
+    //
+    //   miembro   → cualquier admin, operador incluido: crear a alguien que
+    //               atiende pedidos es trabajo de operar, no de mandar.
+    //   operador  → solo un admin que no sea operador.
+    //   admin     → íd.
+    //   super     → además, quien lo otorga tiene que ser super. No se puede
+    //               dar un alcance más grande que el propio.
+    const pideMando = !!body.is_admin || !!body.is_operator || !!body.is_super_admin
+    if (pideMando && !puedeNombrar) {
+      return new Response(JSON.stringify({ error: 'operador_no_nombra' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (body.is_super_admin && !admin.is_super_admin) {
+      return new Response(JSON.stringify({ error: 'alcance_insuficiente' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const { data: created, error: authErr } = await supabase.auth.admin.createUser({
       email: body.email,
       password: body.password,
@@ -194,12 +236,21 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+    // El operador ES admin: `is_admin` en true, `is_operator` en true. No es un
+    // tercer estado suelto — es "administra" con "no destruye" encima, que es
+    // lo que hace que todos los `is_admin` ya escritos valgan para él.
+    const operador = !!body.is_operator
+    const esAdmin = operador || !!body.is_admin
     const { error: sErr } = await supabase.from('sellers').insert({
       auth_user_id: created.user.id,
       store_id: storeId,
       nombre: body.nombre,
-      role_label: body.is_admin ? 'Admin' : body.role_label,
-      is_admin: !!body.is_admin,   // never super_admin — brand admins are store-scoped
+      role_label: operador ? 'Operador' : body.is_admin ? 'Admin' : body.role_label,
+      is_admin: esAdmin,
+      is_operator: operador,
+      // Un admin de marca sigue siendo de su marca: el alcance de plataforma
+      // hay que pedirlo explícitamente, y solo lo otorga quien ya lo tiene.
+      is_super_admin: !!body.is_super_admin,
       active: true,
       available: true,
     })
