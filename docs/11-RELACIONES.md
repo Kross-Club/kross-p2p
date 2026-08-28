@@ -1470,6 +1470,91 @@ abajo con los otros dos, los tres en rojo y del mismo tamaño, que es donde uno 
 cosas que no se deshacen. La regla de cuándo se ofrece no cambió: solo desde `confirmado` —
 antes de que el pedido salga al mundo, lo que corresponde es cancelar, no "no entregar".
 
+## Un adelanto, un pago total y un saldo son tres cosas (28-ago-2026)
+
+La columna del pedido decía el mismo monto **tres veces**: en la ficha del cliente
+("Adelanto de S/ 90 verificado"), en un panel propio debajo ("ADELANTO · S/ 90 · ✓
+VERIFICADO") y otra vez en el recuadro verde de "Pagó con Yape (360pay)". Tres sitios
+diciendo lo mismo son tres sitios donde puede decirse distinto — y ya lo decían: la ficha
+del cliente leía `advance_amount` a secas, el panel leía el monto y el estado por separado y
+solo el recuadro verde cruzaba contra la operación bancaria. El pedido de la sesión fue
+directo: *todo lo relacionado a la operación efectuada con éxito y el monto en cuestión debe
+ir en ese recuadro verde*.
+
+Así quedó. La ficha del cliente responde **quién es** —nombre, ubicación, DNI, WhatsApp, si
+recibe push— y no habla de plata. El panel de "adelanto verificado" se borró
+(`components/checkout/payment/AdvancePanel.tsx`). Lo que entró se cuenta en un solo sitio.
+
+### Y son tres, no uno
+
+El recuadro verde asumía una sola forma de cobrar. En la operación real hay tres, y
+confundirlas cuesta plata:
+
+| | Cuándo | Qué deja | Qué suelta |
+|---|---|---|---|
+| **Adelanto** | al cerrar el checkout | un saldo pendiente | el despacho |
+| **Pago total** | al cerrar el checkout | nada | el despacho |
+| **Saldo** | después, cuando ya hay guía | nada | **la clave de recojo** |
+
+Adelanto y pago total son **la misma operación con distinto monto**, así que no llevan campo
+aparte: se distinguen por lo que dejan pendiente. Si el primer cobro cubre el precio entero
+no es un adelanto, es *el* pago — y llamarlo adelanto haría buscar un saldo que no existe
+(`cobrosDelPedido` en `lib/order-money.ts`).
+
+El **saldo** sí es otra operación: ocurre días después, tiene su propio cupón, su propio
+número de operación bancaria y su propia fecha. Por eso son **dos recuadros verdes separados
+y no una suma**. Un "pagado S/ 180" borra lo único que un reclamo necesita saber: *cuál de
+los dos*. Vive en columnas propias (`saldo_amount`, `saldo_verification`, `saldo_matched_at`,
+`saldo_event_id`, `pay360_saldo_coupon_id`, `pay360_saldo_consumer_code` — bloque §31 de
+`setup-kross.sql`), y `get-session` arma su rastro con el mismo helper que el del adelanto,
+llamado dos veces.
+
+Cada tarjeta se pinta **verde cuando entró y ámbar mientras el cupón está emitido y sin
+pagar**. No es un matiz de color: un cupón emitido no es plata, y despachar leyendo el monto
+de un cupón sin pagar es el error caro que esta pantalla existe para evitar.
+
+### El saldo se cobra solo
+
+Antes, el saldo lo perseguía el asesor por el chat. Ahora, cuando el pedido ya tiene guía, al
+comprador le aparece un botón que abre su Yape con el monto exacto; 360pay avisa por webhook
+y el sistema valida sin que nadie mire nada. El acuse le entrega la clave de recojo.
+
+Cuándo se ofrece ese botón es una regla de **plata**, no de pantalla, así que vive en
+`order-money.ts` (`puedePagarSaldo`) y no en el componente que lo pregunta:
+
+- queda saldo — adelantó una parte, no pagó todo;
+- **el adelanto ya está cruzado**;
+- la tienda cobra en línea (`payment_provider === '360PAY'`). Prometer un botón que no cobra
+  es peor que no ponerlo: sin pasarela, el saldo lo coordina el asesor por el chat.
+
+La segunda condición es la que no se adivina mirando: en 360pay **el código de pago
+identifica al CLIENTE, y el banco cobra siempre el cupón pendiente más antiguo**. Con el
+adelanto emitido y sin pagar, quien viene a pagar su saldo termina pagando el adelanto — por
+otro monto. Por eso el cupón de saldo se niega en el servidor también (`advance_not_paid` en
+`pay360-coupon`), y no solo escondiendo el botón: el cliente que no ve el botón no es el
+único que puede llegar a esa función.
+
+Dos cosas más que el saldo **no** hace, a propósito:
+
+- **no mueve la etapa.** Cobrar no es entregar. El pedido sigue donde el courier lo tenga; lo
+  que cambia es que ya no debe nada.
+- **no dispara otro `Purchase` de CAPI.** La conversión se cuenta una vez, en el primer cobro.
+  Contarla dos veces por el mismo pedido le rompería el ROAS a la marca en su propio Events
+  Manager.
+
+### Y el anillo solo se llena con plata que pasó por la pasarela
+
+[El anillo](#el-anillo-cuánto-de-este-pedido-ya-está-cobrado) suma ahora las dos operaciones
+cruzadas —adelanto (o pago total) y saldo—, y **solo** esas. Un comercio puede acordar por el
+chat cobrar el resto por transferencia, en efectivo en la puerta o como sea, y mover el pedido
+a Entregado: eso **no** llena el anillo.
+
+No es una omisión, es la definición: de esa plata no tenemos rastro, y decir que lo tenemos es
+la única mentira que `order-money.ts` no se puede permitir. **Entregar el pedido no lo cobra;
+cobrar lo cobra.** Un anillo que se llenara al mover la etapa mediría el ánimo del vendedor,
+no la caja — y el anillo existe justo para responder cuánta plata está adentro y cuánta
+todavía depende de que alguien aparezca.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

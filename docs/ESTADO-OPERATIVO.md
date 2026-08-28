@@ -45,6 +45,15 @@ día. Nada de esto rompe la app si falta: el frontend sale con `main` y degrada 
 alter table chat_messages  add column if not exists call_recording_id uuid references call_recordings(id);
 alter table order_sessions add column if not exists answered_at       timestamptz;
 alter table sellers        add column if not exists is_operator       boolean default false;
+-- El saldo es otra operación, no el mismo pago (bloque §31)
+alter table order_sessions add column if not exists saldo_amount               numeric;
+alter table order_sessions add column if not exists saldo_verification         text;
+alter table order_sessions add column if not exists saldo_matched_at           timestamptz;
+alter table order_sessions add column if not exists saldo_event_id             uuid;
+alter table order_sessions add column if not exists pay360_saldo_coupon_id     text;
+alter table order_sessions add column if not exists pay360_saldo_consumer_code text;
+create index if not exists idx_order_sessions_saldo_coupon
+  on order_sessions(pay360_saldo_coupon_id) where pay360_saldo_coupon_id is not null;
 ```
 
 **2. Después los deploys.** Cada función una sola vez, aunque la pidan varias notas:
@@ -53,7 +62,8 @@ alter table sellers        add column if not exists is_operator       boolean de
 |---|---|---|
 | `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual, y el **DNI** que necesita el buscador | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
 | `order-manage` | `mark_answered`, `anular` / `restore`, y el eje sin `preparando` | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
-| `get-session` | la llamada en el hilo, `answered_at`, y si el cliente está en la app | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) · [app](#get-session-otra-vez-saber-si-el-cliente-está-en-la-app-27-ago-2026) |
+| `get-session` | la llamada en el hilo, `answered_at`, si el cliente está en la app, y el rastro del **saldo** |
+| `pay360-coupon` · `pay360-webhook` | el cobro del **saldo**: emitir su cupón y confirmarlo | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) · [app](#get-session-otra-vez-saber-si-el-cliente-está-en-la-app-27-ago-2026) |
 | `get-store-drafts` 🆕 | la columna **Curiosos** del tablero | [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
 | `delivery-map` 🆕 | el **mapa de entregas** de la libreta de clientes | [mapa](#el-mapa-de-entregas-por-distrito-28-ago-2026) |
 | `create-call-token` · `seller-call-token` · `livekit-webhook` | que la llamada quede escrita en el hilo del pedido | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) — `livekit-webhook` va con `--no-verify-jwt` |
@@ -233,6 +243,47 @@ registrada en el hilo — **corre el SQL antes que el deploy**. Sin el deploy, l
 Llamadas ya no existe pero todavía nada escribe llamadas en el hilo: las grabaciones viejas
 siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónde oírlas. Es la
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
+
+### El saldo se cobra solo (28-ago-2026)
+
+**1. SQL primero** (idempotente, bloque §31 de `setup-kross.sql`):
+
+```sql
+alter table order_sessions add column if not exists saldo_amount               numeric;
+alter table order_sessions add column if not exists saldo_verification         text;
+alter table order_sessions add column if not exists saldo_matched_at           timestamptz;
+alter table order_sessions add column if not exists saldo_event_id             uuid;
+alter table order_sessions add column if not exists pay360_saldo_coupon_id     text;
+alter table order_sessions add column if not exists pay360_saldo_consumer_code text;
+create index if not exists idx_order_sessions_saldo_coupon
+  on order_sessions(pay360_saldo_coupon_id) where pay360_saldo_coupon_id is not null;
+```
+
+**2. Los deploys:**
+
+```
+supabase functions deploy pay360-coupon  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session    --project-ref ofdjghntvmrdfjhazfvz
+```
+
+El pedido se cobra en dos momentos y hasta hoy la fila solo sabía del primero. Ahora
+`pay360-coupon` acepta `tipo: 'saldo'` y emite un **segundo cupón**; `pay360-webhook`
+distingue cuál de los dos se pagó **por el id del cupón** —el `external_ref` es el mismo
+pedido en ambos, y el monto no sirve: la mitad de un pedido de S/180 es 90, igual que su
+saldo—; `get-session` devuelve el rastro de los dos.
+
+**Corre el SQL antes que los deploys**, y acá el orden importa más que de costumbre: sin las
+columnas, `pay360-coupon` emitiría un cupón real en 360pay y fallaría al anotarlo. Un cupón
+emitido y no anotado no es un registro que falta — **es plata mal cobrada**: el banco paga
+siempre el pendiente más antiguo, así que el huérfano se lleva el pago del próximo pedido de
+ese mismo comprador.
+
+Sin los deploys no se rompe nada: el botón de pagar el saldo no aparece (el panel solo lo
+ofrece cuando la tienda cobra en línea y el adelanto ya cruzó) y el saldo se sigue coordinando
+por el chat, como hasta ahora.
+
+Qué es y por qué son dos operaciones: [`11-RELACIONES.md`](./11-RELACIONES.md).
 
 ### El rol Operador, y el equipo de la plataforma (28-ago-2026)
 

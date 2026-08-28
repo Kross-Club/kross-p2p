@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, AlertTriangle, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
@@ -11,7 +11,6 @@ import type { StoreOrder } from '../../lib/store-orders'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import TrackingBar from '../../components/TrackingBar'
-import AdvancePanel from '../../components/checkout/payment/AdvancePanel'
 import OrderDetailModal from '../../components/OrderDetailModal'
 import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
@@ -1034,19 +1033,22 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       />
       )}
 
-      {/* Dirección de entrega */}
-      {/* Antes que la dirección: si el adelanto no cuadró, eso decide si se
-          despacha o no — la dirección recién importa después. */}
-      <AdvancePanel
-        advanceAmount={Number(session.advance_amount ?? 0)}
-        verification={session.payment_verification ?? null}
-        reason={session.payment_reason ?? null}
-        provider={session.payment_provider ?? null}
-      />
-
-      {/* Pegado al adelanto porque responde lo mismo: si esa plata entró de
-          verdad. Vivía escondido en el modal del avatar. */}
+      {/* La plata, antes que la dirección: si el cobro no cuadró, eso decide si
+          se despacha o no — la dirección recién importa después.
+          Una tarjeta por OPERACIÓN (adelanto o pago total, y el saldo cuando lo
+          hay), con su monto y su rastro contra el banco. Acá había además un
+          `AdvancePanel` que repetía el mismo monto con otras palabras; se
+          eliminó con la línea de la ficha del cliente que hacía lo mismo. */}
       <PagoTrace session={session} />
+      {/* El motivo del fallo, que no es del cobro sino de la EMISIÓN: por qué
+          un pedido con adelanto ni siquiera tiene cupón. */}
+      {session.payment_reason && session.payment_verification !== 'MATCHED' && (
+        <p className="mx-4 mt-2 flex items-start gap-1.5 rounded-2xl px-3 py-2 text-[11px]"
+          style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)', color: 'var(--text-muted)' }}>
+          <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
+          <span>{session.payment_reason}</span>
+        </p>
+      )}
 
       <AddressBar
         sessionId={session.id}

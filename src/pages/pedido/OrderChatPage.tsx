@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { stagesFor, stageIndex } from '../../lib/order-stages'
 import { isPickupDispatch, pickupBranchIdOf } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
+import PagarSaldo from '../../components/PagarSaldo'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
@@ -840,6 +841,15 @@ export default function OrderChatPage() {
           tracking={session}
           onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
         />
+      </div>
+
+      {/* ── El saldo, con su botón ── */}
+      {/* Debajo del tracking a propósito: el saldo se le pide cuando ya hay
+          guía, y la guía está justo encima. Se ofrece solo, sin que tenga que
+          escribirle a nadie — que es lo que la bienvenida le prometió desde el
+          primer mensaje. */}
+      <div className="flex-shrink-0">
+        <PagarSaldo pedido={session} />
       </div>
 
       {/* ── Instala la app (banner inline, no tapa el input) ── */}

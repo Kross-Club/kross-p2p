@@ -33,6 +33,8 @@ Deno.serve(async (req) => {
       tracking_courier, tracking_numero, tracking_codigo, tracking_ose_id,
       tracking_year, tracking_phase, tracking_phase_at, tracking_demora_at,
       payment_verification, payment_reason, payment_event_id,
+      saldo_amount, saldo_verification, saldo_matched_at, saldo_event_id,
+      pay360_saldo_consumer_code, pay360_saldo_coupon_id,
       pay360_coupon_id, pay360_consumer_code,
       advance_amount, payment_provider,
       answered_at,
@@ -121,34 +123,43 @@ Deno.serve(async (req) => {
   // sola no dice nada — cierra el círculo junto con el cupón y el código de
   // pago, que son lo que el panel de 360pay lista. Del `raw` del evento se
   // extraen solo `operation_number` y `bank_tx_id`: el raw entero lleva fees.
-  let paymentTrace: {
+  type Trace = {
     operation_number: string | null; bank: string | null
     coupon_id: string | null; payment_code: string | null
-  } | null = null
-  if (viewerIsSeller && session.payment_event_id) {
-    const { data: ev } = await supabase.from('payment_events')
-      .select('raw, operation_number').eq('id', session.payment_event_id).maybeSingle()
-    if (ev) {
-      let op = ev.operation_number ?? null, bank: string | null = null
-      // El código de pago sale de la fila del pedido; el evento del webhook lo
-      // trae también (`code`), y ese es el respaldo para pedidos que pagaron
-      // pese a que la emisión no llegó a guardar la columna — pasó con el
-      // primer cupón real, cuando un fallo posterior a la emisión respondía
-      // antes de escribir la fila.
-      let code: string | null = session.pay360_consumer_code ?? null
-      try {
-        const raw = JSON.parse(ev.raw ?? '{}')
-        op = op ?? (typeof raw.operation_number === 'string' ? raw.operation_number : null)
-        bank = typeof raw.bank_tx_id === 'string' ? raw.bank_tx_id : null
-        code = code ?? (typeof raw.code === 'string' ? raw.code : null)
-      } catch { /* raw no-JSON (eventos viejos del flujo manual): sin rastro */ }
-      paymentTrace = {
-        operation_number: op, bank,
-        coupon_id: session.pay360_coupon_id ?? null,
-        payment_code: code,
-      }
-    }
   }
+
+  // El rastro de UN cobro. Son dos —adelanto y saldo (bloque §31 del esquema)—,
+  // cada uno con su evento, su cupón y su operación bancaria, así que esto se
+  // arma dos veces con distintas columnas en vez de una sola con la del
+  // adelanto: un reclamo pregunta por UNO de los dos, y el número que se le da
+  // tiene que ser el de ese.
+  const rastroDe = async (
+    eventId: string | null, cuponId: string | null, codigo: string | null,
+  ): Promise<Trace | null> => {
+    if (!viewerIsSeller || !eventId) return null
+    const { data: ev } = await supabase.from('payment_events')
+      .select('raw, operation_number').eq('id', eventId).maybeSingle()
+    if (!ev) return null
+    let op = ev.operation_number ?? null, bank: string | null = null
+    // El código de pago sale de la fila del pedido; el evento del webhook lo
+    // trae también (`code`), y ese es el respaldo para pedidos que pagaron
+    // pese a que la emisión no llegó a guardar la columna — pasó con el
+    // primer cupón real, cuando un fallo posterior a la emisión respondía
+    // antes de escribir la fila.
+    let code: string | null = codigo
+    try {
+      const raw = JSON.parse(ev.raw ?? '{}')
+      op = op ?? (typeof raw.operation_number === 'string' ? raw.operation_number : null)
+      bank = typeof raw.bank_tx_id === 'string' ? raw.bank_tx_id : null
+      code = code ?? (typeof raw.code === 'string' ? raw.code : null)
+    } catch { /* raw no-JSON (eventos viejos del flujo manual): sin rastro */ }
+    return { operation_number: op, bank, coupon_id: cuponId, payment_code: code }
+  }
+
+  const [paymentTrace, saldoTrace] = await Promise.all([
+    rastroDe(session.payment_event_id ?? null, session.pay360_coupon_id ?? null, session.pay360_consumer_code ?? null),
+    rastroDe(session.saldo_event_id ?? null, session.pay360_saldo_coupon_id ?? null, session.pay360_saldo_consumer_code ?? null),
+  ])
 
   // Header participants = current OWNER + people EXPLICITLY invited (not the
   // whole hand-off history). Each carries who invited them so the client can
@@ -210,7 +221,7 @@ Deno.serve(async (req) => {
         ...session, ...sellerOnly,
         seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar,
         participants, buyer_can_call: buyerCanCall,
-        buyer_contact: buyerContact, payment_trace: paymentTrace,
+        buyer_contact: buyerContact, payment_trace: paymentTrace, saldo_trace: saldoTrace,
       },
       viewer_is_seller: viewerIsSeller,
       messages: mensajes,
