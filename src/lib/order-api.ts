@@ -80,14 +80,24 @@ export interface OrderSession {
   } | null
   /** Rastro del pago cruzado — la cadena con la que el comercio coteja contra
    *  el panel de 360pay y contra el banco. Solo vendedor. */
-  payment_trace?: {
-    operation_number: string | null
-    bank: string | null
-    /** Id del cupón en 360pay (el `_id` que su panel muestra en el detalle). */
-    coupon_id: string | null
-    /** Código de pago del cliente (KSH…): es como el panel LISTA los cupones. */
-    payment_code: string | null
-  } | null
+  payment_trace?: PagoTrazado | null
+  /** El SALDO: la segunda operación, cuando ya hay guía. Sus propias columnas
+   *  porque es otro cupón, otra fecha y otro número de operación bancaria. */
+  saldo_amount?: number | null
+  saldo_verification?: string | null
+  saldo_matched_at?: string | null
+  saldo_trace?: PagoTrazado | null
+}
+
+/** El rastro de UN cobro: la cadena con la que el comercio coteja contra el
+ *  panel de 360pay y contra el banco. */
+export interface PagoTrazado {
+  operation_number: string | null
+  bank: string | null
+  /** Id del cupón en 360pay (el `_id` que su panel muestra en el detalle). */
+  coupon_id: string | null
+  /** Código de pago del cliente (KSH…): es como el panel LISTA los cupones. */
+  payment_code: string | null
 }
 
 export interface OrderItem {

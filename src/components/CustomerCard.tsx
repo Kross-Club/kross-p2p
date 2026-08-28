@@ -1,4 +1,4 @@
-import { MessageCircle, Phone, BadgeCheck, ChevronRight, Smartphone } from 'lucide-react'
+import { MessageCircle, Phone, ChevronRight, Smartphone } from 'lucide-react'
 import CopyRow from './CopyRow'
 import { diaMes } from '../lib/fechas'
 import type { OrderSession } from '../lib/order-api'
@@ -33,10 +33,8 @@ export default function CustomerCard({ session, ubicacion, onVerCliente }: {
   const tipoDoc = c?.document_type || 'DNI'
   const phone = c?.phone ?? null
   const celular = phone ? phone.slice(-9) : null
-  const pagado = session.payment_verification === 'MATCHED'
   const pushActivo = !!c?.push_activo
   const enAppDesde = diaMes(c?.activated_at)
-  const adelanto = Number(session.advance_amount ?? 0)
 
   const identidad = (
     <div className="flex items-center gap-2.5 text-left w-full">
@@ -61,11 +59,11 @@ export default function CustomerCard({ session, ubicacion, onVerCliente }: {
         ? <button type="button" onClick={onVerCliente} className="w-full">{identidad}</button>
         : identidad}
 
-      {pagado && (
-        <p className="mt-2 flex items-center gap-1 text-[11px] font-bold" style={{ color: 'var(--ok-fg)' }}>
-          <BadgeCheck size={13} /> Adelanto de S/ {adelanto} verificado
-        </p>
-      )}
+      {/* Acá NO va la plata. Esta tarjeta responde "¿quién es?"; cuánto pagó y
+          con qué operación lo responden las tarjetas de cobro, que están justo
+          debajo (`PagoTrace`). El monto estaba repetido tres veces en la misma
+          columna, y tres sitios diciendo lo mismo son tres sitios donde puede
+          decirse distinto. */}
 
       {/* ¿Está en la app? Son DOS datos, no uno, y hace falta separarlos para
           decidir cómo se le avisa:

@@ -110,20 +110,43 @@ Deno.serve(async (req) => {
   }
 
   // ─── El pedido ─────────────────────────────────────────────────────────────
-  const sessionCols = 'id, order_id, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
+  const sessionCols = 'id, order_id, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, pay360_saldo_coupon_id, saldo_amount, saldo_verification, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
   const { data: session } = externalRef
     ? await supabase.from('order_sessions')
         .select(sessionCols)
         .eq('id', externalRef).maybeSingle()
     : await supabase.from('order_sessions')
         .select(sessionCols)
-        .eq('pay360_coupon_id', couponId ?? '__none__').maybeSingle()
+        // Los DOS cobros del pedido comparten `external_ref`, así que por ahí
+        // no se distinguen; por cupón sí. `or` porque el saldo tiene el suyo.
+        .or(`pay360_coupon_id.eq.${couponId ?? '__none__'},pay360_saldo_coupon_id.eq.${couponId ?? '__none__'}`)
+        .maybeSingle()
 
   if (!session) return await ignore(storeId, dedupeKey, 'pedido no encontrado')
   if (session.payment_provider !== '360PAY') {
     return await ignore(storeId, dedupeKey, 'pedido de otro motor de cobro')
   }
-  if (session.payment_verification === 'MATCHED') {
+
+  // ─── ¿Cuál de los DOS cobros pagó? ─────────────────────────────────────────
+  //
+  // Un pedido tiene hasta dos cupones —adelanto y saldo (bloque §31 del
+  // esquema)— y el webhook llega igual para los dos. Lo decide el id del cupón,
+  // que es lo único que los distingue: `external_ref` es el mismo pedido en
+  // ambos, y el monto no sirve —la mitad de un pedido de S/180 es 90, igual que
+  // su saldo—.
+  //
+  // Sin cupón identificable manda el estado: si el adelanto ya está cruzado, lo
+  // que puede estar pagándose es el saldo.
+  const esSaldo = couponId && session.pay360_saldo_coupon_id === couponId
+    ? true
+    : couponId && session.pay360_coupon_id === couponId
+      ? false
+      : session.payment_verification === 'MATCHED'
+
+  if (esSaldo && session.saldo_verification === 'MATCHED') {
+    return await ignore(storeId, dedupeKey, 'actualización de un saldo ya verificado')
+  }
+  if (!esSaldo && session.payment_verification === 'MATCHED') {
     // No es un duplicado ni un error: la doc avisa que si el cupón ya estaba
     // pagado y DESPUÉS se corrige el código bancario (`operation_number`,
     // `bank_tx_id`), 360pay emite otro PAYMENT_PAID con un Event-Id DISTINTO.
@@ -155,12 +178,15 @@ Deno.serve(async (req) => {
     return await ignore(storeId, dedupeKey, `cupón en estado ${coupon.data.status ?? '?'}`)
   }
 
-  // 5 · el monto. Un cupón pagado por menos NO es el adelanto pagado.
-  const rowAmount = Number(session.advance_amount ?? 0)
+  // 5 · el monto. Un cupón pagado por menos NO es el cobro pagado.
+  const rowAmount = esSaldo
+    ? Math.max(0, Math.round(Number(session.product_price ?? 0) - Number(session.advance_amount ?? 0)))
+    : Number(session.advance_amount ?? 0)
   const paid = Number(coupon.data.amount ?? 0)
+  const queCobro = esSaldo ? 'saldo' : 'adelanto'
   if (!(paid >= rowAmount)) {
     await supabase.from('order_sessions').update({
-      payment_reason: `Cupón 360pay pagado por S/${paid}, el adelanto era S/${rowAmount} — revisar antes de confirmar`,
+      payment_reason: `Cupón 360pay pagado por S/${paid}, el ${queCobro} era S/${rowAmount} — revisar antes de confirmar`,
     }).eq('id', session.id)
     return await ignore(storeId, dedupeKey, `monto insuficiente (S/${paid} < S/${rowAmount})`)
   }
@@ -179,10 +205,15 @@ Deno.serve(async (req) => {
   const { data: ev } = await supabase.from('payment_events')
     .select('id').eq('store_id', storeId).eq('dedupe_key', dedupeKey).maybeSingle()
 
-  await supabase.from('order_sessions').update({
-    payment_verification: 'MATCHED', payment_matched_at: matchedAt,
-    payment_reason: null, payment_event_id: ev?.id ?? null, stage: 'confirmado',
-  }).eq('id', session.id)
+  await supabase.from('order_sessions').update(esSaldo
+    // El saldo NO mueve la etapa: cuando se cobra, el pedido ya va en camino o
+    // está en la agencia. Retroceder a `confirmado` borraría lo que el courier
+    // ya reportó.
+    ? { saldo_verification: 'MATCHED', saldo_matched_at: matchedAt, saldo_amount: paid, saldo_event_id: ev?.id ?? null }
+    : {
+        payment_verification: 'MATCHED', payment_matched_at: matchedAt,
+        payment_reason: null, payment_event_id: ev?.id ?? null, stage: 'confirmado',
+      }).eq('id', session.id)
 
   // Los DOS mensajes del cruce manual, con la misma copy: ya está calibrada y el
   // comprador no tiene por qué notar QUÉ motor cobró.
@@ -190,7 +221,7 @@ Deno.serve(async (req) => {
   await supabase.from('chat_messages').insert({
     session_id: session.id, sender_role: 'system', sender_name: 'Kross',
     type: 'text', visibility: 'sellers',
-    body: `✅ Adelanto de S/${paid} verificado automáticamente`
+    body: `✅ ${esSaldo ? 'Saldo' : 'Adelanto'} de S/${paid} verificado automáticamente`
       + (session.buyer_name ? ` · pagó ${session.buyer_name}` : '')
       + ` · 360pay ${coupon.data._id}${bank}`,
   })
@@ -200,7 +231,9 @@ Deno.serve(async (req) => {
   // día del recojo. Misma regla que el mensaje de bienvenida de register-buyer,
   // y misma mecánica: en agencia el saldo se paga POR LA APP (la clave de
   // recojo se entrega contra ese pago), nunca en el mostrador.
-  const saldoRestante = Math.max(0, Number(session.product_price ?? 0) - paid)
+  const saldoRestante = esSaldo
+    ? 0
+    : Math.max(0, Number(session.product_price ?? 0) - paid)
   const esRecojo = session.dispatch_type === 'AGENCIA_PROVINCIA' || session.dispatch_type === 'AGENCIA_LIMA'
   const buyerAck = saldoRestante > 0
     ? (esRecojo
@@ -213,10 +246,21 @@ Deno.serve(async (req) => {
   await supabase.from('chat_messages').insert({
     session_id: session.id, sender_role: 'system', sender_name: 'Kross',
     type: 'status_update', visibility: 'all',
-    body: `${buyerAck} Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.`,
+    body: esSaldo
+      // Al pagar el saldo lo que el comprador espera es su clave, no un
+      // "estamos preparando" — su pedido ya está en la agencia.
+      ? `✅ ¡Recibimos tu saldo de S/${paid}! Ya no te queda nada pendiente. Te enviamos tu clave de recojo por acá.`
+      : `${buyerAck} Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.`,
   })
 
   // ─── CAPI · Purchase server-side ───────────────────────────────────────────
+  //
+  // SOLO en el primer cobro. El saldo es la segunda mitad de la MISMA compra:
+  // reportarlo como otro `Purchase` le contaría a Meta y a TikTok dos
+  // conversiones por un pedido, y el público "de los que sí pagaron" —que es
+  // para lo que existe este evento— se llenaría de duplicados.
+  if (esSaldo) return ok({ received: true, matched: true, saldo: true })
+
   // El evento que arma el público "de los que SÍ pagaron": se dispara SOLO aquí,
   // desde el servidor, porque el pago se confirma por webhook cuando el
   // comprador ya se fue a Yape y el navegador no puede reportarlo. `value` = el

@@ -18,6 +18,65 @@ export interface PedidoConPlata {
   product_price?: number | string | null
   advance_amount?: number | string | null
   payment_verification?: string | null
+  /** El SALDO cobrado por la pasarela, que es una operación distinta del
+   *  adelanto: ocurre después, cuando ya existe la guía, y es lo que suelta la
+   *  clave de recojo. Ver `cobros`. */
+  saldo_amount?: number | string | null
+  saldo_verification?: string | null
+}
+
+// ─── Las tres operaciones, que no son la misma ───────────────────────────────
+//
+// Al empezar, el comprador **o adelanta o paga todo**: son la misma operación
+// con distinto monto, y por eso se distinguen por lo que dejan pendiente, no
+// por un campo aparte.
+//
+//   adelanto → pagó una parte. Queda saldo.
+//   total    → pagó el precio entero de una. No queda nada.
+//   saldo    → la SEGUNDA operación, meses o días después: cuando la guía ya
+//              existe, se le cobra lo que falta y eso suelta la clave de recojo.
+//
+// Son operaciones separadas —cada una con su cupón, su número de operación
+// bancaria y su fecha— y por eso se muestran por separado. Juntarlas en un solo
+// "pagado S/180" borraría lo único que un reclamo necesita: cuál de las dos.
+
+export type TipoDeCobro = 'adelanto' | 'total' | 'saldo'
+
+/** ¿Está cruzado por la pasarela? Es la única forma de "cobrado" que cuenta. */
+const cruzado = (v: string | null | undefined): boolean =>
+  String(v ?? '').toUpperCase() === 'MATCHED'
+
+export interface Cobro {
+  tipo: TipoDeCobro
+  monto: number
+  /** `false` = el cupón está emitido y todavía sin pagar. */
+  verificado: boolean
+}
+
+/**
+ * Las operaciones de cobro de este pedido, en orden.
+ *
+ * Solo las que EXISTEN: un pedido sin saldo cobrado devuelve una sola. Es lo
+ * que pinta las tarjetas verdes del panel — una por operación, porque cada una
+ * tiene su propio rastro contra el banco.
+ */
+export function cobrosDelPedido(p: PedidoConPlata): Cobro[] {
+  const valor = valorDelPedido(p)
+  const adelanto = Math.max(0, num(p.advance_amount))
+  const saldo = Math.max(0, num(p.saldo_amount))
+  const out: Cobro[] = []
+
+  if (adelanto > 0) {
+    // Si el primer pago cubre el pedido entero no es un adelanto: es EL pago.
+    // Llamarlo adelanto haría buscar un saldo que no existe.
+    out.push({
+      tipo: valor > 0 && adelanto >= valor ? 'total' : 'adelanto',
+      monto: Math.min(adelanto, valor || adelanto),
+      verificado: cruzado(p.payment_verification),
+    })
+  }
+  if (saldo > 0) out.push({ tipo: 'saldo', monto: saldo, verificado: cruzado(p.saldo_verification) })
+  return out
 }
 
 const num = (v: number | string | null | undefined): number => {
@@ -31,17 +90,25 @@ export function valorDelPedido(p: PedidoConPlata): number {
 }
 
 /**
- * Lo que ya entró por este pedido.
+ * Lo que ya entró por este pedido, POR LA PASARELA.
  *
- * Se topa contra el valor a propósito: un adelanto mayor al precio es un dato
- * malo, y dejarlo pasar inflaría el total de una columna sin que nadie note de
- * dónde salió.
+ * Suma las operaciones cruzadas: el adelanto (o el pago total) y, si lo hubo, el
+ * saldo. Nada más. Que el comercio cobre por fuera —transferencia, efectivo en
+ * la puerta, un acuerdo por el chat— y mueva el pedido a "Entregado" NO lo hace
+ * cobrado acá: no tenemos rastro de esa plata, y decir que la tenemos es la
+ * única mentira que este archivo no se puede permitir. Por eso el anillo del
+ * pedido solo se llena cuando el valor entero pasó por la pasarela.
+ *
+ * Se topa contra el valor a propósito: un cobro mayor al precio es un dato malo,
+ * y dejarlo pasar inflaría el total de una columna sin que nadie note de dónde
+ * salió.
  */
 export function cobradoDelPedido(p: PedidoConPlata): number {
-  if (String(p.payment_verification ?? '').toUpperCase() !== 'MATCHED') return 0
-  const adelanto = Math.max(0, num(p.advance_amount))
+  const entro = cobrosDelPedido(p)
+    .filter(c => c.verificado)
+    .reduce((n, c) => n + c.monto, 0)
   const valor = valorDelPedido(p)
-  return valor > 0 ? Math.min(adelanto, valor) : adelanto
+  return valor > 0 ? Math.min(entro, valor) : entro
 }
 
 /** Lo que falta cobrar. */
@@ -103,4 +170,28 @@ export function avanceDelPago(p: PedidoConPlata): AvancePago {
  */
 export function soles(n: number | string | null | undefined): string {
   return `S/ ${Math.round(num(n)).toLocaleString('es-PE')}`
+}
+
+/**
+ * ¿Se le puede ofrecer al comprador pagar su saldo ahora mismo?
+ *
+ * Vive acá y no en el botón que lo pregunta porque es una regla de PLATA, y la
+ * más delicada de las tres condiciones no se adivina mirando la pantalla:
+ *
+ *   · queda saldo — adelantó una parte, no pagó todo;
+ *   · **el adelanto ya está cruzado**. No es orden por orden: el código de pago
+ *     identifica al CLIENTE y el banco cobra siempre el cupón pendiente más
+ *     antiguo, así que con el adelanto sin pagar, quien viene a pagar el saldo
+ *     terminaría pagando el adelanto — por otro monto;
+ *   · la tienda cobra en línea. Prometer un botón que no cobra es peor que no
+ *     ponerlo: sin `360PAY` el saldo lo coordina el asesor por el chat.
+ */
+export function puedePagarSaldo(p: PedidoConPlata & {
+  payment_provider?: string | null
+}): boolean {
+  const falta = Math.max(0, valorDelPedido(p) - Math.max(0, num(p.advance_amount)))
+  return falta > 0
+    && p.payment_provider === '360PAY'
+    && cruzado(p.payment_verification)
+    && !cruzado(p.saldo_verification)
 }

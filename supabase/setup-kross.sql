@@ -1264,3 +1264,47 @@ ALTER TABLE sellers ADD COLUMN IF NOT EXISTS is_operator boolean DEFAULT false;
 -- crearlo desde el panel, en Equipo):
 --   UPDATE sellers SET is_admin = true, is_operator = true, role_label = 'Operador'
 --   WHERE auth_user_id = '<uuid>';
+
+
+-- ─── 31. EL SALDO ES OTRA OPERACIÓN, NO EL MISMO PAGO ───────────────────────
+--
+-- El pedido se cobra en DOS momentos, y hasta hoy la fila solo sabía del
+-- primero:
+--
+--   1. Al cerrar el checkout, el comprador **o adelanta o paga todo**. Eso vive
+--      en `advance_amount` / `payment_verification` y lo cruza `pay360-webhook`.
+--   2. Si adelantó, queda un SALDO. Cuando la guía existe, se le emite un
+--      segundo cupón; al pagarlo se suelta la clave de recojo (27.d).
+--
+-- Son operaciones distintas —otro cupón, otro número de operación bancaria,
+-- otra fecha, a veces otro banco— y por eso son otras columnas y no una suma
+-- sobre las de arriba. Un reclamo del comprador pregunta por UNA de las dos, y
+-- con un solo "pagado S/180" no hay manera de saber cuál.
+--
+-- `saldo_verification`: PENDING (cupón emitido, sin pagar) | MATCHED (cobrado).
+-- NULL = todavía no se le pidió el saldo.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS saldo_amount        numeric;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS saldo_verification  text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS saldo_matched_at    timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS saldo_event_id      uuid;  -- el pago que lo cuadró
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pay360_saldo_coupon_id     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pay360_saldo_consumer_code text;
+
+-- El webhook llega con un id de cupón y tiene que saber a CUÁL de los dos cobros
+-- corresponde. Busca por los dos, así que los dos se indexan.
+CREATE INDEX IF NOT EXISTS idx_order_sessions_saldo_coupon
+  ON order_sessions(pay360_saldo_coupon_id)
+  WHERE pay360_saldo_coupon_id IS NOT NULL;
+
+-- ⚠️ Lo que este bloque NO cambia, y conviene no cambiarlo por descuido: el
+-- anillo de avance del panel se llena con `advance` + `saldo` **cruzados por la
+-- pasarela**, y con nada más. Un comercio puede cobrar por fuera —efectivo,
+-- transferencia, un acuerdo por el chat— y mover el pedido a `entregado`; de esa
+-- plata no tenemos rastro, así que no cuenta como cobrada. Ver `cobradoDelPedido`
+-- en src/lib/order-money.ts.
+--
+-- Cuánto se ha cobrado de verdad por la pasarela, por pedido:
+--   SELECT order_id, product_price, advance_amount, payment_verification,
+--          saldo_amount, saldo_verification
+--   FROM order_sessions WHERE store_id = '<tienda>' AND payment_provider = '360PAY'
+--   ORDER BY created_at DESC;

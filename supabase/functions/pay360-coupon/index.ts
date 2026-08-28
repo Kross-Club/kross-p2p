@@ -1,4 +1,15 @@
-// ─── SALES ENGINE · Emisión del cupón de adelanto (360pay) ───────────────────
+// ─── SALES ENGINE · Emisión del cupón de cobro (360pay) ──────────────────────
+//
+// DOS cobros por pedido, no uno (bloque §31 del esquema):
+//
+//   · `adelanto` — al cerrar el checkout. O una parte, o el precio entero.
+//   · `saldo`    — después, cuando el pedido ya tiene guía: lo que falta. Al
+//                  pagarlo se suelta la clave de recojo (27.d).
+//
+// Es la MISMA emisión con otro monto y otras columnas, así que vive en la misma
+// función: partirla en dos habría duplicado la config de la tienda, el cliente
+// de 360pay, la anulación previa y el armado del deeplink — cinco sitios donde
+// las dos podrían separarse.
 // Aquí NO se cobra: se emite una orden de cobro (el "cupón") y se devuelve el
 // deep link que abre Yape pre-llenado. El dinero se confirma después, por
 // `pay360-webhook`. Ver docs/06-360PAY.md.
@@ -50,8 +61,9 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  const body = await req.json().catch(() => ({})) as { order_token?: string }
+  const body = await req.json().catch(() => ({})) as { order_token?: string; tipo?: string }
   const orderToken = String(body.order_token ?? '').trim()
+  const esSaldo = body.tipo === 'saldo'
   if (!orderToken) return json({ ok: false, stage: 'validation', code: 'missing_token' }, 400)
 
   const { data: session } = await supabase
@@ -60,7 +72,8 @@ Deno.serve(async (req) => {
       id, order_id, store_id, origin_store_id, status, buyer_id, buyer_name, buyer_phone,
       advance_amount, payment_verification, payment_provider,
       product_price, advance_choice, advance_charge_attempts,
-      pay360_coupon_id, pay360_consumer_code
+      pay360_coupon_id, pay360_consumer_code,
+      saldo_amount, saldo_verification, pay360_saldo_coupon_id
     `)
     .eq('token', orderToken)
     .maybeSingle()
@@ -69,10 +82,24 @@ Deno.serve(async (req) => {
 
   // ─── Idempotencia por estado ───────────────────────────────────────────────
   // Ya pagado: se responde el hecho, jamás se emite otro cupón. Emitir uno nuevo
-  // sobre un pedido pagado es pedirle al comprador que pague dos veces.
-  if (session.payment_verification === 'MATCHED') {
-    return json({ ok: true, already_paid: true, amount_pen: Number(session.advance_amount ?? 0) })
+  // sobre un cobro pagado es pedirle al comprador que pague dos veces.
+  const yaCobrado = esSaldo ? session.saldo_verification === 'MATCHED' : session.payment_verification === 'MATCHED'
+  if (yaCobrado) {
+    return json({ ok: true, already_paid: true, amount_pen: Number((esSaldo ? session.saldo_amount : session.advance_amount) ?? 0) })
   }
+
+  // El saldo solo se cobra DESPUÉS del adelanto, y no es una regla de orden: es
+  // la que evita cobrar dos veces mal. El código de pago identifica al CLIENTE y
+  // el banco cobra SIEMPRE el cupón pendiente más antiguo — con el adelanto sin
+  // pagar y un cupón de saldo vivo, quien va a pagar el saldo termina pagando el
+  // adelanto, por otro monto.
+  if (esSaldo && session.payment_verification !== 'MATCHED') {
+    return json({
+      ok: false, stage: 'validation', code: 'advance_not_paid',
+      user_message: 'Primero se confirma tu adelanto. Apenas cuadre te habilitamos el pago del saldo.',
+    }, 409)
+  }
+
   if (session.status !== 'active') {
     return json({ ok: false, stage: 'validation', code: 'cancelled', user_message: 'Este pedido ya no está activo.' }, 409)
   }
@@ -87,16 +114,30 @@ Deno.serve(async (req) => {
   // El adelanto sale del PRECIO, no del destino: `advance_choice` dice si es la
   // mitad o el total. Misma función que usa el front (`advanceFor`), para que
   // se cobre exactamente lo que el paso 3 le mostró al comprador.
-  const expected = advanceForServer(Number(session.product_price ?? 0), String(session.advance_choice ?? 'HALF'))
-  const rowAmount = Number(session.advance_amount ?? 0)
-  if (expected <= 0 || rowAmount <= 0 || session.payment_verification === 'NOT_REQUIRED') {
-    return json({ ok: false, stage: 'validation', code: 'no_advance' }, 400)
-  }
-  if (rowAmount !== expected) {
-    await supabase.from('order_sessions')
-      .update({ payment_reason: `Adelanto del pedido (S/${rowAmount}) no coincide con el derivado (S/${expected}) — revisar antes de emitir` })
-      .eq('id', session.id)
-    return json({ ok: false, stage: 'config', code: 'amount_mismatch', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 409)
+  //
+  // El saldo se deriva igual de estricto y por resta: precio menos lo ya
+  // cobrado. Nunca del cliente — pedir "cuánto debo" y creerle es dejar que el
+  // comprador fije lo que se le cobra.
+  const precio = Number(session.product_price ?? 0)
+  const rowAmount = esSaldo
+    ? Math.max(0, Math.round(precio - Number(session.advance_amount ?? 0)))
+    : Number(session.advance_amount ?? 0)
+
+  if (esSaldo) {
+    if (rowAmount <= 0) {
+      return json({ ok: false, stage: 'validation', code: 'no_saldo', user_message: 'Este pedido ya está pagado por completo.' }, 409)
+    }
+  } else {
+    const expected = advanceForServer(precio, String(session.advance_choice ?? 'HALF'))
+    if (expected <= 0 || rowAmount <= 0 || session.payment_verification === 'NOT_REQUIRED') {
+      return json({ ok: false, stage: 'validation', code: 'no_advance' }, 400)
+    }
+    if (rowAmount !== expected) {
+      await supabase.from('order_sessions')
+        .update({ payment_reason: `Adelanto del pedido (S/${rowAmount}) no coincide con el derivado (S/${expected}) — revisar antes de emitir` })
+        .eq('id', session.id)
+      return json({ ok: false, stage: 'config', code: 'amount_mismatch', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 409)
+    }
   }
 
   // ─── Config de la tienda de ORIGEN ─────────────────────────────────────────
@@ -149,12 +190,13 @@ Deno.serve(async (req) => {
   // ─── Reemisión: ¿el cupón anterior ya se pagó? ─────────────────────────────
   // Antes de anular nada se consulta. Anular un cupón ya pagado perdería el
   // rastro del dinero que YA entró.
-  if (session.pay360_coupon_id) {
-    const prev = await getCoupon(base, PARTNER_KEY, session.pay360_coupon_id)
+  const cuponPrevio = esSaldo ? session.pay360_saldo_coupon_id : session.pay360_coupon_id
+  if (cuponPrevio) {
+    const prev = await getCoupon(base, PARTNER_KEY, cuponPrevio)
     if (prev.ok && isPaid(prev.data)) {
       return json({ ok: true, already_paid: true, amount_pen: rowAmount })
     }
-    if (prev.ok) await annulCoupon(base, PARTNER_KEY, session.pay360_coupon_id)
+    if (prev.ok) await annulCoupon(base, PARTNER_KEY, cuponPrevio)
   }
 
   // ─── El CLIENTE, con sus datos reales ──────────────────────────────────────
@@ -206,7 +248,7 @@ Deno.serve(async (req) => {
     // El API exige el código ARRIBA ("customer_id or code is required"); el
     // `coupon_code` anidado del spec no le alcanza.
     code: consumerCode,
-    description: `Adelanto ${session.order_id ?? session.id}`.slice(0, 80),
+    description: `${esSaldo ? 'Saldo' : 'Adelanto'} ${session.order_id ?? session.id}`.slice(0, 80),
     customer: {
       name: session.buyer_name ?? 'Cliente',
       phone: session.buyer_phone ? `+51${String(session.buyer_phone).slice(-9)}` : undefined,
@@ -237,12 +279,19 @@ Deno.serve(async (req) => {
   // que falta — es plata mal cobrada: el banco paga SIEMPRE el pendiente más
   // antiguo, así que el huérfano se lleva el pago del próximo pedido de ese
   // mismo comprador. Solo esta fila permite anularlo después.
-  await supabase.from('order_sessions').update({
-    pay360_coupon_id: coupon.data._id,
-    pay360_consumer_code: consumerCode,
-    payment_verification: 'PENDING',
-    payment_reason: null,
-  }).eq('id', session.id)
+  await supabase.from('order_sessions').update(esSaldo
+    ? {
+        pay360_saldo_coupon_id: coupon.data._id,
+        pay360_saldo_consumer_code: consumerCode,
+        saldo_amount: rowAmount,
+        saldo_verification: 'PENDING',
+      }
+    : {
+        pay360_coupon_id: coupon.data._id,
+        pay360_consumer_code: consumerCode,
+        payment_verification: 'PENDING',
+        payment_reason: null,
+      }).eq('id', session.id)
 
   // El enlace: primero el que mande 360pay, y si no viene, el que armamos.
   const deeplink = paymentUrlOf(coupon.data as Record<string, unknown>)
@@ -268,6 +317,7 @@ Deno.serve(async (req) => {
 
   return json({
     ok: true,
+    tipo: esSaldo ? 'saldo' : 'adelanto',
     amount_pen: rowAmount,
     consumer_code: consumerCode,
     coupon_id: coupon.data._id,
