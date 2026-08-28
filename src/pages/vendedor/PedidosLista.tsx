@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { Search, MessageCircle, ChevronRight, CornerUpLeft, CheckCheck } from 'lucide-react'
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react'
+import { MessageCircle, ChevronRight, CornerUpLeft, CheckCheck } from 'lucide-react'
 import { useSeller } from '../../lib/seller-session'
 import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
@@ -11,6 +11,7 @@ import { horaOFecha, hace } from '../../lib/fechas'
 import { datosDeFila, verBandeja, VISTAS, VISTA_INICIAL } from '../../lib/bandeja'
 import type { Vista, FilaBandeja } from '../../lib/bandeja'
 import { useFavoritos } from '../../lib/favoritos'
+import { POR_PAGINA, cuantasPintar, faltanFilas, resumenDePaginado } from '../../lib/paginacion'
 import { marcarRespondido } from '../../lib/order-answer'
 import type { StoreOrder, StoreOrders } from '../../lib/store-orders'
 import type { SellerProfile } from '../../lib/seller-session'
@@ -29,6 +30,27 @@ import type { SellerProfile } from '../../lib/seller-session'
 // acaba el tiempo, así que lo que está arriba ES la pantalla (lib/bandeja.ts).
 
 const VACIO: Record<string, number> = {}
+
+/**
+ * El final de la lista. Cuando asoma, se piden cien filas más.
+ *
+ * `rootMargin` de 400 px: pide ANTES de llegar al fondo, así que las filas ya
+ * están cuando el scroll llega. Pedirlas al tocar el final se ve como un
+ * tirón.
+ *
+ * Solo se pinta mientras falten filas — si no, al montarse volvería a estar
+ * visible y pediría más para siempre.
+ */
+function Centinela({ onVer }: { onVer: () => void }) {
+  const [nodo, setNodo] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    if (!nodo) return
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) onVer() }, { rootMargin: '400px' })
+    io.observe(nodo)
+    return () => io.disconnect()
+  }, [nodo, onVer])
+  return <div ref={setNodo} className="h-6" aria-hidden />
+}
 
 const ROL_COLOR = (rol?: string | null) => {
   const r = (rol ?? '').toLowerCase()
@@ -119,13 +141,17 @@ function Actividad({ fila, ahora }: { fila: FilaBandeja; ahora: number }) {
   )
 }
 
-export default function PedidosLista({ lista, onAbrir, marcado }: {
+export default function PedidosLista({ lista, onAbrir, marcado, refMarcado }: {
   lista: StoreOrders
   /** Abre el pedido en el panel de la derecha, sin salir de la lista. */
   onAbrir: (token: string) => void
   /** El token del pedido abierto —o del último que lo estuvo—. Se marca su
    *  borde para no perder el sitio al cerrar el cajón. */
   marcado?: string | null
+  /** Recibe el nodo de la fila marcada. El botón que la centra vive en la barra
+   *  de filtros, una capa más arriba, así que esta pantalla solo la entrega.
+   *  Ver `usePunteroAlMarcado`. */
+  refMarcado?: (el: HTMLElement | null) => void
 }) {
   const { effective, isAdmin } = useSeller()
   const desktop = useIsDesktop()
@@ -133,7 +159,6 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
   // el Tablero, el chat y la pantalla de Equipo.
   const onlineBuyers = useCompradoresEnLinea(effective?.store_id)
   const { porId } = useEquipo(effective)
-  const [search, setSearch] = useState('')
   const [vista, setVista] = useState<Vista>(VISTA_INICIAL)
   const favoritos = useFavoritos(effective?.store_id)
   // `gen` = el `leidoEn` de la lista sobre la que se contaron estos bumps.
@@ -194,10 +219,13 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
 
   // Todo lo que cada fila necesita, calculado una vez: la tarjeta de móvil y la
   // fila de escritorio pintan EXACTAMENTE los mismos datos.
+  //
+  // Sin filtro propio: buscar es de la barra de arriba, que es la misma para
+  // Lista, Tablero y Resumen. Acá había un buscador por nombre y teléfono —
+  // hoy un subconjunto estricto de aquel, que además encuentra por N° de
+  // pedido, DNI y guía—. Dos cajas de búsqueda en la misma pantalla, una peor
+  // que la otra, es peor que una sola.
   const filas = sessions
-    .filter(s => !search
-      || s.buyer_name?.toLowerCase().includes(search.toLowerCase())
-      || s.buyer_phone?.includes(search))
     .map(session => ({
       session,
       fila: datosDeFila(session, leidoEn, unreadOf(session), favoritos.has(session.id)),
@@ -210,6 +238,24 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
     }))
 
   const rows = verBandeja(filas, vista, r => r.fila)
+
+  // ── Pintar de a cien ──
+  //
+  // La ventana se guarda ETIQUETADA con la vista que la pidió: al cambiar de
+  // vista se vuelve a cien sola, sin un efecto que lo limpie un render tarde —
+  // que es el render en el que se verían trescientas filas de la vista nueva.
+  const [pagina, setPagina] = useState<{ vista: Vista; n: number }>({ vista, n: POR_PAGINA })
+  const pedidas = pagina.vista === vista ? pagina.n : POR_PAGINA
+  // La fila marcada SIEMPRE se pinta, esté en la página que esté: es a la que
+  // lleva el botón "ir al pedido seleccionado", y para centrarla tiene que
+  // existir. Ver `cuantasPintar`.
+  const iMarcada = marcado ? rows.findIndex(r => r.session.token === marcado) : -1
+  const pintadas = cuantasPintar(rows.length, pedidas, iMarcada)
+  const filasVisibles = rows.slice(0, pintadas)
+  const mas = useCallback(
+    () => setPagina(p => ({ vista, n: (p.vista === vista ? p.n : POR_PAGINA) + POR_PAGINA })),
+    [vista],
+  )
 
   // Los recuadros SON las vistas, con su número: un contador que no se puede
   // tocar invita a buscar dónde está lo que cuenta, y el sitio donde estaba era
@@ -282,6 +328,18 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
     </div>
   )
 
+  // El pie de la lista: cuántas se ven, y el disparador de las siguientes cien.
+  // Los dos solo existen mientras falte algo — un "80 de 80" es ruido, y un
+  // centinela sin nada que cargar se dispararía en bucle al montarse.
+  const pie = faltanFilas(rows.length, pintadas) ? (
+    <div className="pt-3 text-center">
+      <p className="text-[11px]" style={{ color: 'var(--text-faint)' }}>
+        {resumenDePaginado(rows.length, pintadas)}
+      </p>
+      <Centinela onVer={mas} />
+    </div>
+  ) : null
+
   const empty = (
     <div className="text-center py-12">
       <MessageCircle size={48} className="text-gray-200 mx-auto mb-3" />
@@ -297,18 +355,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
   if (desktop) {
     return (
       <div className="px-6 pt-4 pb-5">
-        <div className="flex items-end justify-between gap-4 mb-4">
-          <p className="text-xs text-gray-400 min-w-0">{scopeLabel}</p>
-          <div className="relative w-72 flex-shrink-0">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar por cliente o teléfono..."
-              className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
-            />
-          </div>
-        </div>
+        <p className="text-xs text-gray-400 mb-4">{scopeLabel}</p>
 
         <div className="mb-4">{selectorVista(false)}</div>
 
@@ -321,9 +368,10 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
             <span />
           </div>
 
-          {loading ? spinner : rows.length === 0 ? empty : rows.map(r => (
+          {loading ? spinner : rows.length === 0 ? empty : filasVisibles.map(r => (
             <button
               key={r.session.id}
+              ref={r.session.token && r.session.token === marcado ? refMarcado : undefined}
               onClick={() => open(r.session.token)}
               className="w-full grid items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 text-left hover:bg-gray-50 transition-colors"
               // El pedido que se abrió queda marcado también después de cerrar
@@ -392,6 +440,8 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
             </button>
           ))}
         </div>
+
+        {pie}
       </div>
     )
   }
@@ -402,21 +452,12 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
       <p className="text-xs text-gray-400 mb-2">{scopeLabel}</p>
       <div className="overflow-x-auto -mx-4 px-4 mb-3">{selectorVista(true)}</div>
 
-      <div className="relative mb-4">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por cliente o teléfono..."
-          className="w-full bg-gray-100 rounded-2xl pl-9 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
-        />
-      </div>
-
       {loading ? spinner : rows.length === 0 ? empty : (
         <div className="space-y-3">
-          {rows.map(r => (
+          {filasVisibles.map(r => (
             <button
               key={r.session.id}
+              ref={r.session.token && r.session.token === marcado ? refMarcado : undefined}
               onClick={() => open(r.session.token)}
               className="w-full bg-white border rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow text-left"
               style={!!marcado && r.session.token === marcado
@@ -472,6 +513,7 @@ export default function PedidosLista({ lista, onAbrir, marcado }: {
               </div>
             </button>
           ))}
+          {pie}
         </div>
       )}
     </div>

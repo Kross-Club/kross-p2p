@@ -86,11 +86,15 @@ export default function PedidosPage() {
 
   // ── El botón que trae de vuelta al pedido seleccionado ──
   //
-  // La tarjeta la pinta el Tablero y el botón vive en la barra de filtros, una
-  // capa más arriba: por eso el nodo sube hasta acá, que es el único sitio
-  // donde las dos cosas se ven a la vez. En Lista y Resumen no hay tarjeta que
-  // entregar, así que `nodoMarcado` se queda en `null` y el botón no sale —
-  // sin que ninguna de las dos pantallas tenga que saber que existe.
+  // La fila la pintan el Tablero y la Lista; el botón vive en la barra de
+  // filtros, una capa más arriba. Por eso el nodo sube hasta acá, que es el
+  // único sitio donde las dos cosas se ven a la vez. En Resumen no hay fila que
+  // entregar, así que `nodoMarcado` se queda en `null` y el botón no sale — sin
+  // que ninguna de las pantallas tenga que saber que existe.
+  //
+  // En la Lista funciona aunque el pedido esté más allá de las cien filas
+  // pintadas: la ventana se estira hasta alcanzarlo (`cuantasPintar`), así que
+  // la fila marcada siempre existe y siempre hay a dónde ir.
   const [nodoMarcado, setNodoMarcado] = useState<HTMLElement | null>(null)
   const puntero = usePunteroAlMarcado(nodoMarcado, marcado)
 
@@ -142,7 +146,7 @@ export default function PedidosPage() {
         </div>
       </div>
 
-      {modo === 'lista' && <PedidosLista lista={filtrada} onAbrir={abrir} marcado={marcado} />}
+      {modo === 'lista' && <PedidosLista lista={filtrada} onAbrir={abrir} marcado={marcado} refMarcado={setNodoMarcado} />}
       {modo === 'tablero' && <PedidosTablero lista={filtrada} onAbrir={abrir} marcado={marcado} refMarcado={setNodoMarcado} />}
       {modo === 'resumen' && <PedidosResumen lista={filtrada} />}
 

@@ -1321,10 +1321,11 @@ Tres decisiones que lo hacen usable:
 - **Pegado a la derecha del todo** (`ml-auto`), separado de los desplegables: no es un
   filtro y no debe leerse como uno más de la fila.
 
-Vive en la barra y no en el tablero, aunque la tarjeta la pinte el tablero. El nodo sube
-hasta `PedidosPage`, que es el único sitio donde la barra y el tablero se ven a la vez; en
-Lista y Resumen no hay tarjeta que entregar, así que el botón no sale sin que ninguna de las
-dos pantallas tenga que saber que existe.
+Vive en la barra y no en la pantalla que pinta la fila. El nodo sube hasta `PedidosPage`,
+que es el único sitio donde la barra, el Tablero y la Lista se ven a la vez; en Resumen no
+hay fila que entregar, así que el botón no sale sin que ninguna de las pantallas tenga que
+saber que existe. **El Tablero y la Lista lo usan igual** — el mismo botón, el mismo hook,
+la misma flecha.
 
 "Se ve" se mide **por área** y con un mínimo del 35 %: una tarjeta asomando un píxel por el
 borde está técnicamente visible y en la práctica no se ve. La geometría vive aparte
@@ -1368,6 +1369,67 @@ es del usuario, y lo deja pasar sin devolverlo— pero la regla vive en `scroll-
 fuera del componente, porque es **lo único de todo esto que se puede probar sin un
 navegador**: la prueba corre la secuencia de eventos que dispara un desplazamiento suave y
 comprueba que a la caja no se le escribe nunca.
+
+### La Lista pinta de a cien (28-ago-2026)
+
+Una bandeja se lee de arriba abajo hasta que se acaba el tiempo, así que pintar mil filas
+para que alguien mire quince es trabajo que el navegador hace para nadie. Se pintan cien y
+se suman cien más al bajar.
+
+**Sin botones de página**, y no por moda: en una bandeja, "siguiente" obliga a decidir
+cuándo dejar de leer, y lo que uno quiere es seguir leyendo. El centinela del final pide las
+siguientes con 400 px de anticipación, así que las filas ya están cuando el scroll llega —
+pedirlas al tocar el fondo se ve como un tirón. Y **solo existe mientras falten filas**: un
+centinela sin nada que cargar volvería a estar visible al montarse y pediría más para
+siempre.
+
+La ventana se guarda **etiquetada con la vista** que la pidió, así que cambiar de vista
+vuelve a cien sin un efecto que lo limpie un render tarde — que es el render en el que se
+verían trescientas filas de la vista nueva.
+
+**La fila marcada siempre se pinta**, esté en la página que esté. Es a la que lleva *Ir al
+pedido seleccionado*, y para centrarla tiene que existir en la pantalla: si el pedido
+abierto es el número 340 y solo hay cien pintadas, no hay nada a lo que ir. La ventana se
+estira hasta alcanzarlo (`cuantasPintar`). No es un caso raro — es justo lo que pasa cuando
+uno abre un pedido, se va a otra cosa y vuelve.
+
+> **Hoy no se dispara, y conviene saberlo.** `get-store-sessions` corta en **80** pedidos
+> (`limit(80)`), así que la lista nunca llega a cien y el paginado queda inerte. Se
+> construye igual porque el momento de subir ese tope es exactamente el momento en que
+> hace falta, y porque el estirón hasta la fila marcada **sí** hace falta ya. Subir el tope
+> es otra decisión: el `limit` se aplica ANTES de filtrar por estado, así que traer más
+> también cambia qué entra.
+
+### Y se fue el buscador de la Lista
+
+La Lista tenía su propia caja de búsqueda por nombre y teléfono. Desde que el buscador de la
+barra encuentra por nombre, N° de pedido, DNI, teléfono y guía, aquella pasó a ser un
+subconjunto estricto de esta. Dos cajas de búsqueda en la misma pantalla, una peor que la
+otra, es peor que una sola.
+
+## El mismo pedido, dos nombres (28-ago-2026)
+
+La cabecera del chat mostraba **`ESTADO: En camino`**, sin emoji, mientras el tablero ponía
+ese mismo pedido en **🚚 En tránsito**.
+
+No era un descuido de redacción: eran dos ejes. La barra del chat pintaba el `stage` crudo
+—el reloj del equipo— con una lista de nombres escrita ahí mismo, y el tablero pintaba la
+COLUMNA, que funde el reloj del equipo con el del courier (ver [El eje del
+pedido](#el-eje-del-pedido-dónde-termina-lo-nuestro-y-empieza-el-courier)). Un pedido que
+Shalom ya reporta `EN_TRANSITO` está en tránsito aunque nadie del equipo haya tocado nada, y
+el chat decía lo que decía el reloj que no manda.
+
+Ahora la barra muestra el **paso del eje** (`pasoActual`), que es lo mismo que pinta el
+tablero, con la etiqueta específica cuando la hay — "Registrado en Shalom", "En agencia de
+Shalom" — que la genérica no tiene.
+
+Y los nombres salen de **una sola definición**: `PASOS` en `order-tracking.ts`, de donde
+`COLUMNAS` ahora se deriva en vez de repetirlos. El detalle del pedido tira del mismo sitio.
+Tres pantallas nombrando lo mismo, escrito una vez.
+
+> Lo que se VE y lo que se MUEVE siguen siendo cosas distintas, y ahí estaba la trampa: el
+> botón *avanzar* sigue moviendo el `stage`, porque las fases del courier no son nuestras
+> para marcarlas. Lo único que cambió es que el estado que se lee es el del eje completo.
 
 ## Ver también
 

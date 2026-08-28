@@ -5,15 +5,19 @@ import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
 import { NOTA_META, NOTA_KEYS } from '../lib/order-chips'
 import { stageVigente } from '../lib/order-stages'
+import { etiquetaDePaso } from '../lib/order-tracking'
 import Confirmar from './Confirmar'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
+// El nombre y el emoji de cada etapa salen de `PASOS` (order-tracking), que es
+// el mismo catálogo del tablero y de la cabecera del chat. Escribirlos otra vez
+// acá es cómo empezaron a llamarse distinto en cada pantalla.
 // `preparando` ya no está en el eje: se lee como `confirmado` vía `stageVigente`.
-const STAGE_LABEL: Record<string, string> = {
-  nuevo: '📋 Pedido creado', validando: '🔎 Validando pago', confirmado: '💰 Confirmado',
-  en_camino: '🚚 En camino', entregado: '✅ Entregado',
+const etiqueta = (stage: string): string => {
+  const { label, emoji } = etiquetaDePaso(stageVigente(stage))
+  return `${emoji} ${label}`.trim()
 }
 
 // Las notas y su color viven en un solo lugar (§6.1)
@@ -129,7 +133,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
   const anulado = session.status === 'anulado'
   const stageText = anulado ? '🚫 Pedido anulado'
     : cancelled ? '❌ Pedido cancelado'
-    : (STAGE_LABEL[stageVigente(session.stage)] ?? session.stage)
+    : etiqueta(session.stage)
 
   const cuerpo = (
     <>
