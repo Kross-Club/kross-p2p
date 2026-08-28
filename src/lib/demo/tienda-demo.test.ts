@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { tiendaDemo, fichaDemoDeCliente, marcarRespondidoDemo, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
 import { columnaDelPedido, COLUMNAS } from '../order-tracking'
-import { avanceDelPago, cobrosDelPedido } from '../order-money'
+import { avanceDelPago, cobrosDelPedido, saldoDelPedido } from '../order-money'
 import { estaVivo } from '../store-orders'
 
 const t = await tiendaDemo()
@@ -308,5 +308,35 @@ describe('el saldo en la tienda de ejemplo', () => {
     const entregados = t.pedidos.filter(p => p.stage === 'entregado')
     expect(entregados.some(p => avanceDelPago(p).completo)).toBe(true)
     expect(entregados.some(p => !avanceDelPago(p).completo)).toBe(true)
+  })
+})
+
+// ─── El upsell ───────────────────────────────────────────────────────────────
+
+describe('los pedidos con upsell', () => {
+  // Sin ninguno, el anillo parecería tener solo tres posiciones —vacío, mitad,
+  // lleno— y lo que enseña es justamente que mide una proporción.
+  it('hay pedidos donde el adelanto no es ni la mitad ni el total', () => {
+    const raros = t.pedidos.filter(p => {
+      const f = avanceDelPago(p).fraccion
+      return f > 0 && Math.abs(f - 0.5) > 0.02 && f < 0.99
+    })
+    expect(raros.length).toBeGreaterThan(3)
+  })
+
+  // El adelanto se cobró sobre el total de ANTES, así que sobre el de ahora
+  // queda corto: el anillo baja y aparece un saldo que antes no existía.
+  it('el anillo de un upsell nunca está lleno, y deja saldo', () => {
+    for (const p of t.pedidos.filter(x => avanceDelPago(x).fraccion > 0 && !avanceDelPago(x).completo)) {
+      expect(saldoDelPedido(p)).toBeGreaterThan(0)
+    }
+  })
+
+  // El saldo se cobra contra el total del momento. Un pedido de ejemplo con las
+  // dos cosas mezcladas enseñaría una cuenta que no cuadra.
+  it('ningún pedido mezcla upsell con saldo cobrado', () => {
+    for (const p of t.pedidos.filter(x => x.saldo_amount)) {
+      expect(Number(p.advance_amount) + Number(p.saldo_amount)).toBe(Number(p.product_price))
+    }
   })
 })

@@ -34,19 +34,28 @@ export interface Filtro {
    *  cuando `rango === 'rango'`. */
   desde: string
   hasta: string
-  /** `assigned_seller_id`. Vacío = todos. */
-  vendedor: string
-  /** `product_name`. Vacío = todos. */
-  producto: string
+  /** `assigned_seller_id`. Lista vacía = todos.
+   *
+   *  Son LISTAS y no un valor porque la pregunta real casi nunca es por uno
+   *  solo: "los de Kevin y Milagros", "las dos fajas". Con un desplegable de a
+   *  uno, eso obligaba a mirar dos veces y sumar de cabeza. */
+  vendedores: string[]
+  /** `product_name`. Lista vacía = todos. */
+  productos: string[]
   /** Texto libre: nombre, N° de pedido, DNI, teléfono o guía. Vacío = todos.
    *  Ver `coincide` para por qué esos cinco y no el producto. */
   busca: string
-  /** Qué se le cobró a este pedido. Vacío = todos. Ver `PAGOS`. */
-  pago: '' | TipoDeCobro
+  /** En qué quedó el cobro de este pedido. Lista vacía = todos. Ver `PAGOS`. */
+  pagos: TipoDeCobro[]
 }
 
+/** ¿Este valor pasa una condición de lista? Vacía = no filtra. Es la misma
+ *  regla para vendedor, producto y pago: elegir nada es no preguntar. */
+const enLista = <T,>(elegidos: T[], valor: T | null): boolean =>
+  elegidos.length === 0 || (valor !== null && elegidos.includes(valor))
+
 export const FILTRO_VACIO: Filtro = {
-  rango: 'todo', desde: '', hasta: '', vendedor: '', producto: '', busca: '', pago: '',
+  rango: 'todo', desde: '', hasta: '', vendedores: [], productos: [], busca: '', pagos: [],
 }
 
 // ─── Rebanar por lo que se cobró ─────────────────────────────────────────────
@@ -56,22 +65,25 @@ export const FILTRO_VACIO: Filtro = {
 // El tablero ya lo dice pedido por pedido —el anillo, las tarjetas verdes— pero
 // no se podía preguntar al revés: *cuáles* van por cada camino.
 //
-// Las tres preguntas que este desplegable responde, y que antes había que
-// contar a ojo columna por columna:
+// Acá el pedido cae en UNA sola casilla, la de hasta dónde llegó su cobro:
 //
-//   Adelanto → adelantaron una parte. Son los que todavía deben algo.
-//   Total    → pagaron el precio entero de una. No hay nada que cobrar después.
-//   Saldo    → pagaron el saldo en una SEGUNDA operación. O sea: los que
-//              hicieron los dos pagos, que es la lista que no existía.
+//   Adelanto → adelantaron una parte y **todavía deben el saldo**.
+//   Total    → pagaron el precio entero de una. Nada que cobrar después.
+//   Saldo    → adelantaron y después pagaron el saldo: hicieron los DOS pagos.
 //
-// Un pedido puede caer en dos —quien adelantó y después pagó su saldo está en
-// "Adelanto" y en "Saldo"—, y así debe ser: las dos operaciones ocurrieron de
-// verdad, y esconder una para que las listas no se solapen sería inventar.
+// Una casilla y no una etiqueta por operación, que era como estaba y estaba
+// mal: quien adelantó y después pagó su saldo salía en "Adelanto" y en
+// "Saldo", así que pedir "los que adelantaron" —la pregunta de verdad, la de a
+// quién hay que cobrarle— devolvía también a los que ya no deben nada. Sin
+// solape, marcar *Adelanto* y no marcar *Saldo* dice exactamente eso.
+//
+// Y con casillas que no se pisan, elegir varias es sumar listas, igual que en
+// producto y en vendedor. Una sola forma de leer los tres filtros.
 //
 // **Solo cuenta lo cruzado por la pasarela**, la misma regla del anillo
 // (`cobradoDelPedido`). Un cupón emitido y sin pagar no es un pago, y este
-// desplegable dice "pagos": listarlo acá haría contar como cobrado lo que
-// todavía no entró, que es exactamente el error que hace despachar de más.
+// filtro dice "pagos": listarlo acá haría contar como cobrado lo que todavía
+// no entró, que es exactamente el error que hace despachar de más.
 
 export const PAGOS: { key: TipoDeCobro; label: string }[] = [
   { key: 'adelanto', label: 'Adelanto' },
@@ -79,9 +91,17 @@ export const PAGOS: { key: TipoDeCobro; label: string }[] = [
   { key: 'saldo', label: 'Saldo' },
 ]
 
-/** Las operaciones de este pedido que de verdad entraron. */
-export function pagosDe(p: StoreOrder): TipoDeCobro[] {
-  return cobrosDelPedido(p).filter(c => c.verificado).map(c => c.tipo)
+/**
+ * Hasta dónde llegó el cobro de este pedido. `null` = no entró nada.
+ *
+ * Es la ÚLTIMA operación que cruzó, que es justo lo que responde "en qué
+ * quedó": con el saldo pagado da `saldo` aunque antes hubiera un adelanto,
+ * porque el pedido ya no debe nada. Un cupón de saldo emitido y sin pagar no
+ * mueve la casilla — sigue siendo un pedido que adelantó y debe.
+ */
+export function estadoDeCobro(p: StoreOrder): TipoDeCobro | null {
+  const entrados = cobrosDelPedido(p).filter(c => c.verificado)
+  return entrados.length ? entrados[entrados.length - 1].tipo : null
 }
 
 // ─── Buscar UN pedido ────────────────────────────────────────────────────────
@@ -191,10 +211,10 @@ export function ventanaDe(f: Filtro, ahora: number): { desde: number | null; has
  * que desaparezca, no.
  */
 export function pasaFiltro(p: StoreOrder, f: Filtro, ahora: number): boolean {
-  if (f.vendedor && (p.assigned_seller_id ?? '') !== f.vendedor) return false
-  if (f.producto && (p.product_name ?? '') !== f.producto) return false
+  if (!enLista(f.vendedores, p.assigned_seller_id ?? null)) return false
+  if (!enLista(f.productos, p.product_name ?? null)) return false
   if (f.busca.trim() && !coincide(p, f.busca)) return false
-  if (f.pago && !pagosDe(p).includes(f.pago)) return false
+  if (!enLista(f.pagos, estadoDeCobro(p))) return false
 
   const { desde, hasta } = ventanaDe(f, ahora)
   if (desde === null && hasta === null) return true
@@ -215,7 +235,10 @@ export function aplicarFiltro(pedidos: StoreOrder[], f: Filtro, ahora: number): 
  *  de vender. */
 export function cuantosFiltros(f: Filtro): number {
   const fecha = f.rango === 'rango' ? (f.desde || f.hasta ? 1 : 0) : f.rango === 'todo' ? 0 : 1
-  return fecha + (f.vendedor ? 1 : 0) + (f.producto ? 1 : 0) + (f.busca.trim() ? 1 : 0) + (f.pago ? 1 : 0)
+  // Cada filtro cuenta UNA vez aunque tenga tres cosas marcadas: el globito
+  // dice cuántas preguntas hay puestas, no cuántas casillas.
+  return fecha + (f.vendedores.length ? 1 : 0) + (f.productos.length ? 1 : 0)
+    + (f.busca.trim() ? 1 : 0) + (f.pagos.length ? 1 : 0)
 }
 
 /** Cómo se lee el rango puesto, para decirlo sin abrir el panel. */
@@ -247,7 +270,8 @@ export function opcionesDe(pedidos: StoreOrder[]): {
   for (const p of pedidos) {
     if (p.assigned_seller_id) vendedores.set(p.assigned_seller_id, p.seller_name || 'Sin nombre')
     if (p.product_name) productos.add(p.product_name)
-    for (const tipo of pagosDe(p)) pagos.add(tipo)
+    const cobro = estadoDeCobro(p)
+    if (cobro) pagos.add(cobro)
   }
   return {
     vendedores: [...vendedores].map(([id, nombre]) => ({ id, nombre }))

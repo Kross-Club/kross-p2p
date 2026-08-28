@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   FILTRO_VACIO, ventanaDe, pasaFiltro, aplicarFiltro,
-  cuantosFiltros, resumenDelRango, opcionesDe, clave, textoDe, coincide, pagosDe,
+  cuantosFiltros, resumenDelRango, opcionesDe, clave, textoDe, coincide, estadoDeCobro,
 } from './pedidos-filtro'
 import type { Filtro } from './pedidos-filtro'
 import type { StoreOrder } from './store-orders'
@@ -58,18 +58,18 @@ describe('qué pedido pasa', () => {
 
   it('filtra por vendedor y por producto', () => {
     const p = pedido({ assigned_seller_id: 'kevin', product_name: 'Colchón Inflable Doble' })
-    expect(pasaFiltro(p, con({ vendedor: 'kevin' }), AHORA)).toBe(true)
-    expect(pasaFiltro(p, con({ vendedor: 'renzo' }), AHORA)).toBe(false)
-    expect(pasaFiltro(p, con({ producto: 'Colchón Inflable Doble' }), AHORA)).toBe(true)
-    expect(pasaFiltro(p, con({ producto: 'Faja Reductora Premium' }), AHORA)).toBe(false)
+    expect(pasaFiltro(p, con({ vendedores: ['kevin'] }), AHORA)).toBe(true)
+    expect(pasaFiltro(p, con({ vendedores: ['renzo'] }), AHORA)).toBe(false)
+    expect(pasaFiltro(p, con({ productos: ['Colchón Inflable Doble'] }), AHORA)).toBe(true)
+    expect(pasaFiltro(p, con({ productos: ['Faja Reductora Premium'] }), AHORA)).toBe(false)
     // Sin asignar no es "cualquiera": no debe salir cuando se pide a alguien.
-    expect(pasaFiltro(pedido({}), con({ vendedor: 'kevin' }), AHORA)).toBe(false)
+    expect(pasaFiltro(pedido({}), con({ vendedores: ['kevin'] }), AHORA)).toBe(false)
   })
 
   it('las condiciones se acumulan', () => {
     const p = pedido({ assigned_seller_id: 'kevin', product_name: 'Pack', created_at: enDia(20) })
-    expect(pasaFiltro(p, con({ vendedor: 'kevin', rango: 'hoy' }), AHORA)).toBe(false)
-    expect(pasaFiltro(p, con({ vendedor: 'kevin', rango: '30d' }), AHORA)).toBe(true)
+    expect(pasaFiltro(p, con({ vendedores: ['kevin'], rango: 'hoy' }), AHORA)).toBe(false)
+    expect(pasaFiltro(p, con({ vendedores: ['kevin'], rango: '30d' }), AHORA)).toBe(true)
   })
 
   // Un pedido no se pierde por una fecha rota: se ve de más, nunca de menos.
@@ -99,8 +99,8 @@ describe('lo que dice el control', () => {
   it('cuenta las condiciones puestas', () => {
     expect(cuantosFiltros(FILTRO_VACIO)).toBe(0)
     expect(cuantosFiltros(con({ rango: 'hoy' }))).toBe(1)
-    expect(cuantosFiltros(con({ rango: 'hoy', vendedor: 'kevin' }))).toBe(2)
-    expect(cuantosFiltros(con({ rango: 'hoy', vendedor: 'kevin', producto: 'Pack' }))).toBe(3)
+    expect(cuantosFiltros(con({ rango: 'hoy', vendedores: ['kevin'] }))).toBe(2)
+    expect(cuantosFiltros(con({ rango: 'hoy', vendedores: ['kevin'], productos: ['Pack'] }))).toBe(3)
     // Un rango a mano sin fechas todavía no filtra nada.
     expect(cuantosFiltros(con({ rango: 'rango' }))).toBe(0)
     expect(cuantosFiltros(con({ rango: 'rango', desde: '2026-08-01' }))).toBe(1)
@@ -226,7 +226,7 @@ describe('el buscador dentro del filtro', () => {
   })
 
   it('se acumula con las demás condiciones', () => {
-    const f = con({ busca: 'rosa', producto: 'Faja Reductora Premium' })
+    const f = con({ busca: 'rosa', productos: ['Faja Reductora Premium'] })
     expect(pasaFiltro(ROSA, f, AHORA)).toBe(true)
     expect(pasaFiltro({ ...ROSA, product_name: 'Otro' }, f, AHORA)).toBe(false)
   })
@@ -244,45 +244,77 @@ const DOBLE = pedido({
 const SIN_CRUZAR = pedido({ id: 's', product_price: 150, advance_amount: 75, payment_verification: 'PENDING' })
 
 describe('el filtro de pagos', () => {
-  it('separa adelanto, pago total y saldo', () => {
-    expect(pagosDe(ADELANTO)).toEqual(['adelanto'])
-    expect(pagosDe(TOTAL)).toEqual(['total'])
-    expect(pagosDe(DOBLE)).toEqual(['adelanto', 'saldo'])
+  it('cada pedido cae en UNA casilla: hasta dónde llegó su cobro', () => {
+    expect(estadoDeCobro(ADELANTO)).toBe('adelanto')
+    expect(estadoDeCobro(TOTAL)).toBe('total')
+    expect(estadoDeCobro(DOBLE)).toBe('saldo')
   })
 
-  // Quien adelantó y después pagó su saldo hizo LAS DOS operaciones, y las dos
-  // ocurrieron de verdad. Esconder una para que las listas no se solapen sería
-  // inventar: "Saldo" es justo la lista de los que pagaron dos veces.
-  it('un pedido con los dos pagos sale en las dos listas', () => {
+  // Es LA pregunta del filtro: a quién hay que cobrarle. Con las casillas
+  // solapadas —"tiene un adelanto"— pedir eso devolvía también a los que ya
+  // pagaron su saldo, o sea a los que no deben nada.
+  it('"Adelanto" son los que todavía deben, no los que alguna vez adelantaron', () => {
     const todos = [ADELANTO, TOTAL, DOBLE]
-    expect(aplicarFiltro(todos, con({ pago: 'adelanto' }), AHORA)).toEqual([ADELANTO, DOBLE])
-    expect(aplicarFiltro(todos, con({ pago: 'saldo' }), AHORA)).toEqual([DOBLE])
-    expect(aplicarFiltro(todos, con({ pago: 'total' }), AHORA)).toEqual([TOTAL])
+    expect(aplicarFiltro(todos, con({ pagos: ['adelanto'] }), AHORA)).toEqual([ADELANTO])
+    expect(aplicarFiltro(todos, con({ pagos: ['saldo'] }), AHORA)).toEqual([DOBLE])
+    expect(aplicarFiltro(todos, con({ pagos: ['total'] }), AHORA)).toEqual([TOTAL])
   })
 
-  // Un cupón emitido no es un pago. El desplegable dice "pagos", así que
-  // listarlo ahí haría contar como cobrado lo que todavía no entró — que es
-  // exactamente el error que hace despachar de más.
+  it('marcar varias suma las listas', () => {
+    const todos = [ADELANTO, TOTAL, DOBLE]
+    expect(aplicarFiltro(todos, con({ pagos: ['adelanto', 'total'] }), AHORA)).toEqual([ADELANTO, TOTAL])
+    expect(aplicarFiltro(todos, con({ pagos: ['adelanto', 'total', 'saldo'] }), AHORA)).toEqual(todos)
+  })
+
+  // Un cupón emitido no es un pago. El filtro dice "pagos", así que listarlo ahí
+  // haría contar como cobrado lo que todavía no entró — el error que hace
+  // despachar de más.
   it('lo que no cruzó la pasarela no es un pago', () => {
-    expect(pagosDe(SIN_CRUZAR)).toEqual([])
-    expect(pagosDe(pedido({
+    expect(estadoDeCobro(SIN_CRUZAR)).toBe(null)
+    // Cupón de saldo emitido y sin pagar: sigue siendo un pedido que debe.
+    expect(estadoDeCobro(pedido({
       id: 'p', product_price: 150, advance_amount: 75, payment_verification: 'MATCHED',
       saldo_amount: 75, saldo_verification: 'PENDING',
-    }))).toEqual(['adelanto'])
-    expect(aplicarFiltro([ADELANTO, SIN_CRUZAR], con({ pago: 'adelanto' }), AHORA)).toEqual([ADELANTO])
+    }))).toBe('adelanto')
+    expect(aplicarFiltro([ADELANTO, SIN_CRUZAR], con({ pagos: ['adelanto'] }), AHORA)).toEqual([ADELANTO])
   })
 
-  it('cuenta como filtro puesto y se acumula con los demás', () => {
-    expect(cuantosFiltros(con({ pago: 'saldo' }))).toBe(1)
-    expect(cuantosFiltros(con({ pago: 'saldo', producto: 'Faja' }))).toBe(2)
+  it('cuenta como UNA condición aunque se marquen tres', () => {
+    expect(cuantosFiltros(con({ pagos: ['saldo'] }))).toBe(1)
+    expect(cuantosFiltros(con({ pagos: ['adelanto', 'total', 'saldo'] }))).toBe(1)
+    expect(cuantosFiltros(con({ pagos: ['saldo'], productos: ['Faja'] }))).toBe(2)
     expect(cuantosFiltros(FILTRO_VACIO)).toBe(0)
   })
 
   // Un desplegable que se reordena solo según qué pedido entró primero obliga a
   // leerlo entero cada vez.
   it('ofrece solo las formas de cobro que existen, y siempre en el mismo orden', () => {
-    expect(opcionesDe([DOBLE, TOTAL]).pagos).toEqual(['adelanto', 'total', 'saldo'])
-    expect(opcionesDe([TOTAL]).pagos).toEqual(['total'])
+    expect(opcionesDe([DOBLE, TOTAL]).pagos).toEqual(['total', 'saldo'])
+    expect(opcionesDe([ADELANTO, DOBLE, TOTAL]).pagos).toEqual(['adelanto', 'total', 'saldo'])
     expect(opcionesDe([SIN_CRUZAR]).pagos).toEqual([])
+  })
+})
+
+describe('marcar de a varios', () => {
+  const KEVIN = pedido({ id: 'k', assigned_seller_id: 'kevin', product_name: 'Faja' })
+  const MILA = pedido({ id: 'm', assigned_seller_id: 'mila', product_name: 'Ollas' })
+  const RENZO = pedido({ id: 'r', assigned_seller_id: 'renzo', product_name: 'Colchón' })
+  const TRES = [KEVIN, MILA, RENZO]
+
+  it('vendedor y producto también suman listas', () => {
+    expect(aplicarFiltro(TRES, con({ vendedores: ['kevin', 'mila'] }), AHORA)).toEqual([KEVIN, MILA])
+    expect(aplicarFiltro(TRES, con({ productos: ['Faja', 'Colchón'] }), AHORA)).toEqual([KEVIN, RENZO])
+  })
+
+  // Nada marcado = todos. Es lo que hace que desmarcar la última casilla
+  // equivalga a quitar el filtro, sin necesidad de una opción "Todos".
+  it('sin nada marcado no filtra', () => {
+    expect(aplicarFiltro(TRES, con({ vendedores: [] }), AHORA)).toBe(TRES)
+    expect(cuantosFiltros(con({ vendedores: [], productos: [] }))).toBe(0)
+  })
+
+  // Entre filtros distintos es Y, no O: "los de Kevin" Y "las fajas".
+  it('entre filtros distintos sigue siendo Y', () => {
+    expect(aplicarFiltro(TRES, con({ vendedores: ['kevin', 'mila'], productos: ['Ollas'] }), AHORA)).toEqual([MILA])
   })
 })
