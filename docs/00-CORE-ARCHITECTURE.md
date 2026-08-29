@@ -26,9 +26,10 @@ y actualizan.
 ## Autenticación & roles ✅
 
 - **Supabase Auth** para el equipo (`sellers.auth_user_id`).
-- **Super Admin (plataforma Kross):** `sellers.is_super_admin`. Ve **Tiendas** y
-  **Equipo**, y **Entra** a una tienda para operarla (impersonación
-  `acting`/`effective` en `src/lib/seller-session.ts`).
+- **Quien administra la plataforma (Kross):** ve **Tiendas** y **Equipo**, y **Entra**
+  a una tienda para operarla (impersonación `acting`/`effective` en
+  `src/lib/seller-session.ts`). Ya **no** es la bandera suelta: la pregunta la responde
+  `supabase/functions/_shared/alcance.ts` — ver *El alcance sale de dónde vive* abajo.
 - **Admin de tienda:** `is_admin`, scoped a su `store_id`. Lo ve todo.
 - **Operador:** `is_admin` + `is_operator` (28-ago-2026). Ver más abajo.
 - **Roles de equipo (`role_label`):** el modelo por defecto solo usa **Logística**,
@@ -57,7 +58,8 @@ y actualizan.
   traspaso **conserva** a los invitados.
 
   Y eso es la manija, no la puerta: `order-manage` comprueba quién llama con su **JWT**
-  (`quienLlama`), no con un id en el cuerpo de la petición — incluido que sea de esa tienda.
+  (`quienLlama`), no con un id en el cuerpo de la petición — incluido que sea de esa tienda,
+  salvo quien administra la plataforma, que entra a todas (`alcance.ts`).
 
 - **Notas internas en el chat (29-ago-2026):** `chat_messages.visibility = 'sellers'` +
   `mentions`. La columna **no esconde nada por sí sola**: quien decide es `get-session`, que
@@ -67,6 +69,53 @@ y actualizan.
 
 - **Comprador:** identificado por DNI/teléfono (`buyers`), sin login de contraseña; entra
   por su subdominio (`/acceso`). NO hay login de comprador en el host de plataforma.
+
+### El alcance sale de dónde vive, no de una casilla ✅ (29-ago-2026)
+
+`platform` es la tienda que **no vende**: la casa de quien opera Kross (bloque §8 del
+esquema). Quien trabaja EN Kross vive ahí; quien trabaja en una marca, en la suya. El dato
+estaba desde el principio — lo que faltaba era **leerlo**.
+
+Hasta hoy el alcance se preguntaba por `is_super_admin`, una bandera que había que acordarse
+de encender al dar de alta. Y no se encendió: los operadores de Kross se crearon desde el
+panel —que ya la mandaba— mientras la Edge Function desplegada todavía no la leía. Sus filas
+entraron con `is_super_admin = false`, y el resultado fue gente que **está** en la plataforma
+pero no la administra:
+
+- en `krossclub.app` el login los echaba con *"ingresa desde el sitio de tu marca"* — y su
+  marca no existe;
+- si entraban igual, el menú les daba el panel de `platform`: cinco secciones de una tienda
+  que no vende.
+
+Un candado que **el que lo sufre no puede abrir**. Por eso el alcance deja de ser un dato que
+se recuerda y pasa a ser uno que se deduce, en un archivo que leen las dos mitades —
+`supabase/functions/_shared/alcance.ts`:
+
+```
+administra la plataforma  =  is_super_admin
+                          OR (store_id = 'platform' AND is_admin)
+```
+
+La bandera se sigue respetando —nadie pierde lo que tenía— pero ya no hace falta que esté. Y
+**no ensancha nada**: en `platform` solo hay quien opera Kross (los pedidos son de las marcas,
+ahí no hay miembro raso que atender), y a un admin de marca se le crea en la suya.
+
+Dónde se pregunta, que es el punto de tenerlo en `_shared`:
+
+| Lado | Qué decide |
+|---|---|
+| `LoginPage` | quién entra por `krossclub.app` y quién por su subdominio |
+| `seller-nav` | Tiendas + Equipo, o la herramienta entera de una tienda |
+| `seller-session` | que **Entrar** a una marca cuente como impersonación |
+| 11 Edge Functions | `store_id` del body respetado o ignorado (una tienda, o todas) |
+
+Si esas dos mitades contestaran distinto el resultado sería lo peor de los dos mundos: un
+panel que se ve bien y no hace nada — menús, botones y listas que al tocarlos vuelven vacíos.
+
+**Entrar a una marca baja el alcance a propósito.** `enterStore` actúa con el `store_id` de
+esa tienda, así que desde dentro no se ofrecen los botones que ahí no van (apagarla, cambiarle
+el subdominio). Y el alcance sigue siendo **otro eje** que el de destruir: un operador de la
+plataforma entra a cualquier tienda y sigue sin poder apagarla.
 
 ### El operador: el nivel que faltaba entre admin y miembro ✅ (28-ago-2026)
 

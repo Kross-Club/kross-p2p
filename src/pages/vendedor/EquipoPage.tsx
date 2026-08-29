@@ -6,6 +6,7 @@ import { useSeller, type SellerProfile } from '../../lib/seller-session'
 import { useEquipo } from '../../lib/store-team'
 import { puedeNombrarAdmins, etiquetaDeRol, esOperador, LIMITES_OPERADOR } from '../../lib/permisos'
 import PushSettings from '../../components/PushSettings'
+import { TIENDA_PLATAFORMA } from '../../../supabase/functions/_shared/alcance.ts'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -31,8 +32,12 @@ function roleColor(role: string) {
 
 /** El equipo de la PLATAFORMA, no el de una tienda. Es la misma pantalla y la
  *  misma tabla (`sellers`), filtrada por otro `store_id`: quien trabaja en
- *  Kross vive bajo `platform`. Ver `seller-nav.ts`. */
-const PLATAFORMA = 'platform'
+ *  Kross vive bajo `platform`. Ver `seller-nav.ts`.
+ *
+ *  El id sale de `alcance.ts`, que es donde el servidor lee el mismo dato: dos
+ *  copias de esta cadena son dos oportunidades de que una tienda quede fuera de
+ *  la plataforma por una letra. */
+const PLATAFORMA = TIENDA_PLATAFORMA
 
 export default function EquipoPage() {
   const navigate = useNavigate()

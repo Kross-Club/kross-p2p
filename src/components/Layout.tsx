@@ -17,6 +17,7 @@ import { useIsDesktop } from '../lib/use-desktop'
 import { usePanelTheme } from '../lib/theme'
 import { useDemo, setDemo } from '../lib/demo/modo-demo'
 import { reiniciarDemo, useCambiosDemo } from '../lib/demo/cambios-demo'
+import { administraLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -36,19 +37,20 @@ export default function Layout() {
   const tocado = Object.keys(useCambiosDemo()).length > 0
   usePanelTheme()
 
-  // Qué marca se muestra en el header sigue a QUIÉN estás actuando: el super
-  // admin ve Kross; dentro de una tienda, esa tienda (logo y nombre).
+  // Qué marca se muestra en el header sigue a QUIÉN estás actuando: quien
+  // administra la plataforma ve Kross; dentro de una tienda, esa tienda (logo y
+  // nombre).
   //
   // El COLOR ya no: el panel es la herramienta de Kross y se pinta con la
   // paleta del manual (ink + lima). El color de cada marca vive donde importa
   // —lo que ve el comprador— y lo aplica store-context.
   useEffect(() => {
     if (!effective) return
-    if (effective.is_super_admin) { setBrand({ nombre: 'Kross', logo_url: null }); return }
+    if (administraLaPlataforma(effective)) { setBrand({ nombre: 'Kross', logo_url: null }); return }
     if (!effective.store_id) return
     supabase.from('stores').select('nombre, logo_url').eq('id', effective.store_id).maybeSingle()
       .then(({ data }) => { if (data) setBrand(data as { nombre: string; logo_url: string | null }) })
-  }, [effective?.store_id, effective?.is_super_admin])
+  }, [effective?.store_id, effective?.is_admin, effective?.is_super_admin])
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])
   useEffect(() => { if (real) setAvailable(real.available !== false) }, [real?.id, real?.available])
@@ -161,7 +163,7 @@ export default function Layout() {
       <div className="flex items-center gap-2 min-w-0">
         <Eye size={14} className="flex-shrink-0" />
         <p className="text-xs font-bold truncate">
-          {real?.is_super_admin
+          {administraLaPlataforma(real)
             ? <>Estás en {brand?.nombre ?? 'la marca'}</>
             : <>Viendo como {effective?.nombre.split(' ')[0]} · {effective?.role_label}</>}
         </p>
@@ -169,7 +171,7 @@ export default function Layout() {
       <button onClick={stopActing}
         className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
         style={{ background: 'var(--surface)', color: 'var(--text)' }}>
-        <X size={12} /> {real?.is_super_admin ? 'Volver a Kross' : 'Volver a admin'}
+        <X size={12} /> {administraLaPlataforma(real) ? 'Volver a Kross' : 'Volver a admin'}
       </button>
     </div>
   )

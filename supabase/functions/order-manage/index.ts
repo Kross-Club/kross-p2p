@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { cabeEnElMismoPaquete } from '../_shared/upsell.ts'
 import { puedeInvitar, puedeQuitar, puedeReasignar } from '../_shared/equipo-pedido.ts'
+import { administraLaPlataforma } from '../_shared/alcance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -161,12 +162,18 @@ Deno.serve(async (req) => {
     if (!authed?.user) return null            // la anon key llega acá y se queda
     const { data: me } = await supabase
       .from('sellers')
-      .select('auth_user_id, is_admin, available, active, store_id')
+      .select('auth_user_id, is_admin, is_super_admin, available, active, store_id')
       .eq('auth_user_id', authed.user.id)
       .maybeSingle()
     if (!me || me.active === false) return null
     // De otra tienda no manda en este pedido, por muy admin que sea de la suya.
-    if (session.store_id && me.store_id && me.store_id !== session.store_id) return null
+    //
+    // Salvo quien administra LA PLATAFORMA, que no es "otra tienda": su
+    // `store_id` es `platform` —una casa sin pedidos— así que esta línea, tal
+    // como estaba, dejaba al dueño y a los operadores de Kross sin poder
+    // invitar, reasignar ni expulsar en NINGÚN pedido. Justo a quienes entran a
+    // una marca para desatascarla. Ver `alcance.ts`.
+    if (!administraLaPlataforma(me) && session.store_id && me.store_id && me.store_id !== session.store_id) return null
     return { id: me.auth_user_id as string, is_admin: !!me.is_admin, available: me.available !== false }
   }
 

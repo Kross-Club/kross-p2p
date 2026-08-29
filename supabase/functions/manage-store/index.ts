@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
 import { shalomApiKey } from '../_shared/shalom.ts'
+import { administraLaPlataforma } from '../_shared/alcance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -115,7 +116,10 @@ Deno.serve(async (req) => {
     .maybeSingle()
 
   if (!me?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
-  const isSuper = !!me.is_super_admin
+  // Alcance: su tienda, o todas. Lo responde `alcance.ts` y no la bandera suelta
+  // —un operador de Kross administra la plataforma igual que el dueño; lo que no
+  // puede es destruir, y eso lo dice `puedeDestruir`, no esta línea.
+  const isSuper = administraLaPlataforma(me)
   /** Operador: administra igual, pero no destruye. Ver §30 de setup-kross.sql. */
   const puedeDestruir = !me.is_operator
 

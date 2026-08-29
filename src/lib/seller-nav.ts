@@ -1,6 +1,7 @@
 import { ShoppingBag, Users, Package, Store, UserPlus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SellerProfile } from './seller-session'
+import { administraLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
 
 export interface SellerNavLink {
   to: string
@@ -13,9 +14,14 @@ export interface SellerNavLink {
 // escritorio usa la misma lista para saber en qué sección estás.
 //
 // El menú sigue a QUIÉN estás actuando:
-//  · super admin (plataforma Kross, fuera de una tienda) → Tiendas y Equipo
-//  · admin de tienda (o super admin que entró a una) → todo el toolset
+//  · quien administra la plataforma (fuera de una tienda) → Tiendas y Equipo
+//  · admin de tienda (o quien entró a una desde la plataforma) → todo el toolset
 //  · miembro del equipo → Pedidos
+//
+// "Administra la plataforma" lo responde `alcance.ts`, no una bandera: el dueño
+// y los operadores de Kross ven lo mismo porque hacen lo mismo. Lo que separa a
+// un operador es qué NO puede destruir (`permisos.ts`), y eso no se dice en el
+// menú — se dice en el botón que no aparece.
 //
 // **Tiendas**, no "Marcas": desde la plataforma lo que se administra son las
 // tiendas clientes —encenderlas, cobrarles, entrar a operarlas—. *Marca* es
@@ -28,8 +34,8 @@ export interface SellerNavLink {
 // `platform`. Una segunda pantalla para la misma tabla se habría separado de la
 // primera en la primera semana.
 export function sellerNavLinks(effective: SellerProfile | null | undefined): SellerNavLink[] {
-  const platform = !!effective?.is_super_admin
-  const storeAdmin = !!effective?.is_admin && !effective?.is_super_admin
+  const platform = administraLaPlataforma(effective)
+  const storeAdmin = !!effective?.is_admin && !platform
 
   if (platform) return [
     { to: '/vendedor/marca', icon: Store, label: 'Tiendas' },

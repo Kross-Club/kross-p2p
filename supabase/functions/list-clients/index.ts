@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { agregarPorComprador, segmentoDe, ventanasDe } from '../_shared/clientes.ts'
+import { administraLaPlataforma } from '../_shared/alcance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -36,9 +37,10 @@ Deno.serve(async (req) => {
     .eq('auth_user_id', body.admin_auth_id).maybeSingle()
   if (!me?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
 
-  // Un admin de tienda solo ve la suya; el super admin puede apuntar a la que
-  // entró. Nunca se confía en el `store_id` del body para un admin normal.
-  const storeId = (me.is_super_admin && body.store_id) ? body.store_id : me.store_id
+  // Un admin de tienda solo ve la suya; quien administra la plataforma puede
+  // apuntar a la que entró. Nunca se confía en el `store_id` del body para un
+  // admin normal. El alcance lo decide `alcance.ts` — ver por qué allá.
+  const storeId = (administraLaPlataforma(me) && body.store_id) ? body.store_id : me.store_id
   if (!storeId) return json({ error: 'no_store' }, 400)
 
   const { data: store } = await supabase

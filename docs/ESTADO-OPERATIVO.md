@@ -29,13 +29,58 @@ from stores s order by s.id;
 Si el resultado no cuadra con la tabla, **gana el resultado**: actualiza el doc y cambia la
 fecha de arriba.
 
-## Producción está al día (29-ago-2026)
+## Deploys pendientes (29-ago-2026)
 
-**Léelo primero.** Esta sección era una lista de deploys pendientes que se arrastraba desde el
-21-ago. **Se vació el 29-ago-2026 de madrugada**: se corrió el SQL y se desplegaron las 25
-funciones. No queda nada esperando.
+**Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
+madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-Comprobado, no supuesto:
+### El alcance de la plataforma · SQL + 11 funciones
+
+**Qué se ve si no entra:** los operadores de Kross (Paolo, Diego) siguen sin poder entrar por
+`krossclub.app` — *"Ingresa desde el sitio de tu marca"*, y su marca no existe. Y si el
+frontend sale solo (Vercel lo despliega al mergear) el resultado es **peor que el error**: el
+login los deja pasar y el menú les enseña Tiendas, pero cada consulta la sigue respondiendo
+una función que los mide por `is_super_admin` — lista vacía, "Forbidden" al guardar. Un panel
+que se ve bien y no hace nada.
+
+**Primero el SQL** (alinea las filas que quedaron a medias; idempotente, no toca a nadie de
+una marca):
+
+```sql
+update sellers set is_super_admin = true
+where store_id = 'platform' and is_admin = true and coalesce(is_super_admin, false) = false;
+```
+
+Y para ver quién quedó cómo:
+
+```sql
+select nombre, store_id, role_label, is_admin, is_operator, is_super_admin, active
+from sellers where store_id = 'platform' order by is_super_admin desc, nombre;
+```
+
+**Después las funciones** — las once que preguntan por el alcance:
+
+```
+supabase functions deploy admin-team --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-product --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy list-clients --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy delivery-map --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-recordings --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy invite-buyers --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy import-buyers --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy run-campaign --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy retention-metrics --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> `order-manage` arregla además algo que **ya estaba roto para el dueño**: su `store_id` es
+> `platform`, así que la comprobación "de otra tienda no manda en este pedido" lo dejaba a él
+> —y a los operadores— sin poder invitar, reasignar ni expulsar en ningún pedido.
+
+### Lo que sí está al día
+
+Lo de la madrugada del 29-ago, comprobado, no supuesto:
 
 - **SQL** — las 13 columnas y el índice, verificados con una consulta contra
   `information_schema` (§7, `answered_at`, §30 operador, §31 saldo, §32 `mentions`).
@@ -67,6 +112,10 @@ create index if not exists idx_order_sessions_saldo_coupon
   on order_sessions(pay360_saldo_coupon_id) where pay360_saldo_coupon_id is not null;
 -- A quién se etiqueta en una nota interna (bloque §32)
 alter table chat_messages  add column if not exists mentions jsonb default '[]';
+-- El alcance sale de dónde vive (bloque §33). No agrega columnas: alinea las filas
+-- de quien está en la plataforma administrando y se quedó sin la bandera.
+update sellers set is_super_admin = true
+where store_id = 'platform' and is_admin = true and coalesce(is_super_admin, false) = false;
 ```
 
 ### Y la regla, que es lo que evita que esto se vuelva a llenar

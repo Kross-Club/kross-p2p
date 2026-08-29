@@ -17,6 +17,7 @@ import PanelPedido from '../../components/PanelPedido'
 import PedidosLista from './PedidosLista'
 import PedidosTablero from './PedidosTablero'
 import PedidosResumen from './PedidosResumen'
+import { administraLaPlataforma } from '../../../supabase/functions/_shared/alcance.ts'
 
 // ─── Pedidos: una pantalla, tres maneras de mirarla ──────────────────────────
 //
@@ -41,11 +42,16 @@ export default function PedidosPage() {
   // el borde marcado es la miga de pan para seguir por donde iba.
   const [ultimoAbierto, setUltimoAbierto] = useState<string | null>(null)
 
-  // El super admin de la plataforma no es una tienda: no tiene pedidos que
-  // mirar, tiene marcas que administrar.
+  // La plataforma no es una tienda: quien la administra —el dueño o un
+  // operador de Kross— no tiene pedidos que mirar, tiene tiendas que
+  // administrar. Mandarlo a una lista vacía haría pensar que la vista está rota.
+  //
+  // Se calcula FUERA del efecto para que su dependencia sea un booleano: con el
+  // objeto entero, cada respuesta del perfil lo volvería a disparar.
+  const enLaPlataforma = administraLaPlataforma(effective)
   useEffect(() => {
-    if (effective?.is_super_admin) navigate('/vendedor/marca', { replace: true })
-  }, [effective?.is_super_admin, navigate])
+    if (enLaPlataforma) navigate('/vendedor/marca', { replace: true })
+  }, [enLaPlataforma, navigate])
 
   // UNA lectura para los tres modos. Con cancelados porque el tablero los
   // agrupa aparte y el resumen los cuenta en las notas; la lista los descarta

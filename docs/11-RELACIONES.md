@@ -2105,8 +2105,59 @@ Las tres acciones de equipo piden ahora el **JWT del vendedor**, y de ahí sale 
 (`quienLlama`), incluida la comprobación de que sea de **esta** tienda: admin de la suya no es
 admin de la de al lado. `by_seller_id` se fue del todo.
 
+> Con una excepción que costó descubrir al día siguiente: quien administra **la plataforma**
+> no es "otra tienda". Su `store_id` es `platform` —una casa sin pedidos— así que esa
+> comprobación, tal cual quedó escrita acá, dejaba al dueño y a los operadores de Kross sin
+> poder invitar, reasignar ni expulsar en **ningún** pedido. Justo a quienes entran a una
+> marca para desatascarla. Ver la sección de abajo.
+
 Las demás acciones siguen con la anon key a propósito: `accept_offer` y `cancel` los llama el
 **comprador** desde su chat, y exigirles un JWT de vendedor las rompería.
+
+## La plataforma es un lugar, no una casilla (29-ago-2026)
+
+Los operadores de Kross no podían entrar. En `krossclub.app` el login les respondía
+*"Ingresa desde el sitio de tu marca (tumarca.krossclub.app)"* — y no tienen marca: trabajan
+en la plataforma. El candado no lo podía abrir el que lo sufría.
+
+### Qué pasó
+
+`platform` es la tienda que no vende: la casa de quien opera Kross. Ese dato estaba en la
+fila desde siempre. Pero para saber si alguien administraba la plataforma se preguntaba por
+**otra cosa**: `is_super_admin`, una bandera aparte que había que acordarse de encender.
+
+Y no se encendió. Los operadores se dieron de alta desde el panel —que ya la mandaba— cuando
+la Edge Function desplegada todavía no la leía: **Vercel sale solo al mergear, las funciones
+las despliega una persona.** Entre un momento y el otro, cada alta guardó una fila que estaba
+en la plataforma sin administrarla. Nadie lo vio, porque no falla al crear: falla al entrar,
+días después y en otra pantalla.
+
+### Qué cambió
+
+El alcance deja de ser un dato que se recuerda y pasa a ser uno que se deduce:
+
+```
+administra la plataforma  =  is_super_admin  OR  (store_id = 'platform' AND is_admin)
+```
+
+Vive en `supabase/functions/_shared/alcance.ts` — el segundo archivo, después de
+`equipo-pedido.ts`, que leen **el panel y el servidor con la misma respuesta**. Y esa es la
+parte que importa: la pregunta se hace en el login, en el menú, en la impersonación y en once
+Edge Functions. Si las dos mitades contestaran distinto, el resultado no sería un error — sería
+un panel que se ve bien y no hace nada: Tiendas en el menú, y cada lista vacía.
+
+Es el mismo movimiento que este documento viene repitiendo: **juntar dos copias de una
+definición saca a la luz un fallo que solo sobrevivía estando separadas.** Acá salieron dos —
+el login, que era el síntoma, y `quienLlama`, que llevaba un día dejando al propio dueño sin
+poder invitar a nadie en ningún pedido.
+
+### Lo que NO cambió
+
+El otro eje. El alcance dice **hasta dónde llega** (su tienda, o todas); `is_operator` dice
+**qué no puede** dentro de ese alcance. Un operador de la plataforma entra a cualquier tienda
+y sigue sin poder apagarla, borrarle un producto o nombrar administradores. Y **entrar** a una
+marca sigue bajando el alcance a esa marca a propósito: desde dentro no se ofrece lo que ahí
+no va.
 
 ## Ver también
 

@@ -1334,3 +1334,48 @@ ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS mentions jsonb DEFAULT '[]';
 --   SELECT created_at, sender_name, body, mentions
 --   FROM chat_messages WHERE session_id = '<uuid>' AND visibility = 'sellers'
 --   ORDER BY created_at;
+
+
+-- ─── 33. EL ALCANCE SALE DE DÓNDE VIVE, NO DE UNA CASILLA ───────────────────
+--
+-- `platform` (bloque 8) es la tienda que no vende: la casa de quien opera Kross.
+-- Quien trabaja EN Kross vive ahí; quien trabaja en una marca vive en la suya.
+-- El dato estaba, pero nadie lo leía: para saber si alguien administraba la
+-- plataforma se miraba `is_super_admin`, una bandera que había que acordarse de
+-- encender al dar de alta.
+--
+-- Y no se encendió. Los operadores de Kross se crearon desde el panel —que ya
+-- mandaba la bandera— mientras la Edge Function desplegada todavía no la leía,
+-- así que la fila entró con `is_super_admin = false`. El resultado: personas que
+-- ESTÁN en la plataforma pero no la administran. En krossclub.app el login las
+-- echaba con "ingresa desde el sitio de tu marca" — y su marca no existe. Un
+-- candado que el que lo sufre no puede abrir.
+--
+-- Desde hoy el alcance se deduce en `supabase/functions/_shared/alcance.ts`, que
+-- leen las dos mitades (panel y funciones):
+--
+--   administra la plataforma  =  is_super_admin
+--                             OR (store_id = 'platform' AND is_admin)
+--
+-- La bandera se sigue respetando —nadie pierde lo que tenía— pero ya no hace
+-- falta que esté. No ensancha nada: en `platform` solo hay quien opera Kross
+-- (los pedidos son de las marcas, ahí no hay miembro raso que atender), y a un
+-- admin de marca se le crea en la suya.
+--
+-- Esto ALINEA las filas que quedaron a medias, para que la columna diga lo mismo
+-- que la regla. Es idempotente y no toca a nadie de una marca.
+UPDATE sellers
+SET is_super_admin = true
+WHERE store_id = 'platform'
+  AND is_admin = true
+  AND COALESCE(is_super_admin, false) = false;
+
+-- Quién administra la plataforma hoy:
+--   SELECT nombre, store_id, role_label, is_admin, is_operator, is_super_admin, active
+--   FROM sellers WHERE store_id = 'platform' ORDER BY is_super_admin DESC, nombre;
+--
+-- ⚠️ Lo que este bloque NO cambia: qué puede DESTRUIR cada uno. El alcance dice
+-- hasta dónde llega (su tienda o todas); `is_operator` dice qué no puede hacer
+-- dentro de ese alcance (bloque 30). Son dos ejes y siguen siendo independientes
+-- — un operador de la plataforma entra a cualquier tienda y sigue sin poder
+-- apagarla.
