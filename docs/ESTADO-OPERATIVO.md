@@ -203,6 +203,26 @@ no pudo cargar (y sugiere justamente que falta publicar `list-clients`), mientra
 *Invitar* siguen funcionando como antes con las funciones ya desplegadas. Es la diferencia con
 el paso 5: acá la ventana no deja al equipo sin nada.
 
+### Una función rota no se nota hasta el deploy (29-ago-2026)
+
+`get-session` salió a `main` sin compilar. Una edición partió en dos una expresión de dos
+líneas y dejó huérfano un `|| req.headers…` detrás de una llave; el deploy lo rechazó con
+*"Expected a semicolon"* y **la versión anterior siguió viva** — o sea, el panel se veía bien y
+el candado de los comentarios internos no estaba puesto. El peor estado: parece hecho y no lo
+está.
+
+Se escapó porque nada en el repo miraba esos archivos: `tsc -b` cubre `src/` —las funciones son
+Deno y quedan fuera del proyecto—, ningún test las importa y el build de Vite no las toca. La
+única comprobación era el despliegue mismo.
+
+Ahora `src/lib/edge-functions.test.ts` parsea **todas** las funciones con el parser de
+TypeScript en cada `npm test`. No comprueba tipos —no hay Deno acá, ni forma de resolver `npm:`
+ni los globales de Deno— y no hace falta: lo que se escapó fue sintaxis, que es justo la clase
+de error que no avisa hasta el deploy.
+
+> Si el CLI responde `unexpected deploy status 400` con un mensaje del parser, **no es la
+> conexión**: es el archivo. Corre `npm test` antes de volver a intentarlo.
+
 ### Cómo comprobar que un deploy entró
 
 El CLI no dice mucho al terminar. Para ver qué versión quedó viva de cada función:

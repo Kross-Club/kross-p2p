@@ -15,8 +15,10 @@ Deno.serve(async (req) => {
 
   const token = req.headers.get('x-kross-token')
   if (!token) return new Response('Unauthorized', { status: 401, headers: corsHeaders })
-  // Read viewer from the URL query (avoids adding a custom CORS header)
+  // Read viewer from the URL query (avoids adding a custom CORS header), o por
+  // la cabecera que usan los llamadores que no son el navegador.
   const viewerIsSeller = new URL(req.url).searchParams.get('viewer') === 'seller'
+    || req.headers.get('x-viewer-role') === 'seller'
 
   // ─── Y quién lo pide DE VERDAD ─────────────────────────────────────────────
   //
@@ -42,7 +44,6 @@ Deno.serve(async (req) => {
       .maybeSingle()
     return !!me && me.active !== false
   }
-    || req.headers.get('x-viewer-role') === 'seller'
 
   // Fetch session
   const { data: session, error } = await supabase
