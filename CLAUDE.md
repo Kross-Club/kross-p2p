@@ -85,3 +85,8 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
 - **Modo demo** (`src/lib/demo/`): un interruptor en *Marca* llena todo el panel con una tienda
   de ejemplo (~1.000 pedidos/día) para enseñar la herramienta. Vive en el dispositivo, no en
   `stores`, y el panel lo anuncia con una barra fija. Nunca toca la base.
+  Y **se deja tocar** (29-ago-2026): avanzar de etapa, cambiar cantidades, agregar un producto,
+  escribir en el chat, invitar y pasar el pedido funcionan enseñando. Los cambios se guardan
+  ENCIMA del generador (`demo/cambios-demo.ts`), en `localStorage`, y **se van al salir del
+  demo** —la barra tiene un *Reiniciar*—; el generador sigue siendo determinista, así que dos
+  pantallas siguen comparando lo mismo.

@@ -38,6 +38,33 @@ y actualizan.
   quedan como roles **legado**: el panel ya no los ofrece al crear/cambiar rol,
   pero se siguen reconociendo — si una tienda aún conserva Ventas, sus vendedores
   reciben los pedidos nuevos primero; sin Ventas, se asignan a Logística.
+- **Equipo de UN pedido (29-ago-2026):** los roles de arriba dicen qué puede alguien en la
+  **tienda**; quién manda en **un pedido** es otra pregunta, y vive en
+  `supabase/functions/_shared/equipo-pedido.ts` — el único archivo del repo que leen el panel
+  y el servidor con la misma respuesta. Un pedido tiene **un responsable**
+  (`assigned_seller_id`) y alrededor invitados que también escriben
+  (`writer_seller_ids`, `invited_by`):
+
+  | | Quién |
+  |---|---|
+  | escribir | el responsable y los invitados, **en turno**; quien administra, siempre |
+  | invitar | cualquiera que escriba — quien atiende es quien descubre que necesita a Logística |
+  | sacar a alguien | quien lo invitó, el responsable, o quien administra. **Al responsable no** |
+  | pasar el pedido | el responsable o quien administra, con **nota obligatoria** |
+
+  El responsable también cambia **solo** al avanzar de etapa (`confirmado` → Logística,
+  `en_camino` → Motorizado), eligiendo por menor carga entre los que están en turno; ese
+  traspaso **conserva** a los invitados.
+
+  Y eso es la manija, no la puerta: `order-manage` comprueba quién llama con su **JWT**
+  (`quienLlama`), no con un id en el cuerpo de la petición — incluido que sea de esa tienda.
+
+- **Notas internas en el chat (29-ago-2026):** `chat_messages.visibility = 'sellers'` +
+  `mentions`. La columna **no esconde nada por sí sola**: quien decide es `get-session`, que
+  para lo interno exige un **JWT de vendedor verificado** —`?viewer=seller` lo escribe
+  cualquiera, y el token del pedido es del comprador—. Tampoco viaja por el canal realtime del
+  comprador ni por su push. Ver 11-RELACIONES.
+
 - **Comprador:** identificado por DNI/teléfono (`buyers`), sin login de contraseña; entra
   por su subdominio (`/acceso`). NO hay login de comprador en el host de plataforma.
 
@@ -281,6 +308,17 @@ type MerchantCustomerSession = {
                provider?: '360PAY' | null   // NULL = flujo manual; separa las piscinas de cruce
                providerChargeId?: string    // id del cupón, en payment_events
                reason?: string }            // veredicto interno — NUNCA al comprador
+  // El SALDO (28-ago-2026): la SEGUNDA operación de cobro, y por eso está acá y
+  // no dentro de `advance`. Ocurre después —cuando la guía ya existe—, con su
+  // propio cupón, su propio número de operación bancaria y su propia fecha, y es
+  // lo que suelta la clave de recojo. Cruza los dos módulos: Sales lo cobra,
+  // Logistics depende de él para que el comprador retire.
+  //
+  // Juntarlo con el adelanto en un solo "pagado S/180" borraría lo único que un
+  // reclamo necesita: cuál de las dos operaciones. Ver 11-RELACIONES.
+  balance?:  { amountPen: number
+               verification: 'PENDING' | 'MATCHED'   // PENDING = cupón emitido, sin pagar
+               providerChargeId?: string }
   // Envío por agencia (tracking por API, 02-SMART-LOGISTICS §3). Logistics
   // registra los identificadores del comprobante; un job periódico los consulta
   // contra la API del courier y refleja la fase. La fase dispara la cobranza
@@ -297,9 +335,15 @@ type MerchantCustomerSession = {
                phase: 'EN_ORIGEN' | 'EN_TRANSITO' | 'EN_DESTINO' | 'ENTREGADO' | null
                phaseAt?: Date
                demoraAt?: Date }              // alerta de demora del courier; NO es una fase
-  stage:     'nuevo' | 'validando' | 'confirmado' | 'preparando' | 'en_camino' | 'entregado'
+  stage:     'nuevo' | 'validando' | 'confirmado' | 'en_camino' | 'entregado'
              | 'no_entregado'               // terminal de fracaso: lo marca una persona;
                                             // tasa de entrega = entregado/(entregado+no_entregado)
+             // `preparando` SALIÓ del eje (ago-2026): no describía un hecho
+             // verificable —nadie marca "ya lo empaqué"—. La BD todavía lo
+             // acepta y hay filas con él; se leen como `confirmado`
+             // (`stageVigente`). Y OJO: `stage` NO es lo que ve el vendedor —
+             // el tablero funde este reloj con el del courier y con la
+             // existencia de la guía. Ver `order-tracking.ts` y 11-RELACIONES.
   loyalty:   { pointsEarned: number; nextReorderDate: Date }
   // Atribución del anuncio que trajo la venta. La captura Sales en el checkout y
   // la guarda en la orden; el módulo de Pixels/CAPI la usa para reportar el
@@ -319,6 +363,11 @@ type MerchantCustomerSession = {
    viaja en el JSON y se ve en la pestaña de red.
 2. **`stage` avanza solo con el pago confirmado**, y las advertencias no lo frenan: el
    dinero entró, la duda es de operaciones. Ver `01-SALES-ENGINE.md`.
+3. **Cobrado es lo que cruzó la pasarela, y nada más.** `advance` + `balance`, los dos
+   `MATCHED`. Un comercio puede cobrar por fuera —efectivo, transferencia, un acuerdo por
+   el chat— y mover el pedido a `entregado`: de esa plata no hay rastro, así que no cuenta.
+   Es lo que decide el anillo de avance del panel (`cobradoDelPedido` en
+   `src/lib/order-money.ts`): **entregar el pedido no lo cobra; cobrar lo cobra.**
 
 Lector único: **`src/lib/session.ts` → `toCustomerSession(order, buyer)`** ensambla este
 objeto desde `order_sessions` + `buyers`. Todos los módulos leen la sesión por ahí.
@@ -339,6 +388,9 @@ Mapeo actual → objetivo:
 | `advance.provider` | `order_sessions.payment_provider` — '360PAY' o NULL | ✅ |
 | `advance.providerChargeId` | `payment_events.provider_charge_id` (por `matched_order_id`) | ✅ |
 | `advance.reason` | `order_sessions.payment_reason` — solo Ventas | ✅ |
+| `balance.amountPen` | `order_sessions.saldo_amount` (bloque §31) — lo escribe `pay360-coupon` al emitir el segundo cupón | ✅ |
+| `balance.verification` | `order_sessions.saldo_verification` — la fija `pay360-webhook`, que distingue cuál de los dos cobros llegó **por el id del cupón**: el `external_ref` es el mismo pedido en los dos, y el monto tampoco sirve —la mitad de S/180 es 90, igual que su saldo— | ✅ |
+| `balance.providerChargeId` | `order_sessions.pay360_saldo_coupon_id` · `pay360_saldo_consumer_code` | ✅ |
 | `shipment.courier/ref` | `order_sessions.tracking_courier/tracking_numero/tracking_codigo/tracking_ose_id/tracking_year` — los registra `order-manage` (acción `set_tracking`) | ✅ |
 | `shipment.phase/phaseAt/demoraAt` | `order_sessions.tracking_phase/tracking_phase_at/tracking_demora_at` — los escriben los jobs `shalom-tracking-sync` / `olva-tracking-sync` (pg_cron) vía el reflejo compartido `_shared/tracking.ts`; `tracking_checked_at` audita el último chequeo | ✅ |
 | `stage` | `order_sessions.stage` — orden en `src/lib/order-stages.ts` | ✅ |
