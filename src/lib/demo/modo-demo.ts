@@ -23,6 +23,20 @@ import { reiniciarDemo } from './cambios-demo'
 // Mientras esté encendido, el panel lo anuncia con una barra fija arriba: un
 // demo que no se anuncia es una mentira.
 
+/**
+ * El rol con el que se ACTÚA mientras se enseña la tienda de ejemplo.
+ *
+ * Quien presenta la herramienta la enseña como dueño de la tienda, no con el
+ * cargo que tenga en Kross: lo que el cliente que mira tiene que ver es su
+ * propio negocio, y "Admin" es una palabra nuestra. Así que en el demo todo lo
+ * que se escribe —mensajes, notas internas, invitaciones— va firmado como
+ * **Dueño**.
+ *
+ * Solo cambia la ETIQUETA, no los permisos: el demo no toca la base y no hay
+ * nada que permitir o negar.
+ */
+export const ROL_DEMO = 'Dueño'
+
 const PREFIJO = 'kross-demo:'
 
 const clave = (storeId: string) => `${PREFIJO}${storeId}`

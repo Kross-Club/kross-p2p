@@ -91,6 +91,10 @@
      es la del papelito amarillo: nadie confunde un post-it con un mensaje. */
   --nota-bg: #FDF3C0;  --nota-bg-soft: #FEF9E0;
   --nota-fg: #6B5708;  --nota-border: rgba(160, 130, 10, 0.35);
+  /* Lo ÚNICO que se lee encima de `--nota-fg` (el botón de guardar la nota).
+     Hace falta su propio token porque no es `--nota-bg`: en oscuro ese es un
+     velo translúcido, y un icono translúcido sobre amarillo no se ve. */
+  --nota-on: #FFFBEA;
   --violet-bg: #EDEFF2; --violet-fg: #4C535B; --violet-border: rgba(15,17,21,0.10);
 }
 
@@ -130,6 +134,7 @@
      mirada por encima del lima, que es el acento de la marca. Va como velo. */
   --nota-bg: rgba(255, 226, 92, 0.13);  --nota-bg-soft: rgba(255, 226, 92, 0.07);
   --nota-fg: #EBD98A;  --nota-border: rgba(255, 226, 92, 0.30);
+  --nota-on: #2A2400;
   --violet-bg: var(--k-surface-2); --violet-fg: var(--k-text-2); --violet-border: var(--border);
 
   /* La rampa de grises de Tailwind, mapeada a los neutros del manual. Así

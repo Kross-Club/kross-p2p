@@ -1988,6 +1988,55 @@ La bandeja cuenta **la conversación con el comprador**, así que las notas inte
 ni en el turno, ni en la vista previa de la fila —donde se leerían como si se le hubiera escrito
 a él—. Una sola regla (`conversacion()`) para las dos cosas.
 
+## Dos audiencias, dos borradores (29-ago-2026)
+
+El redactor es uno y las audiencias son dos, y lo escrito **cruzaba de una a la otra**: se
+empieza media nota, se toca el interruptor por costumbre, se pulsa enviar — y al cliente le
+llega *"ya lo llamé dos veces y no contesta"*, por push y por WhatsApp. Ese error no se
+deshace, y es exactamente el que esta pantalla existe para evitar.
+
+Ahora hay **un borrador por audiencia**: cambiar de modo vacía el campo y devuelve lo que
+hubiera de ese lado. Nada se pierde, y lo que se envía es siempre lo que se escribió *ahí*.
+Vive en `lib/comentario-interno.ts` con su nombre, porque es una regla de seguridad y no un
+detalle del componente — incluso al fallar un envío, el texto vuelve al borrador de **su**
+audiencia y no al que esté puesto en ese momento.
+
+### El botón de guardar no se veía
+
+En modo nota, el botón usaba `--nota-fg` de fondo y `--nota-bg` de icono. En claro funciona;
+en oscuro `--nota-bg` es un **velo translúcido**, así que el icono se pintaba transparente
+sobre amarillo: un círculo liso. Lo que faltaba era el token del par —`--nota-on`, lo único
+que se lee encima del amarillo— que es distinto en cada tema y por eso no se podía derivar del
+otro.
+
+## Invitar es en dos pasos, y la nota es obligatoria (29-ago-2026)
+
+La nota estaba **arriba** de la lista, así que quedaba en blanco casi siempre: uno abre eso
+para invitar a alguien, no para redactar. Y el invitado llegaba a un hilo de cuarenta mensajes
+sin saber qué le tocaba.
+
+Ahora primero se elige **a quién** y recién después aparece el **por qué**, con el botón
+apagado hasta que diga algo. La pregunta llega cuando ya se sabe la respuesta —*"a Renzo… ¿para
+qué?"*— en vez de antes de saber a quién.
+
+Que sea obligatoria es la decisión de fondo: la nota queda en el hilo como nota interna,
+etiquetando al invitado y **firmada por quien invita**, así que todo el que entra sabe por qué
+se le convocó y de parte de quién. Una invitación sin eso es una notificación que obliga a
+adivinar.
+
+> Cerrar el invitador lo deja como estaba. Sin eso, reabrirlo enseña la nota escrita para
+> **otra** persona — y esa nota se manda etiquetándola.
+
+## En el demo se firma como Dueño (29-ago-2026)
+
+Quien presenta la herramienta la enseña como **dueño de la tienda**, no con el cargo que tenga
+en Kross: lo que el cliente que mira tiene que ver es su propio negocio, y *"Admin"* es una
+palabra nuestra. Así que en la tienda de ejemplo todo lo que se escribe —mensajes, notas
+internas, invitaciones— va firmado como **Dueño** (`ROL_DEMO`).
+
+Solo cambia la etiqueta, no los permisos: el demo no toca la base, así que no hay nada que
+permitir ni que negar.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

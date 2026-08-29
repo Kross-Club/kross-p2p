@@ -20,8 +20,9 @@ import { stageVigente } from '../../lib/order-stages'
 import { conPlataEnJuego, columnaDelPedido, pasoActual, etiquetaDePaso, siguientePaso, courierDelPedido } from '../../lib/order-tracking'
 import {
   esInterno, trozosConMenciones, consultaDeArroba, candidatos, insertarMencion, mencionadosEn, primerNombre,
+  BORRADORES_VACIOS, borradorDe, guardarBorrador, borradorEnviado,
 } from '../../lib/comentario-interno'
-import type { Etiquetable } from '../../lib/comentario-interno'
+import type { Borradores, Etiquetable } from '../../lib/comentario-interno'
 import type { PasoKey, PedidoRastreable } from '../../lib/order-tracking'
 import AnilloAvance from '../../components/AnilloAvance'
 import { useUbicacion } from '../../lib/ubicacion'
@@ -32,6 +33,7 @@ import PagoTrace from '../../components/PagoTrace'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
 import { pedidoDemoPorToken, esTokenDemo, tiendaDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
+import { ROL_DEMO } from '../../lib/demo/modo-demo'
 import { ejecutarEnDemo, agregarMensajeDemo, ofertaAceptadaEnDemo, invitarEnDemo } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
@@ -538,16 +540,28 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
   const desktop = useIsDesktop()
   usePanelTheme()
   const sellerName = effective?.nombre ?? 'Kross'
-  const sellerRole = effective?.role_label ?? null
+  // En la tienda de ejemplo se firma como DUEÑO. Quien presenta la enseña como
+  // dueño del negocio, no con su cargo en Kross: "Admin" es una palabra
+  // nuestra, y lo que el cliente que mira tiene que ver es su propia tienda.
+  const sellerRole = esTokenDemo(token) ? ROL_DEMO : (effective?.role_label ?? null)
 
   const [session, setSession] = useState<OrderSession | null>(null)
   const [messages, setMessages] = useState<OrderMessage[]>([])
   const [loading, setLoading] = useState(true)
-  const [input, setInput] = useState('')
+  // DOS borradores, uno por audiencia. Lo escrito no cruza de un modo al otro:
+  // con uno solo, media nota + un toque al interruptor por costumbre + enviar
+  // le manda al cliente algo que nunca fue para él, por push y por WhatsApp, y
+  // eso no se deshace. Ver `Borradores` en lib/comentario-interno.ts.
+  const [borradores, setBorradores] = useState<Borradores>(BORRADORES_VACIOS)
   // ¿Esto va al cliente o es una nota del equipo? Vive acá y no en el mensaje
   // porque es el MODO del redactor: lo que decide qué se ve mientras se escribe.
   const [interno, setInterno] = useState(false)
+  const input = borradorDe(borradores, interno)
+  const setInput = (texto: string) => setBorradores(b => guardarBorrador(b, interno, texto))
   const [notaInvitacion, setNotaInvitacion] = useState('')
+  /** A quién se eligió invitar, mientras se escribe su nota. `null` = todavía
+   *  se está eligiendo. Es lo que parte el invitador en dos pasos. */
+  const [porInvitar, setPorInvitar] = useState<{ auth_user_id: string; nombre: string; role_label: string } | null>(null)
   const [caret, setCaret] = useState(0)
   const campoRef = useRef<HTMLInputElement>(null)
   const [sending, setSending] = useState(false)
@@ -792,7 +806,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     // Se resuelven contra el equipo y se guardan `id`s: el texto `@Renzo` deja
     // de apuntar a nadie en cuanto Renzo cambia de nombre.
     const etiquetados = esComentario ? mencionadosEn(body, equipoEtiquetable) : []
-    setInput('')
+    setBorradores(b => borradorEnviado(b, esComentario))
     setSending(true)
     const optimisticId = `opt-${Date.now()}`
     const optimistic: OrderMessage = {
@@ -847,7 +861,10 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       }
     } catch {
       setMessages(prev => prev.filter(m => m.id !== optimisticId))
-      setInput(body)
+      // Al borrador de SU audiencia, no al que esté puesto ahora: si mientras
+      // tanto se cambió de modo, devolverlo al otro lado es justo el cruce que
+      // los dos borradores existen para impedir.
+      setBorradores(b => guardarBorrador(b, esComentario, body))
     } finally {
       setSending(false)
     }
@@ -897,10 +914,18 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     await cargarEquipo()
   }
 
-  const invite = async (sellerAuthId: string) => {
+  /** Cerrar deja el invitador como estaba. Sin esto, reabrirlo enseña la nota
+   *  que se escribió para OTRA persona — y esa nota se manda etiquetándola. */
+  const cerrarInvitar = () => {
     setShowInvite(false)
-    const porQue = notaInvitacion.trim()
+    setPorInvitar(null)
     setNotaInvitacion('')
+  }
+
+  const invite = async (sellerAuthId: string) => {
+    const porQue = notaInvitacion.trim()
+    if (!porQue) return
+    cerrarInvitar()
 
     // En la tienda de ejemplo no hay a quién pedírselo: se resuelve acá igual
     // que lo haría el servidor —participante, aviso y nota— para que invitar
@@ -1365,7 +1390,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
               aria-label={interno ? 'Guardar la nota interna' : 'Enviar al cliente'}
               className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm disabled:opacity-40"
               style={interno
-                ? { background: 'var(--nota-fg)', color: 'var(--nota-bg)' }
+                ? { background: 'var(--nota-fg)', color: 'var(--nota-on)' }
                 : { background: 'var(--invert)', color: 'var(--invert-fg)' }}>
               <Send size={16} />
             </button>
@@ -1388,45 +1413,75 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     <>
       {/* Invite modal */}
       {showInvite && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setShowInvite(false)}>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={cerrarInvitar}>
           <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="font-black text-gray-900 mb-1">Invitar a participar</h3>
-            <p className="text-xs text-gray-400 mb-3">Podrá escribir y llamar en este pedido.</p>
-            {/* El porqué, antes de elegir a quién: escrito después ya nadie lo
-                escribe. Queda en el chat como NOTA INTERNA etiquetando al
-                invitado, así que se pinta como una —mismo papel amarillo— y no
-                hace falta explicar quién la ve. */}
-            <input
-              value={notaInvitacion}
-              onChange={e => setNotaInvitacion(e.target.value)}
-              placeholder="Nota interna para este miembro"
-              className="w-full rounded-2xl px-4 py-2.5 text-sm outline-none mb-3"
-              style={{ background: 'var(--nota-bg)', border: '1px solid var(--nota-border)', color: 'var(--text)' }}
-            />
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
-              {team
-                // Ni el asignado ni los que ya están: invitar a quien ya
-                // participa no hace nada, y verlo en la lista hace dudar.
-                .filter(t => t.auth_user_id !== session.assigned_seller_id)
-                .filter(t => !participants.some(p => p.id === t.auth_user_id && p.can_write))
-                .map(t => (
-                  <button key={t.auth_user_id} onClick={() => invite(t.auth_user_id)}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl border border-gray-100 text-left">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0"
-                      style={{ background: `${roleColor(t.role_label)}22`, color: roleColor(t.role_label) }}>
-                      {t.nombre.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-bold text-sm text-gray-900">{t.nombre}</p>
-                      <p className="text-xs text-gray-400">{t.role_label}</p>
-                    </div>
-                    <UserPlus size={16} className="text-gray-300" />
-                  </button>
-                ))}
-            </div>
-            <button onClick={() => setShowInvite(false)} className="w-full mt-4 py-3 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm">
-              Cerrar
-            </button>
+            {/* Dos pasos: primero A QUIÉN, después POR QUÉ. Con la nota arriba
+                de la lista quedaba en blanco casi siempre —uno viene a invitar
+                a alguien, no a redactar— y el invitado llegaba al hilo sin
+                saber qué le tocaba. Poniéndola después de elegir, y con el
+                botón apagado hasta que diga algo, la pregunta llega cuando ya
+                se sabe la respuesta: "a Renzo… ¿para qué?". */}
+            {!porInvitar ? (
+              <>
+                <h3 className="font-black text-gray-900 mb-1">Invitar a participar</h3>
+                <p className="text-xs text-gray-400 mb-3">Podrá escribir y llamar en este pedido.</p>
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                  {team
+                    // Ni el asignado ni los que ya están: invitar a quien ya
+                    // participa no hace nada, y verlo en la lista hace dudar.
+                    .filter(t => t.auth_user_id !== session.assigned_seller_id)
+                    .filter(t => !participants.some(p => p.id === t.auth_user_id && p.can_write))
+                    .map(t => (
+                      <button key={t.auth_user_id} onClick={() => setPorInvitar(t)}
+                        className="w-full flex items-center gap-3 p-3 rounded-2xl border border-gray-100 text-left">
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0"
+                          style={{ background: `${roleColor(t.role_label)}22`, color: roleColor(t.role_label) }}>
+                          {t.nombre.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-sm text-gray-900">{t.nombre}</p>
+                          <p className="text-xs text-gray-400">{t.role_label}</p>
+                        </div>
+                        <UserPlus size={16} className="text-gray-300" />
+                      </button>
+                    ))}
+                </div>
+                <button onClick={cerrarInvitar} className="w-full mt-4 py-3 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm">
+                  Cerrar
+                </button>
+              </>
+            ) : (
+              <>
+                <h3 className="font-black text-gray-900 mb-1">
+                  Invitar a {primerNombre(porInvitar.nombre)}
+                </h3>
+                <p className="text-xs text-gray-400 mb-3">
+                  {porInvitar.role_label} · va a leer todo el chat con el cliente.
+                </p>
+                {/* La nota queda en el hilo como NOTA INTERNA etiquetándolo y
+                    firmada por quien invita, así que el invitado llega sabiendo
+                    qué le toca y de parte de quién. Por eso es obligatoria. */}
+                <input
+                  autoFocus
+                  value={notaInvitacion}
+                  onChange={e => setNotaInvitacion(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && notaInvitacion.trim()) invite(porInvitar.auth_user_id) }}
+                  placeholder="Nota interna para este miembro"
+                  className="w-full rounded-2xl px-4 py-2.5 text-sm outline-none mb-3"
+                  style={{ background: 'var(--nota-bg)', border: '1px solid var(--nota-border)', color: 'var(--text)' }}
+                />
+                <button
+                  onClick={() => invite(porInvitar.auth_user_id)}
+                  disabled={!notaInvitacion.trim()}
+                  className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-40"
+                  style={{ background: 'var(--nota-fg)', color: 'var(--nota-on)' }}>
+                  Invitar con esta nota
+                </button>
+                <button onClick={() => setPorInvitar(null)} className="w-full mt-2 py-3 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm">
+                  Elegir a otro
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
