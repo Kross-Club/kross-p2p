@@ -313,6 +313,80 @@ function indicePorGuia(numero: string | null | undefined, claves: PasoKey[]): nu
   return claves.indexOf('registrado')
 }
 
+// ─── Qué sigue, y QUIÉN lo mueve ─────────────────────────────────────────────
+//
+// El botón de avanzar del chat ofrecía la siguiente etapa de la lista CRUDA de
+// la base (`nuevo · validando · confirmado · en_camino · entregado`), mientras
+// el chip de al lado ya pintaba el paso del EJE. Dos listas distintas en la
+// misma fila, y se notaba:
+//
+//   · un pedido por agencia en "Registrado" tenía de botón "✅ Entregado" —
+//     saltándose En origen, En tránsito y En destino de un dedazo;
+//   · uno en "Confirmado" ofrecía "🚚 En camino", que en un pedido por agencia
+//     no es ni un paso de su línea: ahí la palabra es "En tránsito", y antes va
+//     "Registrado".
+//
+// Acá se calcula lo que de verdad sigue **en la línea de ESTE pedido**, y con
+// eso una segunda cosa que la pantalla nunca dijo: de quién es ese paso.
+//
+//   equipo  → lo marca una persona (mueve `stage`).
+//   guia    → lo enciende que exista la guía. No se "avanza": se registra.
+//   courier → lo reporta Shalom u Olva. No es nuestro para marcarlo.
+//
+// Ofrecer un botón para algo que no movemos es prometer un hecho que no
+// tenemos. Por eso el que no es del equipo se dice, no se pulsa.
+
+export type QuienMueve = 'equipo' | 'guia' | 'courier'
+
+const DUENO: Record<PasoKey, QuienMueve> = {
+  nuevo: 'equipo', validando: 'equipo', confirmado: 'equipo',
+  registrado: 'guia',
+  en_origen: 'courier', transito: 'courier', en_agencia: 'courier',
+  en_camino: 'equipo', entregado: 'equipo', no_entregado: 'equipo',
+}
+
+/** El `stage` que hay que escribir para llegar a este paso, si es del equipo. */
+const STAGE_DEL_PASO: Partial<Record<PasoKey, OrderStage>> = {
+  nuevo: 'nuevo', validando: 'validando', confirmado: 'confirmado',
+  en_camino: 'en_camino', entregado: 'entregado', no_entregado: 'no_entregado',
+}
+
+/** La fase que tendría que reportar el courier para llegar a este paso. */
+const FASE_DEL_PASO: Partial<Record<PasoKey, FaseCourier>> = {
+  en_origen: 'EN_ORIGEN', transito: 'EN_TRANSITO', en_agencia: 'EN_DESTINO', entregado: 'ENTREGADO',
+}
+
+export interface Siguiente {
+  key: PasoKey
+  label: string
+  emoji: string
+  quien: QuienMueve
+  /** Qué escribir para llegar ahí. Uno de los dos, según de quién sea el paso. */
+  stage?: OrderStage
+  fase?: FaseCourier
+}
+
+/**
+ * El paso que sigue en la línea de este pedido. `null` si ya terminó.
+ *
+ * Sale de `pasosDelPedido`, o sea del MISMO eje que pinta el tablero y el chip
+ * del chat: un pedido por agencia nunca ofrece "En camino", y uno a domicilio
+ * nunca ofrece "Registrado", porque no están en sus líneas.
+ */
+export function siguientePaso(p: PedidoRastreable): Siguiente | null {
+  const pasos = pasosDelPedido(p)
+  const i = pasos.findIndex(x => x.estado === 'activo')
+  const sig = i >= 0 ? pasos[i + 1] : undefined
+  if (!sig) return null
+  return {
+    key: sig.key,
+    ...PASOS[sig.key],
+    quien: DUENO[sig.key],
+    stage: STAGE_DEL_PASO[sig.key],
+    fase: FASE_DEL_PASO[sig.key],
+  }
+}
+
 /** El paso activo, para titular sin recorrer la lista afuera. */
 export function pasoActual(p: PedidoRastreable): Paso | undefined {
   return pasosDelPedido(p).find(x => x.estado === 'activo')

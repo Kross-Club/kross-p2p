@@ -7,6 +7,9 @@ import { NOTA_META, NOTA_KEYS } from '../lib/order-chips'
 import { stageVigente } from '../lib/order-stages'
 import { etiquetaDePaso } from '../lib/order-tracking'
 import Confirmar from './Confirmar'
+import { esPedidoDemo } from '../lib/demo/tienda-demo'
+import { ejecutarEnDemo } from '../lib/demo/cambios-demo'
+import type { StoreOrder } from '../lib/store-orders'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -63,8 +66,18 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
     if (imgs.length) { setViewerImgs(imgs); setViewerIdx(0) }
   }
 
-  const post = (payload: Record<string, unknown>) =>
-    fetch(`${BASE}/order-manage`, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  // Una sola puerta para todo lo que cambia el pedido — y en la tienda de
+  // ejemplo, la misma puerta sin red. Los pedidos `demo-…` no existen en la
+  // base: pedírselos al servidor devolvía "No se pudo" en plena demostración.
+  // Se responde con la MISMA forma (`Response`) para que abajo no haya dos
+  // caminos que mantener.
+  const post = (payload: Record<string, unknown>): Promise<Response> => {
+    if (esPedidoDemo(session.id)) {
+      const r = ejecutarEnDemo(session as unknown as StoreOrder, { ...payload, action: String(payload.action) })
+      return Promise.resolve(new Response(JSON.stringify(r), { status: r.ok ? 200 : 400 }))
+    }
+    return fetch(`${BASE}/order-manage`, { method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  }
 
   const cancel = async () => {
     setBusy(true)

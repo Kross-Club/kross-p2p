@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Eye, X, Sparkles } from 'lucide-react'
+import { LogOut, Eye, X, RotateCcw, Sparkles } from 'lucide-react'
 import BottomNav from './BottomNav'
 import SideNav from './SideNav'
 import IncomingCallOverlay from './IncomingCallOverlay'
@@ -16,6 +16,7 @@ import { sellerNavLinks, activeNavLink } from '../lib/seller-nav'
 import { useIsDesktop } from '../lib/use-desktop'
 import { usePanelTheme } from '../lib/theme'
 import { useDemo, setDemo } from '../lib/demo/modo-demo'
+import { reiniciarDemo, useCambiosDemo } from '../lib/demo/cambios-demo'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -31,6 +32,8 @@ export default function Layout() {
   const { pathname } = useLocation()
   const desktop = useIsDesktop()
   const demo = useDemo(effective?.store_id)
+  // ¿Se tocó algo enseñando? De ahí sale el botón de reiniciar (cambios-demo).
+  const tocado = Object.keys(useCambiosDemo()).length > 0
   usePanelTheme()
 
   // Qué marca se muestra en el header sigue a QUIÉN estás actuando: el super
@@ -132,11 +135,23 @@ export default function Layout() {
           Modo demo{brand?.nombre ? ` en ${brand.nombre}` : ''} — estos datos son inventados
         </p>
       </div>
-      <button onClick={() => effective?.store_id && setDemo(effective.store_id, false)}
-        className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg flex-shrink-0"
-        style={{ background: 'var(--surface)', color: 'var(--text)' }}>
-        <X size={12} /> Salir
-      </button>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        {/* Solo cuando hay algo que deshacer. Enseñando se avanzan etapas, se
+            agregan productos y se escriben mensajes; esto devuelve la tienda de
+            ejemplo a como empieza, sin tener que salir y volver a entrar. */}
+        {tocado && (
+          <button onClick={reiniciarDemo}
+            className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg"
+            style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+            <RotateCcw size={12} /> Reiniciar
+          </button>
+        )}
+        <button onClick={() => effective?.store_id && setDemo(effective.store_id, false)}
+          className="flex items-center gap-1 text-xs font-black px-2.5 py-1 rounded-lg"
+          style={{ background: 'var(--surface)', color: 'var(--text)' }}>
+          <X size={12} /> Salir
+        </button>
+      </div>
     </div>
   )
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { tiendaDemo, fichaDemoDeCliente, marcarRespondidoDemo, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
 import { columnaDelPedido, COLUMNAS } from '../order-tracking'
 import { avanceDelPago, cobrosDelPedido, saldoDelPedido } from '../order-money'
+import { conCambios, reiniciarDemo } from './cambios-demo'
 import { estaVivo } from '../store-orders'
 
 const t = await tiendaDemo()
@@ -223,12 +224,20 @@ describe('la bandeja del demo', () => {
     expect(cerrados.length).toBeLessThan(t.pedidos.length)
   })
 
-  it('marcar como respondido en demo escribe sobre la tienda generada', async () => {
+  // Se anota como cualquier otro cambio del demo (cambios-demo.ts) en vez de
+  // mutar el generador: así sobrevive a recargar la página y se va al apagar el
+  // demo, igual que mover de etapa o cambiar una cantidad. El generador queda
+  // intacto —es lo que hace que dos pantallas sigan comparando lo mismo—, y el
+  // cambio se ve al leerlo.
+  it('marcar como respondido en demo se anota como cambio, no muta el generador', async () => {
     const sinCerrar = t.pedidos.find(p => !p.answered_at)!
     const cuando = await marcarRespondidoDemo(sinCerrar.id)
     expect(cuando).toBeTruthy()
+    expect(conCambios(sinCerrar).answered_at).toBe(cuando)
     const otra = await tiendaDemo()
-    expect(otra.pedidos.find(p => p.id === sinCerrar.id)?.answered_at).toBe(cuando)
+    expect(otra.pedidos.find(p => p.id === sinCerrar.id)?.answered_at).toBeFalsy()
+    reiniciarDemo()
+    expect(conCambios(sinCerrar).answered_at).toBeFalsy()
   })
 
   it('un pedido que no existe no se marca', async () => {
