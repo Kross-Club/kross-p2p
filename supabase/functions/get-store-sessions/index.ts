@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
       shalom_order_status, shalom_order_reason,
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       answered_at,
-      chat_messages ( id, sender_role, sender_name, type, body, created_at, read_at )
+      chat_messages ( id, sender_role, sender_name, type, body, visibility, mentions, created_at, read_at )
     `)
     .in('status', includeCancelled ? ['active', 'cancelado', 'anulado'] : ['active'])
     .order('created_at', { ascending: false })

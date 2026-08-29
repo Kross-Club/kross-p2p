@@ -236,3 +236,41 @@ describe('en qué vista aparece un pedido', () => {
     }
   })
 })
+
+// ─── Una nota interna no es una respuesta ────────────────────────────────────
+//
+// La escribe el equipo para el equipo y lleva `sender_role: 'seller'`, así que
+// sin mirar `visibility` se cuenta como turno de la tienda: dejar una nota
+// —"ya lo llamé dos veces"— sacaba el pedido de "Sin responder" con la pregunta
+// del cliente intacta.
+
+describe('las notas internas y la bandeja', () => {
+  const preguntó = {
+    id: 'm1', sender_role: 'buyer', type: 'text', body: '¿Cuándo llega?',
+    created_at: new Date(AHORA - 2 * H).toISOString(), read_at: null,
+  }
+  const nota = {
+    id: 'm2', sender_role: 'seller', type: 'text', body: 'ya lo llamé dos veces',
+    visibility: 'sellers', created_at: new Date(AHORA - H).toISOString(), read_at: null,
+  }
+
+  it('el pedido sigue esperando respuesta después de una nota', () => {
+    const o = { id: 'x', created_at: new Date(AHORA - 3 * H).toISOString(), chat_messages: [preguntó, nota] }
+    expect(esperaRespuesta(o)).toBe(true)
+  })
+
+  it('y una respuesta de verdad sí lo saca', () => {
+    const respuesta = { ...nota, id: 'm3', visibility: 'all', body: 'Llega el martes' }
+    const o = { id: 'x', created_at: new Date(AHORA - 3 * H).toISOString(), chat_messages: [preguntó, respuesta] }
+    expect(esperaRespuesta(o)).toBe(false)
+  })
+
+  // La fila cuenta cómo va la conversación con el comprador; una nota del
+  // equipo ahí se lee como si se le hubiera escrito a él.
+  it('la nota no es la vista previa de la fila', () => {
+    const o = { id: 'x', created_at: new Date(AHORA - 3 * H).toISOString(), chat_messages: [preguntó, nota] }
+    const f = datosDeFila(o, AHORA, 0)
+    expect(f.vistaPrevia).toContain('¿Cuándo llega?')
+    expect(f.ultimoDe).toBe('buyer')
+  })
+})
