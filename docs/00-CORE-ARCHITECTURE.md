@@ -138,6 +138,21 @@ alcance, sin una tercera columna ni un segundo camino. Y como el operador ES `is
 **los `is_admin` que ya estaban escritos por todo el repo siguen valiendo tal cual** —
 que es exactamente la promesa del rol: *hace todo lo que hace el admin*.
 
+**El nivel se cambia después, no solo al crear (29-ago-2026).** Hasta hoy el nivel solo se
+daba en el alta, y eso dejó un agujero con nombre propio: si el alta se ejecutaba contra una
+Edge Function anterior —que ignora en silencio los campos que no conoce y responde `ok`— la
+cuenta nacía sin ninguna bandera y **no había pantalla que la enderezara**. El único arreglo
+era un `UPDATE` a mano. Ahora: *Equipo → la persona → Nivel* (`admin-team` acción `set_level`),
+y las banderas de cada nivel las escribe `_shared/nivel.ts`, el mismo sitio para el alta y para
+el cambio. No puedes cambiarte el nivel a ti mismo — bajarse deja la tienda sin quien
+administre y no hay quien lo deshaga.
+
+**Y el alta se comprueba contra la fila, no contra la respuesta.** Después de crear o de
+cambiar el nivel, el panel relee `sellers` y compara con lo que pidió (`faltoAlEscribir`). Si
+no cuadra, lo dice y nombra la causa: la función está desplegada en una versión vieja. Ese
+silencio —éxito parcial, sin error, visible días después y en otra pantalla— es lo que costó
+una semana.
+
 Lo que le queda vedado:
 
 | No puede | Dónde se aplica |

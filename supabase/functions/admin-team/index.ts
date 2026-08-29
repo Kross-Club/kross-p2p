@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
+import { administraLaPlataforma } from '../_shared/alcance.ts'
+import { banderasDeNivel, ES_NIVEL, type Nivel } from '../_shared/nivel.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -66,7 +67,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'set_available' | 'set_role' | 'create' | 'set_avatar' | 'emails'
+    action: 'set_available' | 'set_role' | 'set_level' | 'create' | 'set_avatar' | 'emails'
     admin_auth_id: string
     seller_id?: string          // sellers.auth_user_id of the target
     available?: boolean
@@ -83,6 +84,8 @@ Deno.serve(async (req) => {
     /** create: super admin — alcance plataforma, no una marca. Solo lo puede
      *  otorgar un super admin que NO sea operador. */
     is_super_admin?: boolean
+    /** set_level: 'miembro' | 'operador' | 'admin'. Ver `nivel.ts`. */
+    nivel?: Nivel
   }
 
   // Only an admin may run these
@@ -191,6 +194,55 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
+  // ─── SET LEVEL — miembro ↔ operador ↔ admin ─────────────────────────────────
+  //
+  // Lo que faltaba: el nivel solo se daba AL CREAR. Si el alta salía a medias
+  // —una función vieja que ignoró en silencio las banderas que no conocía— la
+  // cuenta quedaba sin nivel y **no había forma de arreglarla desde el panel**:
+  // hacía falta un UPDATE a mano en la base. Pasó, y costó una semana.
+  //
+  // Quién puede: quien nombra, o sea un admin que NO sea operador. Es la misma
+  // puerta que `create` con mando (un operador que puede promover se promueve a
+  // sí mismo y su límite dura un clic) y por eso comparte `puedeNombrar`.
+  if (body.action === 'set_level') {
+    if (!body.seller_id || !ES_NIVEL(body.nivel)) return new Response('Missing fields', { status: 400, headers: corsHeaders })
+    if (!puedeNombrar) {
+      return new Response(JSON.stringify({ error: 'operador_no_nombra' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    // Cambiarse el nivel a uno mismo no: bajarse deja la tienda sin quien
+    // administre —posiblemente sin nadie— y no hay quien lo deshaga.
+    if (body.seller_id === body.admin_auth_id) {
+      return new Response(JSON.stringify({ error: 'no_a_ti_mismo' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (!(await targetInScope(body.seller_id))) return new Response('Forbidden', { status: 403, headers: corsHeaders })
+
+    const { data: target } = await supabase
+      .from('sellers').select('store_id, role_label').eq('auth_user_id', body.seller_id).maybeSingle()
+    if (!target) return new Response('Not found', { status: 404, headers: corsHeaders })
+
+    // El alcance sale de la tienda del TARGET, no de la de quien manda: pasar a
+    // operador a alguien de una marca lo hace operador de esa marca.
+    const banderas = banderasDeNivel(body.nivel, target.store_id)
+    // La etiqueta sigue al nivel cuando el nivel manda; al volver a miembro se
+    // conserva la que tenía si aún dice algo, porque `role_label` es su oficio
+    // (Logística) y no su nivel.
+    const role_label = body.nivel === 'operador' ? 'Operador'
+      : body.nivel === 'admin' ? 'Admin'
+      : (target.role_label === 'Operador' || target.role_label === 'Admin') ? (body.role_label ?? 'Logística') : target.role_label
+
+    const { error } = await supabase.from('sellers')
+      .update({ ...banderas, role_label }).eq('auth_user_id', body.seller_id)
+    if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+    return new Response(JSON.stringify({ ok: true, ...banderas, role_label }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   // ─── SET AVATAR (update the photo of a member you manage / act as) ───────────
   if (body.action === 'set_avatar') {
     if (!body.seller_id || !body.avatar_url) return new Response('Missing fields', { status: 400, headers: corsHeaders })
@@ -241,15 +293,18 @@ Deno.serve(async (req) => {
     // El operador ES admin: `is_admin` en true, `is_operator` en true. No es un
     // tercer estado suelto — es "administra" con "no destruye" encima, que es
     // lo que hace que todos los `is_admin` ya escritos valgan para él.
+    //
+    // Las banderas las arma `nivel.ts`, el mismo sitio que las arma en
+    // `set_level`: dos maneras de escribir lo mismo es como se llega a filas que
+    // no son ninguno de los tres niveles.
     const operador = !!body.is_operator
     const esAdmin = operador || !!body.is_admin
+    const banderas = banderasDeNivel(operador ? 'operador' : esAdmin ? 'admin' : 'miembro', storeId)
     const { error: sErr } = await supabase.from('sellers').insert({
       auth_user_id: created.user.id,
       store_id: storeId,
       nombre: body.nombre,
       role_label: operador ? 'Operador' : body.is_admin ? 'Admin' : body.role_label,
-      is_admin: esAdmin,
-      is_operator: operador,
       // El alcance sale de DÓNDE se le da de alta: quien entra en la tienda de
       // la plataforma administrando, administra la plataforma. Antes había que
       // pedirlo aparte con `is_super_admin` — y cuando el panel ya lo mandaba
@@ -259,7 +314,8 @@ Deno.serve(async (req) => {
       //
       // Un admin de marca sigue siendo de su marca: `storeId` es la suya, y solo
       // quien ya administra la plataforma puede apuntar a otra tienda.
-      is_super_admin: !!body.is_super_admin || (storeId === TIENDA_PLATAFORMA && esAdmin),
+      ...banderas,
+      is_super_admin: banderas.is_super_admin || !!body.is_super_admin,
       active: true,
       available: true,
     })

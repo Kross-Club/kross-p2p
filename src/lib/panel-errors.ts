@@ -15,6 +15,15 @@ export function mensajePanel(raw: string | null | undefined, fallback: string): 
     return `La base no tiene la columna ${columna[1]}: corre supabase/setup-kross.sql `
       + 'en el SQL Editor del proyecto y reintenta.'
   }
+  // Producción por detrás del panel. Vercel despliega el frontend al mergear;
+  // las Edge Functions las sube una persona. En esa ventana el panel pide algo
+  // que la función desplegada todavía no sabe hacer, y responde este texto
+  // plano. Sin traducirlo se ve como un botón roto — y ya costó una semana una
+  // vez, con las cuentas del equipo que nacieron sin nivel.
+  if (/^unknown action$/i.test(code)) {
+    return 'Esa acción todavía no está en producción: la función está desplegada en una '
+      + 'versión anterior al panel. Despliégala (ver docs/ESTADO-OPERATIVO.md) y reintenta.'
+  }
   // Un código desconocido dice más que una frase amable: es un panel de
   // administración, no una pantalla del comprador.
   return code

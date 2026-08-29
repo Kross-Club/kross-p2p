@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, setPersistSession } from '../lib/supabase'
 import AuthShell, { AuthButton, AuthError, AuthField } from '../components/AuthShell'
 import { isPlatformHost } from '../lib/store-context'
-import { administraLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
+import { administraLaPlataforma, esDeLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -46,7 +46,16 @@ export default function LoginPage() {
         .select('store_id, is_admin, is_super_admin').eq('auth_user_id', auth.user?.id).maybeSingle()
       if (!administraLaPlataforma(me)) {
         await supabase.auth.signOut()
-        setError('Ingresa desde el sitio de tu marca (tumarca.krossclub.app), no desde krossclub.app.')
+        // Dos rechazos distintos, porque son dos problemas distintos y el
+        // mensaje es lo único que la persona rechazada tiene para actuar.
+        //
+        // A quien SÍ trabaja en Kross, mandarlo "al sitio de su marca" es
+        // mandarlo a una dirección que no existe: se queda dando vueltas y
+        // escribiendo por WhatsApp. Su problema es de nivel, no de puerta, y
+        // solo lo arregla un administrador — así que eso es lo que dice.
+        setError(esDeLaPlataforma(me)
+          ? 'Tu cuenta es del equipo de Kross pero todavía no administra la plataforma. Pídele a un administrador que te suba a Operador en Equipo.'
+          : 'Ingresa desde el sitio de tu marca (tumarca.krossclub.app), no desde krossclub.app.')
         setLoading(false)
         return
       }

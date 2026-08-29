@@ -5,8 +5,12 @@ import { escuchar } from '../../lib/realtime'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
 import { useEquipo } from '../../lib/store-team'
 import { puedeNombrarAdmins, etiquetaDeRol, esOperador, LIMITES_OPERADOR } from '../../lib/permisos'
+import { supabase } from '../../lib/supabase'
+import { mensajePanel } from '../../lib/panel-errors'
 import PushSettings from '../../components/PushSettings'
 import { TIENDA_PLATAFORMA } from '../../../supabase/functions/_shared/alcance.ts'
+import { banderasDeNivel, faltoAlEscribir, nivelDe, NOMBRE_DE_NIVEL } from '../../../supabase/functions/_shared/nivel.ts'
+import type { Nivel } from '../../../supabase/functions/_shared/nivel.ts'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -38,6 +42,36 @@ function roleColor(role: string) {
  *  copias de esta cadena son dos oportunidades de que una tienda quede fuera de
  *  la plataforma por una letra. */
 const PLATAFORMA = TIENDA_PLATAFORMA
+
+/** Los tres niveles con lo que significan **acá**: en la plataforma "cualquier
+ *  tienda", en una marca "esta tienda". Es la misma regla contada donde se usa. */
+const NIVELES: Array<{ key: Nivel; dice: (plataforma: boolean) => string }> = [
+  { key: 'miembro', dice: p => p
+      ? 'Nada que hacer acá: los pedidos son de las tiendas.'
+      : 'Atiende sus pedidos y nada más.' },
+  { key: 'operador', dice: p => `Hace todo lo del admin ${p ? 'en cualquier tienda' : 'en esta tienda'}, menos ${LIMITES_OPERADOR.join(', ')}.` },
+  { key: 'admin', dice: p => p
+      ? 'Sin límites, en toda la plataforma.'
+      : 'Sin límites en esta tienda.' },
+]
+
+/**
+ * Lo que se pidió, ¿quedó?
+ *
+ * Se lee la FILA, no la respuesta. Una Edge Function desplegada en una versión
+ * anterior no falla al recibir un campo que no conoce: lo ignora, guarda el
+ * resto y responde `ok`. Así se crearon las cuentas de la plataforma que después
+ * no podían entrar — el alta se veía perfecta y la fila estaba a medias.
+ *
+ * Devuelve el aviso a mostrar, o `''` si todo entró.
+ */
+async function loQueNoQuedo(authUserId: string, pedidas: ReturnType<typeof banderasDeNivel>): Promise<string> {
+  const { data } = await supabase.from('sellers')
+    .select('is_admin, is_operator, is_super_admin').eq('auth_user_id', authUserId).maybeSingle()
+  const falta = faltoAlEscribir(pedidas, data)
+  if (falta.length === 0) return ''
+  return `Se guardó, pero sin ${falta.join(', ')}. La función admin-team está desplegada en una versión vieja: despliégala y vuelve a intentarlo.`
+}
 
 export default function EquipoPage() {
   const navigate = useNavigate()
@@ -131,6 +165,34 @@ export default function EquipoPage() {
     } finally { setBusy(false) }
   }
 
+  // El arreglo que faltaba: hasta hoy el nivel solo se daba AL CREAR, así que un
+  // alta a medias no se podía enderezar sin entrar a la base a mano.
+  const setNivel = async (s: SellerProfile, nivel: Nivel) => {
+    setBusy(true)
+    try {
+      const res = await fetch(`${BASE}/admin-team`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_level', admin_auth_id: real?.auth_user_id, seller_id: s.auth_user_id, nivel }),
+      })
+      // El cuerpo se lee como TEXTO y luego se intenta parsear: los rechazos de
+      // esta función son JSON, pero "Unknown action" —el que sale mientras la
+      // versión desplegada es anterior al panel— viaja en texto plano, y con
+      // `res.json()` se perdía en el `catch` como un fallo genérico.
+      const cuerpo = await res.text()
+      let r: { error?: string } = {}
+      try { r = JSON.parse(cuerpo) } catch { /* texto plano: queda en `cuerpo` */ }
+      if (!res.ok) {
+        alert(r.error === 'operador_no_nombra' ? 'Un operador no cambia niveles.'
+          : r.error === 'no_a_ti_mismo' ? 'No puedes cambiarte el nivel a ti mismo.'
+          : mensajePanel(r.error ?? cuerpo, 'No se pudo cambiar el nivel.'))
+        return
+      }
+      const aviso = await loQueNoQuedo(s.auth_user_id, banderasDeNivel(nivel, s.store_id))
+      if (aviso) alert(aviso)
+      setProfile(null); loadTeam()
+    } finally { setBusy(false) }
+  }
+
   if (sellerLoading || (cargandoEquipo && team.length === 0)) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[var(--brand)] animate-spin" /></div>
 
   if (!isAdmin) {
@@ -212,12 +274,51 @@ export default function EquipoPage() {
               </div>
               <button onClick={() => setProfile(null)}><X size={18} className="text-gray-400" /></button>
             </div>
+            {/* ── Nivel ──────────────────────────────────────────────────
+                Antes esto era una frase: "Es administrador." Y con eso, una
+                cuenta que quedó sin nivel —porque el alta se ejecutó contra una
+                función vieja— no se podía enderezar desde ninguna pantalla. El
+                único arreglo era un UPDATE a mano en la base. */}
+            {puedeNombrar && profile.auth_user_id !== real?.auth_user_id && (
+              <div className="mb-4">
+                <p className="text-xs font-bold mb-2" style={{ color: 'var(--text-muted)' }}>Nivel</p>
+                <div className="space-y-2">
+                  {NIVELES.map(n => {
+                    const actual = nivelDe(profile) === n.key
+                    return (
+                      <button key={n.key} onClick={() => setNivel(profile, n.key)} disabled={busy || actual}
+                        className="w-full flex items-start justify-between gap-3 p-3 rounded-2xl border text-left"
+                        style={{
+                          // Tokens del tema y no `roleColor`: el negro de "Admin"
+                          // (#111) sobre esta hoja, que en oscuro es una
+                          // superficie oscura, no se lee. Ver `.bg-white` en
+                          // index.css — acá blanco significa "tarjeta".
+                          background: actual ? 'var(--surface-3)' : 'transparent',
+                          borderColor: actual ? 'var(--brand)' : 'var(--border)',
+                          borderWidth: actual ? 2 : 1,
+                          // Solo se apaga mientras escribe: el nivel actual está
+                          // deshabilitado por ser el actual, no por no estar.
+                          opacity: busy ? 0.5 : 1,
+                        }}>
+                        <span className="min-w-0">
+                          <span className="block font-bold text-sm" style={{ color: 'var(--text)' }}>{NOMBRE_DE_NIVEL[n.key]}</span>
+                          <span className="block text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{n.dice(plataforma)}</span>
+                        </span>
+                        {actual && <span className="text-[10px] font-black flex-shrink-0 mt-0.5" style={{ color: 'var(--brand)' }}>Actual</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             {profile.is_admin ? (
-              <p className="text-sm text-gray-400">
-                {esOperador(profile)
-                  ? `Es operador: hace todo lo que hace el administrador menos ${LIMITES_OPERADOR.join(', ')}.`
-                  : 'Es administrador.'}
-              </p>
+              !puedeNombrar && (
+                <p className="text-sm text-gray-400">
+                  {esOperador(profile)
+                    ? `Es operador: hace todo lo que hace el administrador menos ${LIMITES_OPERADOR.join(', ')}.`
+                    : 'Es administrador.'}
+                </p>
+              )
             ) : (
               <>
                 <p className="text-xs font-bold text-gray-500 mb-2">Cambiar rol</p>
@@ -356,6 +457,14 @@ function AddMember({ storeId, adminId, plataforma, puedeNombrar, onClose, onDone
       })
       const r = await res.json().catch(() => ({}))
       if (!res.ok) { setErr(r.error || 'No se pudo crear el miembro.'); return }
+      // Un `ok` no dice que se haya escrito todo: una función vieja ignora en
+      // silencio los campos que no conoce. Se comprueba contra la fila — es lo
+      // que habría cazado las cuentas de la plataforma que nacieron sin nivel.
+      if (r.auth_user_id) {
+        const aviso = await loQueNoQuedo(r.auth_user_id, banderasDeNivel(
+          asOperador ? 'operador' : asAdmin ? 'admin' : 'miembro', storeId))
+        if (aviso) { setErr(aviso); return }
+      }
       onDone()
     } finally { setBusy(false) }
   }
