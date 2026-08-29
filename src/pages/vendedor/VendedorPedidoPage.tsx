@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, AlertTriangle, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle, Lock } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, AlertTriangle, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle, NotebookPen } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
@@ -31,8 +31,8 @@ import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
-import { pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
-import { ejecutarEnDemo, agregarMensajeDemo, ofertaAceptadaEnDemo } from '../../lib/demo/cambios-demo'
+import { pedidoDemoPorToken, esTokenDemo, tiendaDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
+import { ejecutarEnDemo, agregarMensajeDemo, ofertaAceptadaEnDemo, invitarEnDemo } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -407,17 +407,21 @@ function MessageBubble({ msg, audio, equipo = [] }: { msg: OrderMessage; audio?:
   if (esInterno(msg)) {
     return (
       <div className="flex justify-center mb-3">
+        {/* Un papelito, no una burbuja. El color hace el trabajo que antes hacía
+            la coletilla "el cliente no lo ve": un post-it amarillo pegado en el
+            hilo no se confunde con un mensaje, y no hay que leer nada para
+            saberlo. Decirlo además, en cada nota, era gritar lo evidente. */}
         <div className="rounded-2xl px-3 py-2 max-w-[85%] w-full"
-          style={{ background: 'var(--warn-bg-soft)', border: '0.5px dashed var(--warn-border)' }}>
+          style={{ background: 'var(--nota-bg)', border: '0.5px solid var(--nota-border)' }}>
           <div className="flex items-center gap-1.5 mb-1">
-            <Lock size={10} style={{ color: 'var(--warn-fg)' }} />
-            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: 'var(--warn-fg)' }}>
-              Comentario interno · el cliente no lo ve
+            <NotebookPen size={11} style={{ color: 'var(--nota-fg)' }} />
+            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: 'var(--nota-fg)' }}>
+              Nota interna
             </p>
           </div>
           <p className="text-[13px] leading-snug" style={{ color: 'var(--text)' }}>
             {trozosConMenciones(msg.body ?? '', equipo).map((t, i) => t.mencion
-              ? <strong key={i} style={{ color: 'var(--brand)' }}>{t.texto}</strong>
+              ? <strong key={i} style={{ color: 'var(--nota-fg)' }}>{t.texto}</strong>
               : <span key={i}>{t.texto}</span>)}
           </p>
           <p className="text-[10px] mt-1" style={{ color: 'var(--text-faint)' }}>
@@ -745,28 +749,41 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     sendTypingTimerRef.current = setTimeout(() => { sendTypingTimerRef.current = null }, 2000)
   }, [session])
 
-  // El equipo de la tienda, una vez. Lo piden dos cosas —el invitador y el
-  // buscador de `@`— y antes solo lo cargaba el primero: escribir `@` sin haber
-  // abierto nunca "Invitar" no ofrecía a nadie.
+  // El equipo de la TIENDA — el de invitar, que es otra lista que la del `@`:
+  // ahí se ofrece a quien ya está en el pedido, y acá a quien todavía no.
   const cargarEquipo = useCallback(async () => {
-    if (team.length > 0 || !session?.store_id) return
+    if (team.length > 0) return
+    // En la tienda de ejemplo el equipo no está en `sellers`: lo arma el
+    // generador. Sin esto, el invitador salía VACÍO en el demo —consultaba por
+    // `store_id = 'demo'`, que no existe— y no había a quién invitar justo
+    // mientras se enseña la herramienta.
+    if (esTokenDemo(token)) {
+      const t = await tiendaDemo()
+      setTeam(t.equipo.map(m => ({ auth_user_id: m.auth_user_id, nombre: m.nombre, role_label: m.role_label })))
+      return
+    }
+    if (!session?.store_id) return
     const { data } = await supabase
       .from('sellers')
-      .select('auth_user_id, nombre, role_label')
+      .select('auth_user_id, nombre, role_label, active')
       .eq('store_id', session.store_id)
-      .eq('active', true)
       .not('auth_user_id', 'is', null)
-    setTeam((data as { auth_user_id: string; nombre: string; role_label: string }[]) ?? [])
-  }, [team.length, session?.store_id])
+    // `active` se filtra acá y no con `.eq('active', true)`: las filas viejas lo
+    // tienen NULL, y en Postgres `= true` las descarta — dejaba fuera a media
+    // tienda sin que nada lo dijera. Fuera solo quien está apagado a propósito.
+    const vivos = (data as { auth_user_id: string; nombre: string; role_label: string; active: boolean | null }[] ?? [])
+      .filter(m => m.active !== false)
+    setTeam(vivos)
+  }, [team.length, session?.store_id, token])
 
-  // A quién se puede etiquetar: el equipo de la tienda. Se cae a los del pedido
-  // mientras la lista no haya cargado, para que un `@` recién abierto ofrezca
-  // algo en vez de nada. Va antes del redactor porque el redactor lo usa.
-  const equipoEtiquetable: Etiquetable[] = useMemo(() => (
-    team.length
-      ? team.map(t => ({ id: t.auth_user_id, nombre: t.nombre, role_label: t.role_label }))
-      : (session?.participants ?? []).map(p => ({ id: p.id, nombre: p.nombre, role_label: p.role_label }))
-  ), [team, session?.participants])
+  // A quién se puede etiquetar: **los que están en el pedido**, no toda la
+  // tienda. Etiquetar a alguien que no puede leer el hilo es escribirle a una
+  // pared: le llega una mención a una conversación que no ve. Para traer a
+  // alguien de fuera está Invitar, y en cuanto entra ya se le puede etiquetar.
+  const equipoEtiquetable: Etiquetable[] = useMemo(
+    () => (session?.participants ?? []).map(p => ({ id: p.id, nombre: p.nombre, role_label: p.role_label })),
+    [session?.participants],
+  )
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || !session || sending) return
@@ -884,6 +901,25 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     setShowInvite(false)
     const porQue = notaInvitacion.trim()
     setNotaInvitacion('')
+
+    // En la tienda de ejemplo no hay a quién pedírselo: se resuelve acá igual
+    // que lo haría el servidor —participante, aviso y nota— para que invitar
+    // con nota se pueda enseñar entero.
+    if (esTokenDemo(token)) {
+      const m = team.find(t => t.auth_user_id === sellerAuthId)
+      if (m) {
+        const r = invitarEnDemo(
+          session as unknown as StoreOrder,
+          { id: m.auth_user_id, nombre: m.nombre, role_label: m.role_label },
+          porQue,
+          { nombre: sellerName, rol: sellerRole },
+        )
+        if (r.patch) setSession(s => s ? { ...s, ...r.patch } as OrderSession : s)
+      }
+      reloadSession()
+      return
+    }
+
     await fetch(`${BASE}/order-manage`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
@@ -1279,14 +1315,14 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
                 error caro no es olvidar comentar: es escribirle al cliente
                 creyendo que comentabas. Lo que se ve tiene que decirlo. */}
             <button
-              onClick={() => { setInterno(v => !v); if (!interno) cargarEquipo() }}
+              onClick={() => setInterno(v => !v)}
               aria-pressed={interno}
-              title={interno ? 'Comentario interno · el cliente no lo ve' : 'Escribir al cliente'}
+              title={interno ? 'Nota interna · no la ve el cliente' : 'Escribir al cliente'}
               className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
               style={interno
-                ? { background: 'var(--warn-bg)', color: 'var(--warn-fg)' }
+                ? { background: 'var(--nota-bg)', color: 'var(--nota-fg)' }
                 : { background: 'var(--surface-3)', color: 'var(--text-faint)' }}>
-              <Lock size={15} />
+              <NotebookPen size={15} />
             </button>
             <div className="relative flex-1">
               {/* El buscador de `@`. Solo en comentario interno: etiquetar
@@ -1316,20 +1352,20 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
                 onKeyUp={e => setCaret((e.target as HTMLInputElement).selectionStart ?? 0)}
                 onClick={e => setCaret((e.target as HTMLInputElement).selectionStart ?? 0)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()}
-                placeholder={interno ? 'Comentario interno · @ para etiquetar' : 'Escribe al cliente…'}
+                placeholder={interno ? 'Nota interna · @ para etiquetar' : 'Escribe al cliente…'}
                 className="w-full rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
                 style={interno
-                  ? { background: 'var(--warn-bg-soft)', border: '1px dashed var(--warn-border)', color: 'var(--text)' }
+                  ? { background: 'var(--nota-bg)', border: '1px solid var(--nota-border)', color: 'var(--text)' }
                   : { background: 'var(--surface-3)' }}
               />
             </div>
             <button
               onClick={handleSend}
               disabled={!input.trim() || sending}
-              aria-label={interno ? 'Guardar comentario interno' : 'Enviar al cliente'}
+              aria-label={interno ? 'Guardar la nota interna' : 'Enviar al cliente'}
               className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm disabled:opacity-40"
               style={interno
-                ? { background: 'var(--warn-fg)', color: 'var(--on-warn, #fff)' }
+                ? { background: 'var(--nota-fg)', color: 'var(--nota-bg)' }
                 : { background: 'var(--invert)', color: 'var(--invert-fg)' }}>
               <Send size={16} />
             </button>
@@ -1357,17 +1393,21 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
             <h3 className="font-black text-gray-900 mb-1">Invitar a participar</h3>
             <p className="text-xs text-gray-400 mb-3">Podrá escribir y llamar en este pedido.</p>
             {/* El porqué, antes de elegir a quién: escrito después ya nadie lo
-                escribe. Va como comentario interno etiquetando al invitado —el
-                cliente no lo ve— para que llegue sabiendo qué le toca. */}
+                escribe. Queda en el chat como NOTA INTERNA etiquetando al
+                invitado, así que se pinta como una —mismo papel amarillo— y no
+                hace falta explicar quién la ve. */}
             <input
               value={notaInvitacion}
               onChange={e => setNotaInvitacion(e.target.value)}
-              placeholder="¿Para qué lo invitas? (lo verá solo el equipo)"
+              placeholder="Nota interna para este miembro"
               className="w-full rounded-2xl px-4 py-2.5 text-sm outline-none mb-3"
-              style={{ background: 'var(--warn-bg-soft)', border: '1px dashed var(--warn-border)' }}
+              style={{ background: 'var(--nota-bg)', border: '1px solid var(--nota-border)', color: 'var(--text)' }}
             />
             <div className="space-y-2 max-h-[50vh] overflow-y-auto">
               {team
+                // Ni el asignado ni los que ya están: invitar a quien ya
+                // participa no hace nada, y verlo en la lista hace dudar.
+                .filter(t => t.auth_user_id !== session.assigned_seller_id)
                 .filter(t => !participants.some(p => p.id === t.auth_user_id && p.can_write))
                 .map(t => (
                   <button key={t.auth_user_id} onClick={() => invite(t.auth_user_id)}

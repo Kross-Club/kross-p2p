@@ -1,4 +1,5 @@
 import { antiguedad, pedidoAbierto } from './order-tracking'
+import { esInterno } from './comentario-interno'
 import type { StoreOrder } from './store-orders'
 
 // ─── La bandeja: qué atender primero ─────────────────────────────────────────
@@ -84,7 +85,7 @@ export interface FilaBandeja {
 export function datosDeFila(
   o: StoreOrder, ahora: number, sinLeer: number, favorito = false,
 ): FilaBandeja {
-  const mensajes = o.chat_messages ?? []
+  const mensajes = conversacion(o)
   const ultimo = mensajes.length ? mensajes[mensajes.length - 1] : null
   const ultimoEn = fecha(ultimo?.created_at) ?? fecha(o.created_at) ?? ahora
   const humano = ultimoHumano(o)
@@ -121,8 +122,23 @@ export function datosDeFila(
  * Siguen viéndose en la fila (`vistaPrevia`): son el contexto de qué tipo de
  * contacto hubo. Solo no deciden de quién es el turno.
  */
+/**
+ * La conversación con el CLIENTE, sin las notas internas.
+ *
+ * Una nota interna la escribe el equipo para el equipo, así que **no es un
+ * turno**: es la misma trampa que ya tenían los mensajes de sistema, y peor,
+ * porque lleva `sender_role: 'seller'`. Sin esto, dejar una nota —"ya lo llamé
+ * dos veces"— sacaba el pedido de "Sin responder" con la pregunta del cliente
+ * intacta: la lista decía que alguien contestó y nadie contestó.
+ *
+ * Tampoco es la vista previa de la fila: la bandeja cuenta cómo va la
+ * conversación con el comprador, y una nota del equipo ahí se lee como si se
+ * le hubiera escrito a él.
+ */
+const conversacion = (o: StoreOrder) => (o.chat_messages ?? []).filter(m => !esInterno(m))
+
 function ultimoHumano(o: StoreOrder) {
-  const mensajes = o.chat_messages ?? []
+  const mensajes = conversacion(o)
   for (let i = mensajes.length - 1; i >= 0; i--) {
     const rol = mensajes[i].sender_role
     if (rol === 'buyer' || rol === 'seller' || rol === 'bot' || rol === 'ia') return mensajes[i]

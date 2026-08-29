@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   conCambios, listaConCambios, guardarCambio, agregarMensajeDemo, reiniciarDemo,
-  hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo,
+  hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo, invitarEnDemo,
 } from './cambios-demo'
 import type { PedidoDemo } from './cambios-demo'
 import { avanceDelPago } from '../order-money'
@@ -163,5 +163,56 @@ describe('el chat del demo', () => {
     agregarMensajeDemo(base.id, { ...previo, id: 'm1', sender_role: 'seller', body: 'Hola!' })
     const msgs = conCambios(base).chat_messages ?? []
     expect(msgs.map(m => m.id)).toEqual(['m0', 'm1'])
+  })
+})
+
+// ─── Invitar en el demo ──────────────────────────────────────────────────────
+//
+// El invitador salía VACÍO en la tienda de ejemplo: consultaba `sellers` por
+// `store_id = 'demo'`, que no existe — el equipo del demo lo arma el generador.
+// Y sin nadie a quien invitar, invitar-con-nota no se podía enseñar.
+
+const RENZO = { id: 'demo-auth-3', nombre: 'Renzo Aguilar', role_label: 'Despacho' }
+const YO = { nombre: 'Uxbriel', rol: 'Admin' }
+
+describe('invitar en el demo', () => {
+  it('lo suma a los participantes y deja el aviso en el chat', () => {
+    const base = pedido({ seller_name: 'Andrea Quiroz', seller_role: 'Admin', assigned_seller_id: 'demo-auth-0' })
+    const r = invitarEnDemo(base, RENZO, '', YO)
+    expect(r.ok).toBe(true)
+    const p = conCambios(base)
+    expect(p.participants?.map(x => x.nombre)).toEqual(['Andrea Quiroz', 'Renzo Aguilar'])
+    expect((p.chat_messages ?? []).some(m => (m.body ?? '').includes('Renzo (Despacho) se unió al chat'))).toBe(true)
+  })
+
+  // Si se guardaran solo los invitados, invitar a alguien haría DESAPARECER de
+  // "Asignado" a quien lleva el pedido.
+  it('el asignado no se pierde al invitar', () => {
+    const base = pedido({ seller_name: 'Andrea Quiroz', assigned_seller_id: 'demo-auth-0' })
+    invitarEnDemo(base, RENZO, '', YO)
+    const p = conCambios(base)
+    expect(p.participants?.[0].is_owner).toBe(true)
+    expect(p.participants?.[0].nombre).toBe('Andrea Quiroz')
+  })
+
+  // La gracia de invitar con nota es que el otro llegue sabiendo qué le toca.
+  it('la nota queda en el chat, interna y etiquetándolo', () => {
+    const base = pedido({ seller_name: 'Andrea Quiroz', assigned_seller_id: 'demo-auth-0' })
+    invitarEnDemo(base, RENZO, 'revisa el pago antes de despachar', YO)
+    const nota = (conCambios(base).chat_messages ?? []).find(m => m.visibility === 'sellers')
+    expect(nota?.body).toBe('@Renzo Aguilar revisa el pago antes de despachar')
+    expect(nota?.mentions).toEqual([RENZO.id])
+  })
+
+  it('sin nota no inventa una nota vacía', () => {
+    const base = pedido({ assigned_seller_id: 'demo-auth-0' })
+    invitarEnDemo(base, RENZO, '   ', YO)
+    expect((conCambios(base).chat_messages ?? []).some(m => m.visibility === 'sellers')).toBe(false)
+  })
+
+  it('no se invita dos veces a la misma persona', () => {
+    const base = pedido({ assigned_seller_id: 'demo-auth-0' })
+    invitarEnDemo(base, RENZO, '', YO)
+    expect(invitarEnDemo(conCambios(base), RENZO, '', YO).ok).toBe(false)
   })
 })

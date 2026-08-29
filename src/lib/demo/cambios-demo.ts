@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { siguientePaso } from '../order-tracking'
-import type { OrderItem } from '../order-api'
+import type { OrderItem, Participant } from '../order-api'
 import type { StoreOrder } from '../store-orders'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
@@ -67,6 +67,9 @@ export interface CambioDemo {
   items?: ItemDemo[]
   product_price?: number
   answered_at?: string | null
+  /** Quién participa en el chat. En el demo el generador no los trae —el pedido
+   *  solo lleva su vendedor asignado—, así que se arman al primer invitado. */
+  participants?: Participant[]
   /** Los mensajes AGREGADOS en esta demo. Se pegan al final de la conversación
    *  que arma el generador, no la reemplazan. */
   mensajes?: MensajeDemo[]
@@ -83,7 +86,7 @@ type Cambios = Record<string, CambioDemo>
  * anotarse. Al abrir el pedido, el chat lo lee como `OrderSession`, que sí lo
  * declara.
  */
-export type PedidoDemo = StoreOrder & { items?: ItemDemo[] }
+export type PedidoDemo = StoreOrder & { items?: ItemDemo[]; participants?: Participant[] }
 
 // ─── Guardado y avisos ───────────────────────────────────────────────────────
 
@@ -341,4 +344,64 @@ export function ofertaAceptadaEnDemo(
   )
   guardarCambio(p.id, { items, product_price: total })
   return { ok: true, items, total, patch: { items, product_price: total } }
+}
+
+/**
+ * Invitar a alguien, en la tienda de ejemplo.
+ *
+ * Hace lo mismo que `order-manage`: lo suma a los participantes, deja el aviso
+ * que ve el comprador ("se unió al chat") y, si hay nota, la nota interna
+ * etiquetándolo. Los tres pasos importan para enseñarlo — la gracia de invitar
+ * con nota es justo que el otro llegue sabiendo qué le toca.
+ *
+ * Los participantes se siembran con el vendedor asignado: si se guardaran solo
+ * los invitados, invitar a alguien haría **desaparecer** de "Asignado" a quien
+ * lleva el pedido.
+ */
+export function invitarEnDemo(
+  p: PedidoDemo,
+  miembro: { id: string; nombre: string; role_label?: string | null },
+  nota: string,
+  quien: { nombre: string; rol: string | null },
+): RespuestaDemo {
+  const previos: Participant[] = p.participants?.length ? p.participants : [{
+    id: p.assigned_seller_id ?? 'demo-asignado',
+    nombre: p.seller_name ?? 'Asignado',
+    role_label: p.seller_role ?? '',
+    avatar_url: null,
+    can_write: true,
+    is_owner: true,
+  }]
+  if (previos.some(x => x.id === miembro.id)) return { ok: false }
+
+  const participants: Participant[] = [...previos, {
+    id: miembro.id,
+    nombre: miembro.nombre,
+    role_label: miembro.role_label ?? '',
+    avatar_url: null,
+    can_write: true,
+    is_owner: false,
+  }]
+
+  const ahora = Date.now()
+  const base = { session_id: p.id, read_at: null }
+  const nuevos: MensajeDemo[] = [{
+    ...base, id: `demo-inv-${ahora}`, sender_role: 'system', type: 'status_update',
+    created_at: new Date(ahora).toISOString(),
+    // Mismo texto que escribe el servidor, para que se lea igual.
+    body: `${miembro.nombre.split(' ')[0]} (${miembro.role_label ?? 'equipo'}) se unió al chat`,
+  }]
+  if (nota.trim()) {
+    nuevos.push({
+      ...base, id: `demo-inv-${ahora}-nota`, sender_role: 'seller',
+      sender_name: quien.nombre, sender_role_label: quien.rol,
+      type: 'text', visibility: 'sellers', mentions: [miembro.id],
+      created_at: new Date(ahora + 1000).toISOString(),
+      body: `@${miembro.nombre} ${nota.trim()}`,
+    })
+  }
+
+  agregarMensajeDemo(p.id, ...nuevos)
+  guardarCambio(p.id, { participants })
+  return { ok: true, patch: { participants } }
 }

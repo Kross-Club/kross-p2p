@@ -1934,6 +1934,60 @@ encendida (`--surface-3` + `--text-muted`) y el de una apagada (`--surface-3` +
 contorno. Guardar no pregunta nada: una etiqueta se pone y se quita de un toque, y se deshace
 con otro — al revés que cancelar o anular, que no se deshacen y por eso sí preguntan.
 
+## La nota interna se ve como una nota (29-ago-2026)
+
+Salió con candado y fondo gris, y se leía como un aviso de sistema. Tres arreglos que en el
+fondo son el mismo: **que parezca lo que es.**
+
+- El icono es una **libreta con lápiz**, no un candado. El candado hablaba del permiso; lo que
+  uno hace ahí es *anotar*.
+- El campo y la burbuja se pintan de **post-it**. `--warn-*` en este sistema es **gris** —el
+  §6.1 reserva el color para lo que cierra bien y lo que exige acción—, así que lo que salió no
+  era ámbar: era el mismo gris de todo lo demás. La nota tiene ahora su propia superficie
+  (`--nota-*`), y no compite con los estados porque **no es un estado**: es otra clase de
+  contenido, la única que se escribe para el equipo y no para el cliente.
+- La cabecera dice **"Nota interna"** y se acabó. Antes añadía *"el cliente no lo ve"* en cada
+  una: el papel amarillo ya lo dice, y repetirlo en cada nota es gritar lo evidente.
+
+### El `@` ofrece a los del pedido, no a la tienda entera
+
+Etiquetar a alguien que no puede leer el hilo es escribirle a una pared: le llega una mención a
+una conversación que no ve. Así que el buscador sale de `participants` —los que están en el
+pedido— y para traer a alguien de fuera está **Invitar**, que es lo que le da acceso. En cuanto
+entra, ya se le puede etiquetar.
+
+Son dos listas distintas y por eso se calculan aparte: el `@` ofrece a **quien ya está**, y el
+invitador a **quien todavía no**.
+
+### El invitador salía vacío
+
+Dos causas, y las dos daban la misma pantalla:
+
+- **En el demo**, porque consultaba `sellers` con `store_id = 'demo'` — el equipo de la tienda
+  de ejemplo lo arma el generador, no la base. Sin nadie a quien invitar, invitar-con-nota no se
+  podía enseñar. Ahora en demo el equipo sale del generador, y **invitar funciona ahí también**:
+  suma el participante, deja el aviso y escribe la nota, igual que el servidor.
+- **En una tienda real**, porque filtraba con `.eq('active', true)` y las filas viejas tienen
+  `active` en NULL — que en Postgres **no** es `= true`. Dejaba fuera a media tienda sin que
+  nada lo dijera. Ahora se filtra solo a quien está apagado a propósito (`active !== false`).
+
+Y la nota de la invitación se pide como lo que es: *"Nota interna para este miembro"*, sobre el
+mismo papel amarillo. No hace falta explicar quién la ve.
+
+### Y una nota interna no es una respuesta
+
+Esto lo destapó el `tsc` al pedir `visibility` en el tipo, y era el bug más caro de los cuatro:
+la bandeja decide de quién es el turno por el último mensaje de una persona, y una nota interna
+lleva `sender_role: 'seller'`. O sea que **dejar una nota sacaba el pedido de "Sin responder"**
+con la pregunta del cliente intacta — la lista decía que alguien contestó y nadie contestó.
+
+Es la misma trampa que ya tenían los mensajes de sistema ("un aviso automático no responde una
+pregunta"), y peor, porque esta viene firmada por una persona.
+
+La bandeja cuenta **la conversación con el comprador**, así que las notas internas no entran:
+ni en el turno, ni en la vista previa de la fila —donde se leerían como si se le hubiera escrito
+a él—. Una sola regla (`conversacion()`) para las dos cosas.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

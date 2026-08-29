@@ -104,6 +104,10 @@ export interface StoreOrder {
     sender_name?: string | null
     type: string
     body: string | null
+    /** `sellers` = NOTA INTERNA. La bandeja la necesita para no contarla como
+     *  conversación: es del equipo, no una respuesta al cliente. */
+    visibility?: string | null
+    mentions?: string[] | null
     created_at: string
     read_at: string | null
   }[]
