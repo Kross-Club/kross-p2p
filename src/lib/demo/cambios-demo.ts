@@ -67,6 +67,9 @@ export interface CambioDemo {
   items?: ItemDemo[]
   product_price?: number
   answered_at?: string | null
+  assigned_seller_id?: string | null
+  seller_name?: string | null
+  seller_role?: string | null
   /** Quién participa en el chat. En el demo el generador no los trae —el pedido
    *  solo lleva su vendedor asignado—, así que se arman al primer invitado. */
   participants?: Participant[]
@@ -364,14 +367,7 @@ export function invitarEnDemo(
   nota: string,
   quien: { nombre: string; rol: string | null },
 ): RespuestaDemo {
-  const previos: Participant[] = p.participants?.length ? p.participants : [{
-    id: p.assigned_seller_id ?? 'demo-asignado',
-    nombre: p.seller_name ?? 'Asignado',
-    role_label: p.seller_role ?? '',
-    avatar_url: null,
-    can_write: true,
-    is_owner: true,
-  }]
+  const previos = participantesDe(p)
   if (previos.some(x => x.id === miembro.id)) return { ok: false }
 
   const participants: Participant[] = [...previos, {
@@ -404,4 +400,77 @@ export function invitarEnDemo(
   agregarMensajeDemo(p.id, ...nuevos)
   guardarCambio(p.id, { participants })
   return { ok: true, patch: { participants } }
+}
+
+/** Los participantes que tiene hoy este pedido de ejemplo, sembrados con el
+ *  asignado: guardar solo a los invitados haría desaparecer de "Asignado" a
+ *  quien lleva el pedido. */
+function participantesDe(p: PedidoDemo): Participant[] {
+  if (p.participants?.length) return p.participants
+  return [{
+    id: p.assigned_seller_id ?? 'demo-asignado',
+    nombre: p.seller_name ?? 'Asignado',
+    role_label: p.seller_role ?? '',
+    avatar_url: null,
+    can_write: true,
+    is_owner: true,
+  }]
+}
+
+/**
+ * Pasarle el pedido a otro, en la tienda de ejemplo.
+ *
+ * Igual que el servidor: cambia el responsable, deja al anterior dentro —lleva
+ * el contexto y lo normal es que el nuevo le pregunte algo—, le dice al
+ * comprador quién lo atiende ahora y escribe la nota interna con el porqué.
+ */
+export function reasignarEnDemo(
+  p: PedidoDemo,
+  nuevo: { id: string; nombre: string; role_label?: string | null },
+  nota: string,
+  quien: { nombre: string; rol: string | null },
+): RespuestaDemo {
+  if (!nota.trim() || nuevo.id === p.assigned_seller_id) return { ok: false }
+
+  const previos = participantesDe(p)
+  const participants: Participant[] = [
+    { id: nuevo.id, nombre: nuevo.nombre, role_label: nuevo.role_label ?? '', avatar_url: null, can_write: true, is_owner: true },
+    ...previos
+      .filter(x => x.id !== nuevo.id)
+      .map(x => ({ ...x, is_owner: false })),
+  ]
+
+  const ahora = Date.now()
+  const base = { session_id: p.id, read_at: null }
+  agregarMensajeDemo(p.id,
+    {
+      ...base, id: `demo-re-${ahora}`, sender_role: 'system', type: 'status_update',
+      created_at: new Date(ahora).toISOString(),
+      body: `Ahora te atiende ${nuevo.nombre.split(' ')[0]} (${nuevo.role_label ?? 'equipo'})`,
+    },
+    {
+      ...base, id: `demo-re-${ahora}-nota`, sender_role: 'seller',
+      sender_name: quien.nombre, sender_role_label: quien.rol,
+      type: 'text', visibility: 'sellers', mentions: [nuevo.id],
+      created_at: new Date(ahora + 1000).toISOString(),
+      body: `@${nuevo.nombre} ${nota.trim()}`,
+    },
+  )
+  const patch: CambioDemo = {
+    participants,
+    assigned_seller_id: nuevo.id,
+    seller_name: nuevo.nombre,
+    seller_role: nuevo.role_label ?? null,
+  }
+  guardarCambio(p.id, patch)
+  return { ok: true, patch }
+}
+
+/** Sacar a alguien del pedido. Al responsable no: para eso se reasigna. */
+export function quitarEnDemo(p: PedidoDemo, id: string): RespuestaDemo {
+  if (!id || id === p.assigned_seller_id) return { ok: false }
+  const participants = participantesDe(p).filter(x => x.id !== id)
+  const patch: CambioDemo = { participants }
+  guardarCambio(p.id, patch)
+  return { ok: true, patch }
 }

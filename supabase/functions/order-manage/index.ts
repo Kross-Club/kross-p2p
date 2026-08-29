@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { cabeEnElMismoPaquete } from '../_shared/upsell.ts'
+import { puedeInvitar, puedeQuitar, puedeReasignar } from '../_shared/equipo-pedido.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -113,16 +114,19 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'mark_answered'
+    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'mark_answered'
     session_id: string
     stage?: string
     invite_seller_id?: string
-    by_seller_id?: string
+    // `by_seller_id` SE FUE: decía quién llamaba y lo decía el que llamaba. Lo
+    // reemplaza `quienLlama()`, que lo saca del JWT.
     by?: 'buyer' | 'seller'
     nota?: string
     /** El porqué de una invitación. Va como comentario interno etiquetando al
      *  invitado — no se mezcla con `nota`, que es la etiqueta CRM del pedido. */
     invite_nota?: string
+    /** A quién se le pasa el pedido (`reassign`). */
+    to_seller_id?: string
     offer?: { product_id?: string; nombre: string; precio: number; image?: string | null }
     message_id?: string
     index?: number
@@ -139,6 +143,32 @@ Deno.serve(async (req) => {
     .single()
 
   if (!session) return new Response('Not found', { status: 404, headers: corsHeaders })
+
+  // ─── Quién llama, comprobado ───────────────────────────────────────────────
+  //
+  // Invitar, expulsar y pasar el pedido se decidían con `by_seller_id` **del
+  // cuerpo de la petición**: o sea con lo que el que llama dijera de sí mismo.
+  // Ocultar el botón no protege nada — un POST pasa igual—, así que estas tres
+  // acciones piden ahora el JWT del vendedor y sale de ahí quién es.
+  //
+  // Las demás siguen como estaban a propósito: `accept_offer` y `cancel` los
+  // llama el COMPRADOR con la anon key desde su chat, y exigirles un JWT de
+  // vendedor las rompería.
+  const quienLlama = async () => {
+    const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
+    if (!bearer) return null
+    const { data: authed } = await supabase.auth.getUser(bearer)
+    if (!authed?.user) return null            // la anon key llega acá y se queda
+    const { data: me } = await supabase
+      .from('sellers')
+      .select('auth_user_id, is_admin, available, active, store_id')
+      .eq('auth_user_id', authed.user.id)
+      .maybeSingle()
+    if (!me || me.active === false) return null
+    // De otra tienda no manda en este pedido, por muy admin que sea de la suya.
+    if (session.store_id && me.store_id && me.store_id !== session.store_id) return null
+    return { id: me.auth_user_id as string, is_admin: !!me.is_admin, available: me.available !== false }
+  }
 
   // ─── SET NOTA (CRM sub-tag) ─────────────────────────────────────────────────
   if (body.action === 'set_nota') {
@@ -387,15 +417,12 @@ Deno.serve(async (req) => {
   const invited: string[] = session.invited_seller_ids ?? []
   const invitedBy: Record<string, string> = session.invited_by ?? {}
 
-  const isAdmin = async (sellerAuthId?: string) => {
-    if (!sellerAuthId) return false
-    const { data } = await supabase.from('sellers').select('is_admin').eq('auth_user_id', sellerAuthId).maybeSingle()
-    return !!data?.is_admin
-  }
-
   // ─── INVITE ───────────────────────────────────────────────────────────────
   if (body.action === 'invite') {
     if (!body.invite_seller_id) return new Response('Missing invite_seller_id', { status: 400, headers: corsHeaders })
+
+    const yo = await quienLlama()
+    if (!yo || !puedeInvitar(session, yo)) return new Response('Not allowed', { status: 403, headers: corsHeaders })
 
     const { data: member } = await supabase
       .from('sellers')
@@ -407,7 +434,7 @@ Deno.serve(async (req) => {
       involved_seller_ids: uniq([...involved, body.invite_seller_id]),
       writer_seller_ids: uniq([...writers, body.invite_seller_id]),
       invited_seller_ids: uniq([...invited, body.invite_seller_id]),
-      invited_by: { ...invitedBy, [body.invite_seller_id]: body.by_seller_id ?? null },
+      invited_by: { ...invitedBy, [body.invite_seller_id]: yo.id },
     }).eq('id', session.id)
 
     // Visible to buyer too ("invitó a alguien")
@@ -447,12 +474,106 @@ Deno.serve(async (req) => {
   }
 
   // ─── EXPEL ──────────────────────────────────────────────────────────────────
+  // ─── REASSIGN — pasar el pedido a otro ────────────────────────────────────
+  //
+  // No existía. El responsable solo cambiaba SOLO, al avanzar de etapa, así que
+  // rotar turnos, repartir carga o cubrir una baja no tenía botón: la única
+  // salida era avanzar la etapa —o sea mentir sobre dónde está el pedido— o
+  // entrar como admin a mano.
+  //
+  // La nota es obligatoria y va como comentario interno etiquetando al nuevo
+  // responsable. Un pedido que cambia de dueño sin explicación es un pedido que
+  // el siguiente empieza de cero, y el contexto que se pierde ahí es el que
+  // termina preguntándole otra vez al cliente lo que ya había contestado.
+  if (body.action === 'reassign') {
+    if (!body.to_seller_id) return new Response('Missing to_seller_id', { status: 400, headers: corsHeaders })
+
+    const yo = await quienLlama()
+    if (!yo || !puedeReasignar(session, yo)) return new Response('Not allowed', { status: 403, headers: corsHeaders })
+
+    const porQue = String(body.invite_nota ?? '').trim()
+    if (!porQue) return new Response(JSON.stringify({ error: 'nota_required' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+
+    if (body.to_seller_id === session.assigned_seller_id) {
+      return new Response(JSON.stringify({ ok: true, already: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { data: nuevo } = await supabase
+      .from('sellers')
+      .select('auth_user_id, nombre, role_label, avatar_url, active, store_id')
+      .eq('auth_user_id', body.to_seller_id)
+      .maybeSingle()
+    // De la misma tienda y activo: pasarle un pedido a alguien que ya no está
+    // es dejarlo sin nadie que responda.
+    if (!nuevo || nuevo.active === false || (session.store_id && nuevo.store_id !== session.store_id)) {
+      return new Response(JSON.stringify({ error: 'not_a_member' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // El anterior se queda como invitado, no desaparece: lleva el contexto del
+    // pedido y lo normal es que el nuevo le pregunte algo.
+    const anterior = session.assigned_seller_id
+    const nextInvitedBy = { ...invitedBy }
+    delete nextInvitedBy[nuevo.auth_user_id]
+    if (anterior && anterior !== nuevo.auth_user_id) nextInvitedBy[anterior] = yo.id
+
+    await supabase.from('order_sessions').update({
+      assigned_seller_id: nuevo.auth_user_id,
+      seller_name: nuevo.nombre,
+      seller_role: nuevo.role_label,
+      seller_avatar: nuevo.avatar_url,
+      writer_seller_ids: uniq([nuevo.auth_user_id, ...writers, anterior]),
+      involved_seller_ids: uniq([...involved, nuevo.auth_user_id]),
+      invited_seller_ids: uniq([...invited.filter(x => x !== nuevo.auth_user_id), anterior]),
+      invited_by: nextInvitedBy,
+    }).eq('id', session.id)
+
+    // Al comprador se le dice quién lo atiende ahora: es su interlocutor, y
+    // enterarse por el nombre que firma el próximo mensaje es peor.
+    const { data: msg } = await supabase.from('chat_messages').insert({
+      session_id: session.id,
+      sender_role: 'system',
+      type: 'status_update',
+      visibility: 'all',
+      body: `Ahora te atiende ${String(nuevo.nombre ?? '').split(' ')[0]} (${nuevo.role_label ?? 'equipo'})`,
+    }).select().single()
+
+    // Y el porqué, que es del equipo.
+    const { data: quienPasa } = await supabase
+      .from('sellers').select('nombre, role_label').eq('auth_user_id', yo.id).maybeSingle()
+    await supabase.from('chat_messages').insert({
+      session_id: session.id,
+      sender_role: 'seller',
+      sender_name: quienPasa?.nombre ?? 'Kross',
+      sender_role_label: quienPasa?.role_label ?? null,
+      type: 'text',
+      visibility: 'sellers',
+      mentions: [nuevo.auth_user_id],
+      body: `@${nuevo.nombre} ${porQue}`.slice(0, 2000),
+    })
+
+    await broadcast(session.id, 'participants_update', {})
+    if (msg) await broadcast(session.id, 'new_message', msg)
+
+    return new Response(JSON.stringify({ ok: true }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
   if (body.action === 'expel') {
     if (!body.invite_seller_id) return new Response('Missing invite_seller_id', { status: 400, headers: corsHeaders })
 
-    // Only the person who invited them (or an admin) can expel.
-    const allowed = invitedBy[body.invite_seller_id] === body.by_seller_id || await isAdmin(body.by_seller_id)
-    if (!allowed) return new Response('Not allowed', { status: 403, headers: corsHeaders })
+    // Quien lo invitó, el responsable del pedido, o quien administra — y se
+    // decide con el JWT, no con lo que venga en el cuerpo (ver `quienLlama`).
+    const yo = await quienLlama()
+    if (!yo || !puedeQuitar({ ...session, invited_by: invitedBy }, yo, body.invite_seller_id)) {
+      return new Response('Not allowed', { status: 403, headers: corsHeaders })
+    }
 
     const { data: member } = await supabase
       .from('sellers')
@@ -527,16 +648,21 @@ Deno.serve(async (req) => {
       }).eq('id', session.id)
 
       // 3) Value-chain arrays (new columns) — best effort, don't block the rest.
-      //    A hand-off resets the invited list (new owner starts clean).
+      //
+      //    El traspaso CONSERVA a los invitados. Antes los borraba —"el nuevo
+      //    dueño empieza limpio"— y era al revés: el momento en que el pedido
+      //    cambia de manos es justo cuando más falta hace saber quién venía
+      //    acompañándolo. A Soporte se le invitó porque el cliente tenía un
+      //    problema, y ese problema no se resuelve porque el paquete avance.
+      //
       //    En 'en_camino', el dueño previo (Logística, desde 'confirmado') SIGUE
       //    acompañando: queda como co-escritor junto al Motorizado.
       const prevOwner = session.assigned_seller_id
       const keepCowriter = next === 'en_camino' && prevOwner ? [prevOwner] : []
+      const invitados: string[] = session.invited_seller_ids ?? []
       await supabase.from('order_sessions').update({
-        writer_seller_ids: uniq([member.auth_user_id, ...keepCowriter]),
+        writer_seller_ids: uniq([member.auth_user_id, ...keepCowriter, ...invitados]),
         involved_seller_ids: uniq([...involved, member.auth_user_id, ...keepCowriter]),
-        invited_seller_ids: [],
-        invited_by: {},
       }).eq('id', session.id)
 
       newAssignment = { seller_name: member.nombre, seller_role: member.role_label, seller_avatar: member.avatar_url }

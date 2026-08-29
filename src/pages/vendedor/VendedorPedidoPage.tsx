@@ -24,6 +24,7 @@ import {
 } from '../../lib/comentario-interno'
 import type { Borradores, Etiquetable } from '../../lib/comentario-interno'
 import type { PasoKey, PedidoRastreable } from '../../lib/order-tracking'
+import { puedeEscribir, puedeReasignar } from '../../../supabase/functions/_shared/equipo-pedido.ts'
 import AnilloAvance from '../../components/AnilloAvance'
 import { useUbicacion } from '../../lib/ubicacion'
 import CustomerCard from '../../components/CustomerCard'
@@ -34,7 +35,7 @@ import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
 import { pedidoDemoPorToken, esTokenDemo, tiendaDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
 import { ROL_DEMO } from '../../lib/demo/modo-demo'
-import { ejecutarEnDemo, agregarMensajeDemo, ofertaAceptadaEnDemo, invitarEnDemo } from '../../lib/demo/cambios-demo'
+import { ejecutarEnDemo, agregarMensajeDemo, ofertaAceptadaEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -906,8 +907,12 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     })
   }
   const onShift = effective?.available !== false // turno (lo asigna el admin)
-  const canWrite = isAdmin
-    || (onShift && (session.assigned_seller_id === meId || (session.writer_seller_ids ?? []).includes(meId ?? '')))
+  // Quién manda en ESTE pedido. La regla vive en `_shared/equipo-pedido.ts` y
+  // la lee también el servidor: acá es la manija —no ofrecer lo que va a ser
+  // rechazado— y allá la puerta.
+  const yo = { id: meId ?? null, is_admin: isAdmin, available: onShift }
+  const canWrite = puedeEscribir(session, yo)
+  const canReasignar = puedeReasignar(session, yo)
 
   const openInvite = async () => {
     setShowInvite(true)
@@ -945,23 +950,70 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       return
     }
 
-    await fetch(`${BASE}/order-manage`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-      // El porqué viaja con la invitación y queda como COMENTARIO INTERNO
-      // etiquetando al invitado. Invitar sin decir a qué obliga al otro a
-      // leerse el hilo entero para adivinar qué le tocaba.
-      body: JSON.stringify({ action: 'invite', session_id: session.id, invite_seller_id: sellerAuthId, by_seller_id: meId, invite_nota: porQue || undefined }),
+    // El porqué viaja con la invitación y queda como COMENTARIO INTERNO
+    // etiquetando al invitado. Invitar sin decir a qué obliga al otro a leerse
+    // el hilo entero para adivinar qué le tocaba.
+    const res = await postDeEquipo({
+      action: 'invite', session_id: session.id, invite_seller_id: sellerAuthId, invite_nota: porQue,
     })
+    if (!res.ok) { alert('No se pudo invitar.'); return }
     reloadSession()
   }
 
-  const expel = async (sellerAuthId: string) => {
-    await fetch(`${BASE}/order-manage`, {
+  /**
+   * Las acciones de EQUIPO —invitar, sacar, pasar el pedido— van con el JWT del
+   * vendedor y no con la anon key: el servidor ya no se fía de un `by_seller_id`
+   * en el cuerpo, que es lo que el que llama diga de sí mismo. Sin sesión la
+   * petición se rechaza, que es como debe fallar.
+   */
+  const postDeEquipo = async (payload: Record<string, unknown>) => {
+    const { data: sesion } = await supabase.auth.getSession()
+    const jwt = sesion?.session?.access_token ?? ANON
+    return fetch(`${BASE}/order-manage`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'expel', session_id: session.id, invite_seller_id: sellerAuthId, by_seller_id: meId }),
+      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     })
+  }
+
+  const expel = async (sellerAuthId: string) => {
+    if (esTokenDemo(token)) {
+      const r = quitarEnDemo(session as unknown as StoreOrder, sellerAuthId)
+      if (r.patch) setSession(s => s ? { ...s, ...r.patch } as OrderSession : s)
+      reloadSession()
+      return
+    }
+    const res = await postDeEquipo({ action: 'expel', session_id: session.id, invite_seller_id: sellerAuthId })
+    if (!res.ok) { alert('No se pudo sacar del pedido.'); return }
+    reloadSession()
+  }
+
+  /** Pasarle el pedido a otro. La nota es obligatoria: un pedido que cambia de
+   *  dueño sin explicación es un pedido que el siguiente empieza de cero. */
+  const reasignar = async (sellerAuthId: string) => {
+    const porQue = notaInvitacion.trim()
+    if (!porQue) return
+    cerrarInvitar()
+
+    if (esTokenDemo(token)) {
+      const m = team.find(t => t.auth_user_id === sellerAuthId)
+      if (m) {
+        const r = reasignarEnDemo(
+          session as unknown as StoreOrder,
+          { id: m.auth_user_id, nombre: m.nombre, role_label: m.role_label },
+          porQue,
+          { nombre: sellerName, rol: sellerRole },
+        )
+        if (r.patch) setSession(s => s ? { ...s, ...r.patch } as OrderSession : s)
+      }
+      reloadSession()
+      return
+    }
+
+    const res = await postDeEquipo({
+      action: 'reassign', session_id: session.id, to_seller_id: sellerAuthId, invite_nota: porQue,
+    })
+    if (!res.ok) { alert('No se pudo pasar el pedido.'); return }
     reloadSession()
   }
 
@@ -1423,28 +1475,38 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
                 se sabe la respuesta: "a Renzo… ¿para qué?". */}
             {!porInvitar ? (
               <>
-                <h3 className="font-black text-gray-900 mb-1">Invitar a participar</h3>
+                <h3 className="font-black text-gray-900 mb-1">
+                  {canReasignar ? 'Sumar alguien o pasar el pedido' : 'Invitar a participar'}
+                </h3>
                 <p className="text-xs text-gray-400 mb-3">Podrá escribir y llamar en este pedido.</p>
                 <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                  {/* Sale el equipo entero menos el responsable — a él no se le
+                      invita ni se le pasa el pedido que ya tiene—. Los que YA
+                      participan siguen en la lista, marcados: no se les puede
+                      invitar otra vez, pero sí pasarles el pedido, que es el
+                      caso más común de todos ("Kevin, que ya está adentro,
+                      sigue con esto"). */}
                   {team
-                    // Ni el asignado ni los que ya están: invitar a quien ya
-                    // participa no hace nada, y verlo en la lista hace dudar.
                     .filter(t => t.auth_user_id !== session.assigned_seller_id)
-                    .filter(t => !participants.some(p => p.id === t.auth_user_id && p.can_write))
-                    .map(t => (
-                      <button key={t.auth_user_id} onClick={() => setPorInvitar(t)}
-                        className="w-full flex items-center gap-3 p-3 rounded-2xl border border-gray-100 text-left">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0"
-                          style={{ background: `${roleColor(t.role_label)}22`, color: roleColor(t.role_label) }}>
-                          {t.nombre.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-bold text-sm text-gray-900">{t.nombre}</p>
-                          <p className="text-xs text-gray-400">{t.role_label}</p>
-                        </div>
-                        <UserPlus size={16} className="text-gray-300" />
-                      </button>
-                    ))}
+                    .map(t => {
+                      const yaEsta = participants.some(p => p.id === t.auth_user_id && p.can_write)
+                      return (
+                        <button key={t.auth_user_id} onClick={() => setPorInvitar(t)}
+                          className="w-full flex items-center gap-3 p-3 rounded-2xl border border-gray-100 text-left">
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0"
+                            style={{ background: `${roleColor(t.role_label)}22`, color: roleColor(t.role_label) }}>
+                            {t.nombre.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-bold text-sm text-gray-900">{t.nombre}</p>
+                            <p className="text-xs text-gray-400">
+                              {t.role_label}{yaEsta ? ' · ya participa' : ''}
+                            </p>
+                          </div>
+                          <UserPlus size={16} className="text-gray-300" />
+                        </button>
+                      )
+                    })}
                 </div>
                 <button onClick={cerrarInvitar} className="w-full mt-4 py-3 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm">
                   Cerrar
@@ -1457,6 +1519,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
                 </h3>
                 <p className="text-xs text-gray-400 mb-3">
                   {porInvitar.role_label} · va a leer todo el chat con el cliente.
+                  {canReasignar ? ' Puede entrar a ayudar, o quedarse con el pedido.' : ''}
                 </p>
                 {/* La nota queda en el hilo como NOTA INTERNA etiquetándolo y
                     firmada por quien invita, así que el invitado llega sabiendo
@@ -1470,13 +1533,27 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
                   className="w-full rounded-2xl px-4 py-2.5 text-sm outline-none mb-3"
                   style={{ background: 'var(--nota-bg)', border: '1px solid var(--nota-border)', color: 'var(--text)' }}
                 />
-                <button
-                  onClick={() => invite(porInvitar.auth_user_id)}
-                  disabled={!notaInvitacion.trim()}
-                  className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-40"
-                  style={{ background: 'var(--nota-fg)', color: 'var(--nota-on)' }}>
-                  Invitar con esta nota
-                </button>
+                {/* Dos destinos para la MISMA nota, porque la pregunta que
+                    queda después de elegir a alguien es una sola: ¿viene a
+                    ayudar, o se queda con el pedido? */}
+                {!participants.some(p => p.id === porInvitar.auth_user_id && p.can_write) && (
+                  <button
+                    onClick={() => invite(porInvitar.auth_user_id)}
+                    disabled={!notaInvitacion.trim()}
+                    className="w-full py-3 rounded-2xl font-black text-sm disabled:opacity-40"
+                    style={{ background: 'var(--nota-fg)', color: 'var(--nota-on)' }}>
+                    Invitar con esta nota
+                  </button>
+                )}
+                {canReasignar && (
+                  <button
+                    onClick={() => reasignar(porInvitar.auth_user_id)}
+                    disabled={!notaInvitacion.trim()}
+                    className="w-full mt-2 py-3 rounded-2xl font-black text-sm disabled:opacity-40"
+                    style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
+                    Pasarle el pedido
+                  </button>
+                )}
                 <button onClick={() => setPorInvitar(null)} className="w-full mt-2 py-3 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm">
                   Elegir a otro
                 </button>

@@ -2037,6 +2037,77 @@ internas, invitaciones— va firmado como **Dueño** (`ROL_DEMO`).
 Solo cambia la etiqueta, no los permisos: el demo no toca la base, así que no hay nada que
 permitir ni que negar.
 
+## Quién manda en un pedido (29-ago-2026)
+
+Un pedido tiene **un responsable** y, alrededor, gente invitada que también escribe. Esas
+reglas estaban repartidas —una parte en la pantalla, otra en el servidor, y la de reasignar en
+ninguna— y al juntarlas salieron tres huecos.
+
+Ahora viven en `supabase/functions/_shared/equipo-pedido.ts`, que es lo único del repo que
+necesitan **los dos lados con la misma respuesta**. `permisos.ts` dice qué puede alguien en la
+TIENDA; esto dice qué puede en ESTE pedido, que es otra pregunta: un supervisor toca cualquier
+pedido, y el responsable solo el suyo.
+
+| | Quién |
+|---|---|
+| **Escribir** | el responsable y los invitados, en turno; quien administra, siempre |
+| **Invitar** | cualquiera que escriba |
+| **Sacar a alguien** | quien lo invitó, **el responsable**, o quien administra |
+| **Pasar el pedido** | **el responsable** o quien administra |
+
+### Invitar lo puede cualquiera que escriba
+
+Es la decisión de fondo y va a contramano de lo que uno esperaría de una jerarquía: quien está
+atendiendo es quien descubre que necesita a Logística. Obligarlo a pedírselo al supervisor
+añade un salto que se termina haciendo por WhatsApp — justo lo que este panel existe para sacar
+del WhatsApp.
+
+Y no es peligroso: invitar suma a alguien de la **misma tienda** a un chat que ya podría leer
+entrando por el panel. Lo que sí cambia de manos —el pedido— pide más.
+
+### Pasar el pedido: el botón que no existía
+
+El responsable solo cambiaba **solo**, al avanzar de etapa (`confirmado` → Logística,
+`en_camino` → Motorizado). Así que rotar turnos, repartir carga o cubrir una baja no tenía
+botón: la única salida era avanzar la etapa —o sea mentir sobre dónde está el pedido— o entrar
+a la base a mano.
+
+Ahora lo puede hacer **el responsable** —soltarlo cuando no da abasto— y **quien administra**
+—el supervisor que reparte—. Un invitado no: entró a ayudar, no a quedarse con el pedido de
+otro.
+
+Con **nota obligatoria**, como la invitación. Un pedido que cambia de dueño sin explicación es
+un pedido que el siguiente empieza de cero, y el contexto que se pierde ahí es el que termina
+preguntándole otra vez al cliente lo que ya había contestado. Al comprador se le dice quién lo
+atiende ahora —enterarse por el nombre que firma el próximo mensaje es peor— y **el anterior se
+queda dentro**: lleva el contexto, y lo normal es que el nuevo le pregunte algo.
+
+### Y el traspaso automático ya no borra a los invitados
+
+Al ceder el pedido a Logística, el código hacía `invited_seller_ids: []` — *"el nuevo dueño
+empieza limpio"*. Era al revés: el momento en que el pedido cambia de manos es cuando más falta
+hace saber quién venía acompañándolo. A Soporte se le invitó porque el cliente tenía un
+problema, y ese problema no se resuelve porque el paquete avance.
+
+### Sacar a alguien: faltaba el responsable
+
+Solo podía quien lo invitó (o un admin). Con eso, un invitado por alguien que ya no está en la
+empresa se quedaba dentro **para siempre**: el único que podía sacarlo era justo el que se fue.
+Ahora también el responsable — es su pedido. Y al responsable **no se le saca**: para eso se
+pasa el pedido, que es lo que deja a alguien respondiendo por él.
+
+### La puerta, no la manija
+
+`invite` y `expel` decidían con `by_seller_id` **del cuerpo de la petición**: o sea con lo que
+el que llama dijera de sí mismo. Ocultar el botón no protege nada — un POST pasa igual.
+
+Las tres acciones de equipo piden ahora el **JWT del vendedor**, y de ahí sale quién es
+(`quienLlama`), incluida la comprobación de que sea de **esta** tienda: admin de la suya no es
+admin de la de al lado. `by_seller_id` se fue del todo.
+
+Las demás acciones siguen con la anon key a propósito: `accept_offer` y `cancel` los llama el
+**comprador** desde su chat, y exigirles un JWT de vendedor las rompería.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

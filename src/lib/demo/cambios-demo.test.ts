@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   conCambios, listaConCambios, guardarCambio, agregarMensajeDemo, reiniciarDemo,
-  hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo, invitarEnDemo,
+  hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo,
 } from './cambios-demo'
 import type { PedidoDemo } from './cambios-demo'
 import { avanceDelPago } from '../order-money'
@@ -214,5 +214,63 @@ describe('invitar en el demo', () => {
     const base = pedido({ assigned_seller_id: 'demo-auth-0' })
     invitarEnDemo(base, RENZO, '', YO)
     expect(invitarEnDemo(conCambios(base), RENZO, '', YO).ok).toBe(false)
+  })
+})
+
+// ─── Pasar el pedido a otro ──────────────────────────────────────────────────
+//
+// No existía en ninguna parte: el responsable solo cambiaba SOLO, al avanzar de
+// etapa. Rotar turnos o cubrir una baja obligaba a mentir sobre la etapa.
+
+describe('reasignar en el demo', () => {
+  const base = () => pedido({
+    seller_name: 'Milagros Pinto', seller_role: 'Ventas', assigned_seller_id: 'demo-auth-2',
+  })
+
+  it('cambia el responsable y lo dice en el chat', () => {
+    const p0 = base()
+    const r = reasignarEnDemo(p0, RENZO, 'sale de vacaciones, sigue tú', YO)
+    expect(r.ok).toBe(true)
+    const p = conCambios(p0)
+    expect(p.assigned_seller_id).toBe(RENZO.id)
+    expect(p.seller_name).toBe('Renzo Aguilar')
+    expect(p.participants?.[0]).toMatchObject({ id: RENZO.id, is_owner: true })
+    expect((p.chat_messages ?? []).some(m => (m.body ?? '').includes('Ahora te atiende Renzo'))).toBe(true)
+  })
+
+  // El anterior lleva el contexto del pedido, y lo normal es que el nuevo le
+  // pregunte algo. Sacarlo al pasarle el pedido es perder eso justo cuando hace
+  // más falta.
+  it('el anterior se queda dentro, ya no como responsable', () => {
+    const p0 = base()
+    reasignarEnDemo(p0, RENZO, 'sale de vacaciones, sigue tú', YO)
+    const p = conCambios(p0)
+    const mila = p.participants?.find(x => x.nombre === 'Milagros Pinto')
+    expect(mila).toBeTruthy()
+    expect(mila?.is_owner).toBe(false)
+  })
+
+  it('la nota es obligatoria', () => {
+    expect(reasignarEnDemo(base(), RENZO, '   ', YO).ok).toBe(false)
+  })
+
+  it('pasárselo a quien ya lo tiene no hace nada', () => {
+    const p = pedido({ assigned_seller_id: RENZO.id })
+    expect(reasignarEnDemo(p, RENZO, 'toma', YO).ok).toBe(false)
+  })
+})
+
+describe('sacar del pedido, en el demo', () => {
+  it('quita al invitado', () => {
+    const p0 = pedido({ seller_name: 'Milagros Pinto', assigned_seller_id: 'demo-auth-2' })
+    invitarEnDemo(p0, RENZO, 'ayuda con el despacho', YO)
+    expect(quitarEnDemo(conCambios(p0), RENZO.id).ok).toBe(true)
+    expect(conCambios(p0).participants?.some(x => x.id === RENZO.id)).toBe(false)
+  })
+
+  // Sacarlo dejaría un pedido sin nadie que responda por él.
+  it('al responsable no se le saca', () => {
+    const p = pedido({ assigned_seller_id: 'demo-auth-2' })
+    expect(quitarEnDemo(p, 'demo-auth-2').ok).toBe(false)
   })
 })
