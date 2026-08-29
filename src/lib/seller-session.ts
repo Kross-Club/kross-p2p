@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { administraLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
 
 export interface SellerProfile {
   id: string
@@ -71,11 +72,16 @@ export function useSeller() {
 
   const isAdmin = !!real?.is_admin
   // Only admins may impersonate; a stale override on a non-admin is ignored.
-  //  · super admin: ANY acting means "entered a brand" (even if it shares the
-  //    platform store id) → always impersonate.
+  //  · quien administra la plataforma: ANY acting means "entered a brand" (even
+  //    if it shares the platform store id) → always impersonate.
   //  · store admin: impersonating only when acting AS a different person (a member).
+  //
+  // La primera rama pregunta por `alcance.ts` y no por `is_super_admin` porque
+  // "entrar a una tienda" es actuar como uno mismo con otro `store_id`: con la
+  // bandera, a un operador de Kross le salía `impersonating = false` y entrar a
+  // una marca no hacía nada — el botón respondía y la pantalla no se movía.
   const impersonating = isAdmin && !!acting &&
-    (!!real?.is_super_admin || acting.auth_user_id !== real?.auth_user_id)
+    (administraLaPlataforma(real) || acting.auth_user_id !== real?.auth_user_id)
   const effective = impersonating ? acting! : real
 
   const actAs = useCallback((s: SellerProfile) => setActingSeller(s), [])

@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { administraLaPlataforma } from '../_shared/alcance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -26,7 +27,7 @@ Deno.serve(async (req) => {
   const { data: me } = await supabase
     .from('sellers').select('is_admin, is_super_admin, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
   if (!me?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
-  const storeId = (me.is_super_admin && body.store_id) ? body.store_id : me.store_id
+  const storeId = (administraLaPlataforma(me) && body.store_id) ? body.store_id : me.store_id
   if (!storeId) return json({ error: 'no_store' }, 400)
 
   const token = Deno.env.get('WHATSAPP_TOKEN')

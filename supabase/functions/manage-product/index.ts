@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { isDeclaredContent, isShalomSize } from '../_shared/shalom-orders.ts'
+import { administraLaPlataforma } from '../_shared/alcance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -38,8 +39,9 @@ Deno.serve(async (req) => {
     .from('sellers').select('is_admin, is_super_admin, is_operator, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
   if (!admin?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
 
-  // A store admin manages their own store; the super admin may target any store.
-  const targetStore = (admin.is_super_admin && body.store_id) ? body.store_id : admin.store_id
+  // Un admin de tienda maneja la suya; quien administra la plataforma puede
+  // apuntar a cualquiera (ver `alcance.ts`).
+  const targetStore = (administraLaPlataforma(admin) && body.store_id) ? body.store_id : admin.store_id
 
   if (body.action === 'delete') {
     if (!body.id) return new Response('Missing id', { status: 400, headers: corsHeaders })

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, setPersistSession } from '../lib/supabase'
 import AuthShell, { AuthButton, AuthError, AuthField } from '../components/AuthShell'
 import { isPlatformHost } from '../lib/store-context'
+import { administraLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -32,12 +33,18 @@ export default function LoginPage() {
       return
     }
 
-    // On the platform host (krossclub.app) only the super admin may enter. Brand
-    // admins/team must use their own subdomain (marca.krossclub.app).
+    // En krossclub.app entra quien administra LA PLATAFORMA; quien es de una
+    // marca entra por su subdominio (marca.krossclub.app), que es donde su
+    // tienda tiene nombre, logo y compradores.
+    //
+    // La pregunta la responde `alcance.ts` y no una bandera suelta: preguntar
+    // por `is_super_admin` dejaba fuera a los operadores de Kross —gente que
+    // trabaja en la plataforma— con un mensaje que los manda a una marca que no
+    // tienen. Y ese candado no lo puede abrir el que lo sufre.
     if (isPlatformHost()) {
       const { data: me } = await supabase.from('sellers')
-        .select('is_super_admin').eq('auth_user_id', auth.user?.id).maybeSingle()
-      if (!me?.is_super_admin) {
+        .select('store_id, is_admin, is_super_admin').eq('auth_user_id', auth.user?.id).maybeSingle()
+      if (!administraLaPlataforma(me)) {
         await supabase.auth.signOut()
         setError('Ingresa desde el sitio de tu marca (tumarca.krossclub.app), no desde krossclub.app.')
         setLoading(false)

@@ -14,8 +14,10 @@
 // Los dos ejes son independientes a propósito:
 //
 //   · `is_admin` / `is_super_admin` dicen **hasta dónde llega**: su tienda, o
-//     toda la plataforma.
-//   · `is_operator` dice **qué NO puede hacer** dentro de ese alcance.
+//     toda la plataforma. Esa pregunta ya no se responde acá: vive en
+//     `_shared/alcance.ts`, porque el servidor tiene que contestarla igual.
+//   · `is_operator` dice **qué NO puede hacer** dentro de ese alcance — y eso
+//     sí es de este archivo.
 //
 // Así "operador de una marca" y "operador de la plataforma" son la misma regla
 // aplicada a distinto alcance, sin una tercera columna ni un segundo camino.

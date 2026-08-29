@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -100,10 +101,11 @@ Deno.serve(async (req) => {
   // POST a esta función llega igual sin pasar por ningún botón.
   const puedeNombrar = !admin.is_operator
 
-  // A store admin may only touch members of their OWN store. The super admin
-  // (platform owner) is allowed to reach across stores.
+  // Un admin de tienda solo toca a los de la SUYA. Quien administra la
+  // plataforma —el dueño y los operadores de Kross— llega a todas. Ver
+  // `alcance.ts`.
   async function targetInScope(sellerAuthId: string): Promise<boolean> {
-    if (admin.is_super_admin) return true
+    if (administraLaPlataforma(admin)) return true
     const { data: t } = await supabase
       .from('sellers').select('store_id').eq('auth_user_id', sellerAuthId).maybeSingle()
     return !!t && t.store_id === admin.store_id
@@ -116,7 +118,7 @@ Deno.serve(async (req) => {
   // escribir para recuperar la contraseña. Se devuelven SOLO los del equipo que
   // ese admin administra.
   if (body.action === 'emails') {
-    const storeId = (admin.is_super_admin && body.store_id) ? body.store_id : admin.store_id
+    const storeId = (administraLaPlataforma(admin) && body.store_id) ? body.store_id : admin.store_id
     const { data: members } = await supabase
       .from('sellers').select('auth_user_id').eq('store_id', storeId).not('auth_user_id', 'is', null)
 
@@ -202,9 +204,9 @@ Deno.serve(async (req) => {
     if (!body.email || !body.password || !body.nombre || !body.role_label) {
       return new Response('Missing fields', { status: 400, headers: corsHeaders })
     }
-    // A store admin can only create members in their own store; only the super
-    // admin may target another store explicitly.
-    const storeId = (admin.is_super_admin && body.store_id) ? body.store_id : admin.store_id
+    // Un admin de tienda solo da de alta en la suya; apuntar a otra tienda
+    // explícitamente es de quien administra la plataforma.
+    const storeId = (administraLaPlataforma(admin) && body.store_id) ? body.store_id : admin.store_id
 
     // Qué nivel se está pidiendo, y quién puede otorgarlo.
     //
@@ -220,7 +222,7 @@ Deno.serve(async (req) => {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    if (body.is_super_admin && !admin.is_super_admin) {
+    if (body.is_super_admin && !administraLaPlataforma(admin)) {
       return new Response(JSON.stringify({ error: 'alcance_insuficiente' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -248,9 +250,16 @@ Deno.serve(async (req) => {
       role_label: operador ? 'Operador' : body.is_admin ? 'Admin' : body.role_label,
       is_admin: esAdmin,
       is_operator: operador,
-      // Un admin de marca sigue siendo de su marca: el alcance de plataforma
-      // hay que pedirlo explícitamente, y solo lo otorga quien ya lo tiene.
-      is_super_admin: !!body.is_super_admin,
+      // El alcance sale de DÓNDE se le da de alta: quien entra en la tienda de
+      // la plataforma administrando, administra la plataforma. Antes había que
+      // pedirlo aparte con `is_super_admin` — y cuando el panel ya lo mandaba
+      // pero esta función todavía no lo leía, la fila quedaba en la plataforma
+      // SIN alcance: una cuenta que ni entraba por krossclub.app ni tenía marca
+      // por donde entrar. Ver `alcance.ts`.
+      //
+      // Un admin de marca sigue siendo de su marca: `storeId` es la suya, y solo
+      // quien ya administra la plataforma puede apuntar a otra tienda.
+      is_super_admin: !!body.is_super_admin || (storeId === TIENDA_PLATAFORMA && esAdmin),
       active: true,
       available: true,
     })
