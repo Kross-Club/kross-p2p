@@ -186,8 +186,16 @@ Para comprobar qué versión quedó viva, la consulta está en
 |---|---|---|---|---|---|
 | **Kross Shop** | `st_kross-shop_mt233mx7` | ✅ | ✅ **360pay en producción** (prefijo `KSH`) | 1 producto | 4 |
 | **Gadicaf** | `t1` | ✅ | ⛔ sin conectar — ver bloqueo #1 | 1 producto | 1 |
-| **Kross** | `platform` | ✅ | — (no vende: es la tienda de la plataforma) | 0 | 0 |
+| **Kross** | `platform` | — | — (no vende: es la tienda de la plataforma) | 0 | 0 |
 | **Culqi Test** | `store-culqi-test` | ⛔ desarmada | — | 1 producto | 0 |
+
+> **Verificado contra la base el 29-ago-2026.** `platform` lleva el slug `krosstest` y
+> `active = false` —resto de las pruebas del principio— y por eso aparecía en *Tiendas*
+> pareciendo una marca de pruebas olvidada. **Ya no sale en esa lista**: no es una marca, y ahí
+> viven las 3 cuentas del equipo de Kross. Su equipo se administra en *Equipo*.
+>
+> Cuentas reales ese día: Kross Shop 19 pedidos / 8 cobros / 16 compradores · Gadicaf 1 pedido,
+> 4 del equipo, 1 comprador · Culqi Test vacía (1 producto) · `platform` 3 del equipo.
 
 ### Kross Shop — la primera marca cobrando en línea
 
