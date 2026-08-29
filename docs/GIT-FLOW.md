@@ -90,7 +90,7 @@ Ejemplos:
    No es jerarquía por gusto: mergear a `main` **despliega a producción** (Vercel lo
    hace solo, paso 5 de arriba) y varios cambios de este repo además necesitan que
    alguien corra un SQL o despliegue una Edge Function *antes* de que el código llegue
-   —la lista viva está en [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md#lo-que-falta-desplegar-al-28-ago-2026)—.
+   —la lista viva está en [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md#producción-está-al-día-29-ago-2026)—.
    Un merge sin ese paso deja producción con el frontend nuevo pidiéndole a un backend
    viejo cosas que no sabe dar. Quien mergea es quien sabe si el backend ya está listo.
 

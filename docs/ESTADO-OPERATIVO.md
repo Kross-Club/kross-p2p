@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 21-ago-2026** · **texto actualizado: 28-ago-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 29-ago-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -29,17 +29,28 @@ from stores s order by s.id;
 Si el resultado no cuadra con la tabla, **gana el resultado**: actualiza el doc y cambia la
 fecha de arriba.
 
-## Lo que falta desplegar (al 28-ago-2026)
+## Producción está al día (29-ago-2026)
 
-**Léelo primero.** Los deploys están explicados uno por uno más abajo, cada uno con qué se ve
-si no entra; acá está la lista junta, que es lo que hace falta para saber si producción está al
-día. Nada de esto rompe la app si falta: el frontend sale con `main` y degrada avisando.
+**Léelo primero.** Esta sección era una lista de deploys pendientes que se arrastraba desde el
+21-ago. **Se vació el 29-ago-2026 de madrugada**: se corrió el SQL y se desplegaron las 25
+funciones. No queda nada esperando.
 
-> Los comandos van con el `--project-ref` **literal en cada línea**, sin variable de shell: el
-> equipo trabaja en Windows y `REF=...` es sintaxis de bash — en PowerShell falla y el CLI
-> termina abriendo el selector interactivo de proyectos.
+Comprobado, no supuesto:
 
-**1. SQL primero** (SQL Editor del proyecto PWA). Los dos son idempotentes:
+- **SQL** — las 13 columnas y el índice, verificados con una consulta contra
+  `information_schema` (§7, `answered_at`, §30 operador, §31 saldo, §32 `mentions`).
+- **Funciones** — `supabase functions list` con fecha del 29-ago: el bloque grande a las
+  03:52–03:54 y las tres últimas a las 05:35 (`order-manage` v41, `get-store-sessions` v40,
+  `get-session` v65).
+
+> `get-session` tardó dos intentos: el primero **falló** y nadie lo habría notado —la versión
+> anterior sigue viva y el panel se ve igual—. De ahí salió la red que ahora lo ataja: ver
+> [Una función rota no se nota hasta el deploy](#una-función-rota-no-se-nota-hasta-el-deploy-29-ago-2026).
+
+### El SQL, por si hace falta otra vez
+
+Idempotente y en un bloque, para levantar un entorno nuevo o comprobar uno viejo. Correrlo de
+nuevo no hace nada.
 
 ```sql
 alter table chat_messages  add column if not exists call_recording_id uuid references call_recordings(id);
@@ -54,28 +65,27 @@ alter table order_sessions add column if not exists pay360_saldo_coupon_id     t
 alter table order_sessions add column if not exists pay360_saldo_consumer_code text;
 create index if not exists idx_order_sessions_saldo_coupon
   on order_sessions(pay360_saldo_coupon_id) where pay360_saldo_coupon_id is not null;
--- A quién se etiqueta en un comentario interno (bloque §32)
-alter table chat_messages add column if not exists mentions jsonb default '[]';
+-- A quién se etiqueta en una nota interna (bloque §32)
+alter table chat_messages  add column if not exists mentions jsonb default '[]';
 ```
 
-**2. Después los deploys.** Cada función una sola vez, aunque la pidan varias notas:
+### Y la regla, que es lo que evita que esto se vuelva a llenar
 
-| Función | Qué destraba | Nota |
-|---|---|---|
-| `get-store-sessions` | ⚠️ **vuelve a la lista**: trae `visibility` de cada mensaje, y sin eso una **nota interna** cuenta como respuesta al cliente y saca el pedido de *Sin responder*. Además: el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual, el **DNI** que necesita el buscador y el **saldo** (anillo y filtro de pagos). ⚠️ Pide el SQL §31 **antes**: sin esas columnas el select falla entero y el tablero queda en blanco | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
-| `order-manage` | ⚠️ **vuelve a la lista**: `reassign` (pasar el pedido con nota), invitar/expulsar con **JWT verificado** en vez de `by_seller_id`, y que el traspaso automático ya no borre a los invitados. Además: `mark_answered`, `anular` / `restore`, el eje sin `preparando`, el **upsell** en el mismo pedido y el porqué de una invitación | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
-| `get-session` | la llamada en el hilo, `answered_at`, si el cliente está en la app, el rastro del **saldo**, y los **comentarios internos** — que exigen un JWT de vendedor verificado, no `?viewer=seller` |
-| `pay360-coupon` · `pay360-webhook` | el cobro del **saldo**: emitir su cupón y confirmarlo | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) · [app](#get-session-otra-vez-saber-si-el-cliente-está-en-la-app-27-ago-2026) |
-| `seller-send-message` | los **comentarios internos**: `visibility` + `mentions`, y que NO salgan por el canal ni por la push del comprador |
-| `get-store-drafts` 🆕 | la columna **Curiosos** del tablero | [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
-| `delivery-map` 🆕 | el **mapa de entregas** de la libreta de clientes | [mapa](#el-mapa-de-entregas-por-distrito-28-ago-2026) |
-| `create-call-token` · `seller-call-token` · `livekit-webhook` | que la llamada quede escrita en el hilo del pedido | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) — `livekit-webhook` va con `--no-verify-jwt` |
-| `list-clients` · `retention-metrics` · `run-campaign` | la libreta de clientes y las campañas | [libreta](#la-libreta-de-clientes-necesita-un-deploy-27-ago-2026) |
-| `admin-team` | los correos en *Equipo*, y el rol **Operador** | [marca v2](#marca-v20--el-rediseño-entró-al-panel-25-ago-2026) · [operador](#el-rol-operador-y-el-equipo-de-la-plataforma-28-ago-2026) |
-| `manage-store` · `manage-product` | que un operador no pueda apagar tiendas ni borrar productos | [operador](#el-rol-operador-y-el-equipo-de-la-plataforma-28-ago-2026) |
-| `shalom-tracking-sync` · `shalom-order` · `olva-tracking` · `olva-tracking-sync` · `manage-store` · `shalom-webhook` | el mapeo `registrado` ≠ `EN_ORIGEN`; vive en `_shared/`, que se empaqueta dentro de cada función | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) — `shalom-webhook` va con `--no-verify-jwt` |
+**El frontend sale solo con `main`; las Edge Functions y el SQL NO.** Vercel despliega al
+mergear, así que un PR que toque los dos lados deja producción a medias hasta que alguien corra
+los comandos. Por eso cada PR que toca `supabase/` dice arriba qué desplegar, y por eso esta
+sección existe: es donde se acumula lo que el merge no hizo.
 
-Para comprobar cuáles entraron de verdad, la consulta está en
+Cuando vuelvas a dejar deploys pendientes, anótalos acá con **qué se ve si no entran** — que es
+lo único que hace decidible si corre o espera. Y el orden importa siempre igual: **primero el
+SQL, después las funciones**; PostgREST rechaza el `select` entero si falta una columna, así que
+una función nueva contra un esquema viejo deja el panel en blanco.
+
+> Los comandos van con el `--project-ref` **literal en cada línea**, sin variable de shell: el
+> equipo trabaja en Windows y `REF=...` es sintaxis de bash — en PowerShell falla y el CLI
+> termina abriendo el selector interactivo de proyectos.
+
+Para comprobar qué versión quedó viva, la consulta está en
 [Cómo comprobar que un deploy entró](#cómo-comprobar-que-un-deploy-entró).
 
 ## Marcas
@@ -186,6 +196,11 @@ tablero.
 
 ### La libreta de clientes necesita un deploy (27-ago-2026)
 
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
+
 Clientes pasó a ser la libreta de personas, con Retención adentro
 ([`11-RELACIONES.md`](./11-RELACIONES.md)). **No hay SQL que correr** — ninguna columna nueva.
 
@@ -237,6 +252,11 @@ selector de proyectos y se cancela sin elegir.
 
 ### Las llamadas en el hilo necesitan SQL + deploy (27-ago-2026)
 
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
+
 La llamada dejó de ser una sección y pasó a ser un evento del pedido
 ([`11-RELACIONES.md`](./11-RELACIONES.md)). El frontend ya salió con `main`; el backend no.
 
@@ -268,6 +288,11 @@ siguen en la BD y se pueden consultar por SQL, pero el equipo se queda sin dónd
 única ventana de este cambio en la que se pierde algo, así que conviene no dejarla abierta.
 
 ### El saldo se cobra solo (28-ago-2026)
+
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
 
 **1. SQL primero** (idempotente, bloque §31 de `setup-kross.sql`):
 
@@ -320,6 +345,11 @@ Qué es y por qué son dos operaciones: [`11-RELACIONES.md`](./11-RELACIONES.md)
 
 ### El rol Operador, y el equipo de la plataforma (28-ago-2026)
 
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
+
 **1. SQL primero** (idempotente, nadie se vuelve operador por correrlo):
 
 ```sql
@@ -356,6 +386,11 @@ puesta, la regla escrita en [`GIT-FLOW.md`](./GIT-FLOW.md) es un acuerdo, no un 
 
 ### El mapa de entregas por distrito (28-ago-2026)
 
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
+
 **Un deploy nuevo. No hay SQL.**
 
 ```
@@ -377,6 +412,11 @@ donde el mapa la ponía; esa posición era la fase del courier redibujada, y en 
 posición se lee como una posición.
 
 ### El pipeline nuevo: Curiosos y Anulado (28-ago-2026)
+
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
 
 **Un solo deploy nuevo y dos redeploys. No hay SQL que correr.**
 
@@ -417,6 +457,11 @@ pedido desde `confirmado` hasta `en_camino`. A Soporte se le sigue pudiendo invi
 
 ### Marcar un pedido como respondido (28-ago-2026)
 
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
+
 **1. SQL primero** (SQL Editor, proyecto PWA):
 
 ```sql
@@ -450,6 +495,11 @@ lee, y eso no rompe nada.
 
 ### `get-session` otra vez: saber si el cliente está en la app (27-ago-2026)
 
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
+
 ```
 supabase functions deploy get-session --project-ref ofdjghntvmrdfjhazfvz
 ```
@@ -461,6 +511,11 @@ botón de la cabecera muestran el caso "nunca ha entrado a la app" para todos: n
 pero el dato no sirve hasta desplegar. No hay SQL: las dos columnas ya existen.
 
 ### El CRM espera un deploy (26-ago-2026) — *En vivo* también, hasta que se retiró
+
+> ✅ **Desplegado el 29-ago-2026.** Lo de abajo se queda como el porqué —que sigue siendo
+> lo útil—, pero los comandos ya se corrieron: ver
+> [Producción está al día](#producción-está-al-día-29-ago-2026).
+
 
 `get-store-sessions` **todavía no devuelve en producción** `product_id`, `dispatch_type`,
 `agency_name`, `agency_branch_id`, `address_lat/lng`, `advance_amount`,
@@ -604,5 +659,7 @@ Son dos y no se mueven juntas: *texto actualizado* la mueve cualquier cambio de 
 verificación contra la base* solo la mueve haber corrido de verdad la consulta de arriba contra
 producción. Subirla sin haberla corrido convierte el doc en lo que dice no ser.
 
-Y cuando un deploy entre, **táchalo de [Lo que falta desplegar](#lo-que-falta-desplegar-al-28-ago-2026)**:
-una lista de pendientes que ya no lo son deja de leerse a la semana.
+Y cuando un deploy entre, **táchalo de [Producción está al día](#producción-está-al-día-29-ago-2026)**:
+una lista de pendientes que ya no lo son deja de leerse a la semana. Al 29-ago esa sección está
+vacía —se corrió todo—, así que lo que toca al dejar algo pendiente es **volver a llenarla**,
+diciendo qué se ve si no entra.
