@@ -34,6 +34,23 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Borrar una tienda · `manage-store` (29-ago-2026, tarde)
+
+**Qué se ve si no entra:** en *Tiendas → Editar* aparece la zona roja de "Eliminar esta
+tienda" y al confirmar responde `Unknown action` (el panel lo traduce a "la función está
+desplegada en una versión anterior"). Nada se borra.
+
+```
+supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL. Es el mismo deploy que ya debía `manage-store` por lo del operador, así que cubre las
+dos cosas.
+
+> Antes de borrar, mirar qué cuelga de cada tienda — la consulta está al final del bloque §34
+> de `setup-kross.sql` y no cambia nada. El servidor rechaza el borrado si la marca tiene un
+> solo pedido o cobro, pero verlo antes ahorra el intento.
+
 ### El operador opera sin pedir permiso · `manage-store` + `manage-product` (29-ago-2026, tarde)
 
 **Qué se ve si no entra:** el panel le ofrece al operador apagar una tienda y borrar un

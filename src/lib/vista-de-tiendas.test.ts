@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { vistaDeTiendas } from './vista-de-tiendas'
+import { vistaDeTiendas, estorboParaBorrar } from './vista-de-tiendas'
 import { TIENDA_PLATAFORMA } from '../../supabase/functions/_shared/alcance.ts'
 
 const TIENDAS = [{ id: 'st_kross' }, { id: 't1' }, { id: TIENDA_PLATAFORMA }]
@@ -56,5 +56,34 @@ describe('la vista de Tiendas', () => {
   it('sin sesión resuelta no se ve nada', () => {
     expect(vistaDeTiendas(TIENDAS, null, true)).toEqual({ plataforma: false, visibles: [] })
     expect(ids(vistaDeTiendas(TIENDAS, kevin, true))).toEqual(['t1'])
+  })
+})
+
+// ─── Borrar ──────────────────────────────────────────────────────────────────
+//
+// Cada caso de acá es una manera concreta de perder algo que no vuelve. El
+// servidor los rechaza igual; esto es para no ofrecer el botón.
+
+describe('cuándo se puede ofrecer borrar una tienda', () => {
+  const apagada = { id: 't1', active: false }
+
+  it('una marca apagada, sí', () => {
+    expect(estorboParaBorrar(apagada, uxbriel)).toBe(null)
+  })
+
+  it('encendida, no: primero se apaga, que eso sí se deshace', () => {
+    expect(estorboParaBorrar({ id: 't1', active: true }, uxbriel)).toBe('encendida')
+    // Sin el dato tampoco: no saber si está viva no es saber que está apagada.
+    expect(estorboParaBorrar({ id: 't1' }, uxbriel)).toBe('encendida')
+  })
+
+  // La casa de Kross. Borrarla deja a todo el equipo sin tienda y a la regla de
+  // alcance sin dónde apoyarse — el borrado se llevaría a quien lo ejecutó.
+  it('la plataforma, nunca — ni apagada', () => {
+    expect(estorboParaBorrar({ id: TIENDA_PLATAFORMA, active: false }, uxbriel)).toBe('plataforma')
+  })
+
+  it('ni la tienda de uno mismo', () => {
+    expect(estorboParaBorrar({ id: 't1', active: false }, andrea)).toBe('la_tuya')
   })
 })

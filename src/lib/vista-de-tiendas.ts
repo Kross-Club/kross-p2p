@@ -18,7 +18,7 @@
 // cruzar el permiso del servidor con el de la persona actuada nunca amplía
 // nada — como mucho enseña de menos, que es exactamente lo que se quiere.
 
-import { administraLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
+import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../../supabase/functions/_shared/alcance.ts'
 
 export interface QuienActua {
   store_id?: string | null
@@ -51,4 +51,41 @@ export function vistaDeTiendas<T extends { id: string }>(
   // enseñarlas todas sería justo el caso que esto evita.
   const suya = actuando?.store_id
   return { plataforma, visibles: suya ? tiendas.filter(t => t.id === suya) : [] }
+}
+
+
+// ─── Borrar una tienda: lo único que no se deshace ───────────────────────────
+//
+// Apagar detiene la app y se enciende otra vez. Borrar se lleva la fila y, con
+// ella, la marca — y como `stores` casi no tiene claves foráneas, además deja
+// huérfanos en nueve tablas si nadie barre. La puerta es `manage-store`; esto es
+// la manija, y existe para no ofrecer un botón que va a ser rechazado.
+//
+// Devuelve **por qué no se puede**, no un booleano: la pantalla dice el motivo
+// en vez de esconder la sección, que es la diferencia entre "no encuentro dónde
+// se borra" y "ah, primero hay que apagarla".
+
+export type EstorboParaBorrar =
+  /** La casa de Kross. Sin ella, quien administra la plataforma se queda sin
+   *  dónde apoyarse — y el borrado se llevaría por delante a quien lo hizo. */
+  | 'plataforma'
+  /** La tienda de uno mismo: borrarla es quedarse sin fila y sin panel. */
+  | 'la_tuya'
+  /** Sigue encendida. Apagar ya avisa de lo que pasa y se deshace; encadenar los
+   *  dos pasos hace que nadie borre una marca viva de un solo clic. */
+  | 'encendida'
+
+export interface TiendaBorrable {
+  id: string
+  active?: boolean | null
+}
+
+export function estorboParaBorrar(
+  tienda: TiendaBorrable,
+  actuando: QuienActua | null | undefined,
+): EstorboParaBorrar | null {
+  if (tienda.id === TIENDA_PLATAFORMA) return 'plataforma'
+  if (actuando?.store_id && tienda.id === actuando.store_id) return 'la_tuya'
+  if (tienda.active !== false) return 'encendida'
+  return null
 }
