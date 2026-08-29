@@ -6,6 +6,7 @@ import { useSeller, type SellerProfile } from '../../lib/seller-session'
 import { useEquipo } from '../../lib/store-team'
 import { puedeNombrarAdmins, etiquetaDeRol, esOperador, LIMITES_OPERADOR } from '../../lib/permisos'
 import { supabase } from '../../lib/supabase'
+import { mensajePanel } from '../../lib/panel-errors'
 import PushSettings from '../../components/PushSettings'
 import { TIENDA_PLATAFORMA } from '../../../supabase/functions/_shared/alcance.ts'
 import { banderasDeNivel, faltoAlEscribir, nivelDe, NOMBRE_DE_NIVEL } from '../../../supabase/functions/_shared/nivel.ts'
@@ -173,11 +174,17 @@ export default function EquipoPage() {
         method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'set_level', admin_auth_id: real?.auth_user_id, seller_id: s.auth_user_id, nivel }),
       })
-      const r = await res.json().catch(() => ({}))
+      // El cuerpo se lee como TEXTO y luego se intenta parsear: los rechazos de
+      // esta función son JSON, pero "Unknown action" —el que sale mientras la
+      // versión desplegada es anterior al panel— viaja en texto plano, y con
+      // `res.json()` se perdía en el `catch` como un fallo genérico.
+      const cuerpo = await res.text()
+      let r: { error?: string } = {}
+      try { r = JSON.parse(cuerpo) } catch { /* texto plano: queda en `cuerpo` */ }
       if (!res.ok) {
         alert(r.error === 'operador_no_nombra' ? 'Un operador no cambia niveles.'
           : r.error === 'no_a_ti_mismo' ? 'No puedes cambiarte el nivel a ti mismo.'
-          : 'No se pudo cambiar el nivel.')
+          : mensajePanel(r.error ?? cuerpo, 'No se pudo cambiar el nivel.'))
         return
       }
       const aviso = await loQueNoQuedo(s.auth_user_id, banderasDeNivel(nivel, s.store_id))
@@ -274,7 +281,7 @@ export default function EquipoPage() {
                 único arreglo era un UPDATE a mano en la base. */}
             {puedeNombrar && profile.auth_user_id !== real?.auth_user_id && (
               <div className="mb-4">
-                <p className="text-xs font-bold text-gray-500 mb-2">Nivel</p>
+                <p className="text-xs font-bold mb-2" style={{ color: 'var(--text-muted)' }}>Nivel</p>
                 <div className="space-y-2">
                   {NIVELES.map(n => {
                     const actual = nivelDe(profile) === n.key
@@ -282,16 +289,22 @@ export default function EquipoPage() {
                       <button key={n.key} onClick={() => setNivel(profile, n.key)} disabled={busy || actual}
                         className="w-full flex items-start justify-between gap-3 p-3 rounded-2xl border text-left"
                         style={{
-                          borderColor: actual ? roleColor(n.key) : '#f0f0f0', borderWidth: actual ? 2 : 1,
+                          // Tokens del tema y no `roleColor`: el negro de "Admin"
+                          // (#111) sobre esta hoja, que en oscuro es una
+                          // superficie oscura, no se lee. Ver `.bg-white` en
+                          // index.css — acá blanco significa "tarjeta".
+                          background: actual ? 'var(--surface-3)' : 'transparent',
+                          borderColor: actual ? 'var(--brand)' : 'var(--border)',
+                          borderWidth: actual ? 2 : 1,
                           // Solo se apaga mientras escribe: el nivel actual está
                           // deshabilitado por ser el actual, no por no estar.
                           opacity: busy ? 0.5 : 1,
                         }}>
                         <span className="min-w-0">
-                          <span className="block font-bold text-sm" style={{ color: roleColor(n.key) }}>{NOMBRE_DE_NIVEL[n.key]}</span>
-                          <span className="block text-[10px] text-gray-400 mt-0.5">{n.dice(plataforma)}</span>
+                          <span className="block font-bold text-sm" style={{ color: 'var(--text)' }}>{NOMBRE_DE_NIVEL[n.key]}</span>
+                          <span className="block text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{n.dice(plataforma)}</span>
                         </span>
-                        {actual && <span className="text-[10px] font-black flex-shrink-0 mt-0.5" style={{ color: roleColor(n.key) }}>Actual</span>}
+                        {actual && <span className="text-[10px] font-black flex-shrink-0 mt-0.5" style={{ color: 'var(--brand)' }}>Actual</span>}
                       </button>
                     )
                   })}
