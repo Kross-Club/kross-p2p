@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { puedeAdministrar, esOperador, puedeBorrar, puedeNombrarAdmins, etiquetaDeRol } from './permisos'
+import { puedeAdministrar, esOperador, puedeNombrarAdmins, etiquetaDeRol } from './permisos'
 
 const MIEMBRO = { is_admin: false, role_label: 'Logística' }
 const OPERADOR = { is_admin: true, is_operator: true, role_label: 'Operador' }
@@ -16,15 +16,14 @@ describe('los tres niveles', () => {
     expect(puedeAdministrar(MIEMBRO)).toBe(false)
   })
 
-  it('pero no destruye', () => {
-    expect(puedeBorrar(ADMIN)).toBe(true)
-    expect(puedeBorrar(OPERADOR)).toBe(false)
-    expect(puedeBorrar(MIEMBRO)).toBe(false)
-  })
-
-  // Sin esto lo de arriba no vale nada: un operador que puede nombrar admins se
-  // nombra a sí mismo y la restricción dura lo que tarde en darse cuenta.
-  it('y no puede nombrar administradores, que es cómo se saltaría lo anterior', () => {
+  // Nombrar es lo ÚNICO que no puede (29-ago-2026). Apagar tiendas y borrar
+  // productos se le devolvieron: son trabajo de operar, y pedir permiso para
+  // eso convierte el rol en un ayudante.
+  //
+  // Este candado no se suelta porque es el que sostiene a los demás: un
+  // operador que puede nombrar admins se nombra a sí mismo y la restricción
+  // dura lo que tarde en darse cuenta.
+  it('lo único que no puede es repartir mando', () => {
     expect(puedeNombrarAdmins(OPERADOR)).toBe(false)
     expect(puedeNombrarAdmins(ADMIN)).toBe(true)
     expect(puedeNombrarAdmins(MIEMBRO)).toBe(false)
@@ -34,8 +33,8 @@ describe('los tres niveles', () => {
   // "operador de la plataforma" son la misma regla en distinto alcance.
   it('el alcance y la restricción no se mezclan', () => {
     expect(puedeAdministrar(SUPER_OPERADOR)).toBe(true)
-    expect(puedeBorrar(SUPER_OPERADOR)).toBe(false)
-    expect(puedeBorrar(SUPER)).toBe(true)
+    expect(puedeNombrarAdmins(SUPER_OPERADOR)).toBe(false)
+    expect(puedeNombrarAdmins(SUPER)).toBe(true)
   })
 
   // `is_operator` sin `is_admin` no existe como estado válido, pero la BD no lo
@@ -44,13 +43,13 @@ describe('los tres niveles', () => {
     const raro = { is_admin: false, is_operator: true }
     expect(puedeAdministrar(raro)).toBe(false)
     expect(esOperador(raro)).toBe(false)
-    expect(puedeBorrar(raro)).toBe(false)
+    expect(puedeNombrarAdmins(raro)).toBe(false)
   })
 
   it('sin sesión resuelta no se puede nada', () => {
     for (const q of [null, undefined]) {
       expect(puedeAdministrar(q)).toBe(false)
-      expect(puedeBorrar(q)).toBe(false)
+      expect(puedeNombrarAdmins(q)).toBe(false)
       expect(esOperador(q)).toBe(false)
     }
   })

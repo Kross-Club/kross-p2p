@@ -2194,6 +2194,42 @@ para el cambio; `permisos.ts` las lee delegando ahí mismo. **Tercera vez en dos
 las dos copias de una definición saca a la luz lo que solo sobrevivía estando separadas** — y
 esta vez lo que salió no fue un fallo, fue una pantalla que faltaba.
 
+## Dónde está la línea del operador (29-ago-2026)
+
+El operador nació con tres candados: no apagar una tienda, no borrar un producto, no nombrar
+administradores. Puestos de golpe, por la duda razonable de "esto no se deshace". Con el rol ya
+funcionando, dos de los tres resultaron ser fricción y no seguridad.
+
+**Una marca que no paga se apaga el mismo día. Un producto mal cargado se borra.** Son trabajo
+de operar. Tener que despertar a un administrador para cualquiera de las dos convierte al
+operador en un ayudante — y el rol existe justamente para que la plataforma se opere sin
+depender de nadie. Además el argumento del "no se deshace" no aguantaba: apagar una tienda se
+deshace tocando el mismo botón, y el que de verdad no se deshace —borrar un producto— también
+lo hace un admin sin más ceremonia que un clic.
+
+Queda **uno**, y es el único que hacía falta: **nombrar es repartir mando, no operar.** Sin ese
+candado el nivel entero es decorativo. Un operador que puede crear administradores se crea uno
+y entra con él, o se asciende a sí mismo; lo que no podía hacer lo hace igual dando un rodeo.
+Una restricción que el restringido puede levantar no es una restricción, es un cartel.
+
+### Y de tres candados a una pregunta
+
+Lo que se fue con ellos importa tanto como lo que se quedó. Había un `puedeBorrar` que tapaba
+las tres cosas a la vez y un `puedeNombrarAdmins` que era su alias. Con dos de las tres
+levantadas, `puedeBorrar` pasaba a ser idéntico a `puedeAdministrar`: dos nombres para la misma
+pregunta, esperando a que alguien los tocara por separado.
+
+Así que no se invirtió una bandera, se **borró un concepto**. Hoy `is_operator` se pregunta en
+un solo sitio del panel —`puedeNombrarAdmins`— y tiene una sola gemela en el servidor
+(`admin-team`). Tres candados que caducan a ritmos distintos son tres oportunidades de que uno
+se quede puesto sin que nadie recuerde por qué; ya pasó con dos de ellos en una semana.
+
+**Y el texto siguió al permiso.** `LIMITES_OPERADOR` era una lista de tres que la pantalla
+unía con comas; ahora es `LIMITE_OPERADOR`, una frase. La descripción del rol en *Equipo* dice
+lo que el rol hace —entra a cualquier tienda, la crea, la edita, la enciende y la apaga— en vez
+de enumerar lo que no. Prometer un límite que el código ya no aplica es peor que no tener el
+límite.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

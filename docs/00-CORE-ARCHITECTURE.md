@@ -125,13 +125,13 @@ entre darle todo —incluido apagar la tienda de un cliente— o darle nada.
 | | Banderas | Alcance | Puede |
 |---|---|---|---|
 | **miembro** | — | sus pedidos | atender lo suyo |
-| **operador** | `is_admin` + `is_operator` | su tienda, o la plataforma | todo lo del admin **menos destruir** |
+| **operador** | `is_admin` + `is_operator` | su tienda, o la plataforma | opera todo, **no reparte mando** |
 | **admin** | `is_admin` | íd. | todo |
 
 **Los dos ejes son independientes**, y ahí está lo que lo hace barato:
 
 - `is_admin` / `is_super_admin` dicen **hasta dónde llega** — una tienda, o la plataforma.
-- `is_operator` dice **qué NO puede** dentro de ese alcance.
+- `is_operator` dice **qué NO puede** dentro de ese alcance — hoy, una sola cosa (abajo).
 
 Así "operador de una marca" y "operador de la plataforma" son la misma regla en distinto
 alcance, sin una tercera columna ni un segundo camino. Y como el operador ES `is_admin`,
@@ -153,22 +153,30 @@ no cuadra, lo dice y nombra la causa: la función está desplegada en una versi�
 silencio —éxito parcial, sin error, visible días después y en otra pantalla— es lo que costó
 una semana.
 
-Lo que le queda vedado:
+**Dónde está la línea, y por qué ahí (29-ago-2026).** Le queda vedada **una** cosa:
 
 | No puede | Dónde se aplica |
 |---|---|
-| apagar la tienda de una marca | `manage-store` — `active: false` |
-| borrar un producto | `manage-product` — acción `delete` |
-| **crear o promover administradores** | `admin-team` — acción `create` |
+| **crear o ascender administradores** | `admin-team` — acciones `create` y `set_level` |
 
-El tercero no es "otra cosa que también restringimos": **sin él los dos primeros no valen
-nada**. Un operador que puede nombrar admins se nombra a sí mismo, o crea uno y entra con
-él. Una restricción que el restringido puede levantar no es una restricción.
+Eran tres. Apagar la tienda de una marca y borrar un producto se le devolvieron: son trabajo
+de operar —una marca que no paga se apaga el mismo día, un producto mal cargado se borra— y
+tener que despertar a un administrador para eso convierte el rol en un ayudante, que es lo
+contrario de para qué existe. El operador opera la plataforma **sin depender de nadie**.
 
-Lo que **sí** puede, a propósito: anular y cancelar pedidos (`restore` y `recreate` los
-deshacen, así que no destruyen nada, y son trabajo diario), sacar un producto de la venta
-con `active: false`, y volver a **encender** una tienda apagada — se mira la dirección del
-cambio, no solo el campo.
+La que queda es la única que no se puede soltar: **nombrar es repartir mando, no operar.** Sin
+ese candado el nivel entero es decorativo — un operador que puede nombrar admins se nombra a
+sí mismo, o crea uno y entra con él, y lo que no podía hacer lo hace igual dando un rodeo. Una
+restricción que el restringido puede levantar no es una restricción.
+
+Y que sea **una sola** pregunta es la mitad del valor: hubo un `puedeBorrar` que tapaba las
+tres, y tres candados que caducan a ritmos distintos son tres oportunidades de que uno se
+quede puesto sin que nadie recuerde por qué. Hoy `is_operator` se pregunta en un solo sitio,
+`puedeNombrarAdmins`.
+
+Lo que **sí** puede y conviene no volver a discutir: anular y cancelar pedidos (`restore` y
+`recreate` los deshacen), sacar un producto de la venta con `active: false`, y apagar y
+encender tiendas.
 
 Las reglas viven en **`src/lib/permisos.ts`**, una sola vez, y cada una tiene su gemela en
 la Edge Function correspondiente. **La del servidor es la que manda**: ocultar un botón no

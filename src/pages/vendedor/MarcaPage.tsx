@@ -4,7 +4,6 @@ import { mensajePanel } from '../../lib/panel-errors'
 import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck, BarChart3, Sparkles } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
-import { puedeBorrar } from '../../lib/permisos'
 import { useDemo, setDemo } from '../../lib/demo/modo-demo'
 import { PEDIDOS_POR_DIA } from '../../lib/demo/tienda-demo'
 
@@ -208,7 +207,7 @@ export default function MarcaPage() {
         ))}
       </div>
 
-      {editing && <BrandEditor store={editing} isSuper={isSuper} puedeApagar={puedeBorrar(real)} adminId={real?.auth_user_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+      {editing && <BrandEditor store={editing} isSuper={isSuper} adminId={real?.auth_user_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {creating && <CreateBrand adminId={real?.auth_user_id ?? ''} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load() }} />}
     </div>
   )
@@ -284,12 +283,11 @@ function LogoPicker({ logo, uploading, onPick, round, help }: { logo: string | n
   )
 }
 
-function BrandEditor({ store, isSuper, puedeApagar, adminId, onClose, onSaved }: {
+function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   store: StoreRow; isSuper: boolean
   /** Apagar una tienda deja de venderle ese mismo segundo, y no lo hace un
    *  operador. El servidor lo rechaza igual (`manage-store`); acá se oculta
    *  para no ofrecer un botón que va a fallar. */
-  puedeApagar: boolean
   adminId: string; onClose: () => void; onSaved: () => void
 }) {
   const [nombre, setNombre] = useState(store.nombre)
@@ -523,10 +521,11 @@ function BrandEditor({ store, isSuper, puedeApagar, adminId, onClose, onSaved }:
           <ColorRow label="Fondo oscuro" value={cd} onChange={setCd} />
         </div>
 
-        {/* Volver a encender sí puede el operador —eso desatasca y no rompe
-            nada—; apagar no. Por eso el botón se ofrece cuando la tienda está
-            apagada aunque no pueda apagarla. */}
-        {isSuper && (puedeApagar || !active) && (
+        {/* Apagar y encender es de quien administra la plataforma, operador
+            incluido: una marca que no paga se apaga el mismo día, y tener que
+            despertar a un administrador para eso es exactamente lo que el rol
+            existe para evitar. Se deshace tocando otra vez. */}
+        {isSuper && (
           <button onClick={() => setActive(a => !a)}
             className="w-full flex items-center justify-between rounded-2xl px-4 py-3 mb-4"
             style={{ background: active ? '#DCFCE7' : '#FEE2E2' }}>
@@ -535,11 +534,6 @@ function BrandEditor({ store, isSuper, puedeApagar, adminId, onClose, onSaved }:
             </span>
             <Power size={16} style={{ color: active ? '#16A34A' : '#DC2626' }} />
           </button>
-        )}
-        {isSuper && !puedeApagar && active && (
-          <p className="text-[10px] text-gray-400 mb-4 px-1">
-            Apagar una tienda lo hace el administrador.
-          </p>
         )}
 
         {/* Cómo entrega esta marca. El recojo en agencia SIEMPRE está disponible

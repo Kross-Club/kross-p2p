@@ -4,7 +4,7 @@ import { Users, Eye, LogIn, UserPlus, X, Pencil } from 'lucide-react'
 import { escuchar } from '../../lib/realtime'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
 import { useEquipo } from '../../lib/store-team'
-import { puedeNombrarAdmins, etiquetaDeRol, esOperador, LIMITES_OPERADOR } from '../../lib/permisos'
+import { puedeNombrarAdmins, etiquetaDeRol, esOperador, LIMITE_OPERADOR } from '../../lib/permisos'
 import { supabase } from '../../lib/supabase'
 import { mensajePanel } from '../../lib/panel-errors'
 import PushSettings from '../../components/PushSettings'
@@ -49,7 +49,7 @@ const NIVELES: Array<{ key: Nivel; dice: (plataforma: boolean) => string }> = [
   { key: 'miembro', dice: p => p
       ? 'Nada que hacer acá: los pedidos son de las tiendas.'
       : 'Atiende sus pedidos y nada más.' },
-  { key: 'operador', dice: p => `Hace todo lo del admin ${p ? 'en cualquier tienda' : 'en esta tienda'}, menos ${LIMITES_OPERADOR.join(', ')}.` },
+  { key: 'operador', dice: p => `Hace todo lo del admin ${p ? 'en cualquier tienda' : 'en esta tienda'}, menos ${LIMITE_OPERADOR}.` },
   { key: 'admin', dice: p => p
       ? 'Sin límites, en toda la plataforma.'
       : 'Sin límites en esta tienda.' },
@@ -238,8 +238,9 @@ export default function EquipoPage() {
         <div className="rounded-2xl px-4 py-3 mb-4" style={{ background: 'var(--info-bg)', border: '0.5px solid var(--info-border)' }}>
           <p className="text-xs font-black mb-1" style={{ color: 'var(--info-fg)' }}>Operador</p>
           <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            Hace todo lo que hace el administrador —entra a cualquier tienda, mueve pedidos, atiende
-            clientes— menos {LIMITES_OPERADOR.join(', ')}.
+            Opera la plataforma sin depender de nadie: entra a cualquier tienda, la crea, la edita,
+            la enciende y la apaga, mueve pedidos y atiende clientes. Lo único que no hace es
+            {' '}{LIMITE_OPERADOR} — eso es repartir mando, no operar.
           </p>
         </div>
       )}
@@ -315,7 +316,7 @@ export default function EquipoPage() {
               !puedeNombrar && (
                 <p className="text-sm text-gray-400">
                   {esOperador(profile)
-                    ? `Es operador: hace todo lo que hace el administrador menos ${LIMITES_OPERADOR.join(', ')}.`
+                    ? `Es operador: opera todo, menos ${LIMITE_OPERADOR}.`
                     : 'Es administrador.'}
                 </p>
               )
@@ -501,7 +502,7 @@ function AddMember({ storeId, adminId, plataforma, puedeNombrar, onClose, onDone
               </button>
               {asOperador && (
                 <p className="text-[10px] text-gray-400 px-1">
-                  Hace todo lo que haces tú{plataforma ? ', en cualquier tienda' : ''}, menos {LIMITES_OPERADOR.join(', ')}.
+                  Hace todo lo que haces tú{plataforma ? ', en cualquier tienda' : ''}, menos {LIMITE_OPERADOR}.
                 </p>
               )}
 

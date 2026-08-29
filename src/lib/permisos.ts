@@ -4,12 +4,26 @@
 // de alta a alguien que ayude a operar la plataforma obligaba a elegir entre
 // darle todo —incluido apagar la tienda de un cliente— o darle nada.
 //
-// Ahora son tres, y el que entra en medio es el **operador**: hace todo lo que
-// hace el administrador MENOS destruir.
+// Ahora son tres, y el que entra en medio es el **operador**: opera la
+// plataforma entera sin depender de nadie.
 //
 //   miembro     · lo suyo: sus pedidos
-//   operador    · todo lo del admin, salvo destruir
+//   operador    · opera todo, pero no reparte mando
 //   admin       · todo
+//
+// **Dónde está la línea, y por qué ahí (29-ago-2026).** Al principio el
+// operador no podía tres cosas: apagar una tienda, borrar un producto y nombrar
+// administradores. Las dos primeras se le devolvieron: son trabajo de operar
+// —una marca que no paga se apaga el mismo día, un producto mal cargado se
+// borra— y tener que despertar a un administrador para eso convierte el rol en
+// un ayudante, que es justo lo contrario de para qué existe.
+//
+// La tercera se queda, y es la única que de verdad hace falta: **nombrar es
+// repartir mando, no operar.** Sin ese candado el nivel entero es decorativo —
+// un operador que puede crear administradores se crea uno y entra con él, o se
+// asciende a sí mismo, y lo que no podía hacer lo hace igual dando un rodeo. Una
+// restricción que el restringido puede levantar no es una restricción, es un
+// cartel.
 //
 // Los dos ejes son independientes a propósito:
 //
@@ -70,33 +84,20 @@ export function esOperador(p: Quien): boolean {
 }
 
 /**
- * ¿Puede DESTRUIR?
+ * ¿Puede crear o ascender administradores?
  *
- * Lo que cubre, que es todo lo que en este panel no se puede deshacer:
+ * **Lo único** que separa a un operador de un administrador dentro del panel, y
+ * por eso es la única pregunta que mira `is_operator`. Hubo un `puedeBorrar`
+ * que además tapaba apagar tiendas y borrar productos; se fue, porque esas dos
+ * son trabajo de operar y preguntarlas por separado no cambiaba la respuesta
+ * para nadie: quien llega a esos botones ya administra.
  *
- *   · apagar la tienda de una marca (deja de vender)
- *   · borrar un producto
- *   · **crear o promover administradores**
- *
- * El tercero no es "otra cosa que también restringimos": sin él los dos
- * primeros no valen nada. Un operador que puede nombrar admins se nombra a sí
- * mismo —o crea uno y entra con él— y la restricción dura lo que tarde en
- * darse cuenta. Una restricción que el restringido puede levantar no es una
- * restricción, es un cartel.
- *
- * Lo que NO cubre, a propósito: anular o cancelar un pedido. Los dos se
- * deshacen (`restore`, `recreate`), así que no destruyen nada — y son trabajo
- * diario de quien opera.
+ * Que sea una sola pregunta es la mitad del valor. Tres candados que caducan a
+ * ritmos distintos se convierten en tres oportunidades de que uno se quede
+ * puesto sin que nadie sepa por qué.
  */
-export function puedeBorrar(p: Quien): boolean {
-  return puedeAdministrar(p) && !p?.is_operator
-}
-
-/** Crear o promover administradores. Es la misma pregunta que `puedeBorrar` —
- *  ver por qué arriba— y tiene nombre propio porque en el sitio donde se
- *  pregunta, "¿puede borrar?" no se entendería. */
 export function puedeNombrarAdmins(p: Quien): boolean {
-  return puedeBorrar(p)
+  return puedeAdministrar(p) && !p?.is_operator
 }
 
 /**
@@ -114,9 +115,6 @@ export function etiquetaDeRol(p: Quien): string {
 }
 
 /** Lo que un operador NO puede, dicho como se le dice a una persona. Vive acá
- *  para que la pantalla que lo explica y la que lo aplica no se separen. */
-export const LIMITES_OPERADOR = [
-  'apagar la tienda de una marca',
-  'borrar productos',
-  'crear o promover administradores',
-]
+ *  para que la pantalla que lo explica y la que lo aplica no se separen — y es
+ *  UNA frase porque es UN candado (ver `puedeNombrarAdmins`). */
+export const LIMITE_OPERADOR = 'crear o ascender administradores'
