@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Plus, X, Trash2, Copy, Image as ImageIcon, ExternalLink, GripVertical, Truck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
-import { puedeBorrar } from '../../lib/permisos'
 import { demoActivo } from '../../lib/demo/modo-demo'
 import { tiendaDemo } from '../../lib/demo/tienda-demo'
 import { IMAGE_PRESETS, downscaleImage } from '../../lib/images/downscale'
@@ -173,18 +172,17 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {editing && <Editor product={editing} adminId={real?.auth_user_id ?? ''} storeId={effective?.store_id ?? ''} puedeEliminar={puedeBorrar(real)} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+      {editing && <Editor product={editing} adminId={real?.auth_user_id ?? ''} storeId={effective?.store_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
     </div>
   )
 }
 
-function Editor({ product, adminId, storeId, puedeEliminar, onClose, onSaved }: {
+function Editor({ product, adminId, storeId, onClose, onSaved }: {
   product: Product; adminId: string; storeId: string
   /** Borrar un producto es un DELETE sin papelera, y con pedidos viejos
    *  apuntando al que desaparece: no lo hace un operador. Para sacarlo de la
    *  venta está el interruptor de activo, que sí puede y sí se deshace. El
    *  servidor lo rechaza igual (`manage-product`). */
-  puedeEliminar: boolean
   onClose: () => void; onSaved: () => void
 }) {
   const [nombre, setNombre] = useState(product.nombre)
@@ -507,7 +505,7 @@ function Editor({ product, adminId, storeId, puedeEliminar, onClose, onSaved }: 
         </div>
 
         <div className="flex gap-2">
-          {product.id && puedeEliminar && <button onClick={del} disabled={busy} className="px-4 py-3 rounded-2xl font-black text-sm bg-red-50 text-red-600">Eliminar</button>}
+          {product.id && <button onClick={del} disabled={busy} className="px-4 py-3 rounded-2xl font-black text-sm bg-red-50 text-red-600">Eliminar</button>}
           <button onClick={save} disabled={busy} className="flex-1 py-3 rounded-2xl font-black text-sm disabled:opacity-50" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
             {busy ? 'Guardando…' : 'Guardar producto'}
           </button>

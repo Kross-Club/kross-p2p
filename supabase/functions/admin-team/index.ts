@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     nombre?: string
     store_id?: string
     is_admin?: boolean          // create: make this member the brand admin
-    /** create: operador — administra igual que el admin PERO no destruye.
+    /** create: operador — administra igual que el admin PERO no reparte mando.
      *  Ver el bloque §30 de setup-kross.sql y `src/lib/permisos.ts`. */
     is_operator?: boolean
     /** create: super admin — alcance plataforma, no una marca. Solo lo puede
@@ -93,10 +93,16 @@ Deno.serve(async (req) => {
     .from('sellers').select('is_admin, is_super_admin, is_operator, store_id').eq('auth_user_id', body.admin_auth_id).maybeSingle()
   if (!admin?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
 
-  // ─── El operador administra, pero no nombra ────────────────────────────────
+  // ─── El operador opera, pero no nombra ─────────────────────────────────────
   //
-  // Sin esta línea el rol entero es decorativo: un operador que puede crear un
-  // administrador se crea uno y entra con él, y lo que no podía hacer lo hace
+  // **El único candado que le queda** (29-ago-2026). Apagar tiendas y borrar
+  // productos se le devolvieron: son trabajo de operar, y pedir permiso para
+  // eso convierte el rol en un ayudante. Nombrar no: repartir mando no es
+  // operar.
+  //
+  // Y es el que no se puede soltar. Sin esta línea el nivel entero es
+  // decorativo: un operador que puede crear un administrador se crea uno y
+  // entra con él, o se asciende a sí mismo, y lo que no podía hacer lo hace
   // igual dando un rodeo. Una restricción que el restringido puede levantar no
   // es una restricción.
   //
@@ -291,8 +297,8 @@ Deno.serve(async (req) => {
       })
     }
     // El operador ES admin: `is_admin` en true, `is_operator` en true. No es un
-    // tercer estado suelto — es "administra" con "no destruye" encima, que es
-    // lo que hace que todos los `is_admin` ya escritos valgan para él.
+    // tercer estado suelto — es "administra" con "no nombra" encima, que es lo
+    // que hace que todos los `is_admin` ya escritos valgan para él.
     //
     // Las banderas las arma `nivel.ts`, el mismo sitio que las arma en
     // `set_level`: dos maneras de escribir lo mismo es como se llega a filas que

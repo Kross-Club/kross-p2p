@@ -11,8 +11,9 @@ export interface SellerProfile {
   avatar_url: string | null
   is_admin: boolean
   is_super_admin?: boolean
-  /** Operador: administra igual que el admin pero no destruye. Las reglas viven
-   *  en `permisos.ts` — acá solo viaja el dato. */
+  /** Operador: administra igual que el admin, pero no reparte mando (no crea ni
+   *  asciende administradores). Las reglas viven en `permisos.ts` — acá solo
+   *  viaja el dato. */
   is_operator?: boolean
   available: boolean
 }

@@ -1223,7 +1223,7 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS shalom_auto_guide_enabled boolean DE
 -- tienda de un cliente— o darle nada.
 --
 --   miembro     is_admin = false                      · lo suyo: sus pedidos
---   operador    is_admin = true,  is_operator = true  · todo lo del admin, menos destruir
+--   operador    is_admin = true,  is_operator = true  · opera todo, no reparte mando
 --   admin       is_admin = true,  is_operator = false · todo
 --
 -- Los dos ejes son independientes a propósito:
@@ -1238,19 +1238,22 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS shalom_auto_guide_enabled boolean DE
 -- operador, que es exactamente la promesa del rol: hace todo lo que hace el
 -- admin.
 --
--- Qué le queda vedado (lo aplica el servidor, no el panel — ver más abajo):
+-- Qué le queda vedado — UNA cosa (lo aplica el servidor, no el panel):
 --
---   · apagar la tienda de una marca            `manage-store`   (active = false)
---   · borrar un producto                       `manage-product` (action delete)
---   · crear o promover administradores         `admin-team`
+--   · crear o ascender administradores         `admin-team`
 --
--- El tercero no es "otra cosa que también restringimos": sin él los dos
--- primeros no valen nada. Un operador que puede nombrar admins se nombra a sí
--- mismo, o crea uno y entra con él. Una restricción que el restringido puede
--- levantar no es una restricción.
+-- Eran tres (29-ago-2026). Apagar la tienda de una marca y borrar un producto
+-- se le devolvieron: son trabajo de operar —una marca que no paga se apaga el
+-- mismo día, un producto mal cargado se borra— y tener que despertar a un
+-- administrador para eso convierte el rol en un ayudante, que es lo contrario
+-- de para qué existe. La que queda es la que no se puede soltar: **nombrar es
+-- repartir mando, no operar**, y sin ese candado el nivel entero es decorativo
+-- — un operador que puede nombrar admins se nombra a sí mismo, o crea uno y
+-- entra con él. Una restricción que el restringido puede levantar no es una
+-- restricción.
 --
--- NO le quita: anular o cancelar un pedido. Los dos se deshacen (`restore`,
--- `recreate`), así que no destruyen nada — y son trabajo diario de quien opera.
+-- Tampoco le quita: anular o cancelar un pedido. Los dos se deshacen
+-- (`restore`, `recreate`) y son trabajo diario de quien opera.
 --
 -- El default es `false`: nadie se vuelve operador por correr esto. Los que ya
 -- existen siguen siendo lo que eran.

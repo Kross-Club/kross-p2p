@@ -45,15 +45,10 @@ Deno.serve(async (req) => {
 
   if (body.action === 'delete') {
     if (!body.id) return new Response('Missing id', { status: 400, headers: corsHeaders })
-    // El operador edita productos, pero no los borra: es un DELETE sin papelera
-    // ni deshacer, y con pedidos viejos apuntando al producto que desaparece.
-    // Para sacar uno de la venta está `active: false`, que sí puede y sí se
-    // deshace. Ver el bloque §30 de setup-kross.sql.
-    if (admin.is_operator) {
-      return new Response(JSON.stringify({ error: 'operador_no_borra' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    // Borrar lo puede quien administra, operador incluido (29-ago-2026): cargar
+    // mal un producto y tener que pedirle a otro que lo borre no es una
+    // salvaguarda, es una interrupción. Sigue siendo un DELETE sin papelera —
+    // para sacar algo de la venta y poder volver está `active: false`.
     await supabase.from('products').delete().eq('id', body.id)
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }

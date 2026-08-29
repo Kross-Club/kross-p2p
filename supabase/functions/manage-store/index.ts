@@ -117,11 +117,11 @@ Deno.serve(async (req) => {
 
   if (!me?.is_admin) return new Response('Forbidden', { status: 403, headers: corsHeaders })
   // Alcance: su tienda, o todas. Lo responde `alcance.ts` y no la bandera suelta
-  // —un operador de Kross administra la plataforma igual que el dueño; lo que no
-  // puede es destruir, y eso lo dice `puedeDestruir`, no esta línea.
+  // —un operador de Kross administra la plataforma igual que el dueño, y desde
+  // el 29-ago eso incluye apagar y encender tiendas: es trabajo de operar y se
+  // deshace. Lo único que no puede es repartir mando, y de eso responde
+  // `admin-team`, no esta función.
   const isSuper = administraLaPlataforma(me)
-  /** Operador: administra igual, pero no destruye. Ver §30 de setup-kross.sql. */
-  const puedeDestruir = !me.is_operator
 
   // ─── LIST STORES ───────────────────────────────────────────────────────────
   // Super admin sees every brand; a store admin sees only their own.
@@ -296,7 +296,6 @@ Deno.serve(async (req) => {
     //
     // Y se responde con un error en vez de ignorarlo callado: un guardado que
     // dice "listo" y no guardó lo que le pediste es peor que uno que falla.
-    if (body.active === false && !puedeDestruir) return json({ error: 'operador_no_apaga' }, 403)
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active
     // ¿Reparte a domicilio, o solo recojo en agencia? Es super-admin only a
     // propósito: depende de si la marca tiene operación de última milla

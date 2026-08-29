@@ -34,6 +34,20 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El operador opera sin pedir permiso · `manage-store` + `manage-product` (29-ago-2026, tarde)
+
+**Qué se ve si no entra:** el panel le ofrece al operador apagar una tienda y borrar un
+producto, y el servidor se lo rechaza con `operador_no_apaga` / `operador_no_borra`. O sea, un
+botón que falla — exactamente lo que estas dos funciones dejan de hacer.
+
+```
+supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-product --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL. Las dos ya estaban en la lista pendiente del PR #116, así que este deploy cubre
+ambas cosas.
+
 ### El nivel se cambia desde el panel · `admin-team` (29-ago-2026, tarde)
 
 **Qué se ve si no entra:** en *Equipo → una persona* aparece el selector de **Nivel**, y al
@@ -44,7 +58,7 @@ supabase functions deploy admin-team --project-ref ofdjghntvmrdfjhazfvz
 ```
 
 Sin SQL. Y si alguien quedó sin nivel por un alta contra una función vieja, el arreglo ya no
-pide base de datos: se sube desde esa misma pantalla.
+pide base de datos: se sube desde esa misma pantalla. **Desplegada el 29-ago.**
 
 ### El alcance de la plataforma · SQL + 11 funciones
 
