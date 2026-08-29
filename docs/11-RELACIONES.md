@@ -1742,6 +1742,108 @@ después del adelanto, así que se ven anillos en fracciones raras: 150 de 230.
 
 Ninguno mezcla upsell con saldo cobrado, a propósito: el saldo se cobra contra el total del
 momento, y un dato de ejemplo con las dos cosas encima enseñaría una cuenta que no cuadra.
+## El chat nombraba la etapa por su cuenta (29-ago-2026)
+
+La cabecera del pedido ya pintaba el paso del EJE —eso se arregló ayer—, pero el botón de al
+lado seguía sacando "lo que sigue" de la lista **cruda** de la base
+(`nuevo · validando · confirmado · en_camino · entregado`). Dos listas en la misma fila, y se
+notaba:
+
+- un pedido por agencia en **Registrado** tenía de botón **"✅ Entregado"**, saltándose En
+  origen, En tránsito y En destino de un dedazo;
+- uno en **Confirmado** ofrecía **"🚚 En camino"**, que en un pedido por agencia no es ni un
+  paso de su línea: ahí la palabra es *En tránsito*, y antes va *Registrado*.
+
+Ahora lo que sigue sale de `siguientePaso()`, que camina **la línea de ese pedido**
+(`pasosDelPedido`) — la misma que pinta el tablero. Un pedido por agencia nunca ofrece "En
+camino"; uno a domicilio nunca ofrece "Registrado". No están en sus líneas.
+
+### Y de paso: quién mueve cada paso
+
+Al calcular lo que sigue apareció la pregunta que la pantalla nunca hacía: **¿ese paso es
+nuestro?** Son tres dueños distintos y el panel los trataba igual:
+
+| Dueño | Pasos | Cómo se mueve |
+|---|---|---|
+| **equipo** | Pedido creado · Validando · Confirmado · En camino · Entregado | lo marca una persona (`stage`) |
+| **guía** | Registrado | se enciende al registrar la guía |
+| **courier** | En origen · En tránsito · En destino | lo reporta Shalom u Olva |
+
+Los dos últimos **se dicen, no se pulsan**: un botón para algo que no movemos promete un hecho
+que no tenemos. Donde antes había un botón equivocado ahora se lee *"Sigue 🏬 En origen · lo
+reporta SHALOM"* — que además dice dónde mirar, porque la caja de registrar la guía está tres
+tarjetas más abajo.
+
+> Se pregunta a las dos agujas y con eso basta, igual que en el resto del eje: la guía se emite
+> **antes** de entregarle el paquete al courier, así que hay `registrado` que ya salieron.
+
+## Una tienda de ejemplo que se deja tocar (29-ago-2026)
+
+El demo se veía pero no se movía. Avanzar de etapa, cambiar una cantidad o escribir en el chat
+llamaban al servidor, y ahí no existe ningún pedido `demo-…`: el vendedor que estaba enseñando
+la herramienta se llevaba un **"No se pudo cambiar el estado"** en plena demostración. Que es
+el peor momento posible — la pantalla que existe para vender el producto fallando delante del
+cliente.
+
+Ahora los cambios se guardan **encima** del generador, en `demo/cambios-demo.ts`. Tres reglas,
+y las tres son el porqué del archivo:
+
+1. **No tocan el generador.** La tienda de ejemplo se sigue armando igual, determinista, y esto
+   es un parche que se le aplica al leerla. Un cambio que mutara el generador contagiaría los
+   totales del panel y ya nadie podría comparar dos pantallas.
+2. **Viven en el dispositivo**, como el favorito, el tema y el propio interruptor del demo. Se
+   puede cerrar el navegador a media presentación y seguir donde iba.
+3. **Se van con el demo.** Apagarlo los borra, y la barra de arriba tiene un **Reiniciar** que
+   hace lo mismo sin salir. Al volver, la tienda de ejemplo está otra vez como el primer día:
+   no hay estado acumulado que ensucie la próxima demo.
+
+### Qué se puede mover
+
+| Gesto | Qué pasa |
+|---|---|
+| **Avanzar de etapa** | camina el eje completo: la guía se inventa, las fases del courier se marcan |
+| **Cantidad + / −** | recalcula el total del pedido, como hace `order-manage` con `items` |
+| **Quitar un producto** | igual, con la misma regla: no se puede quitar el único |
+| **Enviar una oferta** | la manda **y el cliente la acepta**: el producto entra, el total sube |
+| **Escribir en el chat** | el mensaje queda y sigue ahí al volver |
+| **Anular · cancelar · recuperar · nota · marcar respondido** | como en la tienda de verdad |
+
+El **avanzar** del demo es distinto del de la tienda real, y es legítimo: allá `registrado` lo
+enciende la guía y `en origen` lo reporta Shalom, así que el panel no los ofrece. En el demo no
+hay guía ni courier — **los hacemos nosotros**, que es justamente lo que hay que poder enseñar.
+La guía se inventa con el mismo formato de seis dígitos, y del reloj y no de `Math.random`: en
+el demo nada es al azar, ni siquiera una guía inventada de un clic.
+
+La **oferta aceptada de una** también es una decisión, no un atajo. En la tienda de verdad son
+dos momentos con una persona en medio; acá no hay nadie del otro lado, y una oferta esperando
+para siempre no enseña nada. Lo que hay que poder mostrar es el pedido creciendo: el total
+sube y **el anillo baja**, porque el adelanto ya no lo cubre. Se escriben los dos mensajes que
+escribiría el servidor, con sus mismos textos, para que la conversación se lea igual que una de
+verdad.
+
+### Lo que el demo NO puede hacer, y por qué
+
+- **El comprador no contesta.** Lo que escribe el vendedor queda escrito; una respuesta del
+  cliente sería inventar un mensaje que nadie mandó, y este panel se usa para decidir sobre
+  plata. La mitad honesta se enseña; la otra no se finge.
+- **No se puede grabar una llamada.** La grabación la produce LiveKit desde una sala real. El
+  demo ya trae llamadas con su audio de ejemplo en la conversación generada — se pueden
+  reproducir— pero una llamada nueva necesita las dos puntas.
+- **No cobra.** Ninguna pasarela se toca: el anillo del demo se mueve porque cambia el total del
+  pedido, no porque entre plata.
+
+### Dónde se enchufa
+
+Una sola puerta por gesto, que es lo que evita tener dos caminos que mantener:
+
+- `OrderDetailModal.post` — todo lo que cambia el pedido desde el detalle. Si es un pedido de
+  ejemplo responde `ejecutarEnDemo` con la **misma forma** (`Response`) que traería el
+  servidor, así que abajo no cambia nada.
+- `StageSelector.push` — avanzar de etapa.
+- `handleSend` y el envío de ofertas — el chat.
+- `useStoreOrders` y `pedidoDemoPorToken` — la lectura. El tablero se recalcula en el mismo
+  render en que se mueve la etapa, así que el pedido **cambia de columna a la vista**, que es
+  media demo.
 
 ## Ver también
 

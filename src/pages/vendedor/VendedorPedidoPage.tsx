@@ -17,8 +17,8 @@ import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
 import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
 import { stageVigente } from '../../lib/order-stages'
-import { conPlataEnJuego, columnaDelPedido, pasoActual, etiquetaDePaso } from '../../lib/order-tracking'
-import type { PedidoRastreable } from '../../lib/order-tracking'
+import { conPlataEnJuego, columnaDelPedido, pasoActual, etiquetaDePaso, siguientePaso, courierDelPedido } from '../../lib/order-tracking'
+import type { PasoKey, PedidoRastreable } from '../../lib/order-tracking'
 import AnilloAvance from '../../components/AnilloAvance'
 import { useUbicacion } from '../../lib/ubicacion'
 import CustomerCard from '../../components/CustomerCard'
@@ -28,6 +28,7 @@ import PagoTrace from '../../components/PagoTrace'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
 import { pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
+import { ejecutarEnDemo, agregarMensajeDemo, ofertaAceptadaEnDemo } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -42,7 +43,6 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 // `preparando` ya no está: salió del eje (ver `order-stages.ts`). Los pedidos
 // que la BD todavía tiene ahí entran por `stageVigente` y se leen como
 // `confirmado` — sin eso, "avanzar" los mandaba a `nuevo`.
-const STAGES = ['nuevo','validando','confirmado','en_camino','entregado']
 
 // ─── Seller-initiated call modal ──────────────────────────────────────────────
 type CallState = 'connecting' | 'connected' | 'ended' | 'error'
@@ -254,43 +254,58 @@ function SellerCallModal({
 // que pinta el tablero, con el nombre y el emoji de `PASOS` — una sola
 // definición. Lo que se mueve sigue siendo el `stage`: las fases del courier no
 // son nuestras para marcarlas.
-function StageSelector({ pedido, sessionId, canWrite, onAdvanced }: {
+function StageSelector({ pedido, sessionId, canWrite, esDemo, onAdvanced }: {
   /** El pedido entero y no solo su `stage`: el paso del eje se calcula con el
    *  tipo de envío y lo que reporta el courier, no solo con lo que marcó una
    *  persona. */
   pedido: PedidoRastreable & { stage?: string | null }
   sessionId: string
   canWrite: boolean
-  onAdvanced: (next: string, handedOff: boolean) => void
+  /** En la tienda de ejemplo no hay guía ni courier: los hacemos nosotros, y por
+   *  eso ahí sí se puede avanzar por toda la línea. Ver `avanzarEnDemo`. */
+  esDemo: boolean
+  onAdvanced: (patch: Partial<OrderSession>, handedOff: boolean) => void
 }) {
   const [busy, setBusy] = useState(false)
   // Qué se está por hacer, mientras se pregunta. `null` = no se preguntó nada.
-  const [porConfirmar, setPorConfirmar] = useState<string | null>(null)
-  const current = pedido.stage ?? 'nuevo'
-  // Lo que la BD diga, traducido al eje de hoy. Todo lo de abajo mira `actual`,
-  // nunca `current`: un `preparando` viejo fuera de `STAGES` daba índice -1 y
-  // el botón de avanzar ofrecía la PRIMERA etapa como "siguiente".
-  const actual = stageVigente(current)
-  // El paso del eje, con su etiqueta específica ("Registrado en Shalom", "En
-  // agencia de Shalom") que la genérica de `PASOS` no tiene.
+  const [porConfirmar, setPorConfirmar] = useState<PasoKey | null>(null)
+  const actual = stageVigente(pedido.stage ?? 'nuevo')
+  // El paso del eje: el MISMO que pinta el tablero.
   const paso = pasoActual(pedido)
+  // Y lo que sigue EN LA LÍNEA DE ESTE PEDIDO, con quién lo mueve. Antes esto
+  // se sacaba de la lista cruda de etapas de la base, que es otra lista: un
+  // pedido por agencia en "Registrado" tenía de botón "✅ Entregado" —saltándose
+  // En origen, En tránsito y En destino— y uno en "Confirmado" ofrecía "En
+  // camino", que en su línea ni existe.
+  const sig = siguientePaso(pedido)
   const nombreDePaso = (key: string) => {
     const { label, emoji } = etiquetaDePaso(key)
     return `${emoji} ${label}`.trim()
   }
 
-  const push = async (next: string) => {
+  const push = async (key: PasoKey) => {
     setBusy(true)
     try {
+      // En el demo no hay servidor al que pedírselo: el cambio se guarda en el
+      // dispositivo y se ve igual. Sin esto, avanzar de etapa enseñando la
+      // herramienta terminaba en "No se pudo cambiar el estado".
+      if (esDemo) {
+        const r = ejecutarEnDemo(pedido as unknown as StoreOrder, { action: 'advance' })
+        if (!r.ok) throw new Error('advance_failed')
+        onAdvanced(r.patch as Partial<OrderSession>, false)
+        return
+      }
+      const stage = STAGE_DE_PASO[key]
+      if (!stage) throw new Error('advance_failed')
       // Persisted server-side (service role) — client writes were blocked by RLS.
       const res = await fetch(`${BASE}/order-manage`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'advance', session_id: sessionId, stage: next }),
+        body: JSON.stringify({ action: 'advance', session_id: sessionId, stage }),
       })
       if (!res.ok) throw new Error('advance_failed')
       const { assignment } = await res.json() as { assignment: unknown | null }
-      onAdvanced(next, !!assignment)
+      onAdvanced({ stage } as Partial<OrderSession>, !!assignment)
     } catch {
       alert('No se pudo cambiar el estado. Intenta de nuevo.')
     } finally {
@@ -302,19 +317,19 @@ function StageSelector({ pedido, sessionId, canWrite, onAdvanced }: {
   // cambio dispara avisos al comprador y puede ceder el pedido a otro rol. Un
   // dedo que resbala en el móvil del vendedor deja un pedido en una etapa que
   // no le toca y sin manera de volver. Por eso se pregunta antes.
-  const advance = () => {
-    const idx = STAGES.indexOf(actual)
-    if (idx < 0 || idx >= STAGES.length - 1 || busy) return
-    setPorConfirmar(STAGES[idx + 1])
-  }
 
   // "No entregado" ya NO vive acá. Es un CIERRE, no un paso: termina el pedido
   // igual que cancelarlo o anularlo, y estaba suelto en la fila del estado —
   // junto al botón de avanzar, que es su contrario— donde se pulsa por error.
   // Se fue abajo, con Cancelar y Anular, que es donde uno busca las cosas que
   // no se deshacen (ver `OrderDetailModal`).
-  const idx = STAGES.indexOf(actual)
   const terminal = actual === 'entregado' || actual === 'no_entregado'
+  // Se puede pulsar cuando el paso es NUESTRO. Los otros dos se dicen, no se
+  // pulsan: ofrecer un botón para algo que no movemos —la guía la enciende
+  // registrarla, `En origen` lo reporta el courier— es prometer un hecho que no
+  // tenemos. En el demo no hay guía ni courier, así que ahí todo se puede.
+  const puedePulsar = !!sig && (esDemo || sig.quien === 'equipo')
+
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-white border-b border-gray-100">
       <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Estado:</span>
@@ -324,13 +339,22 @@ function StageSelector({ pedido, sessionId, canWrite, onAdvanced }: {
       <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={stageChip(paso?.key ?? actual)}>
         {nombreDePaso(paso?.key ?? actual)}
       </span>
-      {canWrite && !terminal && idx >= 0 && idx < STAGES.length - 1 && (
-        <button onClick={advance} disabled={busy}
+
+      {canWrite && !terminal && sig && (puedePulsar ? (
+        <button onClick={() => !busy && setPorConfirmar(sig.key)} disabled={busy}
           className="ml-auto text-[10px] font-black px-3 py-1 rounded-full disabled:opacity-50"
           style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
-          {busy ? '…' : `→ ${nombreDePaso(STAGES[idx + 1])}`}
+          {busy ? '…' : `→ ${nombreDePaso(sig.key)}`}
         </button>
-      )}
+      ) : (
+        // Qué falta y de quién depende. Es más útil que un botón que no
+        // corresponde: dice dónde mirar —la guía se registra ahí abajo— en vez
+        // de dejar al vendedor buscando por qué no avanza.
+        <span className="ml-auto text-[10px] font-bold px-2 py-1 rounded-full"
+          style={{ background: 'var(--surface-3)', color: 'var(--text-faint)' }}>
+          {`Sigue ${nombreDePaso(sig.key)} · ${sig.quien === 'guia' ? 'al registrar la guía' : `lo reporta ${courierDelPedido(pedido) ?? 'el courier'}`}`}
+        </span>
+      ))}
 
       {porConfirmar && (
         <Confirmar
@@ -345,6 +369,13 @@ function StageSelector({ pedido, sessionId, canWrite, onAdvanced }: {
       )}
     </div>
   )
+}
+
+/** El `stage` que escribe cada paso del eje que SÍ mueve el equipo. Los otros
+ *  —`registrado`, las fases del courier— no se escriben desde acá. */
+const STAGE_DE_PASO: Partial<Record<PasoKey, string>> = {
+  nuevo: 'nuevo', validando: 'validando', confirmado: 'confirmado',
+  en_camino: 'en_camino', entregado: 'entregado', no_entregado: 'no_entregado',
 }
 
 function roleColor(role?: string | null) {
@@ -682,6 +713,17 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       read_at: null,
     }
     setMessages(prev => [...prev, optimistic])
+
+    // En el demo el mensaje se queda acá, en el dispositivo: no hay servidor
+    // que lo guarde ni comprador al otro lado. Es la mitad honesta de lo que se
+    // enseña —lo que ESCRIBE el vendedor queda escrito y sigue ahí al volver—;
+    // la respuesta del cliente no se puede inventar, así que no se inventa.
+    if (esTokenDemo(token)) {
+      agregarMensajeDemo(session.id, { ...optimistic, id: `demo-msg-${Date.now()}` })
+      setSending(false)
+      return
+    }
+
     try {
       const res = await fetch(`${BASE}/seller-send-message`, {
         method: 'POST',
@@ -706,7 +748,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     } finally {
       setSending(false)
     }
-  }, [input, session, sending, sellerName, sellerRole])
+  }, [input, session, sending, sellerName, sellerRole, token])
 
   if (loading) {
     return (
@@ -1024,11 +1066,12 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         pedido={session}
         sessionId={session.id}
         canWrite={canWrite}
-        onAdvanced={(next, handedOff) => {
-          setSession(s => s ? { ...s, stage: next as OrderSession['stage'] } : s)
+        esDemo={esTokenDemo(token)}
+        onAdvanced={(patch, handedOff) => {
+          setSession(s => s ? { ...s, ...patch } : s)
           // Ceded the lead → back to my list; otherwise refresh in place
           if (handedOff) onCerrar()
-          else reloadSession()
+          else if (!esTokenDemo(token)) reloadSession()
         }}
       />
       )}
@@ -1221,6 +1264,24 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           onClose={() => setShowOffer(false)}
           onSend={async (offer) => {
             setShowOffer(false)
+
+            // En el demo la oferta se manda Y el cliente la acepta, de una. En
+            // la tienda de verdad son dos momentos con una persona en medio,
+            // pero acá no hay nadie del otro lado: una oferta esperando para
+            // siempre no enseña nada, y lo que hay que poder mostrar es el
+            // pedido creciendo — el total sube y el anillo baja porque el
+            // adelanto ya no lo cubre.
+            if (esTokenDemo(token)) {
+              const r = ofertaAceptadaEnDemo(
+                session as unknown as StoreOrder,
+                offer,
+                { nombre: sellerName, rol: sellerRole },
+              )
+              if (r.patch) setSession(s => s ? { ...s, ...r.patch } as OrderSession : s)
+              reloadSession()
+              return
+            }
+
             try {
               const res = await fetch(`${BASE}/seller-send-message`, {
                 method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },

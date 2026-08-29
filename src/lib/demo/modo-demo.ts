@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { reiniciarDemo } from './cambios-demo'
 
 // ─── Modo DEMO del panel ─────────────────────────────────────────────────────
 //
@@ -47,6 +48,11 @@ export function demoActivo(storeId: string | null | undefined): boolean {
 }
 
 export function setDemo(storeId: string, next: boolean) {
+  // Salir del demo lo deja como el primer día. Lo que se tocó enseñando —una
+  // etapa avanzada, un producto agregado, un mensaje escrito— vive en el
+  // dispositivo (demo/cambios-demo.ts) y se va con él: si sobreviviera, la
+  // próxima demo empezaría a media película y nadie sabría por qué.
+  if (!next) reiniciarDemo()
   estado.set(storeId, next)
   try {
     if (next) localStorage.setItem(clave(storeId), '1')

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { SellerProfile } from './seller-session'
 import { useDemo } from './demo/modo-demo'
 import { tiendaDemo } from './demo/tienda-demo'
+import { listaConCambios, useCambiosDemo } from './demo/cambios-demo'
 
 // ─── El lector único de pedidos de la tienda ─────────────────────────────────
 //
@@ -160,7 +161,7 @@ export function useStoreOrders(
   opts: { incluirCancelados?: boolean } = {},
 ): StoreOrders {
   const { incluirCancelados = false } = opts
-  const [pedidos, setPedidos] = useState<StoreOrder[]>([])
+  const [crudos, setPedidos] = useState<StoreOrder[]>([])
   const [cargando, setCargando] = useState(true)
   const [leidoEn, setLeidoEn] = useState(() => Date.now())
   const [intento, setIntento] = useState(0)
@@ -214,6 +215,16 @@ export function useStoreOrders(
   }, [demo, storeId, sellerId, incluirCancelados, intento])
 
   const recargar = useCallback(() => setIntento(n => n + 1), [])
+
+  // Lo que se tocó ENSEÑANDO la herramienta, encima de lo que arma el generador
+  // (ver demo/cambios-demo.ts). Va acá y no dentro del efecto porque es dato
+  // derivado: guardarlo en estado obligaría a un efecto por cada cambio, y el
+  // tablero tiene que moverse en el mismo render en que se mueve la etapa.
+  const cambios = useCambiosDemo()
+  const pedidos = useMemo(
+    () => (demo ? listaConCambios(crudos, cambios) : crudos),
+    [demo, crudos, cambios],
+  )
 
   return { pedidos, cargando, soloMios: !!sellerId, recargar, leidoEn }
 }

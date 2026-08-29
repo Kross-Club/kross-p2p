@@ -4,6 +4,7 @@ import type { StoreOrder } from '../store-orders'
 import type { Cliente, PedidoDeCliente } from '../store-clients'
 import type { Curioso } from '../store-drafts'
 import type { GrupoEntrega } from '../mapa-entregas'
+import { conCambios, guardarCambio } from './cambios-demo'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
@@ -562,7 +563,11 @@ export async function pedidoDemoPorToken(token: string | undefined): Promise<Sto
   const t = await tiendaDemo()
   const viejo = /^demo-h-(\d+)$/.exec(token)
   if (viejo) return pedidoHistorico(t, Number(viejo[1]))
-  return t.pedidos.find(p => p.token === token) ?? null
+  const p = t.pedidos.find(x => x.token === token)
+  // Con lo que se haya tocado enseñando: la etapa que se avanzó, el producto que
+  // se agregó, los mensajes que se escribieron. Se aplica ACÁ y no en cada
+  // pantalla para que el chat y el tablero lean lo mismo.
+  return p ? conCambios(p) : null
 }
 
 /**
@@ -626,10 +631,12 @@ function pedidoHistorico(t: TiendaDemo, i: number): StoreOrder | null {
  */
 export async function marcarRespondidoDemo(sessionId: string): Promise<string | null> {
   const t = await tiendaDemo()
-  const p = t.pedidos.find(x => x.id === sessionId)
-  if (!p) return null
+  if (!t.pedidos.some(x => x.id === sessionId)) return null
+  // Se anota como cualquier otro cambio del demo en vez de mutar el generador:
+  // así sobrevive a recargar la página y se va al apagar el demo, igual que
+  // mover de etapa o cambiar una cantidad.
   const answered_at = new Date().toISOString()
-  p.answered_at = answered_at
+  guardarCambio(sessionId, { answered_at })
   return answered_at
 }
 
@@ -637,6 +644,18 @@ export async function marcarRespondidoDemo(sessionId: string): Promise<string | 
  *  pantalla del pedido sabe a quién preguntarle antes de preguntar. */
 export function esTokenDemo(token: string | null | undefined): boolean {
   return !!token && /^demo-(\d+|h-\d+)$/.test(token)
+}
+
+/**
+ * Lo mismo, preguntando por el ID del pedido.
+ *
+ * Hace falta porque no todas las pantallas tienen el token a mano: el detalle
+ * del pedido trabaja con `OrderSession`, que no lo lleva. Y la respuesta tiene
+ * que ser la misma en las dos —de esto depende si el cambio se le pide al
+ * servidor o se guarda en el dispositivo—, así que las dos formas viven juntas.
+ */
+export function esPedidoDemo(id: string | null | undefined): boolean {
+  return !!id && /^demo-(ped|hist)-/.test(id)
 }
 
 /**
