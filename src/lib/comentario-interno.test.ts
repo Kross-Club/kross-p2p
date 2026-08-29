@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   VISIBILIDAD, esInterno, consultaDeArroba, candidatos, insertarMencion,
   mencionadosEn, trozosConMenciones, primerNombre,
+  BORRADORES_VACIOS, borradorDe, guardarBorrador, borradorEnviado,
 } from './comentario-interno'
 import type { Etiquetable } from './comentario-interno'
 
@@ -101,5 +102,40 @@ describe('cómo se pinta', () => {
   it('el primer nombre es como se llama a alguien en un chat de trabajo', () => {
     expect(primerNombre('Milagros Pinto')).toBe('Milagros')
     expect(primerNombre('Renzo')).toBe('Renzo')
+  })
+})
+
+// ─── Dos borradores, uno por audiencia ───────────────────────────────────────
+//
+// El error que esto evita no se deshace: escribir media nota, tocar el
+// interruptor por costumbre y enviarle al cliente "ya lo llamé dos veces y no
+// contesta" — que además le sale por push y por WhatsApp.
+
+describe('los borradores del redactor', () => {
+  it('lo escrito en una audiencia no aparece en la otra', () => {
+    const b = guardarBorrador(BORRADORES_VACIOS, true, 'ojo con el pago')
+    expect(borradorDe(b, true)).toBe('ojo con el pago')
+    expect(borradorDe(b, false)).toBe('')
+  })
+
+  it('y volver al modo devuelve lo que había, sin perderlo', () => {
+    let b = guardarBorrador(BORRADORES_VACIOS, true, 'ojo con el pago')
+    b = guardarBorrador(b, false, 'Hola, tu pedido sale hoy')
+    expect(borradorDe(b, true)).toBe('ojo con el pago')
+    expect(borradorDe(b, false)).toBe('Hola, tu pedido sale hoy')
+  })
+
+  it('enviar vacía solo el lado enviado', () => {
+    let b = guardarBorrador(BORRADORES_VACIOS, true, 'ojo con el pago')
+    b = guardarBorrador(b, false, 'Hola')
+    b = borradorEnviado(b, false)
+    expect(borradorDe(b, false)).toBe('')
+    expect(borradorDe(b, true)).toBe('ojo con el pago')
+  })
+
+  it('no muta el que recibe: el estado de React compara por referencia', () => {
+    const b = guardarBorrador(BORRADORES_VACIOS, true, 'x')
+    expect(BORRADORES_VACIOS.nota).toBe('')
+    expect(b).not.toBe(BORRADORES_VACIOS)
   })
 })

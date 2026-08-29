@@ -46,6 +46,44 @@ export function esInterno(m: MensajeConVisibilidad): boolean {
   return m.visibility === VISIBILIDAD.equipo
 }
 
+// ─── Dos borradores, uno por audiencia ───────────────────────────────────────
+//
+// El redactor es uno y las audiencias son dos, así que lo escrito **no puede
+// cruzar de una a la otra**. Con un solo borrador, escribir media nota, tocar
+// el interruptor por costumbre y pulsar enviar le manda al cliente algo que
+// nunca fue para él: "ya lo llamé dos veces y no contesta". Ese error no se
+// deshace —el mensaje ya salió por push y por WhatsApp— y es exactamente el que
+// esta pantalla existe para evitar.
+//
+// Con dos, cambiar de modo VACÍA el campo y devuelve lo que hubiera de ese
+// lado. Lo que se escribió no se pierde, y lo que se envía es siempre lo que se
+// escribió *ahí*.
+
+export interface Borradores {
+  /** Lo que va al comprador. */
+  chat: string
+  /** Lo que va al equipo. */
+  nota: string
+}
+
+export const BORRADORES_VACIOS: Borradores = { chat: '', nota: '' }
+
+/** El texto que le toca al modo en el que se está. */
+export function borradorDe(b: Borradores, interno: boolean): string {
+  return interno ? b.nota : b.chat
+}
+
+/** Guarda lo tecleado en el lado que corresponde, sin tocar el otro. */
+export function guardarBorrador(b: Borradores, interno: boolean, texto: string): Borradores {
+  return interno ? { ...b, nota: texto } : { ...b, chat: texto }
+}
+
+/** Vacía solo el lado que se acaba de enviar: lo que quedaba a medias en el
+ *  otro sigue esperando. */
+export function borradorEnviado(b: Borradores, interno: boolean): Borradores {
+  return guardarBorrador(b, interno, '')
+}
+
 // ─── Etiquetar a alguien con @ ───────────────────────────────────────────────
 //
 // Un comentario interno sin destinatario es una nota en una pizarra: se lee si
