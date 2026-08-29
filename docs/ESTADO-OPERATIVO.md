@@ -34,6 +34,18 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El nivel se cambia desde el panel · `admin-team` (29-ago-2026, tarde)
+
+**Qué se ve si no entra:** en *Equipo → una persona* aparece el selector de **Nivel**, y al
+tocarlo responde `400 Unknown action`. El resto del panel funciona igual.
+
+```
+supabase functions deploy admin-team --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL. Y si alguien quedó sin nivel por un alta contra una función vieja, el arreglo ya no
+pide base de datos: se sube desde esa misma pantalla.
+
 ### El alcance de la plataforma · SQL + 11 funciones
 
 **Qué se ve si no entra:** los operadores de Kross (Paolo, Diego) siguen sin poder entrar por

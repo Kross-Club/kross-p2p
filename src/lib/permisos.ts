@@ -35,6 +35,8 @@
  * del objeto que arma una prueba. Atarlo al perfil obligaría a inventar un
  * perfil entero para preguntar por una bandera.
  */
+import { nivelDe, NOMBRE_DE_NIVEL } from '../../supabase/functions/_shared/nivel.ts'
+
 export interface Rasgos {
   is_admin?: boolean
   is_super_admin?: boolean
@@ -58,9 +60,13 @@ export function puedeAdministrar(p: Quien): boolean {
 }
 
 /** ¿Es operador? Se pregunta para rotularlo, no para decidir: lo que decide es
- *  `puedeBorrar`, que es la frase que de verdad se quiere decir. */
+ *  `puedeBorrar`, que es la frase que de verdad se quiere decir.
+ *
+ *  Delega en `nivel.ts`, que es donde se ESCRIBEN estas banderas: leerlas con
+ *  una regla y escribirlas con otra es como se llega a filas que no son ninguno
+ *  de los tres niveles. */
 export function esOperador(p: Quien): boolean {
-  return !!p?.is_admin && !!p?.is_operator
+  return nivelDe(p) === 'operador'
 }
 
 /**
@@ -102,9 +108,9 @@ export function puedeNombrarAdmins(p: Quien): boolean {
  */
 export function etiquetaDeRol(p: Quien): string {
   if (!p) return '—'
-  if (esOperador(p)) return 'Operador'
-  if (p.is_admin) return 'Admin'
-  return p.role_label || 'Equipo'
+  const nivel = nivelDe(p)
+  if (nivel !== 'miembro') return NOMBRE_DE_NIVEL[nivel]
+  return p.role_label || NOMBRE_DE_NIVEL.miembro
 }
 
 /** Lo que un operador NO puede, dicho como se le dice a una persona. Vive acá

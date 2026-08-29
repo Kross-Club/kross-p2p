@@ -2159,6 +2159,41 @@ y sigue sin poder apagarla, borrarle un producto o nombrar administradores. Y **
 marca sigue bajando el alcance a esa marca a propósito: desde dentro no se ofrece lo que ahí
 no va.
 
+### El segundo round: no era la bandera, era el alta entera
+
+La regla nueva no los dejó entrar. La consulta a la base lo explicó de una: Paolo y Diego
+estaban en `platform` con `is_admin = false`, `is_operator = false` y `role_label =
+'Logística'`. **Nunca fueron operadores en la base.** Las tres columnas juntas son la huella
+exacta de la función vieja: el panel mandó `is_operator: true`, la `admin-team` desplegada no
+conocía ese campo, escribió `role_label` tal cual y dejó las banderas apagadas.
+
+O sea que el diagnóstico del mecanismo era correcto —panel por delante de la función— y el
+daño, mayor de lo que se supuso: no se perdió una bandera, se perdió el nivel entero.
+
+Y ahí apareció el agujero de verdad, que no es un bug sino una **ausencia**: el nivel solo se
+podía dar **al crear**. Una cuenta que nacía a medias no se podía enderezar desde ninguna
+pantalla — el único arreglo era entrar a la base. Un producto que necesita SQL para deshacer
+lo que su propio formulario hizo mal tiene un hueco, no un incidente.
+
+Tres cosas, entonces:
+
+1. **Cambiar el nivel de alguien que ya existe** — *Equipo → la persona → Nivel*, con los tres
+   niveles y lo que significa cada uno **en esa tienda** (en la plataforma "cualquier tienda";
+   en una marca, "esta tienda"). No a uno mismo: bajarse deja la tienda sin quien administre.
+2. **Comprobar contra la fila, no contra la respuesta.** Un `ok` de una función vieja no
+   significa que se haya escrito todo. Después de crear o cambiar el nivel el panel relee
+   `sellers` y, si falta algo, lo dice **y nombra la causa**: *"la función admin-team está
+   desplegada en una versión vieja"*. Es el aviso que habría convertido una semana en un
+   minuto.
+3. **Un mensaje de login que sirva.** A quien SÍ es del equipo de Kross, mandarlo *"al sitio de
+   tu marca"* es mandarlo a una dirección que no existe. Ahora se le dice lo que le pasa —le
+   falta nivel— y quién lo arregla.
+
+Las banderas de cada nivel se escriben en `_shared/nivel.ts`, un solo sitio para el alta y
+para el cambio; `permisos.ts` las lee delegando ahí mismo. **Tercera vez en dos días que juntar
+las dos copias de una definición saca a la luz lo que solo sobrevivía estando separadas** — y
+esta vez lo que salió no fue un fallo, fue una pantalla que faltaba.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

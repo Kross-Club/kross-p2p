@@ -1374,6 +1374,21 @@ WHERE store_id = 'platform'
 --   SELECT nombre, store_id, role_label, is_admin, is_operator, is_super_admin, active
 --   FROM sellers WHERE store_id = 'platform' ORDER BY is_super_admin DESC, nombre;
 --
+-- ⚠️ En esa consulta, una fila con `is_admin = false` es un **alta rota**, no un
+-- estado válido: en la plataforma no hay pedidos que atender, así que un miembro
+-- raso ahí no puede hacer nada en ninguna parte. Es lo que dejó el alta contra
+-- una función anterior — guardó nombre y correo e ignoró las banderas.
+--
+-- Este bloque NO las arregla a propósito: subir de nivel a alguien es una
+-- decisión, no una migración, y un script de esquema no la toma por nadie. Se
+-- arregla **desde el panel** (Equipo → la persona → Nivel), que es donde ahora
+-- se puede — antes solo se podía al crear, y de ahí que la única salida fuera
+-- un UPDATE a mano. Si hace falta uno igualmente:
+--
+--   UPDATE sellers
+--   SET is_admin = true, is_operator = true, is_super_admin = true, role_label = 'Operador'
+--   WHERE store_id = 'platform' AND nombre IN ('...');
+--
 -- ⚠️ Lo que este bloque NO cambia: qué puede DESTRUIR cada uno. El alcance dice
 -- hasta dónde llega (su tienda o todas); `is_operator` dice qué no puede hacer
 -- dentro de ese alcance (bloque 30). Son dos ejes y siguen siendo independientes
