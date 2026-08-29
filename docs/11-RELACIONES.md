@@ -2281,6 +2281,48 @@ Con eso, entrar como Paolo enseña las tiendas; y entrar a una marca enseña **e
 el mando de una marca: sin crear tiendas, sin apagarlas, sin subdominio. Se salió de la
 plataforma, así que los botones de la plataforma no se ofrecen.
 
+## Borrar una tienda: lo único que no se deshace (29-ago-2026)
+
+Tres marcas muertas en la lista —Gadicaf, una Kross de pruebas, Culqi Test— y ningún botón para
+sacarlas. No lo había: el panel sabía **apagar** una tienda, no borrarla.
+
+Y borrarla no es "apagar más fuerte". `stores` casi no tiene claves foráneas —la única que
+cascadea es `store_secrets`—, así que un `DELETE` a secas **no borra nada más**: deja `store_id`
+huérfano en nueve tablas, con pedidos apuntando a una tienda que ya no existe. Por eso la acción
+barre, y barre en un orden que no es opcional: `buyer_actions` va antes que `buyers`, porque su
+clave apunta ahí sin `ON DELETE` y la base rechazaría el borrado.
+
+### Los cinco seguros, que son el diseño
+
+No son ceremonia. Cada uno tapa una manera concreta de perder algo que no vuelve:
+
+| Seguro | Qué evita |
+|---|---|
+| solo desde la plataforma | que el admin de una marca borre el negocio de su propio cliente |
+| **nunca `platform`** | que el borrado se lleve por delante la casa del equipo de Kross — y a quien lo ejecutó |
+| nunca la tuya | quedarte sin fila y sin panel |
+| **tiene que estar apagada** | borrar una marca viva de un solo clic |
+| **cero pedidos y cero cobros** | destruir el respaldo de un reclamo que llega meses después |
+
+El cuarto es el que más trabaja. Apagar ya avisa de lo que pasa —la app deja de vender ese
+segundo— y **se deshace**; encadenar los dos pasos convierte un clic accidental en dos actos
+deliberados. Y el quinto es el que dice que no cuando de verdad importa: un `order_sessions` es
+una venta que existió y un `payment_events` es plata recaudada bajo el contrato con 360pay
+(ver `07-CONTRATO-360PAY.md`). Apagada, la marca ya no vende, que es lo que se quería; su
+historial no estorba a nadie.
+
+### Y el motivo se dice, no se esconde
+
+La sección de borrado aparece siempre, y cuando no se puede **explica cuál de los seguros
+saltó**: *"Apágala primero. Apagar se deshace; esto no."* Esconderla habría producido la otra
+conversación, la de "no encuentro dónde se borra" — que termina en alguien escribiendo un
+`DELETE` a mano contra producción, o sea exactamente lo que esta pantalla existe para evitar.
+
+La confirmación es **tecleada**: hay que escribir el subdominio. Un "¿seguro?" se contesta con
+un Enter de más; `gadicaf` obliga a mirar qué se está borrando. Y el rechazo por historial
+responde con los números —*"tiene 4 pedidos"*— porque eso cierra la conversación, mientras que
+"no se pudo borrar" la empieza.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

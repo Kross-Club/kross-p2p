@@ -5,7 +5,7 @@ import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle,
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
 import { puedeAdministrar } from '../../lib/permisos'
-import { vistaDeTiendas } from '../../lib/vista-de-tiendas'
+import { vistaDeTiendas, estorboParaBorrar } from '../../lib/vista-de-tiendas'
 import { useDemo, setDemo } from '../../lib/demo/modo-demo'
 import { PEDIDOS_POR_DIA } from '../../lib/demo/tienda-demo'
 
@@ -66,6 +66,14 @@ const ERR: Record<string, string> = {
   pay360_sin_conectar: 'Conecta la marca con 360pay antes de encender el cobro.',
   pay360_nombre_invalido: 'Escribe el nombre del comercio para 360pay.',
   shalom_credenciales_invalidas: 'Revisa el correo y la contraseña de Shalom Pro.',
+  // Borrar. Cada uno nombra el seguro que saltó, no un "no se pudo": el que
+  // borra tiene que saber cuál de las cinco condiciones no cumplió.
+  borrar_es_de_plataforma: 'Borrar una tienda es de quien administra la plataforma.',
+  la_plataforma_no_se_borra: 'La tienda de Kross no se borra: es donde vive el equipo.',
+  no_borres_la_tuya: 'No puedes borrar la tienda a la que perteneces.',
+  no_existe: 'Esa tienda ya no existe. Recarga la lista.',
+  apagala_primero: 'Apágala primero. Apagar se deshace; borrar no.',
+  confirmacion_no_coincide: 'El subdominio no coincide. Escríbelo tal cual para confirmar.',
 }
 
 async function call(payload: Record<string, unknown>) {
@@ -226,7 +234,8 @@ export default function MarcaPage() {
         ))}
       </div>
 
-      {editing && <BrandEditor store={editing} isSuper={plataforma} adminId={real?.auth_user_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+      {editing && <BrandEditor store={editing} isSuper={plataforma} quien={effective} adminId={real?.auth_user_id ?? ''}
+        onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {creating && <CreateBrand adminId={real?.auth_user_id ?? ''} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load() }} />}
     </div>
   )
@@ -302,8 +311,10 @@ function LogoPicker({ logo, uploading, onPick, round, help }: { logo: string | n
   )
 }
 
-function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
+function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   store: StoreRow
+  /** A quién se está actuando: decide si se puede ofrecer el borrado. */
+  quien: SellerProfile | null
   /** Se está viendo con mando de PLATAFORMA (no dentro de la marca). Gatea lo
    *  que solo se toca desde fuera: subdominio, WhatsApp, encender y apagar. */
   isSuper: boolean
@@ -378,10 +389,39 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
   const [uploadingIcon, setUploadingIcon] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // Borrar: el subdominio tecleado. Un "¿seguro?" se contesta con un Enter de
+  // más; escribir `gadicaf` obliga a leer qué se está borrando.
+  const [confirmar, setConfirmar] = useState('')
+  const [borrando, setBorrando] = useState(false)
+  const estorbo = estorboParaBorrar(store, quien)
 
 
   const pick = async (f: File) => { setUploading(true); const url = await uploadLogo(f, adminId); if (url) setLogo(url); setUploading(false) }
   const pickIcon = async (f: File) => { setUploadingIcon(true); const url = await uploadLogo(f, adminId); if (url) setNotifIcon(url); setUploadingIcon(false) }
+
+  const borrar = async () => {
+    setBorrando(true); setErr('')
+    const { ok, data } = await call({ action: 'delete', admin_auth_id: adminId, store_id: store.id, confirmar })
+    setBorrando(false)
+    if (!ok) {
+      // `tiene_historial` se responde con los números: "tiene 4 pedidos" cierra
+      // la conversación, "no se pudo borrar" la empieza.
+      if (data?.error === 'tiene_historial') {
+        const partes = [
+          data.pedidos ? `${data.pedidos} pedido(s)` : '',
+          data.cobros ? `${data.cobros} cobro(s)` : '',
+        ].filter(Boolean).join(' y ')
+        setErr(`No se borra: esta marca tiene ${partes}. Apagada ya no vende, y ese historial respalda cualquier reclamo.`)
+        return
+      }
+      setErr(mensajePanel(data?.error, 'No se pudo eliminar la tienda.'))
+      return
+    }
+    if (data?.equipo > 0) {
+      alert(`Tienda eliminada. Quedaron ${data.equipo} cuenta(s) de acceso sin tienda: se quitan desde Authentication en Supabase.`)
+    }
+    onSaved()
+  }
 
   const save = async () => {
     if (!nombre.trim()) { setErr('Ponle un nombre a la marca.'); return }
@@ -925,6 +965,52 @@ function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
               className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
             <input value={waDisplay} onChange={e => setWaDisplay(e.target.value)} placeholder="Número visible (ej: +51 999 999 999)"
               className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none" />
+          </div>
+        )}
+
+        {/* ── Borrar la tienda ────────────────────────────────────────────
+            Lo único de este panel que no se deshace, así que va al final, con
+            su propio color y detrás de dos pasos: la marca ya tiene que estar
+            apagada, y hay que teclear el subdominio.
+
+            El motivo se DICE en vez de esconder la sección: "no encuentro dónde
+            se borra" y "ah, primero hay que apagarla" son dos experiencias muy
+            distintas. Los mismos cinco seguros los vuelve a comprobar el
+            servidor —incluido que no tenga ni un pedido ni un cobro, que desde
+            acá no se puede saber—; esto solo evita ofrecer lo que va a fallar. */}
+        {isSuper && (
+          <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--danger-bg)', border: '0.5px solid var(--danger-border)' }}>
+            <p className="text-xs font-black mb-1" style={{ color: 'var(--danger-fg)' }}>Eliminar esta tienda</p>
+            {estorbo === 'plataforma' ? (
+              <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                La tienda de Kross no se borra: es donde vive el equipo.
+              </p>
+            ) : estorbo === 'la_tuya' ? (
+              <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                No puedes borrar la tienda a la que perteneces.
+              </p>
+            ) : estorbo === 'encendida' ? (
+              <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                Apágala primero, arriba. Apagar se deshace; esto no.
+              </p>
+            ) : (
+              <>
+                <p className="text-[10px] mb-2" style={{ color: 'var(--text-muted)' }}>
+                  Se van su equipo, sus productos y sus compradores. No se deshace. Si la marca
+                  llegó a vender —un pedido, un cobro— el servidor lo rechaza: apagada ya no
+                  vende, y su historial es el respaldo de cualquier reclamo.
+                </p>
+                <input value={confirmar} onChange={e => setConfirmar(e.target.value)}
+                  placeholder={`Escribe ${store.slug} para confirmar`} autoComplete="off"
+                  className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
+                <button onClick={borrar}
+                  disabled={borrando || confirmar.trim().toLowerCase() !== (store.slug ?? '').toLowerCase()}
+                  className="w-full rounded-xl px-3 py-2.5 text-xs font-black disabled:opacity-40"
+                  style={{ background: 'var(--danger-fg)', color: '#fff' }}>
+                  {borrando ? 'Eliminando…' : `Eliminar ${store.nombre}`}
+                </button>
+              </>
+            )}
           </div>
         )}
 

@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
 import { shalomApiKey } from '../_shared/shalom.ts'
-import { administraLaPlataforma } from '../_shared/alcance.ts'
+import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status'
+    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status'
     home_delivery_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
@@ -53,6 +53,8 @@ Deno.serve(async (req) => {
     color_primary?: string
     color_dark?: string
     active?: boolean
+    /** delete: el `slug` de la tienda, tecleado por quien borra. Ver la acción. */
+    confirmar?: string
     wa_enabled?: boolean
     wa_phone_number_id?: string
     wa_display_phone?: string
@@ -289,13 +291,11 @@ Deno.serve(async (req) => {
     if (typeof body.winback_days === 'number') patch.winback_days = Math.max(1, Math.floor(body.winback_days))
     if (typeof body.color_primary === 'string') patch.color_primary = body.color_primary
     if (typeof body.color_dark === 'string') patch.color_dark = body.color_dark
-    // Apagar una marca es lo más destructivo que tiene este panel: su app deja
-    // de vender ese mismo segundo. El operador puede volver a encenderla —eso
-    // no rompe nada y desatasca— pero no apagarla. Se mira la DIRECCIÓN del
-    // cambio, no solo el campo.
-    //
-    // Y se responde con un error en vez de ignorarlo callado: un guardado que
-    // dice "listo" y no guardó lo que le pediste es peor que uno que falla.
+    // Apagar una marca detiene su app ese mismo segundo, y por eso es de quien
+    // administra la plataforma y no del admin de la marca. Pero **se deshace
+    // tocando otra vez**, así que no hace falta más ceremonia: el operador
+    // también apaga (ver §30). Lo que no se deshace es BORRAR, y eso tiene su
+    // propia acción con sus propios seguros, más abajo.
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active
     // ¿Reparte a domicilio, o solo recojo en agencia? Es super-admin only a
     // propósito: depende de si la marca tiene operación de última milla
@@ -590,6 +590,85 @@ Deno.serve(async (req) => {
     if (selErr) return json({ error: selErr.message }, 400)
 
     return json({ ok: true, store_id: storeId, slug, admin_auth_id: created.user.id })
+  }
+
+  // ─── BORRAR UNA TIENDA ──────────────────────────────────────────────────────
+  //
+  // Lo único de este panel que no se deshace. Apagar detiene la app y se enciende
+  // otra vez; esto se lleva la fila y, con ella, la marca. Y como `stores` casi no
+  // tiene claves foráneas —solo `store_secrets` cascadea—, borrar la fila a secas
+  // NO borra nada más: deja huérfanos en nueve tablas, con pedidos apuntando a una
+  // tienda que ya no existe. Por eso la acción barre, y por eso barre en orden.
+  //
+  // Los seguros no son ceremonia: cada uno tapa una manera concreta de perder algo
+  // que no vuelve.
+  if (body.action === 'delete') {
+    const id = body.store_id
+    if (!id) return json({ error: 'no_store' }, 400)
+
+    // 1. Solo desde la plataforma. El admin de una marca no borra su marca —
+    //    dejaría de existir el negocio de su propio cliente.
+    if (!isSuper) return json({ error: 'borrar_es_de_plataforma' }, 403)
+
+    // 2. La casa no se borra. `platform` es donde vive el equipo de Kross: sin
+    //    ella, "administra la plataforma" deja de tener dónde apoyarse y el
+    //    borrado se lleva por delante a quien lo ejecutó. Ver `alcance.ts`.
+    if (id === TIENDA_PLATAFORMA) return json({ error: 'la_plataforma_no_se_borra' }, 403)
+
+    // 3. Ni la tuya. Vale para el caso raro de un super admin alojado en una
+    //    marca: borrarla lo dejaría sin fila y sin panel.
+    if (id === me.store_id) return json({ error: 'no_borres_la_tuya' }, 403)
+
+    const { data: tienda } = await supabase
+      .from('stores').select('id, slug, nombre, active').eq('id', id).maybeSingle()
+    if (!tienda) return json({ error: 'no_existe' }, 404)
+
+    // 4. Tiene que estar APAGADA. Apagar es reversible y ya avisa de lo que
+    //    pasa —la app deja de vender—; encadenar los dos pasos hace que nadie
+    //    borre una marca viva de un solo clic.
+    if (tienda.active) return json({ error: 'apagala_primero' }, 409)
+
+    // 5. Y sin un solo pedido ni cobro. Un `order_sessions` es una venta que
+    //    existió, y un `payment_events` es plata que se recaudó bajo el contrato
+    //    con 360pay: eso no es basura de pruebas, es el respaldo de un reclamo
+    //    que puede llegar meses después. Si hay aunque sea uno, esta acción se
+    //    niega y dice cuántos — apagada la marca ya no vende, que es lo que se
+    //    quería.
+    const cuenta = async (tabla: string, col: string) => {
+      const { count } = await supabase.from(tabla).select('id', { count: 'exact', head: true }).eq(col, id)
+      return count ?? 0
+    }
+    const pedidos = await cuenta('order_sessions', 'store_id')
+      + await cuenta('order_sessions', 'origin_store_id')
+    const cobros = await cuenta('payment_events', 'store_id')
+    if (pedidos > 0 || cobros > 0) return json({ error: 'tiene_historial', pedidos, cobros }, 409)
+
+    // 6. Y hay que haber leído qué se borra. Tecleando el subdominio: un
+    //    "¿seguro?" se contesta con un Enter de más, un slug no.
+    if ((body.confirmar ?? '').trim().toLowerCase() !== (tienda.slug ?? '').toLowerCase()) {
+      return json({ error: 'confirmacion_no_coincide' }, 400)
+    }
+
+    // El barrido. `buyer_actions` va PRIMERO porque su clave apunta a `buyers`
+    // sin ON DELETE: borrar el comprador antes lo rechazaría la base.
+    const { data: compradores } = await supabase.from('buyers').select('id').eq('store_id', id)
+    const buyerIds = (compradores ?? []).map((b: { id: string }) => b.id)
+    if (buyerIds.length > 0) await supabase.from('buyer_actions').delete().in('buyer_id', buyerIds)
+
+    const { count: equipo } = await supabase
+      .from('sellers').select('id', { count: 'exact', head: true }).eq('store_id', id)
+
+    for (const tabla of ['buyers', 'checkout_drafts', 'notifications_log', 'call_recordings', 'complaints', 'products', 'sellers', 'store_secrets']) {
+      await supabase.from(tabla).delete().eq('store_id', id)
+    }
+    const { error } = await supabase.from('stores').delete().eq('id', id)
+    if (error) return json({ error: error.message }, 400)
+
+    // Las cuentas de `auth.users` del equipo NO se tocan: una persona puede
+    // trabajar en dos marcas, y borrarle el acceso por haber cerrado una sería
+    // destruir de más desde una pantalla que habla de tiendas. Se devuelve
+    // cuántas quedaron sueltas para que el panel lo diga.
+    return json({ ok: true, nombre: tienda.nombre, slug: tienda.slug, equipo: equipo ?? 0 })
   }
 
   return new Response('Unknown action', { status: 400, headers: corsHeaders })

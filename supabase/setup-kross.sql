@@ -1397,3 +1397,53 @@ WHERE store_id = 'platform'
 -- dentro de ese alcance (bloque 30). Son dos ejes y siguen siendo independientes
 -- — un operador de la plataforma entra a cualquier tienda y sigue sin poder
 -- apagarla.
+
+
+-- ─── 34. BORRAR UNA TIENDA: EL ORDEN NO ES OPCIONAL ─────────────────────────
+--
+-- `stores` casi no tiene claves foráneas: la única que cascadea es
+-- `store_secrets` (bloque 25). O sea que un `DELETE FROM stores` a secas **no
+-- borra nada más** — deja `store_id` huérfano en nueve tablas, con pedidos
+-- apuntando a una tienda que ya no existe y un panel que no sabe pintarlos.
+--
+-- Lo hace la acción `delete` de `manage-store`, que además comprueba cinco
+-- cosas antes de tocar nada. Se dejan escritas acá porque son la razón de que
+-- la acción exista y no un `DELETE` a mano:
+--
+--   1. quien llama administra la PLATAFORMA (un admin de marca no borra su marca)
+--   2. la tienda NO es `platform` — es donde vive el equipo de Kross
+--   3. no es la tienda de quien llama
+--   4. está APAGADA (`active = false`): apagar se deshace, borrar no
+--   5. tiene CERO `order_sessions` y CERO `payment_events` — una venta que
+--      existió y una plata que se recaudó bajo el contrato con 360pay son el
+--      respaldo de un reclamo que puede llegar meses después. Apagada la marca
+--      ya no vende, que es lo que se quería.
+--
+-- Y el barrido, si alguna vez hay que hacerlo a mano. `buyer_actions` va
+-- PRIMERO: su clave apunta a `buyers` sin ON DELETE, así que borrar el
+-- comprador antes lo rechaza la base.
+--
+--   DELETE FROM buyer_actions WHERE buyer_id IN (SELECT id FROM buyers WHERE store_id = '<id>');
+--   DELETE FROM buyers            WHERE store_id = '<id>';
+--   DELETE FROM checkout_drafts   WHERE store_id = '<id>';
+--   DELETE FROM notifications_log WHERE store_id = '<id>';
+--   DELETE FROM call_recordings   WHERE store_id = '<id>';
+--   DELETE FROM complaints        WHERE store_id = '<id>';
+--   DELETE FROM products          WHERE store_id = '<id>';
+--   DELETE FROM sellers           WHERE store_id = '<id>';
+--   DELETE FROM store_secrets     WHERE store_id = '<id>';   -- cascadearía igual
+--   DELETE FROM stores            WHERE id = '<id>';
+--
+-- Las cuentas de `auth.users` del equipo NO se tocan: una persona puede
+-- trabajar en dos marcas, y quitarle el acceso por haber cerrado una sería
+-- destruir de más. Se quitan a mano desde Authentication si corresponde.
+--
+-- Antes de borrar, mirar qué hay colgando (esto no cambia nada):
+--   SELECT s.id, s.slug, s.nombre, s.active,
+--          (SELECT count(*) FROM order_sessions o WHERE o.store_id = s.id) AS pedidos,
+--          (SELECT count(*) FROM order_sessions o WHERE o.origin_store_id = s.id) AS pedidos_origen,
+--          (SELECT count(*) FROM payment_events p WHERE p.store_id = s.id) AS cobros,
+--          (SELECT count(*) FROM products pr WHERE pr.store_id = s.id) AS productos,
+--          (SELECT count(*) FROM sellers se WHERE se.store_id = s.id) AS equipo,
+--          (SELECT count(*) FROM buyers b WHERE b.store_id = s.id) AS compradores
+--   FROM stores s ORDER BY s.created_at;
