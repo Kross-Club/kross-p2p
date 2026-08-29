@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, AlertTriangle, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, AlertTriangle, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle, Lock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
@@ -18,6 +18,10 @@ import { pickupBranchIdOf } from '../../lib/session'
 import { stageChip } from '../../lib/order-chips'
 import { stageVigente } from '../../lib/order-stages'
 import { conPlataEnJuego, columnaDelPedido, pasoActual, etiquetaDePaso, siguientePaso, courierDelPedido } from '../../lib/order-tracking'
+import {
+  esInterno, trozosConMenciones, consultaDeArroba, candidatos, insertarMencion, mencionadosEn, primerNombre,
+} from '../../lib/comentario-interno'
+import type { Etiquetable } from '../../lib/comentario-interno'
 import type { PasoKey, PedidoRastreable } from '../../lib/order-tracking'
 import AnilloAvance from '../../components/AnilloAvance'
 import { useUbicacion } from '../../lib/ubicacion'
@@ -389,9 +393,40 @@ function roleColor(role?: string | null) {
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ msg, audio }: { msg: OrderMessage; audio?: string | null }) {
+function MessageBubble({ msg, audio, equipo = [] }: { msg: OrderMessage; audio?: string | null; equipo?: Etiquetable[] }) {
   const isSeller = msg.sender_role === 'seller'
   const time = new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+
+  // ── El comentario interno ──
+  // Va en el MISMO hilo, al lado de lo que pasó —una pestaña aparte de notas es
+  // una pestaña que nadie abre— pero tiene que verse de otra especie desde el
+  // otro lado de la sala. No es una burbuja de conversación: es una nota pegada
+  // al hilo, así que va centrada, con candado y sin la forma de un mensaje. Si
+  // se pareciera a una burbuja, alguien acabaría escribiéndole al cliente
+  // creyendo que comenta, que es el error que no se puede permitir.
+  if (esInterno(msg)) {
+    return (
+      <div className="flex justify-center mb-3">
+        <div className="rounded-2xl px-3 py-2 max-w-[85%] w-full"
+          style={{ background: 'var(--warn-bg-soft)', border: '0.5px dashed var(--warn-border)' }}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <Lock size={10} style={{ color: 'var(--warn-fg)' }} />
+            <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: 'var(--warn-fg)' }}>
+              Comentario interno · el cliente no lo ve
+            </p>
+          </div>
+          <p className="text-[13px] leading-snug" style={{ color: 'var(--text)' }}>
+            {trozosConMenciones(msg.body ?? '', equipo).map((t, i) => t.mencion
+              ? <strong key={i} style={{ color: 'var(--brand)' }}>{t.texto}</strong>
+              : <span key={i}>{t.texto}</span>)}
+          </p>
+          <p className="text-[10px] mt-1" style={{ color: 'var(--text-faint)' }}>
+            {msg.sender_name ?? 'Equipo'}{msg.sender_role_label ? ` · ${msg.sender_role_label}` : ''} · {time}
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   // La llamada es un evento del pedido, no un mensaje de texto. Antes caía en
   // la burbuja genérica del chat —y su grabación vivía en otra pantalla, la de
@@ -505,6 +540,12 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
   const [messages, setMessages] = useState<OrderMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [input, setInput] = useState('')
+  // ¿Esto va al cliente o es una nota del equipo? Vive acá y no en el mensaje
+  // porque es el MODO del redactor: lo que decide qué se ve mientras se escribe.
+  const [interno, setInterno] = useState(false)
+  const [notaInvitacion, setNotaInvitacion] = useState('')
+  const [caret, setCaret] = useState(0)
+  const campoRef = useRef<HTMLInputElement>(null)
   const [sending, setSending] = useState(false)
   const [showCall, setShowCall] = useState(false)
   const [verClienteAbierto, setVerCliente] = useState(false)
@@ -556,8 +597,15 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     }
 
     try {
+      // El JWT del vendedor, no la anon key. `?viewer=seller` no prueba nada
+      // —lo escribe cualquiera, y el token del pedido es del comprador—, así
+      // que los COMENTARIOS INTERNOS solo vuelven si `get-session` puede
+      // comprobar contra `sellers` quién está pidiendo. Sin sesión se cae a la
+      // anon key: se ve todo lo demás y lo interno no, que es como debe fallar.
+      const { data: sesion } = await supabase.auth.getSession()
+      const jwt = sesion?.session?.access_token ?? ANON
       const res = await fetch(`${BASE}/get-session?viewer=seller`, {
-        headers: { Authorization: `Bearer ${ANON}`, 'x-kross-token': token },
+        headers: { Authorization: `Bearer ${jwt}`, 'x-kross-token': token },
       })
       if (!res.ok) return
       const { session: s, messages: m } = await res.json() as { session: OrderSession; messages: OrderMessage[] }
@@ -636,6 +684,9 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         },
         assignment_update: () => { reloadSession() },
         participants_update: () => { reloadSession() },
+        // De lo interno no viaja el cuerpo por el canal —es el del comprador—:
+        // solo el aviso. El hilo se vuelve a pedir por la puerta que verifica.
+        internal_update: () => { reloadSession() },
         address_update: ({ payload }) => {
           setSession(prev => prev ? { ...prev, address: payload.address as string, address_verified: payload.address_verified as boolean, address_lat: payload.address_lat as number, address_lng: payload.address_lng as number } : prev)
         },
@@ -694,9 +745,36 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     sendTypingTimerRef.current = setTimeout(() => { sendTypingTimerRef.current = null }, 2000)
   }, [session])
 
+  // El equipo de la tienda, una vez. Lo piden dos cosas —el invitador y el
+  // buscador de `@`— y antes solo lo cargaba el primero: escribir `@` sin haber
+  // abierto nunca "Invitar" no ofrecía a nadie.
+  const cargarEquipo = useCallback(async () => {
+    if (team.length > 0 || !session?.store_id) return
+    const { data } = await supabase
+      .from('sellers')
+      .select('auth_user_id, nombre, role_label')
+      .eq('store_id', session.store_id)
+      .eq('active', true)
+      .not('auth_user_id', 'is', null)
+    setTeam((data as { auth_user_id: string; nombre: string; role_label: string }[]) ?? [])
+  }, [team.length, session?.store_id])
+
+  // A quién se puede etiquetar: el equipo de la tienda. Se cae a los del pedido
+  // mientras la lista no haya cargado, para que un `@` recién abierto ofrezca
+  // algo en vez de nada. Va antes del redactor porque el redactor lo usa.
+  const equipoEtiquetable: Etiquetable[] = useMemo(() => (
+    team.length
+      ? team.map(t => ({ id: t.auth_user_id, nombre: t.nombre, role_label: t.role_label }))
+      : (session?.participants ?? []).map(p => ({ id: p.id, nombre: p.nombre, role_label: p.role_label }))
+  ), [team, session?.participants])
+
   const handleSend = useCallback(async () => {
     if (!input.trim() || !session || sending) return
     const body = input.trim()
+    const esComentario = interno
+    // Se resuelven contra el equipo y se guardan `id`s: el texto `@Renzo` deja
+    // de apuntar a nadie en cuanto Renzo cambia de nombre.
+    const etiquetados = esComentario ? mencionadosEn(body, equipoEtiquetable) : []
     setInput('')
     setSending(true)
     const optimisticId = `opt-${Date.now()}`
@@ -711,6 +789,8 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       media_url: null,
       created_at: new Date().toISOString(),
       read_at: null,
+      visibility: esComentario ? 'sellers' : 'all',
+      mentions: etiquetados,
     }
     setMessages(prev => [...prev, optimistic])
 
@@ -734,21 +814,27 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           seller_role: sellerRole,
           body,
           type: 'text',
+          interno: esComentario,
+          mentions: etiquetados,
         }),
       })
       if (!res.ok) throw new Error('send_failed')
       const saved: OrderMessage = await res.json()
       // Replace optimistic with real message; seller-send-message already broadcasts to buyer
       setMessages(prev => prev.map(m => m.id === optimisticId ? saved : m))
-      // Also broadcast so this seller view deduplicates cleanly
-      channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
+      // Al canal solo lo público: `order:<id>` es el del COMPRADOR y su chat
+      // pinta lo que llegue. Un comentario interno mandado por ahí se le
+      // aparecería en vivo, que es peor que poder leerlo — no hay que buscarlo.
+      if (!esComentario) {
+        channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
+      }
     } catch {
       setMessages(prev => prev.filter(m => m.id !== optimisticId))
       setInput(body)
     } finally {
       setSending(false)
     }
-  }, [input, session, sending, sellerName, sellerRole, token])
+  }, [input, session, sending, sellerName, sellerRole, token, interno, equipoEtiquetable])
 
   if (loading) {
     return (
@@ -772,29 +858,39 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
 
   const meId = effective?.auth_user_id
   const participants = session.participants ?? []
+  const arroba = consultaDeArroba(input, caret)
+  const etiquetar = (quien: Etiquetable) => {
+    if (!arroba) return
+    const r = insertarMencion(input, arroba.desde, caret, quien)
+    setInput(r.texto)
+    setCaret(r.caret)
+    // El foco vuelve al campo con el cursor donde toca: si se queda en el
+    // botón, hay que volver a tocar el campo para seguir escribiendo.
+    requestAnimationFrame(() => {
+      campoRef.current?.focus()
+      campoRef.current?.setSelectionRange(r.caret, r.caret)
+    })
+  }
   const onShift = effective?.available !== false // turno (lo asigna el admin)
   const canWrite = isAdmin
     || (onShift && (session.assigned_seller_id === meId || (session.writer_seller_ids ?? []).includes(meId ?? '')))
 
   const openInvite = async () => {
     setShowInvite(true)
-    if (team.length === 0 && session.store_id) {
-      const { data } = await supabase
-        .from('sellers')
-        .select('auth_user_id, nombre, role_label')
-        .eq('store_id', session.store_id)
-        .eq('active', true)
-        .not('auth_user_id', 'is', null)
-      setTeam((data as any) ?? [])
-    }
+    await cargarEquipo()
   }
 
   const invite = async (sellerAuthId: string) => {
     setShowInvite(false)
+    const porQue = notaInvitacion.trim()
+    setNotaInvitacion('')
     await fetch(`${BASE}/order-manage`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'invite', session_id: session.id, invite_seller_id: sellerAuthId, by_seller_id: meId }),
+      // El porqué viaja con la invitación y queda como COMENTARIO INTERNO
+      // etiquetando al invitado. Invitar sin decir a qué obliga al otro a
+      // leerse el hilo entero para adivinar qué le tocaba.
+      body: JSON.stringify({ action: 'invite', session_id: session.id, invite_seller_id: sellerAuthId, by_seller_id: meId, invite_nota: porQue || undefined }),
     })
     reloadSession()
   }
@@ -1129,6 +1225,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           role="seller"
           onClose={() => {}}
           onPatch={(patch) => setSession(s => s ? { ...s, ...patch } : s)}
+          onInvitar={canWrite ? openInvite : undefined}
         />
       )}
     </>
@@ -1145,7 +1242,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           </div>
         )}
         {messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg}
+          <MessageBubble key={msg.id} msg={msg} equipo={equipoEtiquetable}
             audio={msg.call_recording_id ? audios[msg.call_recording_id] : undefined} />
         ))}
 
@@ -1177,19 +1274,63 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
               title="Enviar oferta">
               <PackagePlus size={16} />
             </button>
-            <input
-              value={input}
-              onChange={e => { setInput(e.target.value); broadcastTyping() }}
-              onKeyDown={e => e.key === 'Enter' && handleSend()}
-              placeholder="Escribe al cliente…"
-              className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
-              style={{ background: 'var(--surface-3)' }}
-            />
+            {/* El interruptor: a quién le estoy escribiendo. Va PEGADO al campo
+                y le cambia el aspecto —no es una casilla en un menú— porque el
+                error caro no es olvidar comentar: es escribirle al cliente
+                creyendo que comentabas. Lo que se ve tiene que decirlo. */}
+            <button
+              onClick={() => { setInterno(v => !v); if (!interno) cargarEquipo() }}
+              aria-pressed={interno}
+              title={interno ? 'Comentario interno · el cliente no lo ve' : 'Escribir al cliente'}
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+              style={interno
+                ? { background: 'var(--warn-bg)', color: 'var(--warn-fg)' }
+                : { background: 'var(--surface-3)', color: 'var(--text-faint)' }}>
+              <Lock size={15} />
+            </button>
+            <div className="relative flex-1">
+              {/* El buscador de `@`. Solo en comentario interno: etiquetar
+                  gente de la tienda en un mensaje que lee el cliente no
+                  significa nada, y el cliente vería el nombre de quien no
+                  conoce. */}
+              {interno && arroba && candidatos(equipoEtiquetable, arroba.busca).length > 0 && (
+                <div className="absolute bottom-full mb-2 left-0 w-64 max-h-52 overflow-y-auto rounded-2xl py-1 z-20"
+                  style={{ background: 'var(--surface)', border: '0.5px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.18)' }}>
+                  {candidatos(equipoEtiquetable, arroba.busca).map(q => (
+                    <button key={q.id} onClick={() => etiquetar(q)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs">
+                      <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0"
+                        style={{ background: `${roleColor(q.role_label)}22`, color: roleColor(q.role_label) }}>
+                        {q.nombre.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="font-bold" style={{ color: 'var(--text)' }}>{primerNombre(q.nombre)}</span>
+                      <span style={{ color: 'var(--text-faint)' }}>{q.role_label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <input
+                ref={campoRef}
+                value={input}
+                onChange={e => { setInput(e.target.value); setCaret(e.target.selectionStart ?? e.target.value.length); if (!interno) broadcastTyping() }}
+                onKeyUp={e => setCaret((e.target as HTMLInputElement).selectionStart ?? 0)}
+                onClick={e => setCaret((e.target as HTMLInputElement).selectionStart ?? 0)}
+                onKeyDown={e => e.key === 'Enter' && handleSend()}
+                placeholder={interno ? 'Comentario interno · @ para etiquetar' : 'Escribe al cliente…'}
+                className="w-full rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
+                style={interno
+                  ? { background: 'var(--warn-bg-soft)', border: '1px dashed var(--warn-border)', color: 'var(--text)' }
+                  : { background: 'var(--surface-3)' }}
+              />
+            </div>
             <button
               onClick={handleSend}
               disabled={!input.trim() || sending}
+              aria-label={interno ? 'Guardar comentario interno' : 'Enviar al cliente'}
               className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm disabled:opacity-40"
-              style={{ background: 'var(--invert)', color: 'var(--invert-fg)' }}>
+              style={interno
+                ? { background: 'var(--warn-fg)', color: 'var(--on-warn, #fff)' }
+                : { background: 'var(--invert)', color: 'var(--invert-fg)' }}>
               <Send size={16} />
             </button>
           </div>
@@ -1214,7 +1355,17 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={() => setShowInvite(false)}>
           <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
             <h3 className="font-black text-gray-900 mb-1">Invitar a participar</h3>
-            <p className="text-xs text-gray-400 mb-4">Podrá escribir y llamar en este pedido.</p>
+            <p className="text-xs text-gray-400 mb-3">Podrá escribir y llamar en este pedido.</p>
+            {/* El porqué, antes de elegir a quién: escrito después ya nadie lo
+                escribe. Va como comentario interno etiquetando al invitado —el
+                cliente no lo ve— para que llegue sabiendo qué le toca. */}
+            <input
+              value={notaInvitacion}
+              onChange={e => setNotaInvitacion(e.target.value)}
+              placeholder="¿Para qué lo invitas? (lo verá solo el equipo)"
+              className="w-full rounded-2xl px-4 py-2.5 text-sm outline-none mb-3"
+              style={{ background: 'var(--warn-bg-soft)', border: '1px dashed var(--warn-border)' }}
+            />
             <div className="space-y-2 max-h-[50vh] overflow-y-auto">
               {team
                 .filter(t => !participants.some(p => p.id === t.auth_user_id && p.can_write))
@@ -1255,6 +1406,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           role="seller"
           onClose={() => setShowDetail(false)}
           onPatch={(patch) => setSession(s => s ? { ...s, ...patch } : s)}
+          onInvitar={canWrite ? openInvite : undefined}
         />
       )}
 

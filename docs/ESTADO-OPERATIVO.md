@@ -54,6 +54,8 @@ alter table order_sessions add column if not exists pay360_saldo_coupon_id     t
 alter table order_sessions add column if not exists pay360_saldo_consumer_code text;
 create index if not exists idx_order_sessions_saldo_coupon
   on order_sessions(pay360_saldo_coupon_id) where pay360_saldo_coupon_id is not null;
+-- A quién se etiqueta en un comentario interno (bloque §32)
+alter table chat_messages add column if not exists mentions jsonb default '[]';
 ```
 
 **2. Después los deploys.** Cada función una sola vez, aunque la pidan varias notas:
@@ -61,9 +63,10 @@ create index if not exists idx_order_sessions_saldo_coupon
 | Función | Qué destraba | Nota |
 |---|---|---|
 | `get-store-sessions` | el CRM, la Lista y el Tablero completos: campos del mapa y del pago, `answered_at`, `sender_name`, anulados, guía manual, el **DNI** que necesita el buscador y el **saldo** (anillo y filtro de pagos). ⚠️ Pide el SQL §31 **antes**: sin esas columnas el select falla entero y el tablero queda en blanco | [CRM](#el-crm-espera-un-deploy-26-ago-2026--en-vivo-también-hasta-que-se-retiró) · [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
-| `order-manage` | `mark_answered`, `anular` / `restore`, el eje sin `preparando`, y que un **upsell** entre al mismo pedido mientras la caja siga en la tienda (antes abría un pedido aparte desde `validando` y `registrado`) | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
-| `get-session` | la llamada en el hilo, `answered_at`, si el cliente está en la app, y el rastro del **saldo** |
+| `order-manage` | `mark_answered`, `anular` / `restore`, el eje sin `preparando`, que un **upsell** entre al mismo pedido mientras la caja siga en la tienda, y el **porqué de una invitación** como comentario interno | [respondido](#marcar-un-pedido-como-respondido-28-ago-2026) · [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
+| `get-session` | la llamada en el hilo, `answered_at`, si el cliente está en la app, el rastro del **saldo**, y los **comentarios internos** — que exigen un JWT de vendedor verificado, no `?viewer=seller` |
 | `pay360-coupon` · `pay360-webhook` | el cobro del **saldo**: emitir su cupón y confirmarlo | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) · [app](#get-session-otra-vez-saber-si-el-cliente-está-en-la-app-27-ago-2026) |
+| `seller-send-message` | los **comentarios internos**: `visibility` + `mentions`, y que NO salgan por el canal ni por la push del comprador |
 | `get-store-drafts` 🆕 | la columna **Curiosos** del tablero | [pipeline](#el-pipeline-nuevo-curiosos-y-anulado-28-ago-2026) |
 | `delivery-map` 🆕 | el **mapa de entregas** de la libreta de clientes | [mapa](#el-mapa-de-entregas-por-distrito-28-ago-2026) |
 | `create-call-token` · `seller-call-token` · `livekit-webhook` | que la llamada quede escrita en el hilo del pedido | [llamadas](#las-llamadas-en-el-hilo-necesitan-sql--deploy-27-ago-2026) — `livekit-webhook` va con `--no-verify-jwt` |
@@ -553,7 +556,7 @@ Anotada donde vive, para que no haya que redescubrirla:
 
 | Deuda | Dónde | Por qué importa |
 |---|---|---|
-| `payment_reason` y los mensajes `sellers` pueden acabar frente al comprador vía `get-session?viewer=seller`. | `pay360-coupon/index.ts` · `notePaymentFailure` | Obliga a que **ningún texto de terceros** entre ahí. Es la razón de que los motivos de fallo sean frases cortas y propias, y de que el error crudo de 360pay vaya **solo** a los logs de la función. |
+| `payment_reason` puede acabar frente al comprador vía `get-session?viewer=seller` — la vista de vendedor sigue decidiéndose por la URL para todo menos los mensajes. | `pay360-coupon/index.ts` · `notePaymentFailure` | Obliga a que **ningún texto de terceros** entre ahí. Es la razón de que los motivos de fallo sean frases cortas y propias, y de que el error crudo de 360pay vaya **solo** a los logs de la función. Los mensajes `sellers` **ya no están**: desde los comentarios internos exigen un JWT de vendedor verificado. Falta mover el resto de campos a esa misma puerta. |
 | Nada impide emitir un cupón por debajo de S/5. | `07-CONTRATO-360PAY.md` §6 | La comisión es plana: un adelanto de S/5 le deja S/0 al comercio. Falta un piso configurable por tienda, o caer a contraentrega puro cuando el adelanto no lo alcance. |
 | `stores` no guarda RUC ni razón social de cada marca. | `07-CONTRATO-360PAY.md` §5 | El contrato con 360pay nos obliga a mantener ese registro de los comerciantes referidos. |
 | `manage-store` mantiene vivo el camino legacy `admin_auth_id` para branding. | `01-SALES-ENGINE.md` §3.3 · `manage-store/index.ts:82` | Doble superficie de auth. Los campos de cobro ya exigen JWT verificado; falta retirar el resto. |

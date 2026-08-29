@@ -126,7 +126,13 @@ export interface OrderMessage {
   sender_role: 'buyer' | 'seller' | 'courier' | 'system' | 'sofia'
   sender_name: string | null
   sender_role_label?: string | null
+  /** `all` lo ve también el comprador; `sellers` es un COMENTARIO INTERNO.
+   *  `null` son las filas viejas, de antes de la columna: cuentan como
+   *  públicas. Quién puede leer lo interno lo decide `get-session`, que para
+   *  eso exige un JWT de vendedor verificado (ver lib/comentario-interno.ts). */
   visibility?: 'all' | 'sellers' | null
+  /** `auth_user_id` de la gente etiquetada con `@` en un comentario interno. */
+  mentions?: string[] | null
   type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer'
   body: string | null
   media_url: string | null

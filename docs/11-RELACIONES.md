@@ -1844,6 +1844,95 @@ Una sola puerta por gesto, que es lo que evita tener dos caminos que mantener:
 - `useStoreOrders` y `pedidoDemoPorToken` — la lectura. El tablero se recalcula en el mismo
   render en que se mueve la etapa, así que el pedido **cambia de columna a la vista**, que es
   media demo.
+## La columna del pedido deja de repetir, y el hilo gana una segunda voz (29-ago-2026)
+
+### La etapa estaba dos veces, y una de las dos mentía
+
+La tarjeta "Tu pedido" abría con **Estado**, y arriba, en la misma pantalla, ya estaba la fila
+del estado con su botón de avanzar. Repetir no era lo peor: la de arriba pinta el **paso del
+eje** ("Registrado") y la de abajo pintaba el `stage` crudo ("En camino") — el mismo pedido con
+dos nombres a diez centímetros de distancia. Se fue la de abajo, que es la que no tiene botón.
+
+### "Te atiende" nombraba a uno, y en el chat escriben varios
+
+Decía el asignado y nada más. Pero al pedido se invita a Despacho, a Soporte, y esa lista no
+estaba en ninguna parte de la columna. No es decorativa: dice **quién puede leer la
+conversación**, que es justo lo que uno necesita saber antes de escribir algo interno.
+
+Ahora es **Asignado**, con todos los que participan y un **+ Invitar** al lado. Y la invitación
+lleva un porqué:
+
+> **¿Para qué lo invitas?** — el texto se guarda como comentario interno etiquetando al
+> invitado. Invitar a alguien sin decirle a qué lo obliga a leerse el hilo entero para adivinar
+> qué le tocaba, o a preguntar por fuera; y lo que se pregunta por fuera no vuelve al pedido.
+
+### Comentarios internos: el mismo hilo, dos audiencias
+
+Un pedido tiene una conversación **con** el comprador y otra **sobre** el comprador. La segunda
+no tenía dónde: se hacía por el WhatsApp del equipo, en la llamada, o no se hacía. Lo que se
+pierde ahí es lo caro — *"a este ya lo llamé dos veces"*, *"el pago no cuadra, ojo antes de
+despachar"*— porque no vive al lado del pedido y el siguiente que lo abre no lo sabe.
+
+Va en el **mismo hilo**, a propósito: una pestaña aparte de notas internas es una pestaña que
+nadie abre. El contexto sirve leído al lado de lo que pasó.
+
+En el redactor hay un **candado** que cambia el modo. No es una casilla escondida en un menú:
+el campo cambia de aspecto —fondo ámbar, borde punteado, otro *placeholder*— porque el error
+caro no es olvidar comentar, es **escribirle al cliente creyendo que comentabas**. Lo que se ve
+tiene que decirlo. Y el comentario se pinta centrado, con candado y sin forma de burbuja: si se
+pareciera a un mensaje, alguien acabaría respondiéndole al cliente por ahí.
+
+Con `@` se etiqueta a alguien de la tienda. Se busca por nombre **y por rol** —quien escribe
+"despacho" busca a quien despacha, no un nombre— y se guardan los `auth_user_id`, no el texto:
+un `@Renzo` deja de apuntar a nadie en cuanto Renzo cambia de nombre. Un `@` que no corresponde
+a nadie no se resalta ni se guarda; es texto. El buscador solo aparece en modo interno:
+etiquetar compañeros en un mensaje que lee el cliente no significa nada y le enseña nombres de
+gente que no conoce.
+
+#### Los tres candados, y por qué hacen falta los tres
+
+Esto es lo que convierte "comentario interno" en una garantía y no en un color. `visibility` ya
+existía en `chat_messages` para los mensajes de sistema, y **la columna no esconde nada por sí
+sola**:
+
+1. **Al leer.** Quien decide era `get-session`, y le bastaba con `?viewer=seller` **en la
+   URL** — que el comprador puede escribir, porque el token del pedido es suyo. Estaba anotado
+   como deuda mientras detrás solo hubiera campos internos; con comentarios detrás pasa a ser
+   otra cosa. Ahora lo interno exige un **JWT de vendedor verificado** contra `sellers`, y el
+   panel manda su sesión en vez de la anon key. Falla en cerrado: sin JWT no hay comentarios
+   internos para nadie, que es preferible a enseñárselos a quien no debe.
+2. **Al llegar.** El canal `order:<id>` es el del **comprador**: su chat está suscrito y pinta
+   lo que llegue. Un comentario mandado por ahí se le aparecería en vivo — peor que poder
+   leerlo, porque no hay ni que buscarlo. De lo interno viaja solo el aviso de que hay algo
+   nuevo, sin cuerpo, y el panel vuelve a pedir el hilo por la puerta que sí verifica.
+3. **Al avisar.** Un comentario interno **no manda push ni WhatsApp**. Sería el mismo error por
+   la puerta de atrás: el cuerpo del mensaje va dentro de la notificación.
+
+### Las etiquetas eran cuatro y dos eran etapas disfrazadas
+
+*Cancelado* y *Anulado* ya son el `status` del pedido: tienen sus propios botones abajo, con su
+confirmación, y mueven la conversión. Ponerlos también como nota dejaba marcar "Cancelado" sin
+cancelar nada — un pedido que se veía cancelado y seguía vivo en el tablero.
+
+Una etiqueta no es una etapa: la etapa dice **dónde** está el pedido y la mueve el eje; la
+etiqueta dice **qué le pasa**, convive con cualquier etapa y la pone una persona. Las cuatro
+que quedan son las que cambian lo que uno hace hoy:
+
+| Etiqueta | Qué dice | Color |
+|---|---|---|
+| **No contesta** | hay que insistir por otro canal | ámbar |
+| **Reprogramado** | pidió otra fecha; no es que no conteste | gris marcado |
+| **Datos incompletos** | falta dirección, referencia o DNI: **no sale** hasta que alguien lo complete | rojo |
+| **Recuperado** | se cayó y volvió. Es la que dice si insistir sirve | lima |
+
+Sigue el §6.1 del manual: uno lima, uno rojo, uno ámbar y uno gris. Si todas llevaran color,
+ninguna resaltaría.
+
+Y ahora **se ve cuál está marcada**, que era el problema de verdad: el gris de una etiqueta
+encendida (`--surface-3` + `--text-muted`) y el de una apagada (`--surface-3` +
+`--text-faint`) se distinguen a la lupa, no de un vistazo. Encendida = rellena; apagada = solo
+contorno. Guardar no pregunta nada: una etiqueta se pone y se quita de un toque, y se deshace
+con otro — al revés que cancelar o anular, que no se deshacen y por eso sí preguntan.
 
 ## Ver también
 

@@ -47,6 +47,11 @@ export interface MensajeDemo {
   created_at: string
   read_at: string | null
   offer?: { product_id?: string | null; nombre: string; precio: number; image?: string | null; accepted?: boolean } | null
+  /** `sellers` = comentario interno. En el demo no hay comprador al otro lado,
+   *  así que se guarda igual que cualquier mensaje: lo que se enseña es cómo se
+   *  ve y dónde vive, no el candado —ese lo pone `get-session`. */
+  visibility?: string | null
+  mentions?: string[] | null
 }
 
 /** Lo que cambió de UN pedido de ejemplo. Todo opcional: se guarda solo lo
