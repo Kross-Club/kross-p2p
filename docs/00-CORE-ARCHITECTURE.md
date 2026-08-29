@@ -183,9 +183,22 @@ la Edge Function correspondiente. **La del servidor es la que manda**: ocultar u
 protege nada, el POST llega igual. La del panel existe para no ofrecer lo que va a ser
 rechazado.
 
-Al **entrar a una tienda**, el perfil que se actúa arrastra `is_operator` (`...real` en
+Al **entrar a una tienda**, el perfil que se actúa arrastra `is_operator` (`...effective` en
 `enterStore`): un operador sigue siendo operador adentro. Y aunque no lo arrastrara, el
 servidor mira al vendedor REAL — el perfil de impersonación vive en `localStorage`.
+
+**Suplantar es una vista, no una identidad (29-ago-2026).** De ahí salen dos preguntas que hay
+que hacer por separado, y confundirlas costó una pantalla entera:
+
+- lo que se **puede** — lo decide el servidor con el JWT del vendedor real;
+- lo que se **muestra** — lo decide la pantalla siguiendo a `effective`.
+
+`vistaDeTiendas` (`src/lib/vista-de-tiendas.ts`) las cruza con una Y, y eso es seguro porque
+**actuar solo rebaja**: solo se entra como alguien que ya está dentro del alcance propio, así
+que la intersección nunca amplía — como mucho enseña de menos. Antes, *Tiendas* leía al
+vendedor REAL y se bloqueaba entera en cuanto había suplantación (`!isAdmin || impersonating`),
+lo que rompía las dos cosas para las que existe "Entrar": ver lo que ve un operador de Kross, y
+entrar a una marca para configurarla.
 
 ### Recuperar contraseña del panel ✅ (implementado)
 

@@ -2230,6 +2230,57 @@ lo que el rol hace —entra a cualquier tienda, la crea, la edita, la enciende y
 de enumerar lo que no. Prometer un límite que el código ya no aplica es peor que no tener el
 límite.
 
+## Suplantar es una vista, no una identidad (29-ago-2026)
+
+Uxbriel entra como Paolo, el menú le ofrece **Tiendas**, toca, y le sale *"Solo el
+administrador gestiona la marca."* Una sección que se ofrece y no abre.
+
+La línea era esta:
+
+```
+if (!isAdmin || impersonating) return <p>Solo el administrador gestiona la marca.</p>
+```
+
+Y el `impersonating` no era paranoia: era un parche honesto a un problema real. Esa pantalla
+—la única del panel que lo hacía— leía al vendedor **REAL** (`real`) mientras las demás leen a
+quien estás actuando (`effective`). Con suplantación activa habría enseñado los datos de uno
+con el nombre de otro en la cabecera, así que se bloqueaba entera. El parche tapaba el síntoma
+y dejaba el desajuste debajo.
+
+Lo caro no fue el cartel, fue lo que el cartel impedía. **Las dos únicas razones por las que
+existe "Entrar" chocaban con él:**
+
+- entrar **como alguien** para ver lo que ve — que es lo que Uxbriel intentó con Paolo;
+- entrar **a una marca** para configurarla — que es la razón número uno para entrar, y estaba
+  dicho así en un comentario de esta misma pantalla, tres líneas más abajo del bloqueo.
+
+### Las dos preguntas
+
+Suplantar es **una vista**. El objeto de suplantación vive en `localStorage`, o sea que lo
+escribe el usuario: no puede decidir permisos, y nunca los ha decidido — el servidor mira el
+JWT. Así que son dos preguntas distintas y la pantalla estaba haciendo una sola:
+
+| | Quién responde |
+|---|---|
+| qué se **puede** | el servidor, con el JWT del vendedor real |
+| qué se **muestra** | la pantalla, siguiendo a `effective` |
+
+`vistaDeTiendas` las cruza con una Y. Es seguro por una razón que conviene dejar escrita:
+**actuar solo rebaja.** Solo se entra como alguien que ya está dentro del alcance propio, así
+que la intersección jamás amplía nada — como mucho enseña de menos, que es exactamente lo que
+se quiere. Sus pruebas dicen justo eso: ninguna de las dos mitades puede ampliar por su cuenta.
+
+### Y un nombre que era la mitad del bug
+
+La pantalla tenía un `isSuper` que significaba *"el servidor dijo que el vendedor real tiene
+alcance de plataforma"* y se usaba como si significara *"lo que estoy viendo tiene mando de
+plataforma"*. Dos cosas distintas con un nombre. Ahora son `superEnServidor` y `plataforma`, y
+en cuanto se separan queda a la vista que la segunda es la que pinta.
+
+Con eso, entrar como Paolo enseña las tiendas; y entrar a una marca enseña **esa** marca, con
+el mando de una marca: sin crear tiendas, sin apagarlas, sin subdominio. Se salió de la
+plataforma, así que los botones de la plataforma no se ofrecen.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

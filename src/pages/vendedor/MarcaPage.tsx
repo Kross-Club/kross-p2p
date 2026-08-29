@@ -4,6 +4,8 @@ import { mensajePanel } from '../../lib/panel-errors'
 import { Store as StoreIcon, Plus, X, Check, ExternalLink, Power, MessageCircle, LogIn, Truck, BarChart3, Sparkles } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller, type SellerProfile } from '../../lib/seller-session'
+import { puedeAdministrar } from '../../lib/permisos'
+import { vistaDeTiendas } from '../../lib/vista-de-tiendas'
 import { useDemo, setDemo } from '../../lib/demo/modo-demo'
 import { PEDIDOS_POR_DIA } from '../../lib/demo/tienda-demo'
 
@@ -91,25 +93,33 @@ async function call(payload: Record<string, unknown>) {
 
 export default function MarcaPage() {
   const navigate = useNavigate()
-  const { real, isAdmin, impersonating, actAs } = useSeller()
+  const { real, effective, actAs } = useSeller()
 
   // Super admin "enters" a brand → acts as itself but scoped to that store, so the
   // full store toolset (Chats, Productos, CRM, Equipo, Stats) works even for a brand
   // with no team yet (that's exactly when you enter — to set it up).
   //
-  // El `...real` de adelante NO es decorativo: arrastra `is_operator`, así que
-  // un operador que entra a una tienda sigue siendo operador ahí. Escribir el
-  // objeto campo por campo lo perdería y le daría, dentro de la tienda, lo que
-  // no tiene fuera. (El servidor lo rechazaría igual —mira al vendedor REAL, no
-  // a este objeto, que vive en localStorage— pero el panel le ofrecería botones
-  // que fallan.)
+  // El `...effective` de adelante NO es decorativo: arrastra `is_operator`, así
+  // que un operador que entra a una tienda sigue siendo operador ahí. Escribir
+  // el objeto campo por campo lo perdería y le daría, dentro de la tienda, lo
+  // que no tiene fuera. (El servidor lo rechazaría igual —mira al vendedor
+  // REAL, no a este objeto, que vive en localStorage— pero el panel le
+  // ofrecería botones que fallan.)
+  //
+  // Y sale de `effective`, no de `real`, para no deshacer la suplantación al
+  // entrar: si estás viendo como Paolo y entras a una marca, sigues viendo como
+  // Paolo dentro de ella.
   const enterStore = (storeId: string) => {
-    if (!real) { alert('Sesión no lista, recarga la página e intenta de nuevo.'); return }
-    actAs({ ...real, store_id: storeId, is_admin: true, is_super_admin: false, role_label: 'Admin' } as SellerProfile)
+    const yo = effective ?? real
+    if (!yo) { alert('Sesión no lista, recarga la página e intenta de nuevo.'); return }
+    actAs({ ...yo, store_id: storeId, is_admin: true, is_super_admin: false, role_label: 'Admin' } as SellerProfile)
     navigate('/vendedor/pedidos')
   }
   const [stores, setStores] = useState<StoreRow[]>([])
-  const [isSuper, setIsSuper] = useState(false)
+  // Lo que respondió el SERVIDOR sobre el vendedor real. No es lo que se pinta:
+  // eso lo decide `vistaDeTiendas` cruzándolo con a quién se está actuando.
+  // Tenerlos con el mismo nombre fue justo lo que hizo falta un cartel.
+  const [superEnServidor, setSuperEnServidor] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<StoreRow | null>(null)
   const [creating, setCreating] = useState(false)
@@ -118,7 +128,7 @@ export default function MarcaPage() {
   const load = async () => {
     if (!real) return
     const { ok, data } = await call({ action: 'list', admin_auth_id: real.auth_user_id })
-    if (ok) { setStores(data.stores ?? []); setIsSuper(!!data.is_super) }
+    if (ok) { setStores(data.stores ?? []); setSuperEnServidor(!!data.is_super) }
     setLoading(false)
     // WhatsApp usage this month (for the 2x-per-template billing)
     const usage = await call({ action: 'wa_usage', admin_auth_id: real.auth_user_id })
@@ -128,15 +138,23 @@ export default function MarcaPage() {
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-[#55C8F5] animate-spin" /></div>
 
-  if (!isAdmin || impersonating) {
+  // Antes acá decía `!isAdmin || impersonating`, y ese `impersonating` era el
+  // cartel que salía al entrar como alguien —incluido un operador de Kross, que
+  // ve Tiendas en su menú— y al entrar a una marca para configurarla. Ahora la
+  // pregunta es la que se quería hacer: ¿administra ESTA persona? Y qué se ve
+  // con ese mando lo decide `vistaDeTiendas`, que cruza el permiso del servidor
+  // con el de quien se está actuando.
+  if (!puedeAdministrar(effective)) {
     return <div className="px-4 py-8 text-center text-sm text-gray-400">Solo el administrador gestiona la marca.</div>
   }
+
+  const { plataforma, visibles } = vistaDeTiendas(stores, effective, superEnServidor)
 
   return (
     <div className="px-4 py-4">
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-black text-gray-900 flex items-center gap-2"><StoreIcon size={20} /> {isSuper ? 'Tiendas' : 'Mi marca'}</h1>
-        {isSuper && (
+        <h1 className="text-xl font-black text-gray-900 flex items-center gap-2"><StoreIcon size={20} /> {plataforma ? 'Tiendas' : 'Mi marca'}</h1>
+        {plataforma && (
           <button onClick={() => setCreating(true)}
             className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: '#55C8F5', color: '#fff' }}>
             <Plus size={13} /> Nueva tienda
@@ -144,10 +162,10 @@ export default function MarcaPage() {
         )}
       </div>
       <p className="text-xs text-gray-400 mb-4">
-        {isSuper ? 'Cada tienda tiene su app en su subdominio, con su logo y colores.' : 'Personaliza el logo, nombre y colores de tu app.'}
+        {plataforma ? 'Cada tienda tiene su app en su subdominio, con su logo y colores.' : 'Personaliza el logo, nombre y colores de tu app.'}
       </p>
 
-      {isSuper && Object.values(waUsage).reduce((a, b) => a + b, 0) > 0 && (
+      {plataforma && Object.values(waUsage).reduce((a, b) => a + b, 0) > 0 && (
         <div className="rounded-2xl p-3 mb-4 flex items-center gap-3" style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
           <MessageCircle size={18} style={{ color: 'var(--ok-fg)' }} />
           <div className="flex-1">
@@ -161,8 +179,9 @@ export default function MarcaPage() {
 
       {/* El demo se enciende POR MARCA, en su fila. Vivía en una tarjeta suelta
           arriba y era inalcanzable para el super admin: fuera de una marca se
-          deshabilitaba, y al entrar a una, esta pantalla se bloquea entera
-          (`!isAdmin || impersonating`). Acá está donde están las marcas. */}
+          deshabilitaba, y al entrar a una, esta pantalla se bloqueaba entera
+          (ese bloqueo se fue — ver `vistaDeTiendas`). Acá está donde están las
+          marcas. */}
       <div className="rounded-2xl px-3 py-2 mb-3 flex items-start gap-2"
         style={{ background: 'var(--surface-3)', border: '0.5px solid var(--border)' }}>
         <Sparkles size={13} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }} />
@@ -175,7 +194,7 @@ export default function MarcaPage() {
       </div>
 
       <div className="space-y-3">
-        {stores.map(s => (
+        {visibles.map(s => (
           <div key={s.id} className="bg-white border border-gray-100 rounded-2xl p-3 shadow-sm flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center" style={{ background: s.logo_url ? '#fff' : s.color_primary + '22' }}>
               {s.logo_url ? <img src={s.logo_url} alt={s.nombre} className="w-full h-full object-cover" /> : <StoreIcon size={18} style={{ color: s.color_primary }} />}
@@ -198,7 +217,7 @@ export default function MarcaPage() {
             </div>
             <InterruptorDemo storeId={s.id} nombre={s.nombre} />
             <button onClick={() => setEditing(s)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>Editar</button>
-            {isSuper && (
+            {plataforma && (
               <button onClick={() => enterStore(s.id)} className="flex items-center gap-1 text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
                 <LogIn size={13} /> Entrar
               </button>
@@ -207,7 +226,7 @@ export default function MarcaPage() {
         ))}
       </div>
 
-      {editing && <BrandEditor store={editing} isSuper={isSuper} adminId={real?.auth_user_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+      {editing && <BrandEditor store={editing} isSuper={plataforma} adminId={real?.auth_user_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {creating && <CreateBrand adminId={real?.auth_user_id ?? ''} onClose={() => setCreating(false)} onDone={() => { setCreating(false); load() }} />}
     </div>
   )
@@ -284,7 +303,10 @@ function LogoPicker({ logo, uploading, onPick, round, help }: { logo: string | n
 }
 
 function BrandEditor({ store, isSuper, adminId, onClose, onSaved }: {
-  store: StoreRow; isSuper: boolean
+  store: StoreRow
+  /** Se está viendo con mando de PLATAFORMA (no dentro de la marca). Gatea lo
+   *  que solo se toca desde fuera: subdominio, WhatsApp, encender y apagar. */
+  isSuper: boolean
   /** Apagar una tienda deja de venderle ese mismo segundo, y no lo hace un
    *  operador. El servidor lo rechaza igual (`manage-store`); acá se oculta
    *  para no ofrecer un botón que va a fallar. */
