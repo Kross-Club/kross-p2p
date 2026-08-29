@@ -1308,3 +1308,29 @@ CREATE INDEX IF NOT EXISTS idx_order_sessions_saldo_coupon
 --          saldo_amount, saldo_verification
 --   FROM order_sessions WHERE store_id = '<tienda>' AND payment_provider = '360PAY'
 --   ORDER BY created_at DESC;
+
+
+-- ─── 32. COMENTARIOS INTERNOS: A QUIÉN SE ETIQUETA ──────────────────────────
+--
+-- `chat_messages.visibility` ya separaba lo que ve el comprador (`all`) de lo
+-- que es solo del equipo (`sellers`). Lo que faltaba era **a quién va dirigido**
+-- un comentario interno: sin eso, etiquetar a alguien con `@` era texto suelto
+-- —se lee, pero nadie sabe que le tocaba a él— y no hay a quién avisarle.
+--
+-- Guarda los `auth_user_id` de la gente etiquetada. Array y no una columna
+-- suelta porque un comentario puede llamar a dos personas, que es justo cuando
+-- hace falta ("@Renzo @Kevin, ¿quién lo despacha?").
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS mentions jsonb DEFAULT '[]';
+
+-- ⚠️ Lo que este bloque NO cambia y sostiene todo lo demás: que un mensaje sea
+-- `visibility = 'sellers'` NO lo esconde por sí solo. Quien decide es
+-- `get-session`, y hasta hoy le bastaba con `?viewer=seller` en la URL — que el
+-- comprador puede escribir, porque el token del pedido es suyo. Desde el mismo
+-- cambio que trae esta columna, los mensajes internos exigen un **JWT de
+-- vendedor verificado** contra `sellers`. Sin esa comprobación, "comentario
+-- interno" sería una etiqueta de color, no una garantía.
+--
+-- Los comentarios internos de un pedido:
+--   SELECT created_at, sender_name, body, mentions
+--   FROM chat_messages WHERE session_id = '<uuid>' AND visibility = 'sellers'
+--   ORDER BY created_at;

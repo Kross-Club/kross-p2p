@@ -440,7 +440,9 @@ async function construir(): Promise<TiendaDemo> {
       // Los dos existen en cualquier tienda real y el tablero los separa.
       status: r() < 0.04 ? 'cancelado' : r() < 0.03 ? 'anulado' : 'active',
       stage: t.stage,
-      nota: r() < 0.12 ? elige(r, ['no_contesta', 'recuperado']) : null,
+      // Las cuatro etiquetas que existen (order-chips.ts). Con solo dos, la
+      // fila de etiquetas del panel se enseñaba a medias.
+      nota: r() < 0.18 ? elige(r, ['no_contesta', 'reprogramado', 'datos_incompletos', 'recuperado']) : null,
       dispatch_type: r() < 0.35 ? 'AGENCIA_LIMA' : 'AGENCIA_PROVINCIA',
       agency_name: ruta.courier,
       agency_branch_id: ruta.destinoId,

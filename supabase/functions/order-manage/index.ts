@@ -120,6 +120,9 @@ Deno.serve(async (req) => {
     by_seller_id?: string
     by?: 'buyer' | 'seller'
     nota?: string
+    /** El porqué de una invitación. Va como comentario interno etiquetando al
+     *  invitado — no se mezcla con `nota`, que es la etiqueta CRM del pedido. */
+    invite_nota?: string
     offer?: { product_id?: string; nombre: string; precio: number; image?: string | null }
     message_id?: string
     index?: number
@@ -415,6 +418,25 @@ Deno.serve(async (req) => {
       visibility: 'all',
       body: `${member?.nombre?.split(' ')[0] ?? 'Un agente'} (${member?.role_label ?? 'equipo'}) se unió al chat`,
     }).select().single()
+
+    // Y el POR QUÉ, que es del equipo. Invitar a alguien sin decirle a qué lo
+    // invitas lo obliga a leerse el hilo entero para adivinar qué le tocaba —o
+    // a preguntar por fuera, que es donde se pierde el contexto del pedido—.
+    // Va como comentario interno y etiquetando al invitado: queda en el mismo
+    // hilo, al lado de lo que pasó, y el comprador no lo ve (§32 del esquema).
+    const porQue = String(body.invite_nota ?? '').trim()
+    if (porQue) {
+      await supabase.from('chat_messages').insert({
+        session_id: session.id,
+        sender_role: 'seller',
+        sender_name: session.seller_name ?? 'Kross',
+        sender_role_label: session.seller_role ?? null,
+        type: 'text',
+        visibility: 'sellers',
+        mentions: [body.invite_seller_id],
+        body: `@${member?.nombre ?? 'equipo'} ${porQue}`.slice(0, 2000),
+      })
+    }
 
     await broadcast(session.id, 'participants_update', {})
     if (msg) await broadcast(session.id, 'new_message', msg)

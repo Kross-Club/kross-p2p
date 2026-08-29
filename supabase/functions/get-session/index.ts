@@ -17,6 +17,31 @@ Deno.serve(async (req) => {
   if (!token) return new Response('Unauthorized', { status: 401, headers: corsHeaders })
   // Read viewer from the URL query (avoids adding a custom CORS header)
   const viewerIsSeller = new URL(req.url).searchParams.get('viewer') === 'seller'
+
+  // ─── Y quién lo pide DE VERDAD ─────────────────────────────────────────────
+  //
+  // `?viewer=seller` no prueba nada: lo escribe cualquiera, y el token del
+  // pedido lo tiene el comprador —está en su URL—. Mientras lo único detrás de
+  // esa vista fueran campos internos, era deuda anotada; con los COMENTARIOS
+  // INTERNOS pasa a ser otra cosa: prometerle al equipo que el cliente no lee
+  // algo y que sí pueda leerlo.
+  //
+  // Así que lo interno exige un JWT de vendedor verificado contra `sellers`.
+  // Falla en cerrado a propósito: sin JWT no hay comentarios internos para
+  // nadie —el panel los pierde hasta que mande su sesión— y eso es preferible a
+  // enseñárselos a quien no debe.
+  const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
+  const vendedorVerificado = async (): Promise<boolean> => {
+    if (!bearer) return false
+    const { data: authed } = await supabase.auth.getUser(bearer)
+    if (!authed?.user) return false          // la anon key llega acá y se queda
+    const { data: me } = await supabase
+      .from('sellers')
+      .select('auth_user_id, active')
+      .eq('auth_user_id', authed.user.id)
+      .maybeSingle()
+    return !!me && me.active !== false
+  }
     || req.headers.get('x-viewer-role') === 'seller'
 
   // Fetch session
@@ -192,10 +217,15 @@ Deno.serve(async (req) => {
   // Fetch messages — the buyer never sees seller-only entries (e.g. expulsions)
   let mq = supabase
     .from('chat_messages')
-    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, offer, call_recording_id, visibility, created_at, read_at')
+    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, offer, call_recording_id, visibility, mentions, created_at, read_at')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
-  if (!viewerIsSeller) mq = mq.or('visibility.is.null,visibility.eq.all')
+  // Lo interno solo para quien PROBÓ ser del equipo. `viewer=seller` sigue
+  // decidiendo el resto de la vista —los campos internos del pedido— porque
+  // retirarlo de golpe dejaría al panel sin la mitad de la pantalla mientras no
+  // se despliegue; los comentarios no esperan a esa migración.
+  const puedeLeerInterno = viewerIsSeller && await vendedorVerificado()
+  if (!puedeLeerInterno) mq = mq.or('visibility.is.null,visibility.eq.all')
   const { data: messages } = await mq
 
   // `call_recording_id` es SOLO de Ventas. No es que el comprador pueda bajar

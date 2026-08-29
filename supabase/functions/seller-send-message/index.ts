@@ -117,18 +117,32 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { session_id, seller_name, seller_role, body, type, offer } = await req.json() as {
+  const { session_id, seller_name, seller_role, body, type, offer, interno, mentions } = await req.json() as {
     session_id: string
     seller_name: string
     seller_role?: string
     body: string
     type: 'text' | 'audio' | 'image' | 'offer'
     offer?: { product_id?: string; nombre: string; precio: number; image?: string | null }
+    /** COMENTARIO INTERNO: se guarda en el mismo hilo pero no es del comprador.
+     *  Ver bloque §32 del esquema. */
+    interno?: boolean
+    /** `auth_user_id` de la gente etiquetada con `@`. */
+    mentions?: string[]
   }
 
   if (!session_id || !body) {
     return new Response('Missing fields', { status: 400, headers: corsHeaders })
   }
+
+  // Un comentario interno vive en el MISMO hilo —esa es la gracia: se lee al
+  // lado de lo que pasó, no en otra pantalla— y se separa por `visibility`.
+  // Quién puede leerlo lo decide `get-session`, que para lo interno exige un
+  // JWT de vendedor verificado: acá solo se marca.
+  const esInterno = !!interno
+  const etiquetados = Array.isArray(mentions)
+    ? mentions.filter((x): x is string => typeof x === 'string').slice(0, 20)
+    : []
 
   const { data: msg, error } = await supabase
     .from('chat_messages')
@@ -140,6 +154,8 @@ Deno.serve(async (req) => {
       type: type || 'text',
       body,
       offer: offer ?? null,
+      visibility: esInterno ? 'sellers' : 'all',
+      mentions: etiquetados,
     })
     .select()
     .single()
@@ -150,7 +166,18 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Broadcast to buyer's realtime channel
+  // Broadcast to buyer's realtime channel.
+  //
+  // ⚠️ El canal `order:<id>` es el del COMPRADOR: su chat está suscrito ahí y
+  // pinta lo que llegue. Un comentario interno mandado por esa vía se le
+  // aparecería en pantalla en vivo — una fuga peor que la de leerlo, porque no
+  // hace falta ni buscarla.
+  //
+  // Así que de lo interno no viaja el cuerpo, solo el AVISO de que hay algo
+  // nuevo. El panel lo oye y vuelve a pedir el hilo por `get-session`, que es
+  // quien exige el JWT de vendedor. Un comprador que se suscriba al canal
+  // —puede: el id del pedido es suyo— se entera de que el equipo comentó algo,
+  // y nada más.
   await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
     method: 'POST',
     headers: {
@@ -159,9 +186,20 @@ Deno.serve(async (req) => {
       apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     },
     body: JSON.stringify({
-      messages: [{ topic: `order:${session_id}`, event: 'new_message', payload: msg }],
+      messages: [esInterno
+        ? { topic: `order:${session_id}`, event: 'internal_update', payload: {} }
+        : { topic: `order:${session_id}`, event: 'new_message', payload: msg }],
     }),
   })
+
+  // Y no se le avisa al comprador de algo que no es para él: un comentario
+  // interno no manda push ni WhatsApp. Sería el mismo error por la puerta de
+  // atrás — el cuerpo del mensaje va en la notificación.
+  if (esInterno) {
+    return new Response(JSON.stringify(msg), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
 
   // Push notification to buyer — try by buyer_id first (account-linked), fallback to session_id
   const { data: sessionRow } = await supabase

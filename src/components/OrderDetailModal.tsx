@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Package, AlertTriangle, RefreshCw, Trash2, Eye } from 'lucide-react'
+import { X, Package, AlertTriangle, RefreshCw, Trash2, Eye, Plus } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { OrderSession } from '../lib/order-api'
-import { NOTA_META, NOTA_KEYS } from '../lib/order-chips'
+import { NOTA_META, NOTA_KEYS, etiquetaStyle } from '../lib/order-chips'
 import { stageVigente } from '../lib/order-stages'
 import { etiquetaDePaso } from '../lib/order-tracking'
 import Confirmar from './Confirmar'
@@ -14,16 +14,7 @@ import type { StoreOrder } from '../lib/store-orders'
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-// El nombre y el emoji de cada etapa salen de `PASOS` (order-tracking), que es
-// el mismo catálogo del tablero y de la cabecera del chat. Escribirlos otra vez
-// acá es cómo empezaron a llamarse distinto en cada pantalla.
-// `preparando` ya no está en el eje: se lee como `confirmado` vía `stageVigente`.
-const etiqueta = (stage: string): string => {
-  const { label, emoji } = etiquetaDePaso(stageVigente(stage))
-  return `${emoji} ${label}`.trim()
-}
-
-// Las notas y su color viven en un solo lugar (§6.1)
+// Las etiquetas y su color viven en un solo lugar (§6.1)
 const NOTAS = NOTA_KEYS.map(key => ({ key, ...NOTA_META[key] }))
 
 const LOSES = [
@@ -33,11 +24,15 @@ const LOSES = [
   'Promociones y descuentos cada mes',
 ]
 
-export default function OrderDetailModal({ session, role, onClose, onPatch, enColumna = false }: {
+export default function OrderDetailModal({ session, role, onClose, onPatch, onInvitar, enColumna = false }: {
   session: OrderSession
   role: 'buyer' | 'seller'
   onClose: () => void
   onPatch: (patch: Partial<OrderSession>) => void
+  /** Abre el invitador del chat. Lo pone quien lo tiene —la pantalla del
+   *  pedido—, porque invitar es del hilo y no de esta tarjeta. Sin esto el `+`
+   *  no aparece: un botón que no hace nada es peor que ninguno. */
+  onInvitar?: () => void
   /** `true` = va dentro de la columna del pedido, sin velo ni hoja flotante.
    *  En escritorio la columna tiene sitio de sobra y el pedido es justo lo que
    *  uno mira mientras escribe: taparlo con una ventana en el centro era
@@ -168,9 +163,14 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
     const { label, emoji } = etiquetaDePaso(key)
     return `${emoji} ${label}`.trim()
   }
-  const stageText = anulado ? '🚫 Pedido anulado'
-    : cancelled ? '❌ Pedido cancelado'
-    : etiqueta(session.stage)
+  // Quién ve este chat: el asignado y los invitados. `participants` ya viene
+  // resuelto de `get-session` con el nombre y el rol de cada uno; si la función
+  // todavía no lo manda, queda el asignado, que es lo que había antes.
+  const asignados = session.participants?.length
+    ? session.participants
+    : session.seller_name
+      ? [{ id: session.assigned_seller_id ?? 'asignado', nombre: session.seller_name, role_label: session.seller_role ?? null }]
+      : []
 
   const cuerpo = (
     <>
@@ -238,23 +238,63 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, enCo
             )
           })()}
 
+          {/* La ETAPA ya no va acá: está arriba, en la fila del estado, con su
+              botón de avanzar. Repetirla dos veces en la misma columna era
+              además repetirla mal — arriba se lee el paso del eje ("Registrado")
+              y acá salía el `stage` crudo ("En camino") para el mismo pedido. */}
           <div className="space-y-2 mb-4">
-            <Row label="Estado" value={stageText} />
             {session.order_id && <Row label="N° de pedido" value={session.order_id} />}
-            {session.seller_name && <Row label="Te atiende" value={`${session.seller_name.split(' ')[0]}${session.seller_role ? ` · ${session.seller_role}` : ''}`} />}
           </div>
 
-          {/* Notas CRM (solo vendedor) */}
+          {/* ── Quién puede ver este chat ──
+              Era "Te atiende" y nombraba a UNO: al asignado. Pero en el chat
+              escriben varios —se invita a Despacho, a Soporte— y esa lista no
+              estaba en ninguna parte de esta columna. Y no es decorativa: dice
+              quién puede LEER la conversación con el cliente, que es justo lo
+              que hay que saber antes de escribir algo interno. */}
           {role === 'seller' && (
             <div className="mb-4">
-              <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-1.5">Nota (CRM)</p>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Asignado</p>
+                {onInvitar && (
+                  <button onClick={onInvitar} aria-label="Invitar a alguien del equipo"
+                    className="flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full"
+                    style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
+                    <Plus size={11} /> Invitar
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {asignados.length === 0 && (
+                  <span className="text-[11px]" style={{ color: 'var(--text-faint)' }}>Sin asignar</span>
+                )}
+                {asignados.map(p => (
+                  <span key={p.id} className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px]"
+                    style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
+                    <span className="w-4 h-4 rounded-md flex items-center justify-center text-[9px] font-black flex-shrink-0"
+                      style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
+                      {p.nombre.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="font-bold">{p.nombre.split(' ')[0]}</span>
+                    {p.role_label && <span style={{ color: 'var(--text-faint)' }}>{p.role_label}</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Etiquetas (solo vendedor) */}
+          {role === 'seller' && (
+            <div className="mb-4">
+              <p className="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-1.5">Etiquetas</p>
               <div className="flex flex-wrap gap-1.5">
                 {NOTAS.map(n => {
                   const on = session.nota === n.key
                   return (
                     <button key={n.key} onClick={() => setNota(on ? null : n.key)}
-                      className="px-2.5 py-1 rounded-full text-[11px] font-bold"
-                      style={on ? n.style : { background: 'var(--surface-3)', color: 'var(--text-faint)' }}>
+                      aria-pressed={on}
+                      className="px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors"
+                      style={etiquetaStyle(n.key, on)}>
                       {n.label}
                     </button>
                   )
