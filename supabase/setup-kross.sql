@@ -1586,3 +1586,29 @@ ON CONFLICT DO NOTHING;
 --     (SELECT COALESCE(sum(advance_amount),0) FROM order_sessions WHERE upper(payment_verification) = 'MATCHED')
 --   + (SELECT COALESCE(sum(saldo_amount),0)   FROM order_sessions WHERE upper(saldo_verification)   = 'MATCHED') AS por_columnas,
 --     (SELECT COALESCE(sum(monto),0) FROM cobros WHERE estado = 'MATCHED')                                        AS por_cobros;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §37 · LA TARJETA DE PAGO SABE DE QUÉ COBRO ES  (31-ago-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Mientras un pedido tenía dos cobros, una tarjeta de pago en el chat solo
+-- podía ser una cosa: el saldo. Con los `extra` del bloque §36 ya no —"págame
+-- S/ 20" puede ser el flete, la diferencia de talla o el saldo—, y la tarjeta
+-- se pintaba contra el saldo del pedido: monto equivocado y, peor, un botón que
+-- cobraba OTRA cosa distinta de la que el texto pedía.
+--
+-- Así que el mensaje apunta a su cobro. Es un puntero, no una copia: el monto,
+-- el concepto y si ya se pagó se leen de `cobros`, que es donde viven. Copiarlos
+-- al mensaje sería tener dos versiones del mismo importe y que una envejezca.
+--
+-- NULL en los mensajes de antes, y eso está bien: sin puntero la tarjeta es del
+-- saldo, que es exactamente lo que era cuando se mandó.
+--
+-- ON DELETE SET NULL y no CASCADE: un cobro no se borra —se ANULA— pero si
+-- algún día se borrara, el mensaje tiene que quedar. Se le mandó al comprador y
+-- él lo vio; hacerlo desaparecer del hilo dejaría una conversación sobre algo
+-- que en la base no pasó nunca.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS cobro_id uuid REFERENCES cobros(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_cobro ON chat_messages(cobro_id) WHERE cobro_id IS NOT NULL;

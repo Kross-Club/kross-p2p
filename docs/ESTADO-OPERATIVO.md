@@ -92,6 +92,35 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### Cobrar algo más · SQL + 5 funciones (31-ago-2026)
+
+**Qué se ve si no entra:** el ícono de billetera aparece en la barra del chat y el cobro **falla**
+— `order-manage` responde *Unknown action*. Y si entran las funciones pero no el SQL, el cobro se
+crea pero su tarjeta del chat se pinta contra el **saldo** del pedido: monto equivocado y un botón
+que abre Yape por otra cosa. **El SQL primero.**
+
+**1 · El SQL** (bloque §37; idempotente, se puede correr dos veces):
+
+```sql
+alter table chat_messages add column if not exists cobro_id uuid references cobros(id) on delete set null;
+
+create index if not exists idx_chat_messages_cobro on chat_messages(cobro_id) where cobro_id is not null;
+```
+
+**2 · Las funciones:**
+
+```
+supabase functions deploy order-manage        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy seller-send-message --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-coupon       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook      --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> `pay360-webhook` es el que **no** puede quedarse atrás: sin él, un cobro extra pagado no calza
+> con ninguna de las dos columnas viejas y se marca como **adelanto** — le pisa `advance_amount`
+> con el monto del flete y da por cobrado un adelanto que nadie pagó.
+
 ### El detalle del pedido en el chat · `order-manage` (31-ago-2026)
 
 **Qué se ve si no entra:** en el demo el mensaje sale con el detalle entero (total, abonado y

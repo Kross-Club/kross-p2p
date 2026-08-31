@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, AlertTriangle, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle, NotebookPen } from 'lucide-react'
+import { Send, Phone, PhoneOff, Mic, MicOff, Package, ArrowLeft, AlertTriangle, CheckCircle2, CheckCheck, Star, Smartphone, Users, UserPlus, Eye, X, ShoppingCart, PackagePlus, MessageCircle, NotebookPen, Wallet } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { escuchar } from '../../lib/realtime'
 import { useCompradoresEnLinea } from '../../lib/presencia'
@@ -32,15 +32,17 @@ import Confirmar from '../../components/Confirmar'
 import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
 import TarjetaDePago from '../../components/TarjetaDePago'
-import { TIPO_COBRO, textoDeCobro, montoDeLaTarjeta } from '../../lib/cobro-por-chat'
-import { puedePagarSaldo, saldoDelPedido, soles } from '../../lib/order-money'
+import { TIPO_COBRO, textoDeCobro, textoDeCobroExtra, montoDeLaTarjeta, cobroDeLaTarjeta, MORADO_YAPE } from '../../lib/cobro-por-chat'
+import { puedePagarSaldo, saldoDelPedido, soles, cobrosDelPedido } from '../../lib/order-money'
+import { mensajePanel } from '../../lib/panel-errors'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
 import { pedidoDemoPorToken, esTokenDemo, tiendaDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
 import { ROL_DEMO } from '../../lib/demo/modo-demo'
 import {
   ejecutarEnDemo, guardarCambio, agregarMensajeDemo, ofertaAceptadaEnDemo, ofertaEnviadaEnDemo,
-  cobroEnviadoEnDemo, saldoPagadoEnDemo, ESPERA_CLIENTE_DEMO,
+  cobroEnviadoEnDemo, saldoPagadoEnDemo, cobroExtraEnDemo, cobroExtraPagadoEnDemo,
+  quitarCobroEnDemo, ESPERA_CLIENTE_DEMO,
   invitarEnDemo, reasignarEnDemo, quitarEnDemo,
 } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
@@ -487,10 +489,16 @@ function MessageBubble({ msg, audio, equipo = [], pedido }: {
   // de abajo: el vendedor mandaba algo y no tenía forma de ver qué mandó ni si
   // había llegado. Una acción cuyo resultado no se ve es una que se repite.
   if (msg.type === TIPO_COBRO && pedido) {
+    // Íd. que del lado del comprador, y por la misma razón: si las dos pantallas
+    // decidieran distinto de qué cobro es la tarjeta, el vendedor vería mandada
+    // una cosa y el comprador otra.
+    const suyo = cobroDeLaTarjeta(msg, cobrosDelPedido(pedido))
     return (
       <TarjetaDePago
-        texto={msg.body} monto={montoDeLaTarjeta(pedido, saldoDelPedido(pedido))} pedido={pedido} role="seller"
-        pagada={!puedePagarSaldo(pedido)}
+        texto={msg.body}
+        monto={suyo ? suyo.monto : montoDeLaTarjeta(pedido, saldoDelPedido(pedido))}
+        pedido={pedido} cobro={suyo} role="seller"
+        pagada={suyo ? suyo.verificado : !puedePagarSaldo(pedido)}
         hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
       />
     )
@@ -619,6 +627,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
   const [showInvite, setShowInvite] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [showOffer, setShowOffer] = useState(false)
+  const [showCobro, setShowCobro] = useState(false)
   const [showWa, setShowWa] = useState(false)
   // Las grabaciones de ESTE pedido, para engancharlas a su mensaje de llamada.
   // Solo admin: dissolver la pantalla de Llamadas no debe ampliar en silencio
@@ -738,6 +747,9 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         },
         assignment_update: () => { reloadSession() },
         participants_update: () => { reloadSession() },
+        // Un cobro nuevo o dado de baja: el aviso no trae la lista, se vuelve a
+        // pedir. La plata se lee por la puerta que la calcula, no por el canal.
+        cobros_update: () => { reloadSession() },
         // De lo interno no viaja el cuerpo por el canal —es el del comprador—:
         // solo el aviso. El hilo se vuelve a pedir por la puerta que verifica.
         internal_update: () => { reloadSession() },
@@ -951,6 +963,106 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
   }, [session, token, sellerName, sellerRole, alRato])
 
+  /**
+   * Las acciones de EQUIPO y de COBRO —invitar, sacar, pasar el pedido, crear o
+   * dar de baja un cobro— van con el JWT del vendedor y no con la anon key: el
+   * servidor ya no se fía de un `by_seller_id` en el cuerpo, que es lo que el
+   * que llama diga de sí mismo. Sin sesión la petición se rechaza, que es como
+   * debe fallar.
+   *
+   * Vive aquí arriba, antes que nadie, porque abajo lo usan `useCallback`s: una
+   * función declarada después de ellos se lee antes de existir.
+   */
+  const postDeEquipo = useCallback(async (payload: Record<string, unknown>) => {
+    const { data: sesion } = await supabase.auth.getSession()
+    const jwt = sesion?.session?.access_token ?? ANON
+    return fetch(`${BASE}/order-manage`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  }, [])
+
+  // ── Cobrar algo más ──
+  //
+  // Nace PENDING y sin cupón: el cupón se emite cuando el comprador toca pagar
+  // (`pay360-coupon`), igual que el saldo. Y tiene que ser así — el código de
+  // pago identifica al CLIENTE y el banco cobra SIEMPRE el cupón pendiente más
+  // antiguo, así que dos cupones vivos del mismo comprador terminan con él
+  // pagando el que no era.
+  const crearCobro = useCallback(async (monto: number, concepto: string) => {
+    if (!session) return
+    const texto = textoDeCobroExtra(soles(monto), concepto)
+
+    if (esTokenDemo(token)) {
+      const { id, ...patch } = cobroExtraEnDemo(session as unknown as StoreOrder, monto, concepto)
+      const msg = cobroEnviadoEnDemo(session as unknown as StoreOrder, texto, { nombre: sellerName, rol: sellerRole }, id)
+      setMessages(prev => [...prev, msg as unknown as OrderMessage])
+      setSession(s => s ? { ...s, ...patch } as OrderSession : s)
+      // El segundo tiempo lee el pedido YA con el cobro puesto: `session` es la
+      // de antes del clic y no lo tiene, así que buscarlo ahí no encontraría
+      // nada que aceptar.
+      alRato(() => {
+        const pagado = cobroExtraPagadoEnDemo({ ...session, ...patch } as unknown as StoreOrder, id)
+        setSession(s => s ? { ...s, ...pagado } as OrderSession : s)
+      })
+      return
+    }
+
+    const r = await postDeEquipo({ action: 'add_cobro', session_id: session.id, monto, concepto })
+    // El cuerpo se lee como TEXTO y después se intenta parsear: los rechazos de
+    // esta función son JSON, pero "Unknown action" —el que sale mientras la
+    // versión desplegada es anterior al panel, que es JUSTO lo que pasa con una
+    // acción nueva— viaja en texto plano, y con `res.json()` se perdía en el
+    // catch como un fallo genérico. Se ve como un botón roto.
+    const cuerpo = await r.text()
+    let creado: { cobro?: { id?: string }; error?: string } = {}
+    try { creado = JSON.parse(cuerpo) } catch { /* texto plano: queda en `cuerpo` */ }
+    if (!r.ok) {
+      alert(creado.error === 'falta_concepto' ? 'Ponle un concepto: el comprador tiene que saber qué está pagando.'
+        : creado.error === 'monto_invalido' ? 'El monto tiene que ser mayor que cero.'
+        : mensajePanel(creado.error ?? cuerpo, 'No se pudo crear el cobro.')); return
+    }
+
+    // Y se le manda por el chat, que es de lo que se trata: el cobro que nadie
+    // ve no se paga. El mensaje va APUNTANDO al cobro (bloque §37): sin eso la
+    // tarjeta se pintaría contra el saldo del pedido y el botón cobraría otra
+    // cosa distinta de la que el texto pide.
+    const res = await fetch(`${BASE}/seller-send-message`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: session.id, seller_name: sellerName, seller_role: sellerRole,
+        type: TIPO_COBRO, body: texto, cobro_id: creado.cobro?.id ?? null,
+      }),
+    })
+    if (res.ok) {
+      const saved: OrderMessage = await res.json()
+      setMessages(prev => prev.some(m => m.id === saved.id) ? prev : [...prev, saved])
+      channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
+    }
+    reloadSession()
+  }, [session, token, sellerName, sellerRole, alRato, reloadSession, postDeEquipo])
+
+  const quitarCobro = useCallback(async (cobroId: string) => {
+    if (!session) return
+    if (esTokenDemo(token)) {
+      const patch = quitarCobroEnDemo(session as unknown as StoreOrder, cobroId)
+      setSession(s => s ? { ...s, ...patch } as OrderSession : s)
+      return
+    }
+    const r = await postDeEquipo({ action: 'remove_cobro', session_id: session.id, cobro_id: cobroId })
+    if (!r.ok) {
+      // Íd.: texto primero. Ver el comentario de `crearCobro`.
+      const cuerpo = await r.text()
+      let d: { error?: string } = {}
+      try { d = JSON.parse(cuerpo) } catch { /* texto plano */ }
+      alert(d.error === 'no_se_puede_quitar' ? 'Ese cobro ya no se puede dar de baja: o no lo creó una persona, o la plata ya entró.'
+        : d.error === 'no_existe' ? 'Ese cobro ya no está.'
+        : mensajePanel(d.error ?? cuerpo, 'No se pudo dar de baja el cobro.')); return
+    }
+    reloadSession()
+  }, [session, token, reloadSession, postDeEquipo])
+
   // ── El cupón venció: emitir otro ──
   //
   // No se "extiende": 360pay no tiene endpoint para eso, y no hace falta.
@@ -1064,22 +1176,6 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     })
     if (!res.ok) { alert('No se pudo invitar.'); return }
     reloadSession()
-  }
-
-  /**
-   * Las acciones de EQUIPO —invitar, sacar, pasar el pedido— van con el JWT del
-   * vendedor y no con la anon key: el servidor ya no se fía de un `by_seller_id`
-   * en el cuerpo, que es lo que el que llama diga de sí mismo. Sin sesión la
-   * petición se rechaza, que es como debe fallar.
-   */
-  const postDeEquipo = async (payload: Record<string, unknown>) => {
-    const { data: sesion } = await supabase.auth.getSession()
-    const jwt = sesion?.session?.access_token ?? ANON
-    return fetch(`${BASE}/order-manage`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
   }
 
   const expel = async (sellerAuthId: string) => {
@@ -1397,7 +1493,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           hay), con su monto y su rastro contra el banco. Acá había además un
           `AdvancePanel` que repetía el mismo monto con otras palabras; se
           eliminó con la línea de la ficha del cliente que hacía lo mismo. */}
-      <PagoTrace session={session} onCobrar={cobrarPorChat} onReemitir={reemitirCupon} />
+      <PagoTrace session={session} onCobrar={cobrarPorChat} onReemitir={reemitirCupon} onQuitar={quitarCobro} />
       {/* El motivo del fallo, que no es del cobro sino de la EMISIÓN: por qué
           un pedido con adelanto ni siquiera tiene cupón. */}
       {session.payment_reason && session.payment_verification !== 'MATCHED' && (
@@ -1492,6 +1588,15 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
               className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}
               title="Enviar oferta">
               <PackagePlus size={16} />
+            </button>
+            {/* Cobrar algo más: un flete, una diferencia. Va acá y no en la
+                columna de la derecha porque es un gesto de CONVERSACIÓN —se le
+                cobra a alguien, por el chat— igual que mandar una oferta. */}
+            <button onClick={() => setShowCobro(true)}
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--ok-bg-soft)', color: 'var(--ok-fg)' }}
+              title="Cobrar algo más">
+              <Wallet size={16} />
             </button>
             {/* El interruptor: a quién le estoy escribiendo. Va PEGADO al campo
                 y le cambia el aspecto —no es una casilla en un menú— porque el
@@ -1685,6 +1790,13 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           onClose={() => setShowDetail(false)}
           onPatch={(patch) => setSession(s => s ? { ...s, ...patch } : s)}
           onInvitar={canWrite ? openInvite : undefined}
+        />
+      )}
+
+      {showCobro && (
+        <CobroSheet
+          onClose={() => setShowCobro(false)}
+          onCrear={async (monto, concepto) => { setShowCobro(false); await crearCobro(monto, concepto) }}
         />
       )}
 
@@ -1947,6 +2059,54 @@ function WaTemplatesSheet({ storeId, sessionId, sellerName, onClose }: {
 }
 
 // ─── Offer / upsell composer ──────────────────────────────────────────────────
+/**
+ * Cobrar algo más.
+ *
+ * Dos campos y los dos obligatorios, y el segundo es el que importa: **un monto
+ * sin concepto no lo paga nadie.** Al comprador le llega por el chat —y por
+ * push— un "págame S/ 20"; sin decir de qué, lo que hace es escribir
+ * preguntando, que es el trabajo que esto venía a quitar. El servidor lo exige
+ * igual; acá se pide antes para no mandar a fallar.
+ */
+function CobroSheet({ onClose, onCrear }: {
+  onClose: () => void
+  onCrear: (monto: number, concepto: string) => Promise<void> | void
+}) {
+  const [monto, setMonto] = useState('')
+  const [concepto, setConcepto] = useState('')
+  const [busy, setBusy] = useState(false)
+  const n = Number(String(monto).replace(',', '.'))
+  const listo = n > 0 && concepto.trim().length > 0
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end justify-center" onClick={onClose}>
+      <div className="w-full max-w-[430px] bg-white rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-black text-gray-900 flex items-center gap-2"><Wallet size={18} /> Cobrar algo más</h3>
+          <button onClick={onClose} aria-label="Cerrar"><X size={18} className="text-gray-400" /></button>
+        </div>
+        <p className="text-[11px] text-gray-500 mb-3">
+          Un flete, una diferencia por un cambio. Se le manda por el chat con su botón de Yape y
+          queda en la columna de cobros hasta que lo pague.
+        </p>
+        <input value={concepto} onChange={e => setConcepto(e.target.value)} maxLength={80}
+          placeholder="¿Qué le estás cobrando? Ej: Flete a Piura"
+          className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-2" />
+        <input value={monto} onChange={e => setMonto(e.target.value)} inputMode="decimal"
+          placeholder="Monto en soles"
+          className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none" />
+        <button
+          disabled={!listo || busy}
+          onClick={async () => { setBusy(true); try { await onCrear(n, concepto.trim()) } finally { setBusy(false) } }}
+          className="w-full mt-3 py-3 rounded-2xl font-black text-sm text-white disabled:opacity-40"
+          style={{ background: MORADO_YAPE }}>
+          {busy ? 'Enviando…' : listo ? `Cobrar ${soles(n)}` : 'Completa monto y concepto'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function OfferSheet({ storeId, onClose, onSend }: {
   storeId: string
   onClose: () => void

@@ -510,6 +510,19 @@ async function construir(): Promise<TiendaDemo> {
           estado: saldoPagado ? 'MATCHED' : 'PENDING', matched_at: saldoCobradoEl,
           created_at: new Date(ahora - 2 * DIA).toISOString(),
         }] : []),
+        // Y uno de cada diecisiete lleva un cobro EXTRA sin pagar —un flete—,
+        // para que el tercer cobro y su botón de dar de baja se vean sin tener
+        // que crearlos: lo que no aparece solo, en una demo no se enseña.
+        //
+        // Del ÍNDICE, nunca de `r()`, y el monto también: una tirada de más acá
+        // le corre el azar a todos los pedidos de abajo (aviso de CLAUDE.md).
+        // Y PENDIENTE siempre, que además lo deja fuera de la caja: un extra
+        // cobrado movería lo que el tablero suma.
+        ...(i % 17 === 3 ? [{
+          id: `demo-cob-${i}-x`, tipo: 'extra' as const, monto: 10 + (i % 4) * 5,
+          estado: 'PENDING', concepto: 'Flete a provincia',
+          created_at: new Date(ahora - 1 * DIA).toISOString(),
+        }] : []),
       ],
       // Y uno de cada cinco cupones de saldo está VENCIDO. Es lo que hace
       // visible el otro camino —"venció · generar otro código"—, que si no

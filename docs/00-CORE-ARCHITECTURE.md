@@ -72,6 +72,47 @@ eso la mudanza cabe en una función con dos entradas y una salida — con una pr
 mismos datos por los dos caminos y exige el mismo resultado. El día que ninguna fila venga sin
 lista, esa prueba dirá que sobra la mitad de la función.
 
+### Cobrar algo más ✅ (31-ago-2026)
+
+El tercer cobro, ya con dónde ir. En la barra del chat, junto a *oferta* y *nota interna*, hay un
+ícono de **billetera**: monto y concepto, los dos obligatorios. Nace `PENDING` y **sin cupón**, se
+suma a la columna de cobros del pedido y le sale al comprador por el chat como una tarjeta de pago
+—morado de Yape, monto grande— igual que el saldo.
+
+Va en la barra del chat y no en la columna de la derecha porque **es un gesto de conversación**:
+se le cobra a alguien, por el chat. La columna de la derecha es donde se ve lo que ya pasó.
+
+Tres reglas, y ninguna vive en el botón:
+
+- **Sin concepto no se crea.** Un monto sin razón es lo que el comprador recibe por el chat, y
+  "págame S/ 20" sin decir de qué lo que produce es que escriba preguntando — el trabajo que esto
+  venía a quitar. Lo exige el servidor; el panel lo pide antes para no mandar a fallar.
+- **Solo se dan de baja los `extra` sin pagar** (`_shared/cobros.ts` · `sePuedeBorrar`). El
+  adelanto y el saldo no son del vendedor —los emiten el checkout y la guía— y un cobro con plata
+  dentro se reembolsa, no se borra de una lista. El panel no reescribe la regla: le pasa la fila y
+  pregunta.
+- **Se ANULA, no se borra.** El cobro existió y se le mandó al comprador. Un `DELETE` dejaría una
+  conversación sobre algo que en la base no pasó nunca.
+
+⚠️ **Un solo cupón vivo por comprador.** El código de pago identifica al **cliente**, y el banco
+cobra siempre el cupón pendiente **más antiguo**. Con el saldo y un flete vivos a la vez, quien
+viene a pagar el flete termina pagando el saldo — por otro monto. Hasta ahora no podía pasar (dos
+cobros, nunca simultáneos); con los `extra` sí, así que `pay360-coupon` **anula los demás antes de
+emitir**, saltándose el que ya se pagó. No se pierde nada: cada tarjeta del chat pide su cupón
+cuando la tocan.
+
+Y la tarjeta del chat **apunta a su cobro** (`chat_messages.cobro_id`, bloque §37). Sin ese
+puntero una tarjeta de flete se pintaba contra el saldo del pedido: monto equivocado y, peor, un
+botón que cobraba otra cosa distinta de la que el texto pedía. Es un puntero y no una copia —el
+monto, el concepto y si ya se pagó se leen de `cobros`—, así que una tarjeta vieja se sigue
+pagando bien después de un upsell. `NULL` = es la del saldo, que es lo que fue siempre.
+
+En el webhook, el cupón se busca **primero entre los cobros** y recién después contra las columnas.
+Sin eso, un extra pagado no calzaba con ninguna de las dos columnas, caía en el `else` y se
+marcaba como **adelanto**: pisaba `advance_amount` con el monto del flete y daba por cobrado un
+adelanto que nadie pagó. Un `extra` tampoco mueve la etapa ni dispara `Purchase` en CAPI —cobrar
+un flete no es otra compra— y su acuse al comprador es el suyo, no "te queda un saldo de".
+
 ## Autenticación & roles ✅
 
 - **Supabase Auth** para el equipo (`sellers.auth_user_id`).

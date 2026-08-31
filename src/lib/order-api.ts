@@ -157,6 +157,13 @@ export interface OrderMessage {
    *  (`type: 'call_log'`). El AUDIO no viaja en el mensaje: la URL firmada la
    *  pide el panel a `get-recordings`, que sigue siendo solo para admins. */
   call_recording_id?: string | null
+  /** De qué COBRO es esta tarjeta de pago (bloque §37). Es un puntero: el
+   *  monto, el concepto y si ya se pagó se leen de la lista de cobros del
+   *  pedido, no del mensaje —copiarlos acá sería tener dos versiones del mismo
+   *  importe y que una envejezca—. `null` en los mensajes de antes de la
+   *  columna, y ahí la tarjeta es del saldo, que es lo que era cuando se
+   *  mandó. */
+  cobro_id?: string | null
   created_at: string
   read_at: string | null
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { valorDelPedido, cobradoDelPedido, saldoDelPedido, plataDe, soles, avanceDelPago, cobrosDelPedido, puedePagarSaldo } from './order-money'
+import { sePuedeBorrar } from '../../supabase/functions/_shared/cobros.ts'
 
 describe('la plata de un pedido', () => {
   it('el valor es el precio, y nunca negativo', () => {
@@ -284,6 +285,33 @@ describe('los cobros extra', () => {
   it('un cobro anulado desaparece', () => {
     const anulado = { ...conFlete, cobros: [{ id: 'x', tipo: 'extra' as const, monto: 20, estado: 'ANULADO' }] }
     expect(cobrosDelPedido(anulado)).toEqual([])
+  })
+
+  // El cobro se lleva su fila para que el panel pregunte la REGLA en vez de
+  // volver a escribirla. Sin esto, "solo se borran los extra sin pagar" viviría
+  // en dos sitios —el modelo y el botón— y sería cuestión de tiempo que uno de
+  // los dos se quedara viejo.
+  it('carga su fila, para poder preguntarle al modelo si se puede dar de baja', () => {
+    const pendiente = {
+      product_price: 150,
+      cobros: [
+        { id: 'a', tipo: 'adelanto' as const, monto: 150, estado: 'MATCHED' },
+        { id: 'x', tipo: 'extra' as const, monto: 20, estado: 'PENDING', concepto: 'Flete' },
+      ],
+    }
+    const [adelanto, flete] = cobrosDelPedido(pendiente)
+    expect(sePuedeBorrar(flete.fila!)).toBe(true)
+    expect(sePuedeBorrar(adelanto.fila!)).toBe(false)
+    // Y uno que ya entró tampoco: eso se reembolsa, no se borra de una lista.
+    expect(sePuedeBorrar(cobrosDelPedido(conFlete)[1].fila!)).toBe(false)
+  })
+
+  // Los pedidos que todavía se leen de las columnas no traen fila, y por eso no
+  // ofrecen dar de baja: un cobro sin identidad no es una cosa que se pueda
+  // señalar.
+  it('lo derivado de columnas no trae fila', () => {
+    const viejo = { product_price: 180, advance_amount: 90, payment_verification: 'MATCHED' }
+    expect(cobrosDelPedido(viejo)[0].fila).toBeUndefined()
   })
 })
 

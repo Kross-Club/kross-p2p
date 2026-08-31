@@ -61,9 +61,14 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  const body = await req.json().catch(() => ({})) as { order_token?: string; tipo?: string }
+  const body = await req.json().catch(() => ({})) as { order_token?: string; tipo?: string; cobro_id?: string }
   const orderToken = String(body.order_token ?? '').trim()
-  const esSaldo = body.tipo === 'saldo'
+  // Un cobro EXTRA se pide por su id: el monto sale de su fila, que la escribió
+  // el vendedor. El adelanto y el saldo siguen derivándose acá — de esos el
+  // monto nunca lo pone nadie, se calcula (ver más abajo).
+  const cobroId = String(body.cobro_id ?? '').trim()
+  const esExtra = !!cobroId
+  const esSaldo = !esExtra && body.tipo === 'saldo'
   if (!orderToken) return json({ ok: false, stage: 'validation', code: 'missing_token' }, 400)
 
   const { data: session } = await supabase
@@ -80,10 +85,30 @@ Deno.serve(async (req) => {
 
   if (!session) return json({ ok: false, stage: 'validation', code: 'not_found' }, 404)
 
+  // ─── El cobro extra, si es uno ─────────────────────────────────────────────
+  // Su fila manda: el monto lo escribió el vendedor y ya está guardado. Se lee
+  // de la base y NO del cuerpo de la petición — si el monto viniera en el POST,
+  // quien llama fijaría lo que se le cobra.
+  const { data: filaExtra } = esExtra
+    ? await supabase.from('cobros')
+        .select('id, tipo, monto, estado, concepto, pay360_coupon_id')
+        .eq('id', cobroId).eq('session_id', session.id).maybeSingle()
+    : { data: null }
+
+  if (esExtra) {
+    if (!filaExtra || filaExtra.tipo !== 'extra') return json({ ok: false, stage: 'validation', code: 'cobro_not_found' }, 404)
+    if (String(filaExtra.estado).toUpperCase() === 'ANULADO') {
+      return json({ ok: false, stage: 'validation', code: 'cobro_anulado', user_message: 'Este cobro ya no está vigente.' }, 409)
+    }
+    if (String(filaExtra.estado).toUpperCase() === 'MATCHED') {
+      return json({ ok: true, already_paid: true, amount_pen: Number(filaExtra.monto ?? 0) })
+    }
+  }
+
   // ─── Idempotencia por estado ───────────────────────────────────────────────
   // Ya pagado: se responde el hecho, jamás se emite otro cupón. Emitir uno nuevo
   // sobre un cobro pagado es pedirle al comprador que pague dos veces.
-  const yaCobrado = esSaldo ? session.saldo_verification === 'MATCHED' : session.payment_verification === 'MATCHED'
+  const yaCobrado = !esExtra && (esSaldo ? session.saldo_verification === 'MATCHED' : session.payment_verification === 'MATCHED')
   if (yaCobrado) {
     return json({ ok: true, already_paid: true, amount_pen: Number((esSaldo ? session.saldo_amount : session.advance_amount) ?? 0) })
   }
@@ -93,7 +118,10 @@ Deno.serve(async (req) => {
   // el banco cobra SIEMPRE el cupón pendiente más antiguo — con el adelanto sin
   // pagar y un cupón de saldo vivo, quien va a pagar el saldo termina pagando el
   // adelanto, por otro monto.
-  if (esSaldo && session.payment_verification !== 'MATCHED') {
+  // El mismo candado vale para un extra: mientras el adelanto no haya cruzado,
+  // el cupón más antiguo del comprador es ESE, y el que venga a pagar otra cosa
+  // terminaría pagándolo — por otro monto.
+  if ((esSaldo || esExtra) && session.payment_verification !== 'MATCHED') {
     return json({
       ok: false, stage: 'validation', code: 'advance_not_paid',
       user_message: 'Primero se confirma tu adelanto. Apenas cuadre te habilitamos el pago del saldo.',
@@ -119,11 +147,15 @@ Deno.serve(async (req) => {
   // cobrado. Nunca del cliente — pedir "cuánto debo" y creerle es dejar que el
   // comprador fije lo que se le cobra.
   const precio = Number(session.product_price ?? 0)
-  const rowAmount = esSaldo
-    ? Math.max(0, Math.round(precio - Number(session.advance_amount ?? 0)))
-    : Number(session.advance_amount ?? 0)
+  const rowAmount = esExtra
+    ? Number(filaExtra?.monto ?? 0)
+    : esSaldo
+      ? Math.max(0, Math.round(precio - Number(session.advance_amount ?? 0)))
+      : Number(session.advance_amount ?? 0)
 
-  if (esSaldo) {
+  if (esExtra) {
+    if (!(rowAmount > 0)) return json({ ok: false, stage: 'validation', code: 'monto_invalido' }, 409)
+  } else if (esSaldo) {
     if (rowAmount <= 0) {
       return json({ ok: false, stage: 'validation', code: 'no_saldo', user_message: 'Este pedido ya está pagado por completo.' }, 409)
     }
@@ -190,13 +222,42 @@ Deno.serve(async (req) => {
   // ─── Reemisión: ¿el cupón anterior ya se pagó? ─────────────────────────────
   // Antes de anular nada se consulta. Anular un cupón ya pagado perdería el
   // rastro del dinero que YA entró.
-  const cuponPrevio = esSaldo ? session.pay360_saldo_coupon_id : session.pay360_coupon_id
+  const cuponPrevio = esExtra
+    ? filaExtra?.pay360_coupon_id ?? null
+    : esSaldo ? session.pay360_saldo_coupon_id : session.pay360_coupon_id
   if (cuponPrevio) {
     const prev = await getCoupon(base, PARTNER_KEY, cuponPrevio)
     if (prev.ok && isPaid(prev.data)) {
       return json({ ok: true, already_paid: true, amount_pen: rowAmount })
     }
     if (prev.ok) await annulCoupon(base, PARTNER_KEY, cuponPrevio)
+  }
+
+  // ─── Un solo cupón vivo por comprador ──────────────────────────────────────
+  //
+  // El banco cobra SIEMPRE el cupón pendiente más antiguo del código de pago, y
+  // el código es del CLIENTE, no del cobro. Con dos cupones vivos —el saldo y un
+  // flete, digamos— quien viene a pagar el flete termina pagando el saldo, por
+  // otro monto. Hasta hoy no podía pasar: un pedido tenía dos cobros y nunca
+  // estaban vivos a la vez. Con los `extra` sí puede.
+  //
+  // Se anulan los demás antes de emitir, y no se pierde nada: cada tarjeta del
+  // chat pide su cupón cuando la tocan, así que la que quedó sin cupón se emite
+  // sola en el siguiente clic.
+  //
+  // El que YA se pagó no se toca —anularlo borraría el rastro del dinero que
+  // entró—, por eso se consulta uno por uno antes.
+  const { data: otrosCobros } = await supabase.from('cobros')
+    .select('pay360_coupon_id, estado')
+    .eq('session_id', session.id)
+    .not('pay360_coupon_id', 'is', null)
+
+  for (const otro of otrosCobros ?? []) {
+    const cupon = String(otro.pay360_coupon_id ?? '')
+    if (!cupon || cupon === cuponPrevio) continue
+    if (String(otro.estado ?? '').toUpperCase() !== 'PENDING') continue
+    const est = await getCoupon(base, PARTNER_KEY, cupon)
+    if (est.ok && !isPaid(est.data)) await annulCoupon(base, PARTNER_KEY, cupon)
   }
 
   // ─── El CLIENTE, con sus datos reales ──────────────────────────────────────
@@ -252,7 +313,11 @@ Deno.serve(async (req) => {
     // El API exige el código ARRIBA ("customer_id or code is required"); el
     // `coupon_code` anidado del spec no le alcanza.
     code: consumerCode,
-    description: `${esSaldo ? 'Saldo' : 'Adelanto'} ${session.order_id ?? session.id}`.slice(0, 80),
+    // El concepto va en la descripción del cupón: es lo que el comercio ve en el
+    // panel de 360pay, y "Cobro ORD-123" sin decir de qué no se concilia.
+    description: (esExtra
+      ? `${filaExtra?.concepto ?? 'Cobro'} ${session.order_id ?? session.id}`
+      : `${esSaldo ? 'Saldo' : 'Adelanto'} ${session.order_id ?? session.id}`).slice(0, 80),
     customer: {
       name: session.buyer_name ?? 'Cliente',
       phone: session.buyer_phone ? `+51${String(session.buyer_phone).slice(-9)}` : undefined,
@@ -288,7 +353,7 @@ Deno.serve(async (req) => {
   // de `cobros`, que es el modelo, y las columnas de siempre, que es lo que
   // veinte archivos siguen leyendo. La traducción la hace `columnasDe` —un solo
   // sitio— para que los dos no puedan separarse por descuido.
-  const tipo = esSaldo ? 'saldo' : 'adelanto'
+  const tipo = esExtra ? 'extra' : esSaldo ? 'saldo' : 'adelanto'
   const delCobro = {
     monto: rowAmount,
     estado: 'PENDING',
@@ -297,14 +362,21 @@ Deno.serve(async (req) => {
     coupon_expires_at: venceEl,
   }
 
-  await supabase.from('cobros')
-    .upsert({ session_id: session.id, store_id: session.store_id ?? null, tipo, ...delCobro },
-            { onConflict: 'session_id,tipo' })
+  if (esExtra) {
+    // Su fila ya existe —la creó el vendedor—, así que se actualiza por id. Y no
+    // toca ninguna columna de `order_sessions`: un extra no tiene columna que
+    // espejar, que es exactamente por lo que se hizo la mudanza al bloque §36.
+    await supabase.from('cobros').update(delCobro).eq('id', filaExtra!.id)
+  } else {
+    await supabase.from('cobros')
+      .upsert({ session_id: session.id, store_id: session.store_id ?? null, tipo, ...delCobro },
+              { onConflict: 'session_id,tipo' })
 
-  await supabase.from('order_sessions').update({
-    ...columnasDe(tipo, delCobro),
-    ...(esSaldo ? {} : { payment_reason: null }),
-  }).eq('id', session.id)
+    await supabase.from('order_sessions').update({
+      ...columnasDe(tipo, delCobro),
+      ...(esSaldo ? {} : { payment_reason: null }),
+    }).eq('id', session.id)
+  }
 
   // El enlace: primero el que mande 360pay, y si no viene, el que armamos.
   const deeplink = paymentUrlOf(coupon.data as Record<string, unknown>)
@@ -330,7 +402,7 @@ Deno.serve(async (req) => {
 
   return json({
     ok: true,
-    tipo: esSaldo ? 'saldo' : 'adelanto',
+    tipo,
     amount_pen: rowAmount,
     consumer_code: consumerCode,
     coupon_id: coupon.data._id,

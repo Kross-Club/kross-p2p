@@ -74,8 +74,11 @@ export interface Cobro {
   venceEl?: string | null
   couponId?: string | null
   paymentCode?: string | null
-  /** Lo creó una persona: es el único que se puede borrar. */
-  manual?: boolean
+  /** La fila de `cobros` tal cual, cuando el cobro viene de la tabla (§36).
+   *  Está para que quien necesite una regla del modelo —"¿esto se puede dar de
+   *  baja?"— se la pregunte a `_shared/cobros.ts` en vez de volver a escribirla
+   *  con otras palabras. */
+  fila?: FilaDeCobro
 }
 
 /**
@@ -157,7 +160,10 @@ function deFila(f: FilaDeCobro, valor: number): Cobro {
     venceEl: f.coupon_expires_at ?? null,
     couponId: f.pay360_coupon_id ?? null,
     paymentCode: f.pay360_consumer_code ?? null,
-    manual: f.tipo === 'extra',
+    // La fila entera, para poder preguntarle a la REGLA —`sePuedeBorrar`— en
+    // vez de reescribirla acá. Es lo único que no se puede reconstruir desde
+    // los campos de arriba sin volver a decidir lo que ya decidió el modelo.
+    fila: f,
   }
 }
 
