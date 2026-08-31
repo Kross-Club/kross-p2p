@@ -616,6 +616,15 @@ export default function OrderChatPage() {
       .on('broadcast', { event: 'stage_update' }, ({ payload }) => {
         setSession(prev => prev ? { ...prev, stage: payload.stage } : prev)
       })
+      // Entró un cobro. El aviso no trae la plata —eso no viaja por un canal—:
+      // se vuelve a pedir el pedido entero por la puerta que la calcula. Sin
+      // esto el comprador pagaba con el chat abierto y en su pantalla no pasaba
+      // nada: el botón seguía ofreciéndole pagar lo que acababa de pagar.
+      .on('broadcast', { event: 'cobros_update' }, () => {
+        getSession(token!)
+          .then(({ session: s, messages: m }) => { setSession(s); setMessages(m) })
+          .catch(() => {})
+      })
       .on('broadcast', { event: 'assignment_update' }, ({ payload }) => {
         setSession(prev => prev ? {
           ...prev,

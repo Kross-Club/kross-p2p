@@ -92,6 +92,24 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### El webhook avisa por el canal · `pay360-webhook` (31-ago-2026)
+
+**Qué se ve si no entra:** un cobro cruza y **en la pantalla abierta no pasa nada**. El mensaje
+con el botón del comprobante entra al hilo en la base, pero ni el chat del comprador ni el panel
+se enteran hasta recargar. Es justo lo que uno mira al probar un cobro, así que se ve como que
+el comprobante no salió.
+
+`pay360-webhook` escribía en la base y no avisaba a nadie: era el único de los tres escritores del
+chat sin `broadcast`. Ahora manda el acuse por `order:<id>` —solo el del comprador, nunca el
+mensaje interno— y un `cobros_update` para que la plata se vuelva a pedir por la puerta que la
+calcula.
+
+```
+supabase functions deploy pay360-webhook --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL.
+
 ### El comprobante de pago · 3 funciones, sin SQL (31-ago-2026)
 
 **Qué se ve si no entra:** el botón *Ver mi comprobante* no aparece —el mensaje que lo lleva lo
