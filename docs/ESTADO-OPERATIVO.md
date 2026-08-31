@@ -92,6 +92,28 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### El comprobante de pago · 3 funciones, sin SQL (31-ago-2026)
+
+**Qué se ve si no entra:** el botón *Ver mi comprobante* no aparece —el mensaje que lo lleva lo
+escribe `pay360-webhook`— y si alguien abre `/comprobante/<id>` a mano, la página responde *este
+comprobante no existe*, porque `get-comprobante` todavía no está desplegada. El resto del panel,
+igual. **En el demo sí funciona sin desplegar nada**: el comprobante de la tienda de ejemplo se
+arma en el dispositivo.
+
+**Sin SQL.** La columna que hace falta (`chat_messages.cobro_id`) es la del bloque §37, que ya
+corriste con *Cobrar algo más*.
+
+```
+supabase functions deploy get-comprobante --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session     --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> `get-comprobante` es **nueva**: la primera vez, `supabase functions deploy` la crea sola.
+> `get-session` se redespliega porque su lectura del rastro bancario se mudó a `_shared/rastro.ts`
+> —el mismo código que ahora usa el comprobante— y `pay360-webhook` porque es quien manda el
+> mensaje con el botón.
+
 ### Cobrar algo más · SQL + 5 funciones (31-ago-2026)
 
 **Qué se ve si no entra:** el ícono de billetera aparece en la barra del chat y el cobro **falla**

@@ -5,6 +5,8 @@ import { cobradoDelPedido } from '../order-money'
 import type { OrderItem, Participant } from '../order-api'
 import type { StoreOrder } from '../store-orders'
 import type { FilaDeCobro } from '../../../supabase/functions/_shared/cobros.ts'
+import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
+import { isPickupDispatch } from '../../../supabase/functions/_shared/despacho.ts'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
 //
@@ -217,14 +219,57 @@ export function cobroEnviadoEnDemo(
  * de verdad: la tarjeta ámbar del panel se pone verde, el anillo se completa y
  * el mensaje pasa a "Pagada por el cliente". Un demo que solo cambiara el texto
  * del mensaje enseñaría media herramienta.
+ *
+ * ⚠️ Se marca en LOS DOS sitios —la fila de `cobros` y las columnas de siempre—
+ * porque eso es lo que hace el servidor mientras dura la mudanza al bloque §36.
+ * Tocar solo las columnas dejaba la lista diciendo PENDING, y como `cobrosDelPedido`
+ * lee la lista cuando existe, el saldo se pagaba y la tarjeta seguía ámbar: el
+ * demo enseñando que el cobro no entró.
  */
 export function saldoPagadoEnDemo(p: PedidoDemo): CambioDemo {
+  const cuando = new Date().toISOString()
+  const cobros = (p.cobros ?? []).map(c =>
+    c.tipo === 'saldo' ? { ...c, estado: 'MATCHED', matched_at: cuando } : c)
   const patch: CambioDemo = {
     saldo_verification: 'MATCHED',
-    saldo_matched_at: new Date().toISOString(),
+    saldo_matched_at: cuando,
+    // Vacío no se manda: una lista `[]` no es "este pedido no cobró nada", es
+    // "no me llegó lista", y pisar la del generador con una vacía haría que el
+    // pedido se viera SIN COBRAR. Ver `order-money.ts`.
+    ...(cobros.length ? { cobros } : {}),
   }
   guardarCambio(p.id, patch)
+  acusarPagoEnDemo(p, 'saldo', Number(p.saldo_amount ?? 0),
+    cobros.find(c => c.tipo === 'saldo')?.id ?? null)
   return patch
+}
+
+/**
+ * El "gracias por tu pago" con su comprobante, igual que lo manda el webhook.
+ *
+ * Con la MISMA copy (`_shared/acuse-de-pago.ts`) y apuntando al cobro, que es lo
+ * que convierte el aviso en la tarjeta con el botón que abre la constancia. Sin
+ * esto el demo enseñaba el cobro entrando y ahí se acababa — justo el final del
+ * flujo, que es lo que se está vendiendo.
+ */
+function acusarPagoEnDemo(
+  p: PedidoDemo, tipo: 'adelanto' | 'saldo' | 'extra', pagado: number,
+  cobroId: string | null, concepto?: string | null,
+): MensajeDemo {
+  const ahora = Date.now()
+  const msg: MensajeDemo = {
+    id: `demo-acuse-${ahora}`, session_id: p.id, sender_role: 'system',
+    sender_name: 'Kross', sender_role_label: null, read_at: null,
+    type: 'status_update', visibility: 'all',
+    body: acuseDePago({
+      tipo, pagado, total: Number(p.product_price ?? 0),
+      esRecojo: isPickupDispatch(p.dispatch_type), concepto,
+    }),
+    cobro_id: cobroId,
+    created_at: new Date(ahora).toISOString(),
+  }
+  agregarMensajeDemo(p.id, msg)
+  return msg
 }
 
 /** Vuelve la tienda de ejemplo a como la arma el generador. */
@@ -608,6 +653,8 @@ export function cobroExtraPagadoEnDemo(p: PedidoDemo, cobroId: string): CambioDe
     c.id === cobroId ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString() } : c)
   const patch = { cobros }
   guardarCambio(p.id, patch)
+  const suyo = cobros.find(c => c.id === cobroId)
+  if (suyo) acusarPagoEnDemo(p, 'extra', Number(suyo.monto ?? 0), cobroId, suyo.concepto)
   return patch
 }
 
