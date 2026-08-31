@@ -34,6 +34,18 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El rastro de cada cobro · `get-session` (31-ago-2026)
+
+**Qué se ve si no entra:** en las tarjetas de cobro salen el pedido, el código de pago, el cupón
+y la operación —lo que ya guardaba la base— pero **un cupón emitido y sin pagar sigue sin
+mostrar nada**: la tarjeta ámbar se queda sin con qué buscarse, que es justo cuando hace falta.
+
+```
+supabase functions deploy get-session --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL. El resto del cambio es panel y sale con Vercel.
+
 ### Borrar una tienda · `manage-store` (29-ago-2026, tarde)
 
 **Qué se ve si no entra:** en *Tiendas → Editar* aparece la zona roja de "Eliminar esta

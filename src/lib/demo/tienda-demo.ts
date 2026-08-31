@@ -62,6 +62,31 @@ function azar(semilla: number) {
 const elige = <T,>(r: () => number, xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]
 const entre = (r: () => number, a: number, b: number) => a + Math.floor(r() * (b - a + 1))
 
+// ─── El rastro de un cobro, en la tienda de ejemplo ──────────────────────────
+//
+// En producción esto lo arma `get-session` cruzando el cupón de la fila con el
+// evento del webhook. Acá no hay servidor, así que se inventa — pero con la
+// FORMA de los de verdad: el código de pago que escribe el comercio (prefijo de
+// 3 letras + correlativo), el `_id` de 360pay (24 hex, como un id de Mongo) y
+// el número de operación del banco.
+//
+// Sin esto, la tarjeta de cobro del demo salía sin un solo dato de seguimiento
+// —tres líneas vacías— y quien mira el demo concluía que el panel no los
+// guarda. Un demo que enseña de menos es peor que no tenerlo.
+const BANCOS = ['BCP', 'BBVA', 'Interbank', 'Scotiabank'] as const
+const HEX = '0123456789abcdef'
+
+function rastroDemo(r: () => number, i: number, pagado: boolean) {
+  const cupon = Array.from({ length: 24 }, () => HEX[Math.floor(r() * 16)]).join('')
+  return {
+    payment_code: `KSH${String(1000 + i).slice(-4)}`,
+    coupon_id: cupon,
+    // Un cupón emitido y sin pagar no tiene rastro bancario: todavía no ocurrió.
+    operation_number: pagado ? String(entre(r, 10000000, 99999999)) : null,
+    bank: pagado ? elige(r, BANCOS) : null,
+  }
+}
+
 // ─── El catálogo ─────────────────────────────────────────────────────────────
 export interface ProductoDemo {
   id: string
@@ -450,6 +475,13 @@ async function construir(): Promise<TiendaDemo> {
       payment_verification: cruzado ? 'MATCHED' : 'PENDING',
       saldo_amount: saldoPagado || saldoEmitido ? falta : null,
       saldo_verification: saldoPagado ? 'MATCHED' : saldoEmitido ? 'PENDING' : null,
+      // Con qué se sigue cada cobro. Son DOS rastros porque son dos operaciones
+      // —otro cupón, otra operación bancaria, otra fecha—, igual que en la
+      // tienda real (bloque §31 del esquema).
+      payment_trace: rastroDemo(r, i, cruzado),
+      payment_matched_at: cruzado ? new Date(ahora - entre(r, 0, 8) * DIA).toISOString() : null,
+      saldo_trace: saldoPagado || saldoEmitido ? rastroDemo(r, i + 5000, saldoPagado) : null,
+      saldo_matched_at: saldoPagado ? new Date(ahora - entre(r, 0, 4) * DIA).toISOString() : null,
       tracking_courier: conGuia ? ruta.courier : null,
       tracking_numero: conGuia ? String(entre(r, 100000, 999999)) : null,
       tracking_phase: t.fase,
@@ -609,6 +641,10 @@ function pedidoHistorico(t: TiendaDemo, i: number): StoreOrder | null {
     agency_branch_id: ruta.destinoId,
     advance_amount: Math.round(h.product_price / 2),
     payment_verification: 'MATCHED',
+    // También los viejos: un pedido de hace meses es el caso donde MÁS falta el
+    // rastro —el reclamo llega tarde— y era el que salía sin nada.
+    payment_trace: rastroDemo(r, 9000 + i, true),
+    payment_matched_at: h.created_at,
     tracking_courier: ruta.courier,
     tracking_numero: String(entre(r, 100000, 999999)),
     tracking_phase: 'ENTREGADO',

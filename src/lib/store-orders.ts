@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { RastroDeCobro } from './rastro-de-pago'
 import type { SellerProfile } from './seller-session'
 import { useDemo } from './demo/modo-demo'
 import { tiendaDemo } from './demo/tienda-demo'
@@ -71,6 +72,14 @@ export interface StoreOrder {
    *  tablero se quedaría a medias en un pedido que ya está pagado entero. */
   saldo_amount?: number | string | null
   saldo_verification?: string | null
+  /** Cuándo entró cada cobro y con qué se sigue. En producción el rastro lo
+   *  arma `get-session` cruzando el cupón de la fila con el evento del webhook;
+   *  acá viajan ya armados porque es lo que lee la tarjeta de cobro. Dos, no
+   *  uno: adelanto y saldo son operaciones distintas. */
+  payment_matched_at?: string | null
+  saldo_matched_at?: string | null
+  payment_trace?: RastroDeCobro | null
+  saldo_trace?: RastroDeCobro | null
   tracking_courier?: string | null
   tracking_numero?: string | null
   tracking_phase?: string | null
