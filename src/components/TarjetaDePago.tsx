@@ -50,7 +50,9 @@ export default function TarjetaDePago({ texto, monto, pedido, cobro, role, pagad
           {role === 'buyer' && (
             pagada
               ? <div className="w-full mt-2 py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-1.5"
-                  style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
+                  // `--ok-on` sobre el lima: en tema oscuro `--ok-fg` es el
+                  // mismo lima del fondo y el texto desaparecía.
+                  style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}>
                   <Check size={15} /> Pago recibido
                 </div>
               : <div className="mt-2"><BotonPagarSaldo pedido={pedido} cobro={cobro} /></div>

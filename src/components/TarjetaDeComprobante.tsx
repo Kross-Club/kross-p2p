@@ -40,7 +40,11 @@ export default function TarjetaDeComprobante({ texto, cobroId, hora }: {
           target="_blank"
           rel="noopener noreferrer"
           className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-black"
-          style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}
+          // ⚠️ `--ok-on` y NO `--ok-fg`: sobre el LIMA el único color de texto
+          // válido es ese (`index.css` lo dice en su definición). En tema oscuro
+          // `--ok-bg` y `--ok-fg` son el mismo lima, así que el botón salía con
+          // el texto invisible — lima sobre lima.
+          style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}
         >
           Ver mi comprobante <ExternalLink size={13} />
         </a>
