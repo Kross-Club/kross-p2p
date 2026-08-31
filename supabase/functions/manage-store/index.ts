@@ -634,13 +634,18 @@ Deno.serve(async (req) => {
     //    que puede llegar meses después. Si hay aunque sea uno, esta acción se
     //    niega y dice cuántos — apagada la marca ya no vende, que es lo que se
     //    quería.
-    const cuenta = async (tabla: string, col: string) => {
-      const { count } = await supabase.from(tabla).select('id', { count: 'exact', head: true }).eq(col, id)
-      return count ?? 0
-    }
-    const pedidos = await cuenta('order_sessions', 'store_id')
-      + await cuenta('order_sessions', 'origin_store_id')
-    const cobros = await cuenta('payment_events', 'store_id')
+    // Las dos columnas en UNA consulta, con `or`. Sumar dos conteos contaba dos
+    // veces el mismo pedido —en una marca normal `store_id` y `origin_store_id`
+    // son la misma tienda— y el mensaje decía "tiene 2 pedidos" de uno solo. Un
+    // número inventado en la frase que impide borrar es lo peor que puede pasar
+    // acá: quien lo lee deja de creerle a la pantalla.
+    const { count: pedidosCount } = await supabase
+      .from('order_sessions').select('id', { count: 'exact', head: true })
+      .or(`store_id.eq.${id},origin_store_id.eq.${id}`)
+    const pedidos = pedidosCount ?? 0
+    const { count: cobrosCount } = await supabase
+      .from('payment_events').select('id', { count: 'exact', head: true }).eq('store_id', id)
+    const cobros = cobrosCount ?? 0
     if (pedidos > 0 || cobros > 0) return json({ error: 'tiene_historial', pedidos, cobros }, 409)
 
     // 6. Y hay que haber leído qué se borra. Tecleando el subdominio: un

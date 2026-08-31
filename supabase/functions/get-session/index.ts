@@ -162,10 +162,20 @@ Deno.serve(async (req) => {
   const rastroDe = async (
     eventId: string | null, cuponId: string | null, codigo: string | null,
   ): Promise<Trace | null> => {
-    if (!viewerIsSeller || !eventId) return null
+    if (!viewerIsSeller) return null
+    // Un cupón EMITIDO y sin pagar no tiene evento, y hasta hoy eso devolvía
+    // `null`: el panel se quedaba sin nada con qué buscarlo. Y es justo cuando
+    // hay que buscarlo — el cliente dice "ya pagué" y en el panel no aparece.
+    // El cupón y el código viven en la fila del pedido, así que existen desde
+    // que se emitió; lo único que falta es el rastro bancario, que todavía no
+    // ocurrió.
+    const sinEvento: Trace | null = (cuponId || codigo)
+      ? { operation_number: null, bank: null, coupon_id: cuponId, payment_code: codigo }
+      : null
+    if (!eventId) return sinEvento
     const { data: ev } = await supabase.from('payment_events')
       .select('raw, operation_number').eq('id', eventId).maybeSingle()
-    if (!ev) return null
+    if (!ev) return sinEvento
     let op = ev.operation_number ?? null, bank: string | null = null
     // El código de pago sale de la fila del pedido; el evento del webhook lo
     // trae también (`code`), y ese es el respaldo para pedidos que pagaron

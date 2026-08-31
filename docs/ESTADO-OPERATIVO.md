@@ -34,6 +34,18 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El rastro de cada cobro · `get-session` (31-ago-2026)
+
+**Qué se ve si no entra:** en las tarjetas de cobro salen el pedido, el código de pago, el cupón
+y la operación —lo que ya guardaba la base— pero **un cupón emitido y sin pagar sigue sin
+mostrar nada**: la tarjeta ámbar se queda sin con qué buscarse, que es justo cuando hace falta.
+
+```
+supabase functions deploy get-session --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL. El resto del cambio es panel y sale con Vercel.
+
 ### Borrar una tienda · `manage-store` (29-ago-2026, tarde)
 
 **Qué se ve si no entra:** en *Tiendas → Editar* aparece la zona roja de "Eliminar esta
@@ -186,8 +198,16 @@ Para comprobar qué versión quedó viva, la consulta está en
 |---|---|---|---|---|---|
 | **Kross Shop** | `st_kross-shop_mt233mx7` | ✅ | ✅ **360pay en producción** (prefijo `KSH`) | 1 producto | 4 |
 | **Gadicaf** | `t1` | ✅ | ⛔ sin conectar — ver bloqueo #1 | 1 producto | 1 |
-| **Kross** | `platform` | ✅ | — (no vende: es la tienda de la plataforma) | 0 | 0 |
+| **Kross** | `platform` | — | — (no vende: es la tienda de la plataforma) | 0 | 0 |
 | **Culqi Test** | `store-culqi-test` | ⛔ desarmada | — | 1 producto | 0 |
+
+> **Verificado contra la base el 29-ago-2026.** `platform` lleva el slug `krosstest` y
+> `active = false` —resto de las pruebas del principio— y por eso aparecía en *Tiendas*
+> pareciendo una marca de pruebas olvidada. **Ya no sale en esa lista**: no es una marca, y ahí
+> viven las 3 cuentas del equipo de Kross. Su equipo se administra en *Equipo*.
+>
+> Cuentas reales ese día: Kross Shop 19 pedidos / 8 cobros / 16 compradores · Gadicaf 1 pedido,
+> 4 del equipo, 1 comprador · Culqi Test vacía (1 producto) · `platform` 3 del equipo.
 
 ### Kross Shop — la primera marca cobrando en línea
 

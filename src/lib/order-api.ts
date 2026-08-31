@@ -81,6 +81,10 @@ export interface OrderSession {
   /** Rastro del pago cruzado — la cadena con la que el comercio coteja contra
    *  el panel de 360pay y contra el banco. Solo vendedor. */
   payment_trace?: PagoTrazado | null
+  /** Cuándo se cruzó el adelanto (o el pago total). La columna existía desde el
+   *  principio y no llegaba al tipo, así que el panel no podía decir CUÁNDO
+   *  entró la plata — que es lo que ubica la transacción en el portal. */
+  payment_matched_at?: string | null
   /** El SALDO: la segunda operación, cuando ya hay guía. Sus propias columnas
    *  porque es otro cupón, otra fecha y otro número de operación bancaria. */
   saldo_amount?: number | null

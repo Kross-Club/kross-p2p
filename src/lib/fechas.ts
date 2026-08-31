@@ -25,6 +25,20 @@ export function diaMes(iso: string | null | undefined): string {
   return fecha(iso)?.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' }) ?? ''
 }
 
+/**
+ * Fecha y hora exactas: `27 ago, 04:20 p. m.`
+ *
+ * Para lo que hay que COTEJAR contra otro sistema —un cobro contra el portal de
+ * 360pay, contra el extracto del banco—. Ahí "hace 2 h" no sirve: el portal
+ * lista por fecha y hora, y el que busca necesita el mismo par que va a teclear.
+ */
+export function fechaYHora(iso: string | null | undefined): string {
+  const d = fecha(iso)
+  if (!d) return ''
+  return `${d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}, `
+    + d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+}
+
 /** Con año, para historiales que cruzan campañas: `27 ago 26`. */
 export function fechaCorta(iso: string | null | undefined): string {
   return fecha(iso)?.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: '2-digit' }) ?? '—'

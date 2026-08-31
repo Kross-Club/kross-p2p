@@ -2323,6 +2323,26 @@ un Enter de más; `gadicaf` obliga a mirar qué se está borrando. Y el rechazo 
 responde con los números —*"tiene 4 pedidos"*— porque eso cierra la conversación, mientras que
 "no se pudo borrar" la empieza.
 
+### Y la casa estaba en la lista de casas ajenas
+
+Al mirar la base apareció por qué se pidió borrar tres tiendas: una de las tres era
+**`platform`**. Con el slug `krosstest`, apagada, y pintada en la lista igual que una marca —con
+su enlace a un subdominio que no existe, su interruptor de demo y su botón de *Entrar*—. Parecía
+exactamente lo que parecía: una tienda de pruebas olvidada. Y es donde viven las cuentas de
+Uxbriel, Paolo y Diego.
+
+El seguro la rechazaba, así que no pasó nada. Pero un seguro que salta es la última línea, no el
+diseño: **si una pantalla invita a hacer algo que siempre va a rechazar, el problema es la
+pantalla.** `platform` sale de la misma tabla que las marcas, pero no es una: no vende, no tiene
+app, no tiene subdominio. Sale de la lista —no de la tabla— y su equipo se sigue administrando
+donde corresponde, en *Equipo*.
+
+El otro hallazgo del mismo vistazo fue un número inventado: el conteo de pedidos sumaba dos
+consultas, `store_id` y `origin_store_id`, que en una marca normal apuntan a la misma tienda. Un
+pedido se reportaba como dos. Ahora es una sola consulta con `or` — porque un número falso en la
+frase que impide borrar es lo peor que puede pasar acá: quien lo lee deja de creerle a la
+pantalla.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

@@ -12,10 +12,21 @@ const kevin = { store_id: 't1', is_admin: false }
 const ids = (v: { visibles: { id: string }[] }) => v.visibles.map(t => t.id)
 
 describe('la vista de Tiendas', () => {
-  it('el dueño, en su casa: todas', () => {
+  it('el dueño, en su casa: todas las marcas', () => {
     const v = vistaDeTiendas(TIENDAS, uxbriel, true)
     expect(v.plataforma).toBe(true)
-    expect(ids(v)).toEqual(['st_kross', 't1', TIENDA_PLATAFORMA])
+    expect(ids(v)).toEqual(['st_kross', 't1'])
+  })
+
+  // `platform` sale de la misma tabla que las marcas y se pintaba como una más
+  // —con enlace a un subdominio que no existe y botón de Entrar—, así que
+  // parecía una tienda de pruebas olvidada. Tanto, que se intentó borrarla: es
+  // donde viven las cuentas del equipo de Kross.
+  it('la casa de Kross no es una tienda de la lista', () => {
+    expect(ids(vistaDeTiendas(TIENDAS, uxbriel, true))).not.toContain(TIENDA_PLATAFORMA)
+    expect(ids(vistaDeTiendas(TIENDAS, paolo, true))).not.toContain(TIENDA_PLATAFORMA)
+    // Ni siquiera si alguien la tuviera como "su" tienda: sigue sin ser una marca.
+    expect(ids(vistaDeTiendas(TIENDAS, { store_id: TIENDA_PLATAFORMA, is_admin: false }, false))).toEqual([])
   })
 
   // El caso que rompía: entrar como Paolo, que administra la plataforma igual
@@ -24,7 +35,7 @@ describe('la vista de Tiendas', () => {
   it('entrar como un operador de Kross enseña lo mismo', () => {
     const v = vistaDeTiendas(TIENDAS, paolo, true)
     expect(v.plataforma).toBe(true)
-    expect(ids(v)).toEqual(['st_kross', 't1', TIENDA_PLATAFORMA])
+    expect(ids(v)).toEqual(['st_kross', 't1'])
   })
 
   // La otra mitad del mismo bloqueo: entrar a una marca para configurarla es la

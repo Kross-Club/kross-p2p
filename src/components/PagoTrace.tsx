@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CreditCard, Check, Clock, Copy } from 'lucide-react'
 import { cobrosDelPedido, soles } from '../lib/order-money'
 import type { Cobro, TipoDeCobro } from '../lib/order-money'
+import { datosDeRastro, textoParaSoporte } from '../lib/rastro-de-pago'
 import type { OrderSession, PagoTrazado } from '../lib/order-api'
 
 // ─── La plata que entró, operación por operación ─────────────────────────────
@@ -22,12 +23,14 @@ import type { OrderSession, PagoTrazado } from '../lib/order-api'
 // VERIFICADO") y otra vez acá. Tres sitios diciendo lo mismo es tres sitios
 // donde puede decirse distinto.
 //
-// En pantalla, SOLO lo que se puede cotejar A OJO con el portal de 360pay: el
-// pedido (su detalle va en la descripción) y el código de pago (así LISTA los
-// cupones). El id del cupón es un alfanumérico de API que el portal no muestra
-// —no ayuda a cuadrar mirando—, así que no se pinta: va únicamente dentro del
-// texto que copia el botón, junto con la operación bancaria, porque ESO es lo
-// que soporte de 360pay o el banco piden en un reclamo.
+// En pantalla va TODO lo que sirve para seguir la transacción, y sale de una
+// sola lista (`rastro-de-pago.ts`) que es la misma que arma el texto del botón
+// de copiar. Antes eran dos listas y ya discrepaban: el **cupón** estaba solo
+// en el texto copiado, con el argumento de que es un alfanumérico de API que no
+// ayuda a cuadrar mirando. Ese argumento era del portal, no de quien trabaja —
+// el cupón es lo que soporte de 360pay pide para abrir un caso, y tenerlo
+// detrás de un botón obliga a copiar a ciegas para leer un dato que debería
+// estar a la vista.
 //
 // Sobre "el número con el que yapeó": no existe. Yape no revela el celular del
 // pagador —ni a 360pay ni al comercio—; lo que sí llega es el rastro bancario
@@ -63,6 +66,7 @@ export default function PagoTrace({ session }: { session: OrderSession }) {
           cobro={cobro}
           orderId={session.order_id ?? null}
           trace={cobro.tipo === 'saldo' ? session.saldo_trace ?? null : session.payment_trace ?? null}
+          cobradoEn={cobro.tipo === 'saldo' ? session.saldo_matched_at ?? null : session.payment_matched_at ?? null}
           falta={falta}
         />
       ))}
@@ -74,10 +78,13 @@ export default function PagoTrace({ session }: { session: OrderSession }) {
  * Una operación. Verde cuando entró; ámbar mientras el cupón está emitido y sin
  * pagar — que no es lo mismo y confundirlos es despachar sin haber cobrado.
  */
-function TarjetaDeCobro({ cobro, orderId, trace, falta }: {
+function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta }: {
   cobro: Cobro
   orderId: string | null
   trace: PagoTrazado | null
+  /** Cuándo entró la plata. Es lo que ubica la transacción en un listado de
+   *  miles, y hasta hoy no se veía ni se copiaba. */
+  cobradoEn: string | null
   /** Lo que falta cobrar del pedido entero, para el pie del adelanto. */
   falta: number
 }) {
@@ -89,13 +96,9 @@ function TarjetaDeCobro({ cobro, orderId, trace, falta }: {
   }, [copiado])
 
   const ok = cobro.verificado
-  const paraSoporte = [
-    orderId ? `Pedido ${orderId}` : null,
-    `${TITULO[cobro.tipo]} — ${soles(cobro.monto)}`,
-    trace?.payment_code ? `Código de pago ${trace.payment_code}` : null,
-    trace?.coupon_id ? `Cupón ${trace.coupon_id}` : null,
-    trace?.operation_number ? `Op. ${trace.operation_number}${trace?.bank ? ` · ${trace.bank}` : ''}` : null,
-  ].filter(Boolean).join('\n')
+  // Una lista para las dos cosas: lo que se pinta es exactamente lo que se copia.
+  const datos = datosDeRastro({ orderId, trace, cobradoEn: ok ? cobradoEn : null })
+  const paraSoporte = textoParaSoporte(TITULO[cobro.tipo], soles(cobro.monto), datos)
 
   const pie = ok ? PIE[cobro.tipo](falta) : null
 
@@ -119,34 +122,38 @@ function TarjetaDeCobro({ cobro, orderId, trace, falta }: {
       </div>
 
       <div className="mt-1.5 space-y-0.5 text-[10px]" style={{ color: ok ? 'var(--ok-fg)' : 'var(--text-faint)' }}>
-        {ok && orderId && (
-          <p><span className="opacity-60">Pedido</span> <span className="tabular font-bold">{orderId}</span></p>
-        )}
-        {ok && trace?.payment_code && (
-          <p><span className="opacity-60">Código de pago</span> <span className="tabular font-bold">{trace.payment_code}</span></p>
-        )}
-        {ok && (trace?.operation_number || trace?.bank) && (
-          <p className="opacity-60">
-            Op. bancaria {trace?.operation_number ?? '—'}{trace?.bank ? ` · ${trace.bank}` : ''}
-          </p>
-        )}
         {/* Un cupón emitido no es plata. Decirlo evita el error caro: despachar
-            leyendo el monto y dando por hecho que entró. */}
+            leyendo el monto y dando por hecho que entró. Va ARRIBA de los datos
+            porque cambia lo que significan: los mismos códigos, buscando por qué
+            no entró en vez de comprobando que entró. */}
         {!ok && (
-          <p>El cupón está emitido y todavía sin pagar. El cliente puede pagarlo
+          <p className="mb-1">El cupón está emitido y todavía sin pagar. El cliente puede pagarlo
             desde su Yape cuando quiera; si no lo hace, coordina por el chat.</p>
         )}
-        {pie && <p className="opacity-70">{pie}</p>}
+
+        {/* Con qué se sigue esta transacción. La lista sale de `rastro-de-pago`
+            y es la misma que copia el botón. También en el cupón sin pagar: es
+            justo cuando hay que buscarlo —"ya pagué" y en el panel no aparece—. */}
+        {datos.map(d => (
+          <p key={d.etiqueta} className={d.largo ? 'break-all' : ''}>
+            <span className="opacity-60">{d.etiqueta}</span>{' '}
+            <span className={d.largo ? 'font-mono font-bold' : 'tabular font-bold'}>{d.valor}</span>
+          </p>
+        ))}
+
+        {pie && <p className="opacity-70 mt-1">{pie}</p>}
       </div>
 
-      {ok && paraSoporte && (
+      {datos.length > 0 && (
         <button
           type="button"
           onClick={async () => {
             try { await navigator.clipboard.writeText(paraSoporte); setCopiado(true) } catch { /* visible igual */ }
           }}
           className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold"
-          style={{ border: '0.5px solid var(--ok-border)', color: 'var(--ok-fg)' }}
+          style={ok
+            ? { border: '0.5px solid var(--ok-border)', color: 'var(--ok-fg)' }
+            : { border: '0.5px solid var(--warn-border)', color: 'var(--text-muted)' }}
         >
           {copiado ? <Check size={11} /> : <Copy size={11} />}
           {copiado ? 'Copiado' : 'Copiar para soporte 360pay'}

@@ -43,14 +43,24 @@ export function vistaDeTiendas<T extends { id: string }>(
   actuando: QuienActua | null | undefined,
   plataformaEnServidor: boolean,
 ): VistaDeTiendas<T> {
+  // **La casa no es una tienda de la lista.** `platform` sale de la misma tabla
+  // que las marcas, así que venía en la lista y se pintaba como una más: con su
+  // enlace a un subdominio que no existe, su interruptor de demo y su botón de
+  // Entrar. Parecía una marca de pruebas olvidada — tanto, que se intentó
+  // borrarla, y ahí viven las cuentas del equipo de Kross.
+  //
+  // Se va de la lista y no de la tabla: es donde vive el equipo. Quien quiera
+  // verlo lo tiene en **Equipo**, que es donde se administra.
+  const marcas = tiendas.filter(t => t.id !== TIENDA_PLATAFORMA)
+
   // La Y es el corazón: el servidor dice hasta dónde llega quien llama, y
   // `actuando` hasta dónde llega la vista. Basta con que una diga "no".
   const plataforma = plataformaEnServidor && administraLaPlataforma(actuando)
-  if (plataforma) return { plataforma, visibles: tiendas }
+  if (plataforma) return { plataforma, visibles: marcas }
   // Dentro de una marca solo se ve esa marca. Sin `store_id` no se ve ninguna:
   // enseñarlas todas sería justo el caso que esto evita.
   const suya = actuando?.store_id
-  return { plataforma, visibles: suya ? tiendas.filter(t => t.id === suya) : [] }
+  return { plataforma, visibles: suya ? marcas.filter(t => t.id === suya) : [] }
 }
 
 
