@@ -58,6 +58,18 @@ supabase functions deploy get-session   --project-ref ofdjghntvmrdfjhazfvz
 > Las filas que ya existen quedan con la fecha en NULL y eso **no las bloquea**: no saber si un
 > cupón caducó no es saber que caducó. Se irán llenando conforme se emitan cupones nuevos.
 
+### El detalle del pedido en el chat · `order-manage` (31-ago-2026)
+
+**Qué se ve si no entra:** en el demo el mensaje sale con el detalle entero (total, abonado y
+saldo), y en una tienda de verdad sigue saliendo el viejo *"Nuevo total: S/175"* a secas. O sea,
+el demo prometiendo algo que la tienda no hace.
+
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL.
+
 ### Cobrar el saldo por el chat · nada que desplegar (31-ago-2026)
 
 El botón *Cobrar por el chat* de la tarjeta ámbar manda un mensaje con `type: 'cobro'`.

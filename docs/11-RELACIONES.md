@@ -2375,6 +2375,46 @@ Se guardan para limpiarlos al salir del pedido. Sin eso, la respuesta del client
 diez segundos más tarde **en el pedido que se esté mirando entonces** — que enseñando es peor
 que no tener la función.
 
+## El mensaje que decía una sola cifra (31-ago-2026)
+
+Al aceptar una oferta, al comprador le llegaba *"Nuevo total: S/175"*. Y esa cifra, sola, es
+justo la que **menos** le sirve: ya adelantó parte, así que para saber cuánto debe tiene que
+acordarse de lo que pagó y restar de cabeza. La mitad de las veces la pregunta que sigue es
+*"¿entonces cuánto debo?"* — y esa la contesta un asesor a mano, que es exactamente el trabajo
+que este panel existe para quitar.
+
+Ahora el mensaje lleva las cuatro cifras que cierran la conversación:
+
+```
+¡Pedido actualizado con éxito! Aquí tienes el detalle:
+
+🛍️ Producto agregado: Test
+💰 Nuevo total: S/ 175
+✅ Monto abonado: S/ 75
+📌 Saldo pendiente: S/ 100
+📦 Entrega: Todo llegará junto en un solo paquete
+```
+
+Dos decisiones dentro:
+
+- **Abonado es lo COBRADO y cruzado, no lo prometido.** Si el adelanto sigue en `PENDING` no
+  está abonado, y decir que sí es prometerle una entrega que no va a salir.
+- **La entrega junta solo se promete si es cierta.** Cuando el pedido ya no cabe en el mismo
+  paquete, esa línea no aparece en vez de decir lo contrario: una promesa de logística de más es
+  una queja después.
+
+Y vive en `_shared/resumen-pedido.ts`, no en cada sitio que lo escribe: lo mandan **`order-manage`
+cuando el comprador acepta de verdad y el demo cuando se enseña**, y un mensaje que se lee
+distinto según quién lo generó es un mensaje en el que no se puede confiar. Sirve igual para las
+tres frases —agregué, cambié la cantidad, quité—: lo único que cambia es la primera línea.
+
+### Y el vendedor ya puede quitar un producto
+
+Tenía el `−` y el `+` pero no el bote: como bajar la cantidad a cero no se puede (el último
+producto se defiende aparte), un producto agregado por error solo salía **pidiéndoselo al
+comprador**. El aviso de confirmación es distinto para cada uno, porque son cosas distintas: al
+comprador le cuesta puntos, al vendedor le baja el total de un pedido que quizá ya cobró.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

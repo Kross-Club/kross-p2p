@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { siguientePaso } from '../order-tracking'
+import { resumenDelPedido } from '../../../supabase/functions/_shared/resumen-pedido.ts'
+import { cobradoDelPedido } from '../order-money'
 import type { OrderItem, Participant } from '../order-api'
 import type { StoreOrder } from '../store-orders'
 
@@ -426,7 +428,13 @@ export function ofertaAceptadaEnDemo(
     id: `demo-of-${ahora}-ok`, session_id: p.id, sender_role: 'seller',
     sender_name: quien.nombre, sender_role_label: quien.rol, read_at: null,
     type: 'text', created_at: new Date(ahora).toISOString(),
-    body: `✅ Agregué ${oferta.nombre} a tu pedido. Nuevo total: S/${total} — llega todo junto en una sola entrega. 📦`,
+    // El MISMO texto que escribe `order-manage`: un mensaje que se lee distinto
+    // según quién lo generó es un mensaje en el que no se puede confiar — y el
+    // demo existe para enseñar lo que va a pasar de verdad.
+    body: resumenDelPedido({
+      cambio: `🛍️ Producto agregado: ${oferta.nombre}`,
+      total, abonado: cobradoDelPedido(p), entregaJunta: true,
+    }),
   })
   guardarCambio(p.id, { items, product_price: total })
   return { ok: true, items, total, patch: { items, product_price: total } }

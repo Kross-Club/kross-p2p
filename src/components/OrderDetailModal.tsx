@@ -212,15 +212,27 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, onIn
                           </div>
                         )}
                         <p className="font-bold text-gray-800 text-sm flex-shrink-0 w-14 text-right">S/ {it.precio}</p>
-                        {role === 'buyer' && items.length > 1 && (
+                        {/* Quitar, también del lado del vendedor. Tenía el − y el
+                            + pero no el bote: bajar la cantidad a cero no se
+                            puede (el último producto se defiende aparte), así
+                            que un producto agregado por error solo salía
+                            pidiéndoselo al comprador. */}
+                        {items.length > 1 && (
                           <button onClick={() => setRemovingIdx(removingIdx === i ? null : i)} className="p-1.5 rounded-lg flex-shrink-0" style={{ background: 'var(--danger-bg)' }}>
                             <Trash2 size={13} className="text-red-500" />
                           </button>
                         )}
                       </div>
-                      {role === 'buyer' && removingIdx === i && (
+                      {removingIdx === i && (
                         <div className="mt-2 rounded-xl p-2.5" style={{ background: 'var(--danger-bg-soft)', border: '0.5px solid var(--danger-border)' }}>
-                          <p className="text-[11px] text-red-700 font-semibold mb-2">¿Quitar este producto? Bajará tu puntuación.</p>
+                          {/* Dos avisos distintos porque son dos cosas distintas:
+                              al comprador le cuesta puntos; al vendedor le baja
+                              el total de un pedido que quizá ya cobró. */}
+                          <p className="text-[11px] text-red-700 font-semibold mb-2">
+                            {role === 'buyer'
+                              ? '¿Quitar este producto? Bajará tu puntuación.'
+                              : `¿Quitar ${it.nombre}? Baja el total del pedido y se lo avisamos al cliente por el chat.`}
+                          </p>
                           <div className="flex gap-2">
                             <button onClick={() => setRemovingIdx(null)} className="flex-1 py-1.5 rounded-lg text-xs font-black bg-white border text-gray-600">No</button>
                             <button onClick={() => removeItem(i)} disabled={busy} className="flex-1 py-1.5 rounded-lg text-xs font-black text-white" style={{ background: '#DC2626' }}>{busy ? '…' : 'Sí, quitar'}</button>
