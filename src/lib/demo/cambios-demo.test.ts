@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   conCambios, listaConCambios, guardarCambio, agregarMensajeDemo, reiniciarDemo,
-  hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo,
+  hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo,
+  ofertaEnviadaEnDemo, cobroEnviadoEnDemo, saldoPagadoEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo,
 } from './cambios-demo'
 import type { PedidoDemo } from './cambios-demo'
 import { avanceDelPago } from '../order-money'
@@ -116,17 +117,42 @@ describe('el carrito en el demo', () => {
     expect(ejecutarEnDemo(pedido(), { action: 'remove_item', index: 0 }).ok).toBe(false)
   })
 
-  it('agregar un producto sube el total y deja el chat contándolo', () => {
+  // Enseñando, una oferta que aparece aceptada en el mismo instante en que se
+  // envía se lee como que el panel se lo inventó. Son DOS tiempos, y esa espera
+  // es el producto: se mandó, y respondieron.
+  it('la oferta se envía primero, sin aceptar', () => {
     const base = pedido()
-    const r = ofertaAceptadaEnDemo(base, { nombre: 'Set de Ollas', precio: 120 }, { nombre: 'Andrea', rol: 'Ventas' })
+    const msg = ofertaEnviadaEnDemo(base, { nombre: 'Set de Ollas', precio: 120 }, { nombre: 'Andrea', rol: 'Ventas' })
+    // Se mira en los cambios del demo y no en `chat_messages`: ese tipo es el
+    // espejo del `select` de `get-store-sessions`, que no trae `offer`.
+    expect(cambiosDemo()[base.id].mensajes?.find(m => m.id === msg.id)?.offer?.accepted).toBe(false)
+    // Y todavía no toca el pedido: aceptar es lo que lo cambia.
+    expect(conCambios(base).product_price).toBe(150)
+  })
+
+  it('y al aceptarla sube el total, sin duplicar la oferta en el hilo', () => {
+    const base = pedido()
+    const oferta = { nombre: 'Set de Ollas', precio: 120 }
+    const msg = ofertaEnviadaEnDemo(base, oferta, { nombre: 'Andrea', rol: 'Ventas' })
+    const r = ofertaAceptadaEnDemo(base, oferta, { nombre: 'Andrea', rol: 'Ventas' }, msg.id)
     expect(r.total).toBe(270)
     const p = conCambios(base)
     expect(p.product_price).toBe(270)
-    // Los dos mensajes que escribiría el servidor: la oferta y el "ya te lo
-    // agregué", para que la conversación se lea igual que una de verdad.
-    const nuevos = p.chat_messages ?? []
-    expect(nuevos.some(m => m.type === 'offer')).toBe(true)
-    expect(nuevos.some(m => (m.body ?? '').includes('Nuevo total: S/270'))).toBe(true)
+    // UNA oferta, la que se mandó, ahora aceptada. No dos.
+    const ofertas = (cambiosDemo()[base.id].mensajes ?? []).filter(m => m.type === 'offer')
+    expect(ofertas).toHaveLength(1)
+    expect(ofertas[0].offer?.accepted).toBe(true)
+    expect((p.chat_messages ?? []).some(m => (m.body ?? '').includes('Nuevo total: S/270'))).toBe(true)
+  })
+
+  // El segundo tiempo del cobro: mueve la MISMA fila que movería el webhook, así
+  // que la tarjeta ámbar del panel se pone verde y el anillo se completa.
+  it('el saldo pagado en demo cierra el cobro de verdad', () => {
+    const base = pedido({ product_price: 150, advance_amount: 75, saldo_amount: 75, saldo_verification: 'PENDING' })
+    cobroEnviadoEnDemo(base, 'Te queda un saldo de S/ 75.', { nombre: 'Andrea', rol: 'Ventas' })
+    expect(conCambios(base).chat_messages?.some(m => m.type === 'cobro')).toBe(true)
+    saldoPagadoEnDemo(base)
+    expect(conCambios(base).saldo_verification).toBe('MATCHED')
   })
 
   // Lo que el upsell tiene que poder ENSEÑAR: el adelanto ya no cubre el pedido,
@@ -134,7 +160,8 @@ describe('el carrito en el demo', () => {
   it('el anillo baja al crecer el pedido', () => {
     const base = pedido({ product_price: 150, advance_amount: 150 })
     expect(avanceDelPago(base).completo).toBe(true)
-    ofertaAceptadaEnDemo(base, { nombre: 'Set de Ollas', precio: 120 }, { nombre: 'Andrea', rol: 'Ventas' })
+    const msg = ofertaEnviadaEnDemo(base, { nombre: 'Set de Ollas', precio: 120 }, { nombre: 'Andrea', rol: 'Ventas' })
+    ofertaAceptadaEnDemo(base, { nombre: 'Set de Ollas', precio: 120 }, { nombre: 'Andrea', rol: 'Ventas' }, msg.id)
     const p = conCambios(base)
     expect(avanceDelPago(p).completo).toBe(false)
     expect(avanceDelPago(p).fraccion).toBeCloseTo(150 / 270)

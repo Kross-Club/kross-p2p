@@ -19,6 +19,15 @@
 export const TIPO_COBRO = 'cobro'
 
 /**
+ * El morado de Yape. El MISMO valor que la caja de pago del checkout
+ * (`Pay360Box`), y por eso vive acá y no dentro de un componente: el comprador
+ * ya pagó el adelanto con un botón de ese color, así que reconocerlo es más
+ * rápido que leerlo. Si los dos sitios se separan, el segundo botón deja de
+ * significar "esto abre Yape" y pasa a significar "otro botón más".
+ */
+export const MORADO_YAPE = '#742284'
+
+/**
  * Lo que dice el mensaje.
  *
  * **Tiene que bastarse solo**, y eso decide cómo está escrito: este mismo texto

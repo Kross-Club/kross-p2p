@@ -2343,6 +2343,38 @@ pedido se reportaba como dos. Ahora es una sola consulta con `or` — porque un 
 frase que impide borrar es lo peor que puede pasar acá: quien lo lee deja de creerle a la
 pantalla.
 
+## El demo aprende a esperar (31-ago-2026)
+
+Enseñando, una oferta aparecía **"Aceptada por el cliente" en el mismo instante en que se
+enviaba**. `ofertaAceptadaEnDemo` metía de golpe la oferta ya aceptada y su mensaje de
+confirmación, así que el momento que importa —mandé algo, y me respondieron— no ocurría nunca.
+Y sin ese momento, lo que se ve no parece una conversación: parece que el panel se lo inventó.
+
+Ahora son **dos tiempos**, y los diez segundos de espera son el producto:
+
+1. la tarjeta sale como **enviada** — la oferta sin aceptar, el cobro sin pagar;
+2. diez segundos después, el "cliente" responde.
+
+Diez porque es lo que dura contar qué acaba de pasar antes de que ocurra lo siguiente. Menos, y
+se pisan; más, y hay que rellenar.
+
+### Lo que se mueve al responder es la fila, no el texto
+
+`saldoPagadoEnDemo` escribe `saldo_verification = 'MATCHED'` — **la misma columna que movería el
+webhook de 360pay**. Así el efecto es el de verdad y en cadena: la tarjeta ámbar del panel se
+pone verde, el anillo del pago se completa y el mensaje del chat pasa a *"Pagada por el
+cliente"*. Un demo que solo cambiara el texto del mensaje enseñaría media herramienta — y la
+mitad que enseñaría es la que menos importa.
+
+Lo mismo con la oferta: se marca aceptado **el mensaje que ya estaba** en vez de insertar otro.
+Insertar era lo que hacía antes, y por eso el hilo terminaba con dos ofertas para una sola.
+
+### Y los temporizadores se cancelan al cerrar
+
+Se guardan para limpiarlos al salir del pedido. Sin eso, la respuesta del cliente aparecería
+diez segundos más tarde **en el pedido que se esté mirando entonces** — que enseñando es peor
+que no tener la función.
+
 ## Ver también
 
 - Contrato del estado compartido: [`00-CORE-ARCHITECTURE.md`](./00-CORE-ARCHITECTURE.md#estado-central-compartido--merchantcustomersession)

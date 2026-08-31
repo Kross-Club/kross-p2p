@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { stagesFor, stageIndex } from '../../lib/order-stages'
 import { isPickupDispatch, pickupBranchIdOf } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
-import PagarSaldo, { BotonPagarSaldo } from '../../components/PagarSaldo'
+import PagarSaldo from '../../components/PagarSaldo'
+import TarjetaDePago from '../../components/TarjetaDePago'
 import { TIPO_COBRO } from '../../lib/cobro-por-chat'
-import { puedePagarSaldo } from '../../lib/order-money'
-import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart, Wallet } from 'lucide-react'
+import { puedePagarSaldo, saldoDelPedido } from '../../lib/order-money'
+import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush, notifPermission } from '../../lib/push'
@@ -138,22 +139,12 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
   // saldo ya se pagó —o el pedido cambió de monto con un upsell— el mensaje
   // viejo queda como lo que es, un aviso que ya pasó, y no como un botón que
   // cobraría de menos. Es la misma condición que la tarjeta permanente.
-  if (msg.type === TIPO_COBRO) {
-    const vigente = pedido ? puedePagarSaldo(pedido) : false
+  if (msg.type === TIPO_COBRO && pedido) {
     return (
-      <div className="flex justify-start mb-3">
-        <div className="max-w-[85%] rounded-2xl px-3 py-3"
-          style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
-          <p className="flex items-center gap-2 text-[12px] font-bold mb-2" style={{ color: 'var(--ok-fg)' }}>
-            <Wallet size={14} className="flex-shrink-0" />
-            {msg.body}
-          </p>
-          {vigente
-            ? <BotonPagarSaldo pedido={pedido!} />
-            : <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Este saldo ya está pagado.</p>}
-          <p className="text-[10px] text-gray-400 mt-1.5">{time}</p>
-        </div>
-      </div>
+      <TarjetaDePago
+        texto={msg.body} monto={saldoDelPedido(pedido)} pedido={pedido} role="buyer"
+        pagada={!puedePagarSaldo(pedido)} hora={time}
+      />
     )
   }
 

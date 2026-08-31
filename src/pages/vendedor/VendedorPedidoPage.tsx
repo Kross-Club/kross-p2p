@@ -31,13 +31,18 @@ import CustomerCard from '../../components/CustomerCard'
 import Confirmar from '../../components/Confirmar'
 import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
+import TarjetaDePago from '../../components/TarjetaDePago'
 import { TIPO_COBRO, textoDeCobro } from '../../lib/cobro-por-chat'
-import { saldoDelPedido, soles } from '../../lib/order-money'
+import { puedePagarSaldo, saldoDelPedido, soles } from '../../lib/order-money'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
 import { pedidoDemoPorToken, esTokenDemo, tiendaDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
 import { ROL_DEMO } from '../../lib/demo/modo-demo'
-import { ejecutarEnDemo, agregarMensajeDemo, guardarCambio, ofertaAceptadaEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo } from '../../lib/demo/cambios-demo'
+import {
+  ejecutarEnDemo, guardarCambio, agregarMensajeDemo, ofertaAceptadaEnDemo, ofertaEnviadaEnDemo,
+  cobroEnviadoEnDemo, saldoPagadoEnDemo, ESPERA_CLIENTE_DEMO,
+  invitarEnDemo, reasignarEnDemo, quitarEnDemo,
+} from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -398,7 +403,12 @@ function roleColor(role?: string | null) {
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ msg, audio, equipo = [] }: { msg: OrderMessage; audio?: string | null; equipo?: Etiquetable[] }) {
+function MessageBubble({ msg, audio, equipo = [], pedido }: {
+  msg: OrderMessage; audio?: string | null; equipo?: Etiquetable[]
+  /** El pedido, para la tarjeta de pago: el monto y el "¿ya pagó?" salen del
+   *  estado de HOY, no de lo que decía el mensaje cuando se mandó. */
+  pedido?: OrderSession | null
+}) {
   const isSeller = msg.sender_role === 'seller'
   const time = new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
 
@@ -473,6 +483,19 @@ function MessageBubble({ msg, audio, equipo = [] }: { msg: OrderMessage; audio?:
     return <OfferCard offer={msg.offer} role="seller" />
   }
 
+  // La tarjeta de pago que se le mandó. Antes acá caía en la burbuja de texto
+  // de abajo: el vendedor mandaba algo y no tenía forma de ver qué mandó ni si
+  // había llegado. Una acción cuyo resultado no se ve es una que se repite.
+  if (msg.type === TIPO_COBRO && pedido) {
+    return (
+      <TarjetaDePago
+        texto={msg.body} monto={saldoDelPedido(pedido)} pedido={pedido} role="seller"
+        pagada={!puedePagarSaldo(pedido)}
+        hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+      />
+    )
+  }
+
   const roleC = roleColor(msg.sender_role_label)
   return (
     <div className={`flex ${isSeller ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -543,6 +566,16 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
   const desktop = useIsDesktop()
   usePanelTheme()
   const sellerName = effective?.nombre ?? 'Kross'
+
+  /** Los "el cliente respondió" del demo. Se guardan para cancelarlos al cerrar
+   *  el pedido: si no, el temporizador escribe sobre una pantalla que ya no
+   *  está — y enseñando, eso es una respuesta que aparece en el pedido
+   *  equivocado. */
+  const demoTimers = useRef<ReturnType<typeof setTimeout>[]>([])
+  useEffect(() => () => { demoTimers.current.forEach(clearTimeout) }, [])
+  const alRato = useCallback((fn: () => void) => {
+    demoTimers.current.push(setTimeout(fn, ESPERA_CLIENTE_DEMO))
+  }, [])
   // En la tienda de ejemplo se firma como DUEÑO. Quien presenta la enseña como
   // dueño del negocio, no con su cargo en Kross: "Admin" es una palabra
   // nuestra, y lo que el cliente que mira tiene que ver es su propia tienda.
@@ -893,13 +926,15 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     const body = textoDeCobro(soles(saldoDelPedido(session)))
 
     if (esTokenDemo(token)) {
-      const msg = {
-        id: `demo-cobro-${Date.now()}`, session_id: session.id, sender_role: 'seller',
-        sender_name: sellerName, sender_role_label: sellerRole, type: TIPO_COBRO,
-        body, created_at: new Date().toISOString(), read_at: null,
-      }
-      agregarMensajeDemo(session.id, msg)
+      // Dos tiempos, y esa espera ES lo que se enseña: la tarjeta sale como
+      // ENVIADA, y diez segundos después el comprador "paga". Aceptarla en el
+      // mismo instante se lee como que el panel se lo inventó.
+      const msg = cobroEnviadoEnDemo(session as unknown as StoreOrder, body, { nombre: sellerName, rol: sellerRole })
       setMessages(prev => [...prev, msg as unknown as OrderMessage])
+      alRato(() => {
+        const patch = saldoPagadoEnDemo(session as unknown as StoreOrder)
+        setSession(s => s ? { ...s, ...patch } as OrderSession : s)
+      })
       return
     }
 
@@ -914,7 +949,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     const saved: OrderMessage = await res.json()
     setMessages(prev => prev.some(m => m.id === saved.id) ? prev : [...prev, saved])
     channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
-  }, [session, token, sellerName, sellerRole])
+  }, [session, token, sellerName, sellerRole, alRato])
 
   // ── El cupón venció: emitir otro ──
   //
@@ -1426,7 +1461,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           </div>
         )}
         {messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} equipo={equipoEtiquetable}
+          <MessageBubble key={msg.id} msg={msg} equipo={equipoEtiquetable} pedido={session}
             audio={msg.call_recording_id ? audios[msg.call_recording_id] : undefined} />
         ))}
 
@@ -1667,13 +1702,17 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
             // pedido creciendo — el total sube y el anillo baja porque el
             // adelanto ya no lo cubre.
             if (esTokenDemo(token)) {
-              const r = ofertaAceptadaEnDemo(
-                session as unknown as StoreOrder,
-                offer,
-                { nombre: sellerName, rol: sellerRole },
-              )
-              if (r.patch) setSession(s => s ? { ...s, ...r.patch } as OrderSession : s)
+              // Igual que el cobro: primero ENVIADA, y a los diez segundos el
+              // cliente la acepta. Antes se metían de golpe la oferta ya
+              // aceptada y su confirmación, así que enseñando no se veía nunca
+              // el momento que importa — el de esperar una respuesta.
+              const msg = ofertaEnviadaEnDemo(session as unknown as StoreOrder, offer, { nombre: sellerName, rol: sellerRole })
               reloadSession()
+              alRato(() => {
+                const r = ofertaAceptadaEnDemo(session as unknown as StoreOrder, offer, { nombre: sellerName, rol: sellerRole }, msg.id)
+                if (r.patch) setSession(s => s ? { ...s, ...r.patch } as OrderSession : s)
+                reloadSession()
+              })
               return
             }
 
