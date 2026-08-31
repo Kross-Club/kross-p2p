@@ -32,6 +32,7 @@ import Confirmar from '../../components/Confirmar'
 import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
 import TarjetaDePago from '../../components/TarjetaDePago'
+import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
 import { TIPO_COBRO, textoDeCobro, textoDeCobroExtra, montoDeLaTarjeta, cobroDeLaTarjeta, MORADO_YAPE } from '../../lib/cobro-por-chat'
 import { puedePagarSaldo, saldoDelPedido, soles, cobrosDelPedido } from '../../lib/order-money'
 import { mensajePanel } from '../../lib/panel-errors'
@@ -467,6 +468,17 @@ function MessageBubble({ msg, audio, equipo = [], pedido }: {
           {audio && <audio controls preload="none" src={audio} className="w-full h-8 mt-2" />}
         </div>
       </div>
+    )
+  }
+
+  // Íd. que del lado del comprador: el vendedor ve la MISMA constancia. No la
+  // necesita para trabajar —tiene la columna de cobros—, pero cuando el cliente
+  // dice "el comprobante dice otra cosa", la respuesta tiene que estar en la
+  // pantalla donde se lo está preguntando.
+  if (msg.type === 'status_update' && msg.cobro_id) {
+    return (
+      <TarjetaDeComprobante texto={msg.body} cobroId={msg.cobro_id}
+        hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
     )
   }
 

@@ -20,33 +20,22 @@ export type DispatchType =
   | 'MOTORIZADO_LIMA' | 'MOTORIZADO_PROVINCIA'
   | 'AGENCIA_PROVINCIA' | 'AGENCIA_LIMA'
 
-const RECOJO = ['AGENCIA_PROVINCIA', 'AGENCIA_LIMA', 'AGENCIA', 'RECOJO_AGENCIA']
-
 /**
  * ¿Este pedido lo RECOGE el comprador, o se lo llevan?
  *
- * **Esta es la ÚNICA definición de "es recojo" del repo.** Existe porque
- * `dispatch_type` codifica dos cosas en un solo enum —región y método— y
- * comparar contra un valor concreto se rompe cada vez que aparece una
- * combinación nueva. Cuando Lima pasó a poder recoger en agencia, todo
- * `=== 'AGENCIA_PROVINCIA'` regado por el código quedaba tratando ese pedido
- * como entrega a domicilio.
+ * **La única definición de "es recojo" del repo**, y desde hoy vive en
+ * `supabase/functions/_shared/despacho.ts`: el servidor no puede importar de
+ * `src/`, así que el webhook de 360pay llevaba su propia copia escrita a mano —
+ * la misma trampa que esta función existe para cerrar, un nivel más arriba.
+ * Acá se reexporta para que el frontend la siga pidiendo donde siempre.
  *
- * Tener DOS definiciones es la misma trampa un nivel más arriba, y ya costó:
- * `order-tracking.ts` llevaba su propia lista sin `AGENCIA_LIMA`, así que un
- * recojo en Lima —lo único que vende Kross Shop hoy, con el domicilio apagado—
- * recibía la línea de vida del motorizado, no aparecía en el mapa en vivo, y
- * **descartaba en silencio las fases que Shalom sí estaba reportando**.
- *
- * Se normaliza a mayúsculas y se toleran dos valores heredados que ningún
- * código escribe hoy (`register-buyer` solo acepta los cuatro canónicos): no se
- * pueden descartar sin mirar la BD, y aceptarlos no cuesta nada. `AGENCIA` a
- * secas es el `deliveryMethod` del checkout —otro dominio, otro enum—; si
- * alguna vez se filtró a esta columna, es un recojo igual.
+ * Tener DOS ya costó: `order-tracking.ts` llevaba su propia lista sin
+ * `AGENCIA_LIMA`, así que un recojo en Lima —lo único que vende Kross Shop hoy,
+ * con el domicilio apagado— recibía la línea de vida del motorizado, no aparecía
+ * en el mapa en vivo, y **descartaba en silencio las fases que Shalom sí estaba
+ * reportando**.
  */
-export function isPickupDispatch(d: string | null | undefined): boolean {
-  return RECOJO.includes(String(d ?? '').toUpperCase())
-}
+export { isPickupDispatch } from '../../supabase/functions/_shared/despacho.ts'
 export type AgencyName = 'SHALOM' | 'OLVA' | 'OTRO'
 export type ClosedBy = 'AI_CLOSER' | 'DIRECT_CHECKOUT'
 

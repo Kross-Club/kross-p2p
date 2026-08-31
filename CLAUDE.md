@@ -94,5 +94,7 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
   ENVIADAS y diez segundos después se ven aceptadas, moviendo la misma fila que movería el
   servidor. Esa espera es lo que se enseña. Y **cobrar algo más** también se enseña: el ícono de
   billetera crea un cobro de verdad —fila `extra` en la lista de cobros, con su concepto—, se
-  manda por el chat y se acepta solo diez segundos después. ⚠️ Al tocar el generador, **nunca agregues una
+  manda por el chat y se acepta solo diez segundos después. Y al aceptarse sale el **comprobante**
+  —la misma copy que manda el webhook—, que en el demo se arma en el dispositivo para que el
+  botón no abra una página vacía. ⚠️ Al tocar el generador, **nunca agregues una
   tirada de `r()`**: corre el azar de todos los pedidos siguientes y rompe cosas sin relación.

@@ -5,8 +5,9 @@ import {
   ofertaEnviadaEnDemo, cobroEnviadoEnDemo, saldoPagadoEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo,
 } from './cambios-demo'
 import type { PedidoDemo } from './cambios-demo'
-import { avanceDelPago } from '../order-money'
+import { avanceDelPago, cobrosDelPedido, cobradoDelPedido } from '../order-money'
 import { columnaDelPedido } from '../order-tracking'
+import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
 //
@@ -156,6 +157,44 @@ describe('el carrito en el demo', () => {
     expect(conCambios(base).chat_messages?.some(m => m.type === 'cobro')).toBe(true)
     saldoPagadoEnDemo(base)
     expect(conCambios(base).saldo_verification).toBe('MATCHED')
+  })
+
+  // Y termina como termina de verdad: con el acuse del webhook —la MISMA copy,
+  // de `_shared/acuse-de-pago.ts`— apuntando al cobro, que es lo que convierte
+  // el aviso en la tarjeta con el botón del comprobante.
+  it('el saldo pagado deja el acuse con su comprobante', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75, saldo_amount: 75, saldo_verification: 'PENDING',
+      dispatch_type: 'AGENCIA_LIMA',
+      cobros: [
+        { id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' },
+        { id: 's', tipo: 'saldo', monto: 75, estado: 'PENDING' },
+      ],
+    })
+    saldoPagadoEnDemo(base)
+    const acuse = conCambios(base).chat_messages?.find(m => m.type === 'status_update')
+    expect(acuse?.body).toBe(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: true }))
+    // Y apunta al cobro: sin eso el botón no tendría qué abrir.
+    expect(acuse?.cobro_id).toBe('s')
+  })
+
+  // Y en la LISTA, que es de donde lee el panel desde el bloque §36. El
+  // generador manda `cobros` en todos sus pedidos, así que tocar solo las
+  // columnas dejaba la fila del saldo en PENDING: el comprador "pagaba" y la
+  // tarjeta seguía ámbar. El fixture de arriba no lo veía porque no trae lista.
+  it('el saldo pagado también mueve la fila de cobros', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75, saldo_amount: 75, saldo_verification: 'PENDING',
+      cobros: [
+        { id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' },
+        { id: 's', tipo: 'saldo', monto: 75, estado: 'PENDING' },
+      ],
+    })
+    saldoPagadoEnDemo(base)
+    const p = conCambios(base)
+    expect(p.cobros?.find(c => c.tipo === 'saldo')?.estado).toBe('MATCHED')
+    expect(cobrosDelPedido(p).every(c => c.verificado)).toBe(true)
+    expect(cobradoDelPedido(p)).toBe(150)
   })
 
   // Lo que el upsell tiene que poder ENSEÑAR: el adelanto ya no cubre el pedido,

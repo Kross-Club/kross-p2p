@@ -113,6 +113,39 @@ marcaba como **adelanto**: pisaba `advance_amount` con el monto del flete y daba
 adelanto que nadie pagó. Un `extra` tampoco mueve la etapa ni dispara `Purchase` en CAPI —cobrar
 un flete no es otra compra— y su acuse al comprador es el suyo, no "te queda un saldo de".
 
+### El comprobante de un pago ✅ (31-ago-2026)
+
+Apenas un cobro cruza, al chat le sale un **"pago recibido"** con un botón que abre la constancia
+en otra pestaña: `/comprobante/<id del cobro>`. El comprador la enseña, la reenvía, o la guarda
+como PDF con el *imprimir* del navegador — y eso **es** el PDF: `@media print` deja la hoja sola,
+sin botones ni fondo. Un generador en el servidor haría lo mismo con una librería que mantener,
+un archivo que subir a Storage y un enlace que caduca.
+
+⚠️ **No es una boleta, y lo dice al pie.** La facturación electrónica (Nubefact) todavía no
+existe en el producto y `stores` no guarda RUC ni razón social. Es una **constancia de pago**:
+sirve para reclamar, para cuadrar y para tener algo que enseñar. Llamarla boleta sería prometer
+un documento tributario que nadie emitió.
+
+La llave es el **uuid del cobro** y nada más —igual que el token del pedido—, para que se abra
+sin iniciar sesión. Por eso la respuesta lleva **lo justo**: pedido, cliente, qué se pagó, cuánto,
+cuándo, el código de pago y la operación bancaria. Nada de teléfono, DNI, dirección ni id de
+cupón: una hoja que se reenvía por WhatsApp no puede llevar más de lo que hace falta para probar
+que se pagó. Y solo si el cobro **entró** — una constancia de un cobro pendiente sería un papel
+que dice que se pagó algo que no se pagó, y el comprador la enseñaría de buena fe.
+
+Tres cosas se leen de un solo sitio, y las tres estaban a punto de tener dos versiones:
+
+| Qué | Dónde vive | Quién lo usa |
+|---|---|---|
+| Las líneas de la hoja | `src/lib/rastro-de-pago.ts` | el panel, el "copiar para soporte" y el comprobante |
+| Cómo se lee el rastro bancario | `_shared/rastro.ts` | `get-session` y `get-comprobante` |
+| Lo que se le dice al comprador | `_shared/acuse-de-pago.ts` | `pay360-webhook` y el demo |
+
+La del medio ya había nacido torcida: `get-comprobante` leía `raw.coupon.bank`, que no existe —el
+campo es `raw.bank_tx_id`—, así que el comprobante habría salido sin banco sin que nada fallara.
+Y de paso `isPickupDispatch` —la única definición de "es recojo" del repo— bajó a `_shared/`: el
+webhook llevaba su propia copia escrita a mano, que no conocía `AGENCIA`.
+
 ## Autenticación & roles ✅
 
 - **Supabase Auth** para el equipo (`sellers.auth_user_id`).

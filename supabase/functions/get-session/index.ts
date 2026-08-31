@@ -1,4 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { rastroDelEvento, rastroSinEvento } from '../_shared/rastro.ts'
+import type { Rastro } from '../_shared/rastro.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -149,19 +151,18 @@ Deno.serve(async (req) => {
   // sola no dice nada — cierra el círculo junto con el cupón y el código de
   // pago, que son lo que el panel de 360pay lista. Del `raw` del evento se
   // extraen solo `operation_number` y `bank_tx_id`: el raw entero lleva fees.
-  type Trace = {
-    operation_number: string | null; bank: string | null
-    coupon_id: string | null; payment_code: string | null
-  }
-
   // El rastro de UN cobro. Son dos —adelanto y saldo (bloque §31 del esquema)—,
   // cada uno con su evento, su cupón y su operación bancaria, así que esto se
-  // arma dos veces con distintas columnas en vez de una sola con la del
+  // pide dos veces con distintas columnas en vez de una sola con la del
   // adelanto: un reclamo pregunta por UNO de los dos, y el número que se le da
   // tiene que ser el de ese.
+  //
+  // CÓMO se lee vive en `_shared/rastro.ts`, no acá: `get-comprobante` lee lo
+  // mismo, y tres `??` encadenados con un `JSON.parse` que puede fallar es justo
+  // lo que al escribirse dos veces se escribe distinto la segunda.
   const rastroDe = async (
     eventId: string | null, cuponId: string | null, codigo: string | null,
-  ): Promise<Trace | null> => {
+  ): Promise<Rastro | null> => {
     if (!viewerIsSeller) return null
     // Un cupón EMITIDO y sin pagar no tiene evento, y hasta hoy eso devolvía
     // `null`: el panel se quedaba sin nada con qué buscarlo. Y es justo cuando
@@ -169,27 +170,10 @@ Deno.serve(async (req) => {
     // El cupón y el código viven en la fila del pedido, así que existen desde
     // que se emitió; lo único que falta es el rastro bancario, que todavía no
     // ocurrió.
-    const sinEvento: Trace | null = (cuponId || codigo)
-      ? { operation_number: null, bank: null, coupon_id: cuponId, payment_code: codigo }
-      : null
-    if (!eventId) return sinEvento
+    if (!eventId) return rastroSinEvento(cuponId, codigo)
     const { data: ev } = await supabase.from('payment_events')
       .select('raw, operation_number').eq('id', eventId).maybeSingle()
-    if (!ev) return sinEvento
-    let op = ev.operation_number ?? null, bank: string | null = null
-    // El código de pago sale de la fila del pedido; el evento del webhook lo
-    // trae también (`code`), y ese es el respaldo para pedidos que pagaron
-    // pese a que la emisión no llegó a guardar la columna — pasó con el
-    // primer cupón real, cuando un fallo posterior a la emisión respondía
-    // antes de escribir la fila.
-    let code: string | null = codigo
-    try {
-      const raw = JSON.parse(ev.raw ?? '{}')
-      op = op ?? (typeof raw.operation_number === 'string' ? raw.operation_number : null)
-      bank = typeof raw.bank_tx_id === 'string' ? raw.bank_tx_id : null
-      code = code ?? (typeof raw.code === 'string' ? raw.code : null)
-    } catch { /* raw no-JSON (eventos viejos del flujo manual): sin rastro */ }
-    return { operation_number: op, bank, coupon_id: cuponId, payment_code: code }
+    return rastroDelEvento(ev, cuponId, codigo)
   }
 
   // Los cobros del pedido (bloque §36). Van a la respuesta tal cual: quién es

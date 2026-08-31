@@ -5,6 +5,7 @@ import { isPickupDispatch, pickupBranchIdOf } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
 import PagarSaldo from '../../components/PagarSaldo'
 import TarjetaDePago from '../../components/TarjetaDePago'
+import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
 import { TIPO_COBRO, montoDeLaTarjeta, cobroDeLaTarjeta } from '../../lib/cobro-por-chat'
 import { puedePagarSaldo, saldoDelPedido, cobrosDelPedido } from '../../lib/order-money'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
@@ -168,6 +169,13 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
         </div>
       </div>
     )
+  }
+
+  // El aviso de que ENTRÓ la plata, con su constancia. Va antes de la píldora
+  // de estado y no dentro: el aviso más importante del hilo no puede verse igual
+  // que "cambió la etapa". Lo que lo distingue es que apunta a un cobro.
+  if (msg.type === 'status_update' && msg.cobro_id) {
+    return <TarjetaDeComprobante texto={msg.body} cobroId={msg.cobro_id} hora={time} />
   }
 
   if (msg.type === 'status_update') {

@@ -27,6 +27,7 @@ import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
+import ComprobantePage from './pages/comprobante/ComprobantePage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
 import BuyerPresenceTracker from './components/BuyerPresenceTracker'
 import BuyerCallListener from './components/BuyerCallListener'
@@ -113,6 +114,10 @@ export default function App() {
 
         {/* Public routes */}
         <Route path="/p/:token" element={<OrderChatPage />} />
+        {/* La constancia de un pago. Abierta a propósito: la llave es el uuid
+            del cobro, igual que el token del pedido, para que el comprador la
+            enseñe y la reenvíe sin tener que iniciar sesión. */}
+        <Route path="/comprobante/:cobroId" element={<ComprobantePage />} />
         <Route path="/vendedor/pedido/:token" element={<VendedorPedidoPage />} />
         <Route path="/landing/:landingId" element={<LandingProductoPage />} />
 

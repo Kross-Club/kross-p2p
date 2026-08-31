@@ -23,6 +23,8 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { columnasDe } from '../_shared/cobros.ts'
+import { acuseDePago } from '../_shared/acuse-de-pago.ts'
+import { isPickupDispatch } from '../_shared/despacho.ts'
 import {
   PAY360_HEADERS, getCoupon, isPaid, pay360BaseUrl, pickPartnerKey, verifySignature, type Pay360Env,
 } from '../_shared/pay360.ts'
@@ -111,7 +113,7 @@ Deno.serve(async (req) => {
   }
 
   // ─── El pedido ─────────────────────────────────────────────────────────────
-  const sessionCols = 'id, order_id, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, pay360_saldo_coupon_id, saldo_amount, saldo_verification, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
+  const sessionCols = 'id, order_id, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, pay360_saldo_coupon_id, pay360_consumer_code, pay360_saldo_consumer_code, saldo_amount, saldo_verification, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
   const { data: session } = externalRef
     ? await supabase.from('order_sessions')
         .select(sessionCols)
@@ -236,15 +238,26 @@ Deno.serve(async (req) => {
   const tipo = esExtra ? 'extra' : esSaldo ? 'saldo' : 'adelanto'
   const delCobro = { monto: paid, estado: 'MATCHED', matched_at: matchedAt, payment_event_id: ev?.id ?? null }
 
+  // Y su id se guarda: es la dirección del COMPROBANTE que sale enseguida por el
+  // chat. Sin él el comprador recibe un "gracias por tu pago" sin nada que
+  // enseñar.
+  let cobroId: string | null = cobroDelCupon?.id ?? null
   if (cobroDelCupon) {
     await supabase.from('cobros').update(delCobro).eq('id', cobroDelCupon.id)
   } else {
     // Sin fila previa —un cupón emitido antes de que existiera la tabla— se
     // crea ahora: la plata entró y tiene que quedar registrada igual.
-    await supabase.from('cobros').upsert(
+    const { data: creado } = await supabase.from('cobros').upsert(
       { session_id: session.id, store_id: session.store_id ?? null, tipo,
-        pay360_coupon_id: coupon.data._id, ...delCobro },
+        pay360_coupon_id: coupon.data._id,
+        // El código de pago viene de la fila del pedido: es lo que el
+        // comprobante enseña como identificador, y sin él la constancia sale
+        // sin con qué buscarla en el portal de 360pay.
+        pay360_consumer_code: (esSaldo ? session.pay360_saldo_consumer_code : session.pay360_consumer_code) ?? null,
+        ...delCobro },
       { onConflict: 'session_id,tipo' })
+      .select('id').maybeSingle()
+    cobroId = creado?.id ?? null
   }
 
   // Un `extra` NO tiene columna que espejar —`columnasDe` devuelve `{}`— y
@@ -264,21 +277,20 @@ Deno.serve(async (req) => {
       + (session.buyer_name ? ` · pagó ${session.buyer_name}` : '')
       + ` · 360pay ${coupon.data._id}${bank}`,
   })
-  // El acuse al comprador con el saldo DERIVADO del pedido, no asumido:
-  // "tu adelanto" a quien pagó el total suena a que aún falta plata, y callar
-  // el saldo a quien pagó la mitad lo manda a preguntar cuánto debe justo el
-  // día del recojo. Misma regla que el mensaje de bienvenida de register-buyer,
-  // y misma mecánica: en agencia el saldo se paga POR LA APP (la clave de
-  // recojo se entrega contra ese pago), nunca en el mostrador.
+  // El acuse al comprador. La copy vive en `_shared/acuse-de-pago.ts` porque la
+  // escriben DOS: esta función, en una tienda de verdad, y el demo, que enseña
+  // este mismo momento diez segundos después de mandar la tarjeta. Un demo que
+  // dijera otra frase estaría enseñando un producto que no existe.
   //
-  // Un `extra` no entra en esa cuenta: es plata de ENCIMA del pedido —un flete,
-  // una diferencia de talla—, no una parte del precio. Decirle "te queda un
-  // saldo de S/X" a quien acaba de pagar su flete es inventarle una deuda.
+  // Si el pedido lo RECOGE el comprador cambia dónde paga su saldo, y eso lo
+  // responde `_shared/despacho.ts` — la única definición de "es recojo" del
+  // repo. Acá había una copia escrita a mano que no conocía `AGENCIA`.
+  const esRecojo = isPickupDispatch(session.dispatch_type)
   if (esExtra) {
     await supabase.from('chat_messages').insert({
       session_id: session.id, sender_role: 'system', sender_name: 'Kross',
-      type: 'status_update', visibility: 'all',
-      body: `✅ ¡Recibimos tu pago de S/${paid}${cobroDelCupon?.concepto ? ` por ${cobroDelCupon.concepto}` : ''}! Gracias.`,
+      type: 'status_update', visibility: 'all', cobro_id: cobroId,
+      body: acuseDePago({ tipo: 'extra', pagado: paid, total: Number(session.product_price ?? 0), esRecojo, concepto: cobroDelCupon?.concepto }),
     })
     // Y se corta acá, antes de CAPI: un cobro extra no es otra compra. Contarlo
     // como `Purchase` le sumaría a Meta y a TikTok una conversión por cada flete
@@ -287,26 +299,15 @@ Deno.serve(async (req) => {
     return ok({ received: true, matched: true, extra: true })
   }
 
-  const saldoRestante = esSaldo
-    ? 0
-    : Math.max(0, Number(session.product_price ?? 0) - paid)
-  const esRecojo = session.dispatch_type === 'AGENCIA_PROVINCIA' || session.dispatch_type === 'AGENCIA_LIMA'
-  const buyerAck = saldoRestante > 0
-    ? (esRecojo
-        ? `✅ ¡Recibimos tu adelanto de S/${paid}! Te queda un saldo de S/${saldoRestante}`
-          + ' que nos pagas por esta misma app —no en la agencia— cuando te enviemos la guía'
-          + ' de tu envío. Apenas lo pagues te entregamos tu clave de recojo.'
-        : `✅ ¡Recibimos tu adelanto de S/${paid}! Te queda un saldo de S/${saldoRestante}`
-          + ' que pagas al recibir tu pedido.')
-    : `✅ ¡Recibimos tu pago completo de S/${paid}! No te queda ningún saldo pendiente.`
   await supabase.from('chat_messages').insert({
     session_id: session.id, sender_role: 'system', sender_name: 'Kross',
-    type: 'status_update', visibility: 'all',
-    body: esSaldo
-      // Al pagar el saldo lo que el comprador espera es su clave, no un
-      // "estamos preparando" — su pedido ya está en la agencia.
-      ? `✅ ¡Recibimos tu saldo de S/${paid}! Ya no te queda nada pendiente. Te enviamos tu clave de recojo por acá.`
-      : `${buyerAck} Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.`,
+    // Apunta al cobro: eso convierte este aviso en la tarjeta con el botón que
+    // abre la constancia (`TarjetaDeComprobante`). Ver bloque §37.
+    type: 'status_update', visibility: 'all', cobro_id: cobroId,
+    body: acuseDePago({
+      tipo: esSaldo ? 'saldo' : 'adelanto',
+      pagado: paid, total: Number(session.product_price ?? 0), esRecojo,
+    }),
   })
 
   // ─── CAPI · Purchase server-side ───────────────────────────────────────────
