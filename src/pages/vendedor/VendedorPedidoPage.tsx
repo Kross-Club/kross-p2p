@@ -37,7 +37,7 @@ import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
 import { pedidoDemoPorToken, esTokenDemo, tiendaDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
 import { ROL_DEMO } from '../../lib/demo/modo-demo'
-import { ejecutarEnDemo, agregarMensajeDemo, ofertaAceptadaEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo } from '../../lib/demo/cambios-demo'
+import { ejecutarEnDemo, agregarMensajeDemo, guardarCambio, ofertaAceptadaEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -916,6 +916,32 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
   }, [session, token, sellerName, sellerRole])
 
+  // ── El cupón venció: emitir otro ──
+  //
+  // No se "extiende": 360pay no tiene endpoint para eso, y no hace falta.
+  // `pay360-coupon` ya consulta el cupón previo, lo anula si no está pagado y
+  // emite uno nuevo — y el CÓDIGO DE PAGO del comprador no cambia, porque es
+  // estable por comprador (`pay360_consumer_code`). Lo que cambia es el cupón
+  // que cuelga de él, con su vencimiento nuevo.
+  const reemitirCupon = useCallback(async () => {
+    if (!session) return
+    if (esTokenDemo(token)) {
+      const patch = { pay360_saldo_coupon_expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString() }
+      guardarCambio(session.id, patch)
+      setSession(s => s ? { ...s, ...patch } as OrderSession : s)
+      return
+    }
+    const r = await fetch(`${BASE}/pay360-coupon`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_token: token, tipo: 'saldo' }),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok || !d.ok) { alert(d.user_message ?? 'No se pudo generar el código. Intenta de nuevo.'); return }
+    // La sesión se relee entera: el cupón nuevo trae otro vencimiento y, si el
+    // pedido creció con un upsell, otro monto.
+    reloadSession()
+  }, [session, token, reloadSession])
+
   if (loading) {
     return (
       <div className="flex flex-col h-screen items-center justify-center" style={{ background: 'var(--chat-bg)' }}>
@@ -1336,7 +1362,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           hay), con su monto y su rastro contra el banco. Acá había además un
           `AdvancePanel` que repetía el mismo monto con otras palabras; se
           eliminó con la línea de la ficha del cliente que hacía lo mismo. */}
-      <PagoTrace session={session} onCobrar={cobrarPorChat} />
+      <PagoTrace session={session} onCobrar={cobrarPorChat} onReemitir={reemitirCupon} />
       {/* El motivo del fallo, que no es del cobro sino de la EMISIÓN: por qué
           un pedido con adelanto ni siquiera tiene cupón. */}
       {session.payment_reason && session.payment_verification !== 'MATCHED' && (

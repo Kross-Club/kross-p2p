@@ -80,6 +80,11 @@ export interface StoreOrder {
   saldo_matched_at?: string | null
   payment_trace?: RastroDeCobro | null
   saldo_trace?: RastroDeCobro | null
+  /** Con qué pasarela cobra la tienda. Decide si el saldo se puede pagar por la
+   *  app o lo coordina un asesor (`puedePagarSaldo`). */
+  payment_provider?: string | null
+  /** Cuándo caduca el cupón del saldo (bloque §35). */
+  pay360_saldo_coupon_expires_at?: string | null
   tracking_courier?: string | null
   tracking_numero?: string | null
   tracking_phase?: string | null

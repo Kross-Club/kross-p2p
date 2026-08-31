@@ -85,6 +85,10 @@ export interface OrderSession {
    *  principio y no llegaba al tipo, así que el panel no podía decir CUÁNDO
    *  entró la plata — que es lo que ubica la transacción en el portal. */
   payment_matched_at?: string | null
+  /** Cuándo caduca cada cupón (bloque §35). `null` = se emitió antes de que se
+   *  guardara la fecha; ver `vigencia-de-cupon.ts` — eso NO es "vencido". */
+  pay360_coupon_expires_at?: string | null
+  pay360_saldo_coupon_expires_at?: string | null
   /** El SALDO: la segunda operación, cuando ya hay guía. Sus propias columnas
    *  porque es otro cupón, otra fecha y otro número de operación bancaria. */
   saldo_amount?: number | null

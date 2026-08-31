@@ -482,6 +482,23 @@ async function construir(): Promise<TiendaDemo> {
       payment_matched_at: cruzado ? new Date(ahora - entre(r, 0, 8) * DIA).toISOString() : null,
       saldo_trace: saldoPagado || saldoEmitido ? rastroDemo(r, i + 5000, saldoPagado) : null,
       saldo_matched_at: saldoPagado ? new Date(ahora - entre(r, 0, 4) * DIA).toISOString() : null,
+      // La tienda de ejemplo COBRA EN LÍNEA. Sin esta línea `puedePagarSaldo`
+      // daba false en todo el demo, así que ni el comprador veía su botón de
+      // pagar el saldo ni el vendedor el de mandarle la tarjeta: dos funciones
+      // enteras invisibles justo donde se enseñan.
+      payment_provider: '360PAY',
+      // Y uno de cada cinco cupones de saldo está VENCIDO. Es lo que hace
+      // visible el otro camino —"venció · generar otro código"—, que si no
+      // habría que esperar un mes para verlo una vez.
+      //
+      // Sale del ÍNDICE y no de `r()`, y no es un capricho: **cada tirada corre
+      // el generador entero**. Este archivo es determinista a propósito, así que
+      // una tirada de más acá le cambia el azar a TODOS los pedidos de abajo.
+      // Se descubrió así — una prueba dejó de encontrar pedidos `no_entregado`,
+      // que no tenían nada que ver con los cupones.
+      pay360_saldo_coupon_expires_at: saldoEmitido && !saldoPagado
+        ? new Date(ahora + (i % 5 === 0 ? -(1 + i % 4) : 3 + (i % 26)) * DIA).toISOString()
+        : null,
       tracking_courier: conGuia ? ruta.courier : null,
       tracking_numero: conGuia ? String(entre(r, 100000, 999999)) : null,
       tracking_phase: t.fase,

@@ -568,9 +568,15 @@ describe('el paso 3 no pide nada', () => {
 describe('vencimiento del cupón', () => {
   const now = Date.parse('2026-08-21T02:00:00.000Z')
 
-  it('vence a los 7 días de emitido', () => {
-    expect(couponExpiryFrom(now)).toBe('2026-08-28T02:00:00.000Z')
-    expect(COUPON_TTL_DAYS).toBe(7)
+  // 30 días (31-ago-2026; antes 7). El saldo es el cobro que llega tarde —se
+  // emite con la guía y se paga cuando el paquete está por llegar—, así que con
+  // 7 un envío a provincia demorado dejaba el cupón muerto antes de que al
+  // comprador le tocara pagarlo. 30 es lo COMPROBADO contra el servicio real;
+  // subirlo a ojo arriesga un "invalid expiry_date", y un cupón que no se emite
+  // es un pedido que no se cobra.
+  it('vence a los 30 días de emitido', () => {
+    expect(couponExpiryFrom(now)).toBe('2026-09-20T02:00:00.000Z')
+    expect(COUPON_TTL_DAYS).toBe(30)
   })
 
   it('va en ISO, que es lo que el API acepta', () => {

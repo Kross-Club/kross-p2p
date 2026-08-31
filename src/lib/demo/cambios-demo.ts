@@ -76,6 +76,10 @@ export interface CambioDemo {
   /** Los mensajes AGREGADOS en esta demo. Se pegan al final de la conversación
    *  que arma el generador, no la reemplazan. */
   mensajes?: MensajeDemo[]
+  /** Cuándo caduca el cupón del saldo. Se toca al generar otro código desde la
+   *  tarjeta de cobro — enseñar que un cupón vencido se reemite es la mitad de
+   *  lo que hay que enseñar de esa tarjeta. */
+  pay360_saldo_coupon_expires_at?: string | null
 }
 
 type Cambios = Record<string, CambioDemo>

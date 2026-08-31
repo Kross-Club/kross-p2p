@@ -173,12 +173,23 @@ export interface Pay360Coupon {
  * ("Missing required fields: expiry_date"). Es la clase de diferencia que solo
  * aparece contra el servicio de verdad, no leyendo el spec.
  *
- * 7 días y no 24 horas: el riesgo no es simétrico. Si vence muy pronto, quien
- * paga tarde se encuentra con un cupón muerto en Yape y un pedido a medias. Si
- * vence tarde no pasa nada, porque antes de emitir uno nuevo se anulan los
- * pendientes de ese comprador — o sea, nunca hay dos vivos compitiendo.
+ * **30 días** (31-ago-2026; antes 7). El riesgo no es simétrico y por eso el
+ * número tira hacia arriba: si vence pronto, quien paga tarde se encuentra un
+ * cupón muerto en Yape y un pedido a medias. Si vence tarde no pasa nada,
+ * porque antes de emitir uno nuevo se anulan los pendientes de ese comprador —
+ * nunca hay dos vivos compitiendo.
+ *
+ * Y el saldo es justo el cobro que llega tarde: se emite cuando hay guía y se
+ * paga cuando el paquete está por llegar. Con 7 días, un envío a provincia que
+ * se demora dejaba el cupón muerto antes de que al comprador le tocara pagarlo.
+ *
+ * 30 y no más porque 30 es lo COMPROBADO contra el servicio real (un cupón
+ * emitido a un mes, verificado en su panel). Si 360pay confirma que acepta más,
+ * es esta constante y nada más — pero subirla a ojo arriesga un
+ * "Missing/invalid expiry_date", y un cupón que no se emite es un pedido que no
+ * se cobra.
  */
-export const COUPON_TTL_DAYS = 7
+export const COUPON_TTL_DAYS = 30
 
 /** Fecha de vencimiento de un cupón emitido ahora. */
 export function couponExpiryFrom(nowMs: number): string {

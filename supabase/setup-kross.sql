@@ -1447,3 +1447,35 @@ WHERE store_id = 'platform'
 --          (SELECT count(*) FROM sellers se WHERE se.store_id = s.id) AS equipo,
 --          (SELECT count(*) FROM buyers b WHERE b.store_id = s.id) AS compradores
 --   FROM stores s ORDER BY s.created_at;
+
+
+-- ─── 35. CUÁNDO VENCE EL CUPÓN ──────────────────────────────────────────────
+--
+-- El vencimiento lo elegimos NOSOTROS: `expiry_date` es un campo obligatorio de
+-- `POST /coupons` y sale de `COUPON_TTL_DAYS` (bloque `_shared/pay360.ts`). Lo
+-- que faltaba era GUARDARLO: se calculaba, se mandaba y se tiraba.
+--
+-- Sin esta fecha el panel no puede responder la única pregunta que importa
+-- antes de volver a pedirle el saldo a alguien: **¿el código que le voy a
+-- mandar todavía sirve?** Mandar una tarjeta de pago con un cupón vencido es
+-- peor que no mandarla — el cliente hace su parte, Yape lo rechaza, y el que
+-- queda mal es el comercio.
+--
+-- NULL = emitido antes de este bloque. No se asume vencido: no saber si algo
+-- caducó no es saber que caducó, y bloquear el cobro por una columna vacía
+-- dejaría sin cobrar pedidos cuyo cupón está perfectamente vivo.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pay360_coupon_expires_at       timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pay360_saldo_coupon_expires_at timestamptz;
+
+-- ⚠️ Lo que este bloque NO cambia: **no existe "extender" un cupón.** Ni hace
+-- falta. `pay360-coupon` ya reemite —consulta el previo, y si no está pagado lo
+-- anula antes de emitir el nuevo—, y el CÓDIGO DE PAGO del comprador no cambia
+-- al hacerlo: es estable por comprador (`pay360_consumer_code`), lo que cambia
+-- es el cupón que cuelga de él. Así que "se venció, generar otro" es
+-- literalmente volver a llamar a `pay360-coupon`.
+--
+-- Cupones de saldo vivos y cuándo caducan:
+--   SELECT order_id, saldo_amount, saldo_verification,
+--          pay360_saldo_consumer_code, pay360_saldo_coupon_expires_at
+--   FROM order_sessions
+--   WHERE saldo_verification = 'PENDING' ORDER BY pay360_saldo_coupon_expires_at;
