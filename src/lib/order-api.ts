@@ -1,4 +1,5 @@
 import type { OrderStage } from './order-stages'
+import type { FilaDeCobro } from '../../supabase/functions/_shared/cobros.ts'
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
@@ -84,6 +85,10 @@ export interface OrderSession {
   /** Cuándo se cruzó el adelanto (o el pago total). La columna existía desde el
    *  principio y no llegaba al tipo, así que el panel no podía decir CUÁNDO
    *  entró la plata — que es lo que ubica la transacción en el portal. */
+  /** Los cobros de este pedido (bloque §36). Cuando viene, `cobrosDelPedido`
+   *  lee de acá: es el modelo donde un pedido tiene N cobros y el adelanto y el
+   *  saldo son dos filas más. Las columnas de abajo son lo de antes. */
+  cobros?: FilaDeCobro[] | null
   payment_matched_at?: string | null
   /** Cuándo caduca cada cupón (bloque §35). `null` = se emitió antes de que se
    *  guardara la fecha; ver `vigencia-de-cupon.ts` — eso NO es "vencido". */

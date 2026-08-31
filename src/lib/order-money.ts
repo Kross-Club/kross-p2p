@@ -14,7 +14,15 @@
 // cruza NO es plata que entró. Pintarlo como cobrado le mentiría al vendedor
 // sobre su propia caja, que es justo el número por el que abre el tablero.
 
+import { cobrosVivos, entro } from '../../supabase/functions/_shared/cobros.ts'
+import type { FilaDeCobro } from '../../supabase/functions/_shared/cobros.ts'
+
 export interface PedidoConPlata {
+  /** La LISTA de cobros (bloque §36). Cuando viene, manda: es el modelo nuevo,
+   *  donde un pedido tiene N cobros y el adelanto y el saldo son dos filas más.
+   *  Las columnas de abajo son lo que había antes y siguen ahí mientras dure la
+   *  mudanza — ver `cobrosDelPedido`. */
+  cobros?: FilaDeCobro[] | null
   product_price?: number | string | null
   advance_amount?: number | string | null
   payment_verification?: string | null
@@ -23,6 +31,10 @@ export interface PedidoConPlata {
    *  clave de recojo. Ver `cobros`. */
   saldo_amount?: number | string | null
   saldo_verification?: string | null
+  payment_matched_at?: string | null
+  saldo_matched_at?: string | null
+  pay360_coupon_expires_at?: string | null
+  pay360_saldo_coupon_expires_at?: string | null
 }
 
 // ─── Las tres operaciones, que no son la misma ───────────────────────────────
@@ -40,7 +52,7 @@ export interface PedidoConPlata {
 // bancaria y su fecha— y por eso se muestran por separado. Juntarlas en un solo
 // "pagado S/180" borraría lo único que un reclamo necesita: cuál de las dos.
 
-export type TipoDeCobro = 'adelanto' | 'total' | 'saldo'
+export type TipoDeCobro = 'adelanto' | 'total' | 'saldo' | 'extra'
 
 /** ¿Está cruzado por la pasarela? Es la única forma de "cobrado" que cuenta. */
 const cruzado = (v: string | null | undefined): boolean =>
@@ -51,36 +63,97 @@ export interface Cobro {
   monto: number
   /** `false` = el cupón está emitido y todavía sin pagar. */
   verificado: boolean
+  /** El id de la fila (§36). `null` en los pedidos que todavía se leen de las
+   *  columnas viejas: sin id no hay comprobante ni botón de borrar, y eso es
+   *  correcto — un cobro sin identidad no es una cosa que se pueda señalar. */
+  id?: string | null
+  /** Solo en los `extra`: qué se está cobrando. */
+  concepto?: string | null
+  /** Lo que hace falta para seguirlo y para saber si su cupón sirve. */
+  matchedAt?: string | null
+  venceEl?: string | null
+  couponId?: string | null
+  paymentCode?: string | null
+  /** Lo creó una persona: es el único que se puede borrar. */
+  manual?: boolean
 }
 
 /**
  * Las operaciones de cobro de este pedido, en orden.
  *
- * Solo las que EXISTEN: un pedido sin saldo cobrado devuelve una sola. Es lo
- * que pinta las tarjetas verdes del panel — una por operación, porque cada una
- * tiene su propio rastro contra el banco.
+ * **Dos entradas, una salida.** Si viene la lista (`cobros`, bloque §36) manda
+ * ella; si no, se deriva de las columnas de siempre. No son dos definiciones de
+ * lo que es un cobro: son dos formas de LEER lo mismo mientras dura la mudanza,
+ * y hay una prueba que las corre con los mismos datos y exige el mismo
+ * resultado. El día que ninguna fila venga sin lista, la segunda se borra.
+ *
+ * Lo que NO cambia con el modelo nuevo es lo que esta función decide: `total`
+ * no se guarda, se deduce. Un adelanto que cubre el precio entero es "pagó
+ * todo", y eso depende del valor de HOY — un upsell lo vuelve a convertir en
+ * adelanto sin que nadie reescriba nada.
  */
 export function cobrosDelPedido(p: PedidoConPlata): Cobro[] {
   const valor = valorDelPedido(p)
+  const filas = p.cobros ? cobrosVivos(p.cobros) : null
+
+  if (filas) {
+    return filas
+      .map(f => ({ ...deFila(f, valor), }))
+      .filter(c => c.monto > 0)
+  }
+
+  // ── Lo de antes, para las filas que aún no se leen de la tabla ──
   const adelanto = Math.max(0, num(p.advance_amount))
   const saldo = Math.max(0, num(p.saldo_amount))
   const out: Cobro[] = []
 
   if (adelanto > 0) {
-    // Si el primer pago cubre el pedido entero no es un adelanto: es EL pago.
-    // Llamarlo adelanto haría buscar un saldo que no existe.
-    //
-    // Se decide contra el valor de HOY, así que un upsell puede convertir un
-    // "pago total" en un adelanto — y debe: el pedido volvió a deber algo, y
-    // seguir llamándolo total sería decir que no falta cobrar nada.
     out.push({
-      tipo: valor > 0 && adelanto >= valor ? 'total' : 'adelanto',
+      tipo: tipoDelPrimero(adelanto, valor),
       monto: Math.min(adelanto, valor || adelanto),
       verificado: cruzado(p.payment_verification),
+      matchedAt: p.payment_matched_at ?? null,
+      venceEl: p.pay360_coupon_expires_at ?? null,
     })
   }
-  if (saldo > 0) out.push({ tipo: 'saldo', monto: saldo, verificado: cruzado(p.saldo_verification) })
+  if (saldo > 0) {
+    out.push({
+      tipo: 'saldo', monto: saldo, verificado: cruzado(p.saldo_verification),
+      matchedAt: p.saldo_matched_at ?? null,
+      venceEl: p.pay360_saldo_coupon_expires_at ?? null,
+    })
+  }
   return out
+}
+
+/**
+ * Si el primer pago cubre el pedido entero no es un adelanto: es EL pago.
+ * Llamarlo adelanto haría buscar un saldo que no existe.
+ *
+ * Se decide contra el valor de HOY, así que un upsell puede convertir un "pago
+ * total" en un adelanto — y debe: el pedido volvió a deber algo, y seguir
+ * llamándolo total sería decir que no falta cobrar nada.
+ */
+const tipoDelPrimero = (monto: number, valor: number): TipoDeCobro =>
+  valor > 0 && monto >= valor ? 'total' : 'adelanto'
+
+/** Una fila de `cobros`, leída como lo que la pantalla necesita. */
+function deFila(f: FilaDeCobro, valor: number): Cobro {
+  const monto = Math.max(0, num(f.monto))
+  return {
+    tipo: f.tipo === 'adelanto' ? tipoDelPrimero(monto, valor) : f.tipo === 'saldo' ? 'saldo' : 'extra',
+    // El tope contra el valor es solo del primero: un `extra` es plata ADEMÁS
+    // del precio (un flete), así que recortarlo sería perderlo.
+    monto: f.tipo === 'adelanto' ? Math.min(monto, valor || monto) : monto,
+    verificado: entro(f),
+    id: f.id,
+    concepto: f.concepto ?? null,
+    matchedAt: f.matched_at ?? null,
+    venceEl: f.coupon_expires_at ?? null,
+    couponId: f.pay360_coupon_id ?? null,
+    paymentCode: f.pay360_consumer_code ?? null,
+    manual: f.tipo === 'extra',
+  }
 }
 
 const num = (v: number | string | null | undefined): number => {

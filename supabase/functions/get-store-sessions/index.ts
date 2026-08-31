@@ -77,6 +77,34 @@ Deno.serve(async (req) => {
     })
   }
 
+  // ─── Los cobros de cada pedido (bloque §36) ────────────────────────────────
+  //
+  // En UNA consulta para todo el lote y no un `select` anidado: son hasta 500
+  // pedidos, y una consulta por pedido convertiría el tablero en 500 viajes.
+  //
+  // ⚠️ Si la tabla todavía no existe en este proyecto, esto NO tumba el tablero:
+  // se sigue sin la lista y el panel cae en las columnas de siempre. Es la misma
+  // regla que el resto de la mudanza — nadie se queda sin pedidos por una tabla
+  // que falta.
+  const filas = (data ?? []) as { id: string }[]
+  if (filas.length > 0) {
+    const { data: cobros } = await supabase.from('cobros')
+      .select('id, session_id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, coupon_expires_at, concepto, created_by, created_at')
+      .in('session_id', filas.map(f => f.id))
+      .order('created_at', { ascending: true })
+    if (cobros) {
+      const porPedido = new Map<string, unknown[]>()
+      for (const c of cobros as { session_id: string }[]) {
+        const lista = porPedido.get(c.session_id) ?? []
+        lista.push(c)
+        porPedido.set(c.session_id, lista)
+      }
+      for (const f of filas as Record<string, unknown>[]) {
+        f.cobros = porPedido.get(f.id as string) ?? []
+      }
+    }
+  }
+
   // ─── El DNI de cada comprador ──────────────────────────────────────────────
   //
   // En una consulta aparte y no embebido (`buyers ( document_number )`), aunque

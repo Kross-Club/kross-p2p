@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { cobradoDelPedido } from '../order-money'
 import { tiendaDemo, fichaDemoDeCliente, marcarRespondidoDemo, PEDIDOS_POR_DIA, pedidoDemoPorToken, esTokenDemo, AUDIO_DEMO } from './tienda-demo'
 import { columnaDelPedido, COLUMNAS } from '../order-tracking'
 import { avanceDelPago, cobrosDelPedido, saldoDelPedido } from '../order-money'
@@ -346,6 +347,44 @@ describe('los pedidos con upsell', () => {
   it('ningún pedido mezcla upsell con saldo cobrado', () => {
     for (const p of t.pedidos.filter(x => x.saldo_amount)) {
       expect(Number(p.advance_amount) + Number(p.saldo_amount)).toBe(Number(p.product_price))
+    }
+  })
+})
+
+// ─── La lista de cobros y las columnas dicen lo mismo (bloque §36) ───────────
+//
+// El demo genera las dos formas mientras dura la mudanza. Si dijeran cosas
+// distintas, enseñaría un pedido que no cuadra consigo mismo — y quien mira
+// concluiría, con razón, que el panel no sabe cuánto cobró.
+
+describe('los cobros del demo', () => {
+  it('cada pedido trae su lista, y coincide con sus columnas', async () => {
+    const t = await tiendaDemo()
+    for (const p of t.pedidos.slice(0, 200)) {
+      const lista = p.cobros ?? []
+      const adelanto = lista.find(c => c.tipo === 'adelanto')
+      expect(Number(adelanto?.monto)).toBe(Number(p.advance_amount))
+      expect(adelanto?.estado).toBe(p.payment_verification)
+      expect(adelanto?.matched_at ?? null).toBe(p.payment_matched_at ?? null)
+
+      const saldo = lista.find(c => c.tipo === 'saldo')
+      if (p.saldo_amount) {
+        expect(Number(saldo?.monto)).toBe(Number(p.saldo_amount))
+        expect(saldo?.estado).toBe(p.saldo_verification)
+        expect(saldo?.matched_at ?? null).toBe(p.saldo_matched_at ?? null)
+      } else {
+        expect(saldo).toBeUndefined()
+      }
+    }
+  })
+
+  // Y lo que de verdad importa: que las dos lecturas den la misma plata.
+  it('lo cobrado sale igual por los dos caminos', async () => {
+    const t = await tiendaDemo()
+    for (const p of t.pedidos.slice(0, 200)) {
+      // Sin la lista, `cobrosDelPedido` cae en las columnas: es el otro camino.
+      const soloColumnas = { ...p, cobros: null }
+      expect(cobradoDelPedido(p)).toBe(cobradoDelPedido(soloColumnas))
     }
   })
 })

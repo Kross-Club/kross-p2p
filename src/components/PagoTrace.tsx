@@ -42,6 +42,10 @@ const TITULO: Record<TipoDeCobro, string> = {
   adelanto: 'Adelanto pagado con Yape (360pay)',
   total: 'Pago completo con Yape (360pay)',
   saldo: 'Saldo pagado con Yape (360pay)',
+  // El cobro adicional no dice "adicional" en la tarjeta: para el comprador es
+  // simplemente lo que le cobraron, y el CONCEPTO —el flete, la diferencia—
+  // aparece debajo, que es el dato que de verdad le falta.
+  extra: 'Cobro pagado con Yape (360pay)',
 }
 
 /** Lo que queda claro solo diciéndolo. "Adelanto" sin más deja al vendedor
@@ -50,6 +54,9 @@ const PIE: Record<TipoDeCobro, (saldo: number) => string | null> = {
   adelanto: saldo => (saldo > 0 ? `Queda un saldo de ${soles(saldo)}` : null),
   total: () => 'No queda saldo pendiente',
   saldo: () => 'Con esto el pedido queda pagado por completo',
+  // Un `extra` no cierra ni deja abierto el pedido: es plata aparte, así que no
+  // dice nada sobre el saldo. Su concepto se pinta en su sitio.
+  extra: () => null,
 }
 
 export default function PagoTrace({ session, onCobrar, onReemitir }: {

@@ -192,6 +192,19 @@ Deno.serve(async (req) => {
     return { operation_number: op, bank, coupon_id: cuponId, payment_code: code }
   }
 
+  // Los cobros del pedido (bloque §36). Van a la respuesta tal cual: quién es
+  // "adelanto" y quién "pago total" lo decide el panel contra el valor de HOY,
+  // que es lo que hace que un upsell reclasifique sin reescribir nada.
+  const { data: cobros } = viewerIsSeller
+    ? await supabase.from('cobros')
+        .select('id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, coupon_expires_at, concepto, created_by, created_at')
+        .eq('session_id', session.id).order('created_at', { ascending: true })
+    // Al COMPRADOR no le viaja `pay360_coupon_id` ni quién lo creó: son datos
+    // internos, igual que en el resto de esta respuesta.
+    : await supabase.from('cobros')
+        .select('id, tipo, monto, estado, matched_at, pay360_consumer_code, coupon_expires_at, concepto, created_at')
+        .eq('session_id', session.id).order('created_at', { ascending: true })
+
   const [paymentTrace, saldoTrace] = await Promise.all([
     rastroDe(session.payment_event_id ?? null, session.pay360_coupon_id ?? null, session.pay360_consumer_code ?? null),
     rastroDe(session.saldo_event_id ?? null, session.pay360_saldo_coupon_id ?? null, session.pay360_saldo_consumer_code ?? null),
@@ -263,6 +276,7 @@ Deno.serve(async (req) => {
         seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar,
         participants, buyer_can_call: buyerCanCall,
         buyer_contact: buyerContact, payment_trace: paymentTrace, saldo_trace: saldoTrace,
+        cobros: cobros ?? [],
       },
       viewer_is_seller: viewerIsSeller,
       messages: mensajes,

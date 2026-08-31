@@ -58,6 +58,40 @@ supabase functions deploy get-session   --project-ref ofdjghntvmrdfjhazfvz
 > Las filas que ya existen quedan con la fecha en NULL y eso **no las bloquea**: no saber si un
 > cupón caducó no es saber que caducó. Se irán llenando conforme se emitan cupones nuevos.
 
+### El modelo de cobros · SQL + 4 funciones (31-ago-2026)
+
+**Qué se ve si no entra:** nada cambia en pantalla — y eso es lo que se busca de este paso. Sin
+el SQL, `get-store-sessions` y `get-session` piden una tabla que no existe: el tablero **no se
+cae** (se sigue sin la lista y el panel usa las columnas de siempre), pero la mudanza no arranca
+y los cobros nuevos no quedan registrados como filas.
+
+**Primero el SQL** (bloque §36: tabla + traspaso de lo que ya hay; idempotente):
+
+```sql
+-- correr el bloque §36 completo de supabase/setup-kross.sql
+```
+
+**Y comprobar que el traspaso cuadra** — las dos cifras tienen que dar igual:
+
+```sql
+select
+  (select coalesce(sum(advance_amount),0) from order_sessions where upper(payment_verification) = 'MATCHED')
++ (select coalesce(sum(saldo_amount),0)   from order_sessions where upper(saldo_verification)   = 'MATCHED') as por_columnas,
+  (select coalesce(sum(monto),0) from cobros where estado = 'MATCHED')                                        as por_cobros;
+```
+
+**Después las funciones:**
+
+```
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-coupon      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
+> diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
+
 ### El detalle del pedido en el chat · `order-manage` (31-ago-2026)
 
 **Qué se ve si no entra:** en el demo el mensaje sale con el detalle entero (total, abonado y

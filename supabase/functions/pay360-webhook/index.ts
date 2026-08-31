@@ -22,6 +22,7 @@
 // Responder 2xx rápido es parte del contrato: 360pay reintenta si no lo ve.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { columnasDe } from '../_shared/cobros.ts'
 import {
   PAY360_HEADERS, getCoupon, isPaid, pay360BaseUrl, pickPartnerKey, verifySignature, type Pay360Env,
 } from '../_shared/pay360.ts'
@@ -205,15 +206,36 @@ Deno.serve(async (req) => {
   const { data: ev } = await supabase.from('payment_events')
     .select('id').eq('store_id', storeId).eq('dedupe_key', dedupeKey).maybeSingle()
 
-  await supabase.from('order_sessions').update(esSaldo
+  // El cobro entró. Se marca en LOS DOS sitios mientras dura la mudanza al
+  // bloque §36 —la fila de `cobros` y las columnas de siempre— y la traducción
+  // la hace `columnasDe`, un solo sitio, para que no puedan separarse.
+  //
+  // La fila se busca POR EL CUPÓN y no por el tipo: es el cupón el que acaba de
+  // pagarse, y un pedido puede tener varios cobros vivos. Buscar por tipo daría
+  // por cobrado el que no fue en cuanto exista un `extra`.
+  const tipo = esSaldo ? 'saldo' : 'adelanto'
+  const delCobro = { monto: paid, estado: 'MATCHED', matched_at: matchedAt, payment_event_id: ev?.id ?? null }
+
+  const { data: filaCobro } = await supabase.from('cobros')
+    .select('id').eq('session_id', session.id).eq('pay360_coupon_id', coupon.data._id).maybeSingle()
+  if (filaCobro) {
+    await supabase.from('cobros').update(delCobro).eq('id', filaCobro.id)
+  } else {
+    // Sin fila previa —un cupón emitido antes de que existiera la tabla— se
+    // crea ahora: la plata entró y tiene que quedar registrada igual.
+    await supabase.from('cobros').upsert(
+      { session_id: session.id, store_id: session.store_id ?? null, tipo,
+        pay360_coupon_id: coupon.data._id, ...delCobro },
+      { onConflict: 'session_id,tipo' })
+  }
+
+  await supabase.from('order_sessions').update({
+    ...columnasDe(tipo, delCobro),
     // El saldo NO mueve la etapa: cuando se cobra, el pedido ya va en camino o
     // está en la agencia. Retroceder a `confirmado` borraría lo que el courier
     // ya reportó.
-    ? { saldo_verification: 'MATCHED', saldo_matched_at: matchedAt, saldo_amount: paid, saldo_event_id: ev?.id ?? null }
-    : {
-        payment_verification: 'MATCHED', payment_matched_at: matchedAt,
-        payment_reason: null, payment_event_id: ev?.id ?? null, stage: 'confirmado',
-      }).eq('id', session.id)
+    ...(esSaldo ? {} : { payment_reason: null, stage: 'confirmado' }),
+  }).eq('id', session.id)
 
   // Los DOS mensajes del cruce manual, con la misma copy: ya está calibrada y el
   // comprador no tiene por qué notar QUÉ motor cobró.

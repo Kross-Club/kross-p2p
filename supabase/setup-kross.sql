@@ -1479,3 +1479,110 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pay360_saldo_coupon_expires_
 --          pay360_saldo_consumer_code, pay360_saldo_coupon_expires_at
 --   FROM order_sessions
 --   WHERE saldo_verification = 'PENDING' ORDER BY pay360_saldo_coupon_expires_at;
+
+
+-- ─── 36. UN PEDIDO TIENE N COBROS, NO DOS ───────────────────────────────────
+--
+-- Hasta hoy un pedido tenía exactamente DOS cobros y vivían como columnas:
+-- `advance_*` y `saldo_*`. Funcionó mientras el producto cobraba dos veces, y
+-- dejó de funcionar en cuanto hizo falta un tercero — un flete, una diferencia
+-- por un cambio de talla, un cobro suelto que el vendedor arma a mano. Con
+-- columnas, el tercero no tiene dónde ir: o se le monta encima al saldo (y el
+-- saldo deja de ser el saldo) o no existe.
+--
+-- Así que un cobro pasa a ser una FILA. El adelanto y el saldo no son casos
+-- especiales: son dos filas más, con el mismo id, el mismo cupón y el mismo
+-- rastro bancario que cualquier otra.
+--
+--   tipo `adelanto` · el primero, al cerrar el checkout
+--   tipo `saldo`    · el segundo, cuando ya hay guía
+--   tipo `extra`    · cualquier otro, con su concepto
+--
+-- ⚠️ `total` NO es un tipo guardado, y es a propósito: "pagó todo" es un
+-- adelanto que cubre el precio ENTERO, y eso se decide contra el valor de HOY.
+-- Un upsell convierte un pago total en un adelanto sin tocar la fila — si
+-- estuviera guardado, habría que acordarse de reescribirlo. Ver `order-money.ts`.
+CREATE TABLE IF NOT EXISTS cobros (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id            uuid NOT NULL REFERENCES order_sessions(id) ON DELETE CASCADE,
+  store_id              text,
+  tipo                  text NOT NULL,                      -- adelanto | saldo | extra
+  monto                 numeric NOT NULL,
+  -- PENDING (cupón emitido, sin pagar) | MATCHED (entró) | ANULADO
+  estado                text NOT NULL DEFAULT 'PENDING',
+  matched_at            timestamptz,
+  payment_event_id      uuid,
+  pay360_coupon_id      text,
+  pay360_consumer_code  text,
+  coupon_expires_at     timestamptz,
+  /** Para los `extra`: qué se está cobrando. "Flete a Piura", "diferencia de
+   *  talla". Sin esto un cobro suelto es un monto sin razón, y el comprador que
+   *  lo recibe por el chat no tiene cómo saber qué está pagando. */
+  concepto              text,
+  /** Quién lo creó, cuando lo creó una persona (`auth_user_id`). NULL = lo
+   *  emitió el sistema: el adelanto del checkout, el saldo de la guía. */
+  created_by            text,
+  created_at            timestamptz DEFAULT now()
+);
+
+ALTER TABLE cobros ENABLE ROW LEVEL SECURITY;
+-- El comprador nunca lee esta tabla directo: va por `get-session`, que decide
+-- qué le toca ver. El panel también. Sin políticas de SELECT, solo el service
+-- role entra — que es lo que se quiere para la tabla de la plata.
+DROP POLICY IF EXISTS "cobros_service_only" ON cobros;
+
+CREATE INDEX IF NOT EXISTS idx_cobros_session ON cobros(session_id);
+CREATE INDEX IF NOT EXISTS idx_cobros_cupon   ON cobros(pay360_coupon_id) WHERE pay360_coupon_id IS NOT NULL;
+
+-- Un pedido tiene UN adelanto y UN saldo. Los `extra` no se limitan: pueden ser
+-- varios, y esa es justamente su razón de existir. El índice parcial es lo que
+-- hace que el backfill de abajo se pueda correr mil veces sin duplicar.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cobros_unico_por_tipo
+  ON cobros(session_id, tipo) WHERE tipo IN ('adelanto', 'saldo');
+
+-- ─── El traspaso ────────────────────────────────────────────────────────────
+-- Cada columna de plata que ya existe se convierte en su fila. Idempotente por
+-- el índice de arriba: correrlo de nuevo no duplica nada.
+--
+-- `COALESCE(estado, 'PENDING')`: una fila con monto y sin veredicto es un cupón
+-- emitido y sin cruzar, que es exactamente lo que significa PENDING. Marcarla
+-- MATCHED sería inventar plata.
+INSERT INTO cobros (session_id, store_id, tipo, monto, estado, matched_at,
+                    payment_event_id, pay360_coupon_id, pay360_consumer_code,
+                    coupon_expires_at, created_at)
+SELECT o.id, o.store_id, 'adelanto', o.advance_amount,
+       COALESCE(NULLIF(upper(o.payment_verification), ''), 'PENDING'),
+       o.payment_matched_at, o.payment_event_id, o.pay360_coupon_id,
+       o.pay360_consumer_code, o.pay360_coupon_expires_at, o.created_at
+FROM order_sessions o
+WHERE COALESCE(o.advance_amount, 0) > 0
+ON CONFLICT DO NOTHING;
+
+INSERT INTO cobros (session_id, store_id, tipo, monto, estado, matched_at,
+                    payment_event_id, pay360_coupon_id, pay360_consumer_code,
+                    coupon_expires_at, created_at)
+SELECT o.id, o.store_id, 'saldo', o.saldo_amount,
+       COALESCE(NULLIF(upper(o.saldo_verification), ''), 'PENDING'),
+       o.saldo_matched_at, o.saldo_event_id, o.pay360_saldo_coupon_id,
+       o.pay360_saldo_consumer_code, o.pay360_saldo_coupon_expires_at, o.created_at
+FROM order_sessions o
+WHERE COALESCE(o.saldo_amount, 0) > 0
+ON CONFLICT DO NOTHING;
+
+-- ⚠️ **Las columnas viejas siguen ahí, y siguen escribiéndose.** No es
+-- indecisión: es cómo se migra la tabla de la plata sin apostar. Veintiún
+-- archivos leen esas columnas hoy; moverlos todos de un golpe, sin poder probar
+-- contra la base de producción, sobre pedidos que respaldan un contrato de
+-- recaudación, es la clase de cambio que sale mal una vez y se paga durante
+-- meses.
+--
+-- El orden es: primero la tabla y que TODO la lea (esto), después que solo ella
+-- se escriba, y al final las columnas se van. Mientras dure, quien escribe un
+-- cobro lo hace en UN solo sitio —`_shared/cobros.ts`— para que no haya dos
+-- lugares decidiendo qué es un cobro.
+--
+-- Comprobar que el traspaso cuadra (las dos cifras tienen que dar igual):
+--   SELECT
+--     (SELECT COALESCE(sum(advance_amount),0) FROM order_sessions WHERE upper(payment_verification) = 'MATCHED')
+--   + (SELECT COALESCE(sum(saldo_amount),0)   FROM order_sessions WHERE upper(saldo_verification)   = 'MATCHED') AS por_columnas,
+--     (SELECT COALESCE(sum(monto),0) FROM cobros WHERE estado = 'MATCHED')                                        AS por_cobros;
