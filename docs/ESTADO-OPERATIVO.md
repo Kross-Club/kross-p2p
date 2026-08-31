@@ -249,6 +249,19 @@ update sellers set is_super_admin = true
 where store_id = 'platform' and is_admin = true and coalesce(is_super_admin, false) = false;
 ```
 
+### El orden, siempre el mismo
+
+Cuatro pasos, y el orden no es preferencia: cada uno depende del anterior.
+
+| # | Qué | Por qué va ahí |
+|---|---|---|
+| 1 | **Merge del PR** | Vercel sube el frontend **solo**, al mergear. Por eso cada PR se escribe de modo que el panel aguante sin su backend — y por eso cada uno dice *"qué se ve si no entra"*. |
+| 2 | **`git pull`** en tu terminal | `supabase functions deploy` sube lo que hay en TU carpeta. Sin el pull, despliegas la versión anterior y parece que el deploy no hizo nada. |
+| 3 | **SQL** en el SQL Editor | PostgREST rechaza el `select` **entero** si falta una columna: una función nueva contra un esquema viejo deja el tablero en blanco. El esquema siempre va delante. |
+| 4 | **`supabase functions deploy …`** | Ya con la base lista y el código actualizado. |
+
+Y el SQL **se pega entero**, no se referencia: decir "corre el bloque §36" ya costó una vuelta —la consulta de comprobación se corrió antes de que existiera la tabla y respondió `relation "cobros" does not exist`—. Si un paso necesita SQL, el PR lleva el SQL literal, listo para copiar.
+
 ### Y la regla, que es lo que evita que esto se vuelva a llenar
 
 **El frontend sale solo con `main`; las Edge Functions y el SQL NO.** Vercel despliega al

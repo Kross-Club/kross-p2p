@@ -94,7 +94,12 @@ export interface Cobro {
  */
 export function cobrosDelPedido(p: PedidoConPlata): Cobro[] {
   const valor = valorDelPedido(p)
-  const filas = p.cobros ? cobrosVivos(p.cobros) : null
+  // Una lista VACÍA no es "este pedido no cobró nada": es "no me llegó lista".
+  // La diferencia decide de qué lado se lee, y equivocarla es lo peor que puede
+  // pasar acá — un pedido con plata en las columnas y sin fila en `cobros` se
+  // vería SIN COBRAR, que es la mentira que este archivo no se puede permitir.
+  // Vacío cae a las columnas; si ahí tampoco hay nada, la respuesta es la misma.
+  const filas = p.cobros?.length ? cobrosVivos(p.cobros) : null
 
   if (filas) {
     return filas

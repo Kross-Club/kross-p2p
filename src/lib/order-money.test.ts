@@ -286,3 +286,33 @@ describe('los cobros extra', () => {
     expect(cobrosDelPedido(anulado)).toEqual([])
   })
 })
+
+// ─── Vacío no es cero ────────────────────────────────────────────────────────
+//
+// El filo más peligroso de la mudanza, y se veía solo mirando el código con la
+// migración ya viva: una lista VACÍA es truthy. Sin esta distinción, un pedido
+// con plata en las columnas y sin fila en `cobros` —una que no alcanzó a
+// escribirse, un pedido creado entre el SQL y el deploy— se vería SIN COBRAR.
+
+describe('una lista vacía no significa "no cobró nada"', () => {
+  const conPlata = { product_price: 180, advance_amount: 90, payment_verification: 'MATCHED' }
+
+  it('sin filas se lee de las columnas', () => {
+    expect(cobradoDelPedido({ ...conPlata, cobros: [] })).toBe(90)
+    expect(cobradoDelPedido({ ...conPlata, cobros: null })).toBe(90)
+    expect(cobrosDelPedido({ ...conPlata, cobros: [] })).toHaveLength(1)
+  })
+
+  // Y con filas manda la lista, incluso si dice menos que las columnas: es el
+  // modelo nuevo, y para eso se migró.
+  it('con filas manda la lista', () => {
+    const p = { ...conPlata, cobros: [{ id: 'a', tipo: 'adelanto' as const, monto: 45, estado: 'MATCHED' }] }
+    expect(cobradoDelPedido(p)).toBe(45)
+  })
+
+  // Todo anulado sí es cero cobros — pero por la lista, no por estar vacía.
+  it('una lista de puros anulados es cero, y eso sí lo decide la lista', () => {
+    const p = { ...conPlata, cobros: [{ id: 'a', tipo: 'adelanto' as const, monto: 90, estado: 'ANULADO' }] }
+    expect(cobradoDelPedido(p)).toBe(0)
+  })
+})

@@ -60,6 +60,12 @@ Mientras dura, se escribe en los dos sitios — **pero la traducción vive en UN
 (`_shared/cobros.ts` · `columnasDe`), así que la tabla y las columnas no pueden separarse por un
 descuido en cualquiera de los veintiún archivos.
 
+⚠️ **Una lista vacía NO es "no cobró nada": es "no me llegó lista".** En JavaScript `[]` es
+truthy, así que sin esa distinción un pedido con plata en las columnas y sin fila en `cobros`
+—una que no alcanzó a escribirse, un pedido creado entre el SQL y el deploy— se vería **sin
+cobrar**. Vacío cae a las columnas; si ahí tampoco hay nada, la respuesta es la misma. Los dos
+servidores mandan `null` en vez de `[]` por lo mismo.
+
 Y lo que sostiene todo esto es que **`cobrosDelPedido` ya era el embudo único**: el anillo, el
 filtro de pagos del tablero, las tarjetas verdes y `cobradoDelPedido` pasan todos por ahí. Por
 eso la mudanza cabe en una función con dos entradas y una salida — con una prueba que corre los
