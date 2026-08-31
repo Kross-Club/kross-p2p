@@ -100,7 +100,10 @@ Deno.serve(async (req) => {
         porPedido.set(c.session_id, lista)
       }
       for (const f of filas as Record<string, unknown>[]) {
-        f.cobros = porPedido.get(f.id as string) ?? []
+        // Solo si HAY filas. Poner `[]` haría que el panel leyera de la lista
+        // y diera el pedido por no cobrado; sin nada, cae a las columnas.
+        const suyos = porPedido.get(f.id as string)
+        if (suyos?.length) f.cobros = suyos
       }
     }
   }

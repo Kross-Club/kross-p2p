@@ -276,7 +276,10 @@ Deno.serve(async (req) => {
         seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar,
         participants, buyer_can_call: buyerCanCall,
         buyer_contact: buyerContact, payment_trace: paymentTrace, saldo_trace: saldoTrace,
-        cobros: cobros ?? [],
+        // `null` y no `[]` cuando no hay filas: una lista vacía haría que el
+        // panel leyera de ella y diera el pedido por no cobrado. Sin lista, cae
+        // a las columnas, que es lo correcto mientras dure la mudanza.
+        cobros: cobros?.length ? cobros : null,
       },
       viewer_is_seller: viewerIsSeller,
       messages: mensajes,
