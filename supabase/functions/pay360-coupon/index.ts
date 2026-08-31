@@ -240,11 +240,15 @@ Deno.serve(async (req) => {
   // ─── Emitir ────────────────────────────────────────────────────────────────
   // `external_ref` = id de la sesión: es la llave por la que el webhook vuelve
   // a encontrar este pedido, y lo que hace el cruce determinístico.
+  // La MISMA fecha que se manda es la que se guarda abajo. Calcularla dos veces
+  // —una para el API y otra para la fila— sería que el panel diga un día y el
+  // cupón caduque otro, que es peor que no guardarla.
+  const venceEl = couponExpiryFrom(Date.now())
   const coupon = await createCoupon(base, PARTNER_KEY, {
     amount: rowAmount,                      // SOLES con decimales, no céntimos
     external_ref: String(session.id),
     // Obligatorio en el API real aunque el OpenAPI lo liste opcional.
-    expiry_date: couponExpiryFrom(Date.now()),
+    expiry_date: venceEl,
     // El API exige el código ARRIBA ("customer_id or code is required"); el
     // `coupon_code` anidado del spec no le alcanza.
     code: consumerCode,
@@ -283,12 +287,14 @@ Deno.serve(async (req) => {
     ? {
         pay360_saldo_coupon_id: coupon.data._id,
         pay360_saldo_consumer_code: consumerCode,
+        pay360_saldo_coupon_expires_at: venceEl,
         saldo_amount: rowAmount,
         saldo_verification: 'PENDING',
       }
     : {
         pay360_coupon_id: coupon.data._id,
         pay360_consumer_code: consumerCode,
+        pay360_coupon_expires_at: venceEl,
         payment_verification: 'PENDING',
         payment_reason: null,
       }).eq('id', session.id)
@@ -321,6 +327,7 @@ Deno.serve(async (req) => {
     amount_pen: rowAmount,
     consumer_code: consumerCode,
     coupon_id: coupon.data._id,
+    expires_at: venceEl,
     // El enlace se resuelve en el SERVIDOR: el front no conoce los
     // identificadores de Yape ni puede alterar a qué servicio apunta. `null`
     // es un valor válido: la caja de pago cae al código tecleado a mano.

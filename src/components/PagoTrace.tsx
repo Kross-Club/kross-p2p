@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, Check, Clock, Copy, Send } from 'lucide-react'
+import { CreditCard, Check, Clock, Copy, Send, RefreshCw } from 'lucide-react'
 import { cobrosDelPedido, soles } from '../lib/order-money'
 import type { Cobro, TipoDeCobro } from '../lib/order-money'
 import { datosDeRastro, textoParaSoporte } from '../lib/rastro-de-pago'
 import { puedePagarSaldo } from '../lib/order-money'
+import { vigenciaDeCupon, sePuedeEnviarCobro, avisoDeVigencia } from '../lib/vigencia-de-cupon'
 import type { OrderSession, PagoTrazado } from '../lib/order-api'
 
 // ─── La plata que entró, operación por operación ─────────────────────────────
@@ -51,12 +52,25 @@ const PIE: Record<TipoDeCobro, (saldo: number) => string | null> = {
   saldo: () => 'Con esto el pedido queda pagado por completo',
 }
 
-export default function PagoTrace({ session, onCobrar }: {
+export default function PagoTrace({ session, onCobrar, onReemitir }: {
   session: OrderSession
-  /** Volver a pedir el saldo por el chat. Lo hace la página —que es quien sabe
+  /** Mandar la tarjeta de pago por el chat. Lo hace la página —que es quien sabe
    *  mandar mensajes y quien conoce el demo—; acá solo se ofrece el botón. */
   onCobrar?: () => Promise<void> | void
+  /** Emitir otro cupón cuando el anterior caducó. No "extiende" nada: 360pay no
+   *  tiene con qué, y no hace falta — `pay360-coupon` anula el vencido y emite
+   *  uno nuevo BAJO EL MISMO código de pago, que es estable por comprador. */
+  onReemitir?: () => Promise<void> | void
 }) {
+  // El reloj se lee UNA vez, al montar, y baja como dato — el mismo trato que
+  // `fechas.ts` le da a `ahora`. Leerlo en cada pintada haría que dos tarjetas
+  // separadas por medio segundo decidieran distinto sobre un cupón que caduca
+  // justo ahora; y leerlo DURANTE el render es impuro (lo ataja el linter).
+  //
+  // Va ARRIBA del `return null`: un hook después de una salida temprana se
+  // llamaría en unos renders y no en otros.
+  const [ahora] = useState(() => Date.now())
+
   const cobros = cobrosDelPedido(session)
   if (cobros.length === 0) return null
 
@@ -74,7 +88,11 @@ export default function PagoTrace({ session, onCobrar }: {
           trace={cobro.tipo === 'saldo' ? session.saldo_trace ?? null : session.payment_trace ?? null}
           cobradoEn={cobro.tipo === 'saldo' ? session.saldo_matched_at ?? null : session.payment_matched_at ?? null}
           falta={falta}
-          onCobrar={cobro.tipo === 'saldo' && !cobro.verificado && puedePagarSaldo(session) ? onCobrar : undefined}
+          venceEl={cobro.tipo === 'saldo' ? session.pay360_saldo_coupon_expires_at ?? null : session.pay360_coupon_expires_at ?? null}
+          ahora={ahora}
+          {...(cobro.tipo === 'saldo' && !cobro.verificado && puedePagarSaldo(session)
+            ? { onCobrar, onReemitir }
+            : {})}
         />
       ))}
     </>
@@ -85,7 +103,7 @@ export default function PagoTrace({ session, onCobrar }: {
  * Una operación. Verde cuando entró; ámbar mientras el cupón está emitido y sin
  * pagar — que no es lo mismo y confundirlos es despachar sin haber cobrado.
  */
-function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, onCobrar }: {
+function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahora, onCobrar, onReemitir }: {
   cobro: Cobro
   orderId: string | null
   trace: PagoTrazado | null
@@ -94,12 +112,20 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, onCobrar }: {
   cobradoEn: string | null
   /** Lo que falta cobrar del pedido entero, para el pie del adelanto. */
   falta: number
-  /** Solo en el saldo sin pagar: volver a pedirlo por el chat. */
+  /** Cuándo caduca este cupón, si se sabe. */
+  venceEl: string | null
+  ahora: number
+  /** Solo en el saldo sin pagar: mandarle la tarjeta de pago por el chat. */
   onCobrar?: () => Promise<void> | void
+  /** Íd.: emitir otro cupón cuando el anterior caducó. */
+  onReemitir?: () => Promise<void> | void
 }) {
   const [copiado, setCopiado] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
+  const [reemitiendo, setReemitiendo] = useState(false)
+  const vigencia = vigenciaDeCupon(venceEl, ahora)
+  const aviso = avisoDeVigencia(venceEl, ahora)
   useEffect(() => {
     if (!enviado) return
     const t = setTimeout(() => setEnviado(false), 2500)
@@ -157,33 +183,46 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, onCobrar }: {
           </p>
         ))}
 
+        {/* Cuándo caduca. Solo mientras no se ha pagado: en un cobro que ya
+            entró, la fecha de vencimiento no le importa a nadie. */}
+        {!ok && aviso && (
+          <p className="mt-1" style={{ color: vigencia === 'vencido' ? 'var(--danger-fg)' : undefined }}>
+            {aviso}
+          </p>
+        )}
+
         {pie && <p className="opacity-70 mt-1">{pie}</p>}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {datos.length > 0 && (
+        {/* En un cobro que YA entró, el botón es copiar el rastro para soporte.
+            En uno que NO ha entrado, lo que hace falta no es copiar códigos: es
+            cobrar. Por eso la tarjeta ámbar cambia de botón en vez de sumar
+            uno — el rastro sigue a la vista, arriba, para quien lo necesite. */}
+        {ok && datos.length > 0 && (
           <button
             type="button"
             onClick={async () => {
               try { await navigator.clipboard.writeText(paraSoporte); setCopiado(true) } catch { /* visible igual */ }
             }}
             className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold"
-            style={ok
-              ? { border: '0.5px solid var(--ok-border)', color: 'var(--ok-fg)' }
-              : { border: '0.5px solid var(--warn-border)', color: 'var(--text-muted)' }}
+            style={{ border: '0.5px solid var(--ok-border)', color: 'var(--ok-fg)' }}
           >
             {copiado ? <Check size={11} /> : <Copy size={11} />}
             {copiado ? 'Copiado' : 'Copiar para soporte 360pay'}
           </button>
         )}
 
-        {/* Volver a pedirlo. El cupón está emitido y esperando desde hace días;
-            la tarjeta de pago que el comprador tiene al final de su chat solo la
-            ve quien abre la app, y el que debe un saldo es justamente el que
-            dejó de abrirla. Mandarlo como mensaje lo saca por push y, sin push,
-            por WhatsApp: la diferencia entre una tarjeta que está y un aviso que
-            suena. */}
-        {onCobrar && (
+        {/* Mandarle la tarjeta de pago. El cupón lleva días emitido y esperando;
+            la tarjeta que el comprador tiene al final de su chat solo la ve
+            quien abre la app, y el que debe un saldo es justamente el que dejó
+            de abrirla. Como mensaje sale por push y, sin push, por WhatsApp: la
+            diferencia entre una tarjeta que está y un aviso que suena.
+            
+            Y **solo si el código sirve**: mandar una tarjeta con un cupón
+            vencido es peor que no mandarla — el cliente hace su parte, Yape lo
+            rechaza, y encima se gastó el único mensaje que iba a abrir. */}
+        {onCobrar && sePuedeEnviarCobro(vigencia) && (
           <button
             type="button"
             disabled={enviando}
@@ -195,7 +234,26 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, onCobrar }: {
             style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}
           >
             {enviado ? <Check size={11} /> : <Send size={11} />}
-            {enviado ? 'Enviado al chat' : enviando ? 'Enviando…' : 'Cobrar por el chat'}
+            {enviado ? 'Enviada al chat' : enviando ? 'Enviando…' : 'Enviar tarjeta de pago'}
+          </button>
+        )}
+
+        {/* Caducó. No se "extiende" —360pay no tiene con qué— y no hace falta:
+            se emite otro, y el CÓDIGO DE PAGO del comprador no cambia, porque es
+            estable por comprador. Lo que cambia es el cupón que cuelga de él. */}
+        {onReemitir && vigencia === 'vencido' && (
+          <button
+            type="button"
+            disabled={reemitiendo}
+            onClick={async () => {
+              setReemitiendo(true)
+              try { await onReemitir() } finally { setReemitiendo(false) }
+            }}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black disabled:opacity-50"
+            style={{ background: 'var(--danger-fg)', color: '#fff' }}
+          >
+            <RefreshCw size={11} />
+            {reemitiendo ? 'Generando…' : 'Venció · generar otro código'}
           </button>
         )}
       </div>

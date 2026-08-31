@@ -34,6 +34,30 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El vencimiento del cupón · SQL + `pay360-coupon` + `get-session` (31-ago-2026)
+
+**Qué se ve si no entra:** el botón *Enviar tarjeta de pago* aparece siempre (los cupones sin
+fecha cuentan como vigentes, a propósito), pero **nadie sabe cuándo caduca ninguno** y el camino
+de *"venció · generar otro código"* no se activa jamás. Y los cupones nuevos siguen naciendo a
+7 días en vez de 30.
+
+**Primero el SQL** (bloque §35; idempotente):
+
+```sql
+alter table order_sessions add column if not exists pay360_coupon_expires_at       timestamptz;
+alter table order_sessions add column if not exists pay360_saldo_coupon_expires_at timestamptz;
+```
+
+**Después las funciones:**
+
+```
+supabase functions deploy pay360-coupon --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session   --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> Las filas que ya existen quedan con la fecha en NULL y eso **no las bloquea**: no saber si un
+> cupón caducó no es saber que caducó. Se irán llenando conforme se emitan cupones nuevos.
+
 ### Cobrar el saldo por el chat · nada que desplegar (31-ago-2026)
 
 El botón *Cobrar por el chat* de la tarjeta ámbar manda un mensaje con `type: 'cobro'`.

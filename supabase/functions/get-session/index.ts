@@ -60,8 +60,8 @@ Deno.serve(async (req) => {
       tracking_year, tracking_phase, tracking_phase_at, tracking_demora_at,
       payment_verification, payment_reason, payment_event_id,
       saldo_amount, saldo_verification, saldo_matched_at, saldo_event_id,
-      pay360_saldo_consumer_code, pay360_saldo_coupon_id,
-      pay360_coupon_id, pay360_consumer_code,
+      pay360_saldo_consumer_code, pay360_saldo_coupon_id, pay360_saldo_coupon_expires_at,
+      pay360_coupon_id, pay360_consumer_code, pay360_coupon_expires_at,
       advance_amount, payment_provider,
       answered_at,
       expires_at, created_at
