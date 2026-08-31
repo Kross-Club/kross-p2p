@@ -18,6 +18,9 @@ import { BotonPagarSaldo, type PedidoConSaldo } from './PagarSaldo'
 export default function TarjetaDePago({ texto, monto, pedido, role, pagada, hora }: {
   /** El cuerpo del mensaje: lo mismo que le llegó por push y por WhatsApp. */
   texto: string | null
+  /** El monto de ESTE cobro. Ojo: no es "lo que falta del pedido hoy" — en
+   *  cuanto se paga, eso es cero, y la tarjeta pasaba a decir S/ 0 debajo de un
+   *  texto que hablaba de S/ 60. Ver `montoDeLaTarjeta`. */
   monto: number
   pedido: PedidoConSaldo
   role: 'buyer' | 'seller'

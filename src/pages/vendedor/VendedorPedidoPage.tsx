@@ -32,7 +32,7 @@ import Confirmar from '../../components/Confirmar'
 import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
 import TarjetaDePago from '../../components/TarjetaDePago'
-import { TIPO_COBRO, textoDeCobro } from '../../lib/cobro-por-chat'
+import { TIPO_COBRO, textoDeCobro, montoDeLaTarjeta } from '../../lib/cobro-por-chat'
 import { puedePagarSaldo, saldoDelPedido, soles } from '../../lib/order-money'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
@@ -489,7 +489,7 @@ function MessageBubble({ msg, audio, equipo = [], pedido }: {
   if (msg.type === TIPO_COBRO && pedido) {
     return (
       <TarjetaDePago
-        texto={msg.body} monto={saldoDelPedido(pedido)} pedido={pedido} role="seller"
+        texto={msg.body} monto={montoDeLaTarjeta(pedido, saldoDelPedido(pedido))} pedido={pedido} role="seller"
         pagada={!puedePagarSaldo(pedido)}
         hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
       />

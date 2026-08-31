@@ -3,6 +3,7 @@ import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { cabeEnElMismoPaquete } from '../_shared/upsell.ts'
 import { puedeInvitar, puedeQuitar, puedeReasignar } from '../_shared/equipo-pedido.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
+import { resumenDelPedido } from '../_shared/resumen-pedido.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -139,7 +140,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, tracking_phase')
+    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, tracking_phase')
     .eq('id', body.session_id)
     .single()
 
@@ -155,6 +156,17 @@ Deno.serve(async (req) => {
   // Las demás siguen como estaban a propósito: `accept_offer` y `cancel` los
   // llama el COMPRADOR con la anon key desde su chat, y exigirles un JWT de
   // vendedor las rompería.
+  /**
+   * Lo COBRADO y cruzado, que no es lo prometido: si el adelanto sigue en
+   * PENDING no está abonado, y decirle al comprador que sí es prometerle una
+   * entrega que no va a salir. Misma regla que `cobradoDelPedido` en el panel.
+   */
+  const abonadoDe = (s: Record<string, unknown>): number => {
+    const cruzado = (v: unknown) => String(v ?? '').toUpperCase() === 'MATCHED'
+    return (cruzado(s.payment_verification) ? Number(s.advance_amount) || 0 : 0)
+      + (cruzado(s.saldo_verification) ? Number(s.saldo_amount) || 0 : 0)
+  }
+
   const quienLlama = async () => {
     const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
     if (!bearer) return null
@@ -269,7 +281,10 @@ Deno.serve(async (req) => {
     const { data: msg } = await supabase.from('chat_messages').insert({
       session_id: session.id, sender_role: 'seller', sender_name: session.seller_name ?? 'Kross',
       sender_role_label: session.seller_role ?? 'Ventas', type: 'text',
-      body: `🔢 ${verb} ${nombre} a ${qty} unidad(es). Nuevo total: S/${total} 📦`,
+      body: resumenDelPedido({
+        cambio: `🔢 ${verb} ${nombre} a ${qty} unidad(es)`,
+        total, abonado: abonadoDe(session), entregaJunta: true,
+      }),
     }).select().single()
 
     await broadcast(session.id, 'items_update', { items, total })
@@ -295,7 +310,10 @@ Deno.serve(async (req) => {
 
     const { data: msg } = await supabase.from('chat_messages').insert({
       session_id: session.id, sender_role: 'system', type: 'status_update', visibility: 'all',
-      body: `🗑️ Se quitó ${removed.nombre} del pedido. Nuevo total: S/${total}`,
+      body: resumenDelPedido({
+        cambio: `🗑️ Producto quitado: ${removed.nombre}`,
+        total, abonado: abonadoDe(session),
+      }),
     }).select().single()
     await broadcast(session.id, 'items_update', { items: newItems, total })
     if (msg) await broadcast(session.id, 'new_message', msg)
@@ -351,7 +369,12 @@ Deno.serve(async (req) => {
       const { data: msg } = await supabase.from('chat_messages').insert({
         session_id: session.id, sender_role: 'seller', sender_name: session.seller_name ?? 'Kross',
         sender_role_label: session.seller_role ?? 'Ventas', type: 'text',
-        body: `✅ Agregué ${offer.nombre} a tu pedido. Nuevo total: S/${total} — llega todo junto en una sola entrega. 📦`,
+        // El detalle entero y no solo el total: quien lee ya adelantó parte, y
+        // un total suelto lo obliga a restar de cabeza. Ver `resumen-pedido.ts`.
+        body: resumenDelPedido({
+          cambio: `🛍️ Producto agregado: ${offer.nombre}`,
+          total, abonado: abonadoDe(session), entregaJunta: true,
+        }),
       }).select().single()
 
       await broadcast(session.id, 'items_update', { items: newItems, total })

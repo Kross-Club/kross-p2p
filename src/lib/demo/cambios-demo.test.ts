@@ -142,7 +142,10 @@ describe('el carrito en el demo', () => {
     const ofertas = (cambiosDemo()[base.id].mensajes ?? []).filter(m => m.type === 'offer')
     expect(ofertas).toHaveLength(1)
     expect(ofertas[0].offer?.accepted).toBe(true)
-    expect((p.chat_messages ?? []).some(m => (m.body ?? '').includes('Nuevo total: S/270'))).toBe(true)
+    // El mismo detalle que escribe el servidor: total, abonado y lo que falta.
+    const detalle = (p.chat_messages ?? []).find(m => (m.body ?? '').includes('Nuevo total'))?.body ?? ''
+    expect(detalle).toContain('💰 Nuevo total: S/ 270')
+    expect(detalle).toContain('📌 Saldo pendiente: S/ 195')
   })
 
   // El segundo tiempo del cobro: mueve la MISMA fila que movería el webhook, así

@@ -5,7 +5,7 @@ import { isPickupDispatch, pickupBranchIdOf } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
 import PagarSaldo from '../../components/PagarSaldo'
 import TarjetaDePago from '../../components/TarjetaDePago'
-import { TIPO_COBRO } from '../../lib/cobro-por-chat'
+import { TIPO_COBRO, montoDeLaTarjeta } from '../../lib/cobro-por-chat'
 import { puedePagarSaldo, saldoDelPedido } from '../../lib/order-money'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -142,7 +142,7 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
   if (msg.type === TIPO_COBRO && pedido) {
     return (
       <TarjetaDePago
-        texto={msg.body} monto={saldoDelPedido(pedido)} pedido={pedido} role="buyer"
+        texto={msg.body} monto={montoDeLaTarjeta(pedido, saldoDelPedido(pedido))} pedido={pedido} role="buyer"
         pagada={!puedePagarSaldo(pedido)} hora={time}
       />
     )

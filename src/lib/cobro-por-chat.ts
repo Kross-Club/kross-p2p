@@ -45,3 +45,23 @@ export function textoDeCobro(monto: string): string {
 export function etiquetaDePago(monto: string): string {
   return `Pagar ${monto} con Yape`
 }
+
+
+/**
+ * El monto que muestra una tarjeta de pago.
+ *
+ * Es el del COBRO, no el saldo que quede hoy. Suena a lo mismo hasta que se
+ * paga: ahí "lo que falta" pasa a cero y la tarjeta enseñaba **S/ 0** encima de
+ * su propio texto diciendo "te queda un saldo de S/ 60". Un recibo que se
+ * contradice a sí mismo no vale como recibo.
+ *
+ * `saldo_amount` es el importe del cupón emitido y no se mueve al cobrarse, así
+ * que es lo que la tarjeta tiene que decir toda su vida. El saldo pendiente es
+ * el respaldo para el rato en que todavía no se emitió ninguno.
+ */
+export function montoDeLaTarjeta(
+  p: { saldo_amount?: number | string | null }, saldoPendiente: number,
+): number {
+  const delCobro = Math.max(0, Number(p.saldo_amount ?? 0) || 0)
+  return delCobro > 0 ? delCobro : saldoPendiente
+}
