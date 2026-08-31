@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Wallet, ExternalLink, Check } from 'lucide-react'
 import { puedePagarSaldo, saldoDelPedido, soles } from '../lib/order-money'
-import { etiquetaDePago } from '../lib/cobro-por-chat'
+import { etiquetaDePago, MORADO_YAPE } from '../lib/cobro-por-chat'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -78,12 +78,15 @@ export function BotonPagarSaldo({ pedido }: { pedido: PedidoConSaldo }) {
 
   return (
     <>
+      {/* Morado de Yape (#742284), el mismo del checkout. El comprador ya pagó
+          el adelanto con ese botón: reconocerlo es más rápido que leerlo, y el
+          verde de Kross ahí solo diría "algo bueno". */}
       <button
         type="button"
         onClick={pagar}
         disabled={pidiendo}
-        className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-black disabled:opacity-60"
-        style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}
+        className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-black text-white disabled:opacity-60"
+        style={{ background: MORADO_YAPE }}
       >
         {pidiendo ? <Check size={14} /> : <ExternalLink size={14} />}
         {pidiendo ? 'Abriendo Yape…' : etiquetaDePago(soles(falta))}

@@ -90,3 +90,7 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
   ENCIMA del generador (`demo/cambios-demo.ts`), en `localStorage`, y **se van al salir del
   demo** —la barra tiene un *Reiniciar*—; el generador sigue siendo determinista, así que dos
   pantallas siguen comparando lo mismo.
+  Y **el cliente responde solo** (31-ago-2026): una oferta o una tarjeta de pago salen como
+  ENVIADAS y diez segundos después se ven aceptadas, moviendo la misma fila que movería el
+  servidor. Esa espera es lo que se enseña. ⚠️ Al tocar el generador, **nunca agregues una
+  tirada de `r()`**: corre el azar de todos los pedidos siguientes y rompe cosas sin relación.

@@ -80,6 +80,9 @@ export interface CambioDemo {
    *  tarjeta de cobro — enseñar que un cupón vencido se reemite es la mitad de
    *  lo que hay que enseñar de esa tarjeta. */
   pay360_saldo_coupon_expires_at?: string | null
+  /** El saldo pagado, enseñando. Mueve la misma fila que movería el webhook. */
+  saldo_verification?: string | null
+  saldo_matched_at?: string | null
 }
 
 type Cambios = Record<string, CambioDemo>
@@ -137,6 +140,79 @@ export function guardarCambio(id: string, patch: CambioDemo) {
 export function agregarMensajeDemo(id: string, ...nuevos: MensajeDemo[]) {
   const actual = cambiosDemo()
   guardarCambio(id, { mensajes: [...(actual[id]?.mensajes ?? []), ...nuevos] })
+}
+
+/** Cambia un mensaje que YA se puso. Hace falta para el segundo tiempo de la
+ *  demo: la oferta que se envió y diez segundos después aparece aceptada. */
+export function actualizarMensajeDemo(id: string, mensajeId: string, patch: Partial<MensajeDemo>) {
+  const actual = cambiosDemo()
+  const mensajes = (actual[id]?.mensajes ?? []).map(m => m.id === mensajeId ? { ...m, ...patch } : m)
+  guardarCambio(id, { mensajes })
+}
+
+// ─── Los dos tiempos de una demo ─────────────────────────────────────────────
+//
+// Enseñando, una oferta que aparece "Aceptada por el cliente" en el mismo
+// instante en que se envía no enseña nada: se lee como que el panel se lo
+// inventó. Lo que hay que ver son los DOS momentos —lo mandé, y me
+// respondieron—, porque esa espera es el producto.
+//
+// Diez segundos: lo que dura contar qué acaba de pasar antes de que ocurra lo
+// siguiente. Menos, y se pisan; más, y hay que rellenar.
+export const ESPERA_CLIENTE_DEMO = 10_000
+
+/**
+ * La oferta, ENVIADA y todavía sin responder.
+ *
+ * Antes esto no existía: `ofertaAceptadaEnDemo` metía de golpe la oferta ya
+ * aceptada y el mensaje de confirmación. Ahora es el primer tiempo, y el
+ * segundo llega solo.
+ */
+export function ofertaEnviadaEnDemo(
+  p: PedidoDemo,
+  oferta: { product_id?: string | null; nombre: string; precio: number; image?: string | null },
+  quien: { nombre: string; rol: string | null },
+): MensajeDemo {
+  const ahora = Date.now()
+  const msg: MensajeDemo = {
+    id: `demo-of-${ahora}`, session_id: p.id, sender_role: 'seller',
+    sender_name: quien.nombre, sender_role_label: quien.rol, read_at: null,
+    type: 'offer', body: null, created_at: new Date(ahora).toISOString(),
+    offer: { ...oferta, accepted: false },
+  }
+  agregarMensajeDemo(p.id, msg)
+  return msg
+}
+
+/** El cobro, ENVIADO. Igual que la oferta: primer tiempo. */
+export function cobroEnviadoEnDemo(
+  p: PedidoDemo, texto: string, quien: { nombre: string; rol: string | null },
+): MensajeDemo {
+  const ahora = Date.now()
+  const msg: MensajeDemo = {
+    id: `demo-cobro-${ahora}`, session_id: p.id, sender_role: 'seller',
+    sender_name: quien.nombre, sender_role_label: quien.rol, read_at: null,
+    type: 'cobro', body: texto, created_at: new Date(ahora).toISOString(),
+  }
+  agregarMensajeDemo(p.id, msg)
+  return msg
+}
+
+/**
+ * El comprador pagó el saldo — segundo tiempo del cobro.
+ *
+ * Mueve la MISMA fila que movería el webhook de 360pay, así que el efecto es el
+ * de verdad: la tarjeta ámbar del panel se pone verde, el anillo se completa y
+ * el mensaje pasa a "Pagada por el cliente". Un demo que solo cambiara el texto
+ * del mensaje enseñaría media herramienta.
+ */
+export function saldoPagadoEnDemo(p: PedidoDemo): CambioDemo {
+  const patch: CambioDemo = {
+    saldo_verification: 'MATCHED',
+    saldo_matched_at: new Date().toISOString(),
+  }
+  guardarCambio(p.id, patch)
+  return patch
 }
 
 /** Vuelve la tienda de ejemplo a como la arma el generador. */
@@ -329,6 +405,10 @@ export function ofertaAceptadaEnDemo(
   p: PedidoDemo,
   oferta: { product_id?: string | null; nombre: string; precio: number; image?: string | null },
   quien: { nombre: string; rol: string | null },
+  /** El mensaje de oferta que se envió antes (`ofertaEnviadaEnDemo`). Se marca
+   *  aceptado en vez de meter otro: dos ofertas en el hilo por una sola es lo
+   *  que pasaba cuando esto insertaba la oferta ya aceptada. */
+  mensajeId: string,
 ): RespuestaDemo {
   const items = [...carritoDe(p), {
     product_id: oferta.product_id ?? null,
@@ -340,15 +420,14 @@ export function ofertaAceptadaEnDemo(
   }]
   const total = suma(items)
   const ahora = Date.now()
-  const base = { session_id: p.id, sender_role: 'seller', sender_name: quien.nombre, sender_role_label: quien.rol, read_at: null }
 
-  agregarMensajeDemo(p.id,
-    { ...base, id: `demo-of-${ahora}`, type: 'offer', body: null, created_at: new Date(ahora).toISOString(), offer: { ...oferta, accepted: true } },
-    {
-      ...base, id: `demo-of-${ahora}-ok`, type: 'text', created_at: new Date(ahora + 1000).toISOString(),
-      body: `✅ Agregué ${oferta.nombre} a tu pedido. Nuevo total: S/${total} — llega todo junto en una sola entrega. 📦`,
-    },
-  )
+  actualizarMensajeDemo(p.id, mensajeId, { offer: { ...oferta, accepted: true } })
+  agregarMensajeDemo(p.id, {
+    id: `demo-of-${ahora}-ok`, session_id: p.id, sender_role: 'seller',
+    sender_name: quien.nombre, sender_role_label: quien.rol, read_at: null,
+    type: 'text', created_at: new Date(ahora).toISOString(),
+    body: `✅ Agregué ${oferta.nombre} a tu pedido. Nuevo total: S/${total} — llega todo junto en una sola entrega. 📦`,
+  })
   guardarCambio(p.id, { items, product_price: total })
   return { ok: true, items, total, patch: { items, product_price: total } }
 }
