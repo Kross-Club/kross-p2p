@@ -34,6 +34,12 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Cobrar el saldo por el chat · nada que desplegar (31-ago-2026)
+
+El botón *Cobrar por el chat* de la tarjeta ámbar manda un mensaje con `type: 'cobro'`.
+`chat_messages.type` es texto libre y `seller-send-message` lo pasa tal cual, así que **no hay
+SQL ni función que subir**: sale entero con Vercel al mergear.
+
 ### El rastro de cada cobro · `get-session` (31-ago-2026)
 
 **Qué se ve si no entra:** en las tarjetas de cobro salen el pedido, el código de pago, el cupón

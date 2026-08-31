@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, Check, Clock, Copy } from 'lucide-react'
+import { CreditCard, Check, Clock, Copy, Send } from 'lucide-react'
 import { cobrosDelPedido, soles } from '../lib/order-money'
 import type { Cobro, TipoDeCobro } from '../lib/order-money'
 import { datosDeRastro, textoParaSoporte } from '../lib/rastro-de-pago'
+import { puedePagarSaldo } from '../lib/order-money'
 import type { OrderSession, PagoTrazado } from '../lib/order-api'
 
 // ─── La plata que entró, operación por operación ─────────────────────────────
@@ -50,7 +51,12 @@ const PIE: Record<TipoDeCobro, (saldo: number) => string | null> = {
   saldo: () => 'Con esto el pedido queda pagado por completo',
 }
 
-export default function PagoTrace({ session }: { session: OrderSession }) {
+export default function PagoTrace({ session, onCobrar }: {
+  session: OrderSession
+  /** Volver a pedir el saldo por el chat. Lo hace la página —que es quien sabe
+   *  mandar mensajes y quien conoce el demo—; acá solo se ofrece el botón. */
+  onCobrar?: () => Promise<void> | void
+}) {
   const cobros = cobrosDelPedido(session)
   if (cobros.length === 0) return null
 
@@ -68,6 +74,7 @@ export default function PagoTrace({ session }: { session: OrderSession }) {
           trace={cobro.tipo === 'saldo' ? session.saldo_trace ?? null : session.payment_trace ?? null}
           cobradoEn={cobro.tipo === 'saldo' ? session.saldo_matched_at ?? null : session.payment_matched_at ?? null}
           falta={falta}
+          onCobrar={cobro.tipo === 'saldo' && !cobro.verificado && puedePagarSaldo(session) ? onCobrar : undefined}
         />
       ))}
     </>
@@ -78,7 +85,7 @@ export default function PagoTrace({ session }: { session: OrderSession }) {
  * Una operación. Verde cuando entró; ámbar mientras el cupón está emitido y sin
  * pagar — que no es lo mismo y confundirlos es despachar sin haber cobrado.
  */
-function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta }: {
+function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, onCobrar }: {
   cobro: Cobro
   orderId: string | null
   trace: PagoTrazado | null
@@ -87,8 +94,17 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta }: {
   cobradoEn: string | null
   /** Lo que falta cobrar del pedido entero, para el pie del adelanto. */
   falta: number
+  /** Solo en el saldo sin pagar: volver a pedirlo por el chat. */
+  onCobrar?: () => Promise<void> | void
 }) {
   const [copiado, setCopiado] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [enviado, setEnviado] = useState(false)
+  useEffect(() => {
+    if (!enviado) return
+    const t = setTimeout(() => setEnviado(false), 2500)
+    return () => clearTimeout(t)
+  }, [enviado])
   useEffect(() => {
     if (!copiado) return
     const t = setTimeout(() => setCopiado(false), 1500)
@@ -144,21 +160,45 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta }: {
         {pie && <p className="opacity-70 mt-1">{pie}</p>}
       </div>
 
-      {datos.length > 0 && (
-        <button
-          type="button"
-          onClick={async () => {
-            try { await navigator.clipboard.writeText(paraSoporte); setCopiado(true) } catch { /* visible igual */ }
-          }}
-          className="mt-2 flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold"
-          style={ok
-            ? { border: '0.5px solid var(--ok-border)', color: 'var(--ok-fg)' }
-            : { border: '0.5px solid var(--warn-border)', color: 'var(--text-muted)' }}
-        >
-          {copiado ? <Check size={11} /> : <Copy size={11} />}
-          {copiado ? 'Copiado' : 'Copiar para soporte 360pay'}
-        </button>
-      )}
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {datos.length > 0 && (
+          <button
+            type="button"
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(paraSoporte); setCopiado(true) } catch { /* visible igual */ }
+            }}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold"
+            style={ok
+              ? { border: '0.5px solid var(--ok-border)', color: 'var(--ok-fg)' }
+              : { border: '0.5px solid var(--warn-border)', color: 'var(--text-muted)' }}
+          >
+            {copiado ? <Check size={11} /> : <Copy size={11} />}
+            {copiado ? 'Copiado' : 'Copiar para soporte 360pay'}
+          </button>
+        )}
+
+        {/* Volver a pedirlo. El cupón está emitido y esperando desde hace días;
+            la tarjeta de pago que el comprador tiene al final de su chat solo la
+            ve quien abre la app, y el que debe un saldo es justamente el que
+            dejó de abrirla. Mandarlo como mensaje lo saca por push y, sin push,
+            por WhatsApp: la diferencia entre una tarjeta que está y un aviso que
+            suena. */}
+        {onCobrar && (
+          <button
+            type="button"
+            disabled={enviando}
+            onClick={async () => {
+              setEnviando(true)
+              try { await onCobrar(); setEnviado(true) } finally { setEnviando(false) }
+            }}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black disabled:opacity-50"
+            style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}
+          >
+            {enviado ? <Check size={11} /> : <Send size={11} />}
+            {enviado ? 'Enviado al chat' : enviando ? 'Enviando…' : 'Cobrar por el chat'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

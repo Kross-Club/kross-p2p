@@ -137,7 +137,10 @@ export interface OrderMessage {
   visibility?: 'all' | 'sellers' | null
   /** `auth_user_id` de la gente etiquetada con `@` en un comentario interno. */
   mentions?: string[] | null
-  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer'
+  /** `cobro` = el vendedor volvió a pedir el saldo: el chat del comprador lo
+   *  pinta con el botón de Yape debajo (ver lib/cobro-por-chat.ts). La columna
+   *  es texto libre, así que no hizo falta tocar el esquema. */
+  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer' | 'cobro'
   body: string | null
   media_url: string | null
   offer?: { product_id?: string; nombre: string; precio: number; image?: string | null; accepted?: boolean } | null
