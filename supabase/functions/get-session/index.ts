@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
   // Fetch messages — the buyer never sees seller-only entries (e.g. expulsions)
   let mq = supabase
     .from('chat_messages')
-    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, offer, call_recording_id, visibility, mentions, created_at, read_at')
+    .select('id, session_id, sender_role, sender_name, sender_role_label, type, body, media_url, offer, call_recording_id, cobro_id, visibility, mentions, created_at, read_at')
     .eq('session_id', session.id)
     .order('created_at', { ascending: true })
   // Lo interno solo para quien PROBÓ ser del equipo. `viewer=seller` sigue

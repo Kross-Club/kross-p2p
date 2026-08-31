@@ -15,7 +15,7 @@ import { BotonPagarSaldo, type PedidoConSaldo } from './PagarSaldo'
 // donde ya pagó el adelanto. El verde de Kross ahí diría "algo bueno"; el
 // morado dice "Yape".
 
-export default function TarjetaDePago({ texto, monto, pedido, role, pagada, hora }: {
+export default function TarjetaDePago({ texto, monto, pedido, cobro, role, pagada, hora }: {
   /** El cuerpo del mensaje: lo mismo que le llegó por push y por WhatsApp. */
   texto: string | null
   /** El monto de ESTE cobro. Ojo: no es "lo que falta del pedido hoy" — en
@@ -23,6 +23,10 @@ export default function TarjetaDePago({ texto, monto, pedido, role, pagada, hora
    *  texto que hablaba de S/ 60. Ver `montoDeLaTarjeta`. */
   monto: number
   pedido: PedidoConSaldo
+  /** El cobro al que apunta el mensaje (bloque §37), cuando apunta a uno. Es lo
+   *  que hace que el botón cobre ESTO y no el saldo: sin él, una tarjeta de
+   *  flete abría Yape para pagar el saldo del pedido, por otro monto. */
+  cobro?: { id?: string | null; monto: number } | null
   role: 'buyer' | 'seller'
   /** Ya entró la plata. Es lo único que convierte "enviada" en "aceptada". */
   pagada: boolean
@@ -49,7 +53,7 @@ export default function TarjetaDePago({ texto, monto, pedido, role, pagada, hora
                   style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
                   <Check size={15} /> Pago recibido
                 </div>
-              : <div className="mt-2"><BotonPagarSaldo pedido={pedido} /></div>
+              : <div className="mt-2"><BotonPagarSaldo pedido={pedido} cobro={cobro} /></div>
           )}
 
           {/* Del lado del vendedor no hay botón: él no paga. Lo que necesita

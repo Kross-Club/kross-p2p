@@ -65,3 +65,56 @@ export function montoDeLaTarjeta(
   const delCobro = Math.max(0, Number(p.saldo_amount ?? 0) || 0)
   return delCobro > 0 ? delCobro : saldoPendiente
 }
+
+
+/**
+ * ¿Se le puede mandar la tarjeta de pago de ESTE cobro?
+ *
+ * Un cobro se paga cuando está pendiente, tiene monto y la tienda cobra en
+ * línea. El adelanto no entra: ese ya se pagó o se está pagando en el checkout,
+ * y mandarle una tarjeta por el chat lo mandaría a pagar dos veces.
+ *
+ * El saldo tiene además su propia condición —el adelanto ya cruzado, porque el
+ * banco cobra el cupón más antiguo— y esa la sigue respondiendo
+ * `puedePagarSaldo`. Acá va lo que vale para cualquiera.
+ */
+export function seCobraPorChat(
+  cobro: { tipo: string; verificado: boolean; monto: number },
+  pedido: { payment_provider?: string | null },
+): boolean {
+  if (cobro.verificado || !(cobro.monto > 0)) return false
+  if (cobro.tipo === 'adelanto' || cobro.tipo === 'total') return false
+  return pedido.payment_provider === '360PAY'
+}
+
+/** El texto del cobro extra: lleva el concepto, porque un monto sin razón no lo
+ *  paga nadie — y este mismo texto sale en la push y en WhatsApp. */
+export function textoDeCobroExtra(monto: string, concepto: string): string {
+  return `${concepto}: ${monto}. Págalo desde tu Yape por acá.`
+}
+
+
+/**
+ * ¿De qué cobro es esta tarjeta de pago?
+ *
+ * Mientras un pedido tenía dos cobros, la respuesta era siempre "del saldo" y
+ * no hacía falta preguntarla. Con los `extra` (bloque §36) sí: el mismo mensaje
+ * puede ser el flete, la diferencia de talla o el saldo, y pintarlo todo contra
+ * el saldo del pedido enseñaba un monto que no era y —peor— un botón que cobraba
+ * otra cosa distinta de la que el texto pedía.
+ *
+ * El mensaje solo lleva el PUNTERO (`cobro_id`, bloque §37); el monto y el
+ * estado se leen de la lista del pedido, que es donde viven. Por eso una tarjeta
+ * vieja se sigue pagando bien aunque el pedido haya cambiado de monto: se pinta
+ * contra el pedido de HOY.
+ *
+ * `null` = la tarjeta es del saldo, como fue siempre. Es la respuesta correcta
+ * para los mensajes de antes de la columna y para los que no apuntan a nada.
+ */
+export function cobroDeLaTarjeta<T extends { id?: string | null }>(
+  mensaje: { cobro_id?: string | null },
+  cobros: T[],
+): T | null {
+  if (!mensaje.cobro_id) return null
+  return cobros.find(c => c.id === mensaje.cobro_id) ?? null
+}

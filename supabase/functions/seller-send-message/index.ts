@@ -117,18 +117,22 @@ async function notifyBuyer(n: NotifyInput): Promise<void> {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { session_id, seller_name, seller_role, body, type, offer, interno, mentions } = await req.json() as {
+  const { session_id, seller_name, seller_role, body, type, offer, interno, mentions, cobro_id } = await req.json() as {
     session_id: string
     seller_name: string
     seller_role?: string
     body: string
-    type: 'text' | 'audio' | 'image' | 'offer'
+    type: 'text' | 'audio' | 'image' | 'offer' | 'cobro'
     offer?: { product_id?: string; nombre: string; precio: number; image?: string | null }
     /** COMENTARIO INTERNO: se guarda en el mismo hilo pero no es del comprador.
      *  Ver bloque §32 del esquema. */
     interno?: boolean
     /** `auth_user_id` de la gente etiquetada con `@`. */
     mentions?: string[]
+    /** De qué COBRO es esta tarjeta de pago (bloque §37). Es un puntero: el
+     *  monto, el concepto y si ya se pagó se leen de `cobros`, que es donde
+     *  viven. Sin él la tarjeta es del saldo, como fue siempre. */
+    cobro_id?: string | null
   }
 
   if (!session_id || !body) {
@@ -156,6 +160,7 @@ Deno.serve(async (req) => {
       offer: offer ?? null,
       visibility: esInterno ? 'sellers' : 'all',
       mentions: etiquetados,
+      cobro_id: cobro_id ?? null,
     })
     .select()
     .single()

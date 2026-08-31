@@ -136,18 +136,36 @@ Deno.serve(async (req) => {
   // ambos, y el monto no sirve —la mitad de un pedido de S/180 es 90, igual que
   // su saldo—.
   //
+  // ⚠️ Primero se busca el cupón entre los COBROS (bloque §36). Sin esto, un
+  // cobro extra pagado no calzaba con ninguna de las dos columnas, caía en el
+  // `else` de abajo y se marcaba como ADELANTO: le pisaba `advance_amount` con
+  // el monto del flete y daba por cobrado un adelanto que nadie pagó. Es la
+  // clase de error que solo se nota cuando ya no cuadra la caja.
+  const { data: cobroDelCupon } = couponId
+    ? await supabase.from('cobros')
+        .select('id, tipo, monto, estado, concepto')
+        .eq('session_id', session.id).eq('pay360_coupon_id', couponId).maybeSingle()
+    : { data: null }
+
+  const esExtra = cobroDelCupon?.tipo === 'extra'
+
   // Sin cupón identificable manda el estado: si el adelanto ya está cruzado, lo
   // que puede estar pagándose es el saldo.
-  const esSaldo = couponId && session.pay360_saldo_coupon_id === couponId
-    ? true
-    : couponId && session.pay360_coupon_id === couponId
-      ? false
-      : session.payment_verification === 'MATCHED'
+  const esSaldo = esExtra
+    ? false
+    : cobroDelCupon?.tipo === 'saldo' || (couponId && session.pay360_saldo_coupon_id === couponId)
+      ? true
+      : couponId && session.pay360_coupon_id === couponId
+        ? false
+        : session.payment_verification === 'MATCHED'
 
-  if (esSaldo && session.saldo_verification === 'MATCHED') {
+  if (esExtra && String(cobroDelCupon?.estado).toUpperCase() === 'MATCHED') {
+    return await ignore(storeId, dedupeKey, 'actualización de un cobro ya verificado')
+  }
+  if (!esExtra && esSaldo && session.saldo_verification === 'MATCHED') {
     return await ignore(storeId, dedupeKey, 'actualización de un saldo ya verificado')
   }
-  if (!esSaldo && session.payment_verification === 'MATCHED') {
+  if (!esExtra && !esSaldo && session.payment_verification === 'MATCHED') {
     // No es un duplicado ni un error: la doc avisa que si el cupón ya estaba
     // pagado y DESPUÉS se corrige el código bancario (`operation_number`,
     // `bank_tx_id`), 360pay emite otro PAYMENT_PAID con un Event-Id DISTINTO.
@@ -180,11 +198,13 @@ Deno.serve(async (req) => {
   }
 
   // 5 · el monto. Un cupón pagado por menos NO es el cobro pagado.
-  const rowAmount = esSaldo
-    ? Math.max(0, Math.round(Number(session.product_price ?? 0) - Number(session.advance_amount ?? 0)))
-    : Number(session.advance_amount ?? 0)
+  const rowAmount = esExtra
+    ? Number(cobroDelCupon?.monto ?? 0)
+    : esSaldo
+      ? Math.max(0, Math.round(Number(session.product_price ?? 0) - Number(session.advance_amount ?? 0)))
+      : Number(session.advance_amount ?? 0)
   const paid = Number(coupon.data.amount ?? 0)
-  const queCobro = esSaldo ? 'saldo' : 'adelanto'
+  const queCobro = esExtra ? (cobroDelCupon?.concepto ?? 'cobro') : esSaldo ? 'saldo' : 'adelanto'
   if (!(paid >= rowAmount)) {
     await supabase.from('order_sessions').update({
       payment_reason: `Cupón 360pay pagado por S/${paid}, el ${queCobro} era S/${rowAmount} — revisar antes de confirmar`,
@@ -213,13 +233,11 @@ Deno.serve(async (req) => {
   // La fila se busca POR EL CUPÓN y no por el tipo: es el cupón el que acaba de
   // pagarse, y un pedido puede tener varios cobros vivos. Buscar por tipo daría
   // por cobrado el que no fue en cuanto exista un `extra`.
-  const tipo = esSaldo ? 'saldo' : 'adelanto'
+  const tipo = esExtra ? 'extra' : esSaldo ? 'saldo' : 'adelanto'
   const delCobro = { monto: paid, estado: 'MATCHED', matched_at: matchedAt, payment_event_id: ev?.id ?? null }
 
-  const { data: filaCobro } = await supabase.from('cobros')
-    .select('id').eq('session_id', session.id).eq('pay360_coupon_id', coupon.data._id).maybeSingle()
-  if (filaCobro) {
-    await supabase.from('cobros').update(delCobro).eq('id', filaCobro.id)
+  if (cobroDelCupon) {
+    await supabase.from('cobros').update(delCobro).eq('id', cobroDelCupon.id)
   } else {
     // Sin fila previa —un cupón emitido antes de que existiera la tabla— se
     // crea ahora: la plata entró y tiene que quedar registrada igual.
@@ -229,13 +247,12 @@ Deno.serve(async (req) => {
       { onConflict: 'session_id,tipo' })
   }
 
-  await supabase.from('order_sessions').update({
-    ...columnasDe(tipo, delCobro),
-    // El saldo NO mueve la etapa: cuando se cobra, el pedido ya va en camino o
-    // está en la agencia. Retroceder a `confirmado` borraría lo que el courier
-    // ya reportó.
-    ...(esSaldo ? {} : { payment_reason: null, stage: 'confirmado' }),
-  }).eq('id', session.id)
+  // Un `extra` NO tiene columna que espejar —`columnasDe` devuelve `{}`— y
+  // tampoco mueve la etapa: cobrar un flete no confirma un pedido.
+  const patch = { ...columnasDe(tipo, delCobro), ...(esExtra || esSaldo ? {} : { payment_reason: null, stage: 'confirmado' }) }
+  if (Object.keys(patch).length > 0) {
+    await supabase.from('order_sessions').update(patch).eq('id', session.id)
+  }
 
   // Los DOS mensajes del cruce manual, con la misma copy: ya está calibrada y el
   // comprador no tiene por qué notar QUÉ motor cobró.
@@ -243,7 +260,7 @@ Deno.serve(async (req) => {
   await supabase.from('chat_messages').insert({
     session_id: session.id, sender_role: 'system', sender_name: 'Kross',
     type: 'text', visibility: 'sellers',
-    body: `✅ ${esSaldo ? 'Saldo' : 'Adelanto'} de S/${paid} verificado automáticamente`
+    body: `✅ ${esExtra ? (cobroDelCupon?.concepto ?? 'Cobro') : esSaldo ? 'Saldo' : 'Adelanto'} de S/${paid} verificado automáticamente`
       + (session.buyer_name ? ` · pagó ${session.buyer_name}` : '')
       + ` · 360pay ${coupon.data._id}${bank}`,
   })
@@ -253,6 +270,23 @@ Deno.serve(async (req) => {
   // día del recojo. Misma regla que el mensaje de bienvenida de register-buyer,
   // y misma mecánica: en agencia el saldo se paga POR LA APP (la clave de
   // recojo se entrega contra ese pago), nunca en el mostrador.
+  //
+  // Un `extra` no entra en esa cuenta: es plata de ENCIMA del pedido —un flete,
+  // una diferencia de talla—, no una parte del precio. Decirle "te queda un
+  // saldo de S/X" a quien acaba de pagar su flete es inventarle una deuda.
+  if (esExtra) {
+    await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'system', sender_name: 'Kross',
+      type: 'status_update', visibility: 'all',
+      body: `✅ ¡Recibimos tu pago de S/${paid}${cobroDelCupon?.concepto ? ` por ${cobroDelCupon.concepto}` : ''}! Gracias.`,
+    })
+    // Y se corta acá, antes de CAPI: un cobro extra no es otra compra. Contarlo
+    // como `Purchase` le sumaría a Meta y a TikTok una conversión por cada flete
+    // cobrado, y el público "de los que sí pagaron" —que es para lo que existe
+    // ese evento— quedaría inflado con pedidos repetidos.
+    return ok({ received: true, matched: true, extra: true })
+  }
+
   const saldoRestante = esSaldo
     ? 0
     : Math.max(0, Number(session.product_price ?? 0) - paid)

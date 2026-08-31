@@ -45,10 +45,16 @@ export interface PedidoConSaldo {
  * veces desde dos copias del mismo código es como se llega a que una pida el
  * saldo viejo y la otra el de hoy.
  */
-export function BotonPagarSaldo({ pedido }: { pedido: PedidoConSaldo }) {
+export function BotonPagarSaldo({ pedido, cobro }: {
+  pedido: PedidoConSaldo
+  /** El cobro que se está pagando, cuando NO es el saldo: un flete, una
+   *  diferencia. Se pide por su id y el monto sale de su fila —nunca del
+   *  cuerpo de la petición—, para que quien llama no fije lo que se le cobra. */
+  cobro?: { id?: string | null; monto: number } | null
+}) {
   const [pidiendo, setPidiendo] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const falta = saldoDelPedido(pedido)
+  const falta = cobro ? cobro.monto : saldoDelPedido(pedido)
 
   const pagar = async () => {
     if (pidiendo || !pedido.token) return
@@ -57,7 +63,9 @@ export function BotonPagarSaldo({ pedido }: { pedido: PedidoConSaldo }) {
       const r = await fetch(`${BASE}/pay360-coupon`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_token: pedido.token, tipo: 'saldo' }),
+        body: cobro?.id
+          ? JSON.stringify({ order_token: pedido.token, cobro_id: cobro.id })
+          : JSON.stringify({ order_token: pedido.token, tipo: 'saldo' }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok || !d.ok) {

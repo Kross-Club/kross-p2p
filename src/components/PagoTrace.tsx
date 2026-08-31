@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { CreditCard, Check, Clock, Copy, Send, RefreshCw } from 'lucide-react'
+import { CreditCard, Check, Clock, Copy, Send, RefreshCw, Trash2 } from 'lucide-react'
 import { cobrosDelPedido, soles } from '../lib/order-money'
 import type { Cobro, TipoDeCobro } from '../lib/order-money'
 import { datosDeRastro, textoParaSoporte } from '../lib/rastro-de-pago'
 import { puedePagarSaldo } from '../lib/order-money'
+import { seCobraPorChat } from '../lib/cobro-por-chat'
+import { sePuedeBorrar } from '../../supabase/functions/_shared/cobros.ts'
 import { vigenciaDeCupon, sePuedeEnviarCobro, avisoDeVigencia } from '../lib/vigencia-de-cupon'
 import type { OrderSession, PagoTrazado } from '../lib/order-api'
 
@@ -59,7 +61,7 @@ const PIE: Record<TipoDeCobro, (saldo: number) => string | null> = {
   extra: () => null,
 }
 
-export default function PagoTrace({ session, onCobrar, onReemitir }: {
+export default function PagoTrace({ session, onCobrar, onReemitir, onQuitar }: {
   session: OrderSession
   /** Mandar la tarjeta de pago por el chat. Lo hace la página —que es quien sabe
    *  mandar mensajes y quien conoce el demo—; acá solo se ofrece el botón. */
@@ -68,6 +70,10 @@ export default function PagoTrace({ session, onCobrar, onReemitir }: {
    *  tiene con qué, y no hace falta — `pay360-coupon` anula el vencido y emite
    *  uno nuevo BAJO EL MISMO código de pago, que es estable por comprador. */
   onReemitir?: () => Promise<void> | void
+  /** Dar de baja un cobro creado a mano. Solo llega a los que lo permiten
+   *  (`sePuedeBorrar`): el adelanto y el saldo no son del vendedor, y un cobro
+   *  con plata dentro se reembolsa, no se borra de una lista. */
+  onQuitar?: (cobroId: string) => Promise<void> | void
 }) {
   // El reloj se lee UNA vez, al montar, y baja como dato — el mismo trato que
   // `fechas.ts` le da a `ahora`. Leerlo en cada pintada haría que dos tarjetas
@@ -89,17 +95,22 @@ export default function PagoTrace({ session, onCobrar, onReemitir }: {
     <>
       {cobros.map(cobro => (
         <TarjetaDeCobro
-          key={cobro.tipo}
+          // Por id cuando lo hay: con dos cobros extra, la clave por tipo se
+          // repetiría y React pintaría uno solo.
+          key={cobro.id ?? cobro.tipo}
           cobro={cobro}
           orderId={session.order_id ?? null}
-          trace={cobro.tipo === 'saldo' ? session.saldo_trace ?? null : session.payment_trace ?? null}
-          cobradoEn={cobro.tipo === 'saldo' ? session.saldo_matched_at ?? null : session.payment_matched_at ?? null}
+          trace={rastroDe(cobro, session)}
+          cobradoEn={cobro.matchedAt
+            ?? (cobro.tipo === 'saldo' ? session.saldo_matched_at ?? null : session.payment_matched_at ?? null)}
           falta={falta}
-          venceEl={cobro.tipo === 'saldo' ? session.pay360_saldo_coupon_expires_at ?? null : session.pay360_coupon_expires_at ?? null}
+          venceEl={cobro.venceEl
+            ?? (cobro.tipo === 'saldo' ? session.pay360_saldo_coupon_expires_at ?? null : session.pay360_coupon_expires_at ?? null)}
           ahora={ahora}
-          {...(cobro.tipo === 'saldo' && !cobro.verificado && puedePagarSaldo(session)
+          {...(seCobraPorChat(cobro, session) && (cobro.tipo !== 'saldo' || puedePagarSaldo(session))
             ? { onCobrar, onReemitir }
             : {})}
+          {...(cobro.fila && sePuedeBorrar(cobro.fila) ? { onQuitar } : {})}
         />
       ))}
     </>
@@ -107,10 +118,37 @@ export default function PagoTrace({ session, onCobrar, onReemitir }: {
 }
 
 /**
+ * El rastro de UN cobro.
+ *
+ * Con dos cobros extra vivos, el pedido ya no tiene "el" cupón: cada uno tiene
+ * el suyo, y esos datos viven en su fila desde el bloque §36. Pero la operación
+ * BANCARIA todavía se guarda por sesión —`payment_trace` / `saldo_trace`—, así
+ * que los campos de la fila **rellenan** los de la sesión en vez de reemplazarla:
+ * si se reemplazara, la tarjeta del saldo pagado perdería el número de operación
+ * justo cuando alguien lo necesita, que es al escribirle al soporte de 360pay.
+ *
+ * El día que la operación bancaria también se guarde por cobro, esto se queda
+ * en la primera mitad.
+ */
+function rastroDe(cobro: Cobro, session: OrderSession): PagoTrazado | null {
+  const deLaSesion = cobro.tipo === 'saldo' ? session.saldo_trace ?? null : session.payment_trace ?? null
+  // Un `extra` no tiene columnas en la sesión: lo suyo es lo de su fila y nada
+  // más. Heredar el rastro del adelanto le pegaría el cupón del que no fue.
+  const base = cobro.tipo === 'extra' ? null : deLaSesion
+  if (!cobro.couponId && !cobro.paymentCode) return base
+  return {
+    operation_number: base?.operation_number ?? null,
+    bank: base?.bank ?? null,
+    coupon_id: cobro.couponId ?? base?.coupon_id ?? null,
+    payment_code: cobro.paymentCode ?? base?.payment_code ?? null,
+  }
+}
+
+/**
  * Una operación. Verde cuando entró; ámbar mientras el cupón está emitido y sin
  * pagar — que no es lo mismo y confundirlos es despachar sin haber cobrado.
  */
-function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahora, onCobrar, onReemitir }: {
+function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahora, onCobrar, onReemitir, onQuitar }: {
   cobro: Cobro
   orderId: string | null
   trace: PagoTrazado | null
@@ -126,6 +164,8 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahor
   onCobrar?: () => Promise<void> | void
   /** Íd.: emitir otro cupón cuando el anterior caducó. */
   onReemitir?: () => Promise<void> | void
+  /** Solo en los cobros hechos a mano y sin pagar. */
+  onQuitar?: (cobroId: string) => Promise<void> | void
 }) {
   const [copiado, setCopiado] = useState(false)
   const [enviando, setEnviando] = useState(false)
@@ -190,6 +230,10 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahor
           </p>
         ))}
 
+        {/* Qué se está cobrando. Un `extra` sin esto es un monto sin razón, y
+            nadie paga un monto sin razón. */}
+        {cobro.concepto && <p className="font-bold">{cobro.concepto}</p>}
+
         {/* Cuándo caduca. Solo mientras no se ha pagado: en un cobro que ya
             entró, la fecha de vencimiento no le importa a nadie. */}
         {!ok && aviso && (
@@ -242,6 +286,19 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahor
           >
             {enviado ? <Check size={11} /> : <Send size={11} />}
             {enviado ? 'Enviada al chat' : enviando ? 'Enviando…' : 'Enviar tarjeta de pago'}
+          </button>
+        )}
+
+        {/* Darlo de baja. Solo un cobro hecho a mano y sin pagar — lo comprueba
+            el servidor igual; acá se evita ofrecer lo que va a ser rechazado. */}
+        {onQuitar && cobro.id && (
+          <button
+            type="button"
+            onClick={() => onQuitar(cobro.id!)}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold"
+            style={{ border: '0.5px solid var(--danger-border)', color: 'var(--danger-fg)' }}
+          >
+            <Trash2 size={11} /> Dar de baja
           </button>
         )}
 

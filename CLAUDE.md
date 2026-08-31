@@ -92,5 +92,7 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
   pantallas siguen comparando lo mismo.
   Y **el cliente responde solo** (31-ago-2026): una oferta o una tarjeta de pago salen como
   ENVIADAS y diez segundos después se ven aceptadas, moviendo la misma fila que movería el
-  servidor. Esa espera es lo que se enseña. ⚠️ Al tocar el generador, **nunca agregues una
+  servidor. Esa espera es lo que se enseña. Y **cobrar algo más** también se enseña: el ícono de
+  billetera crea un cobro de verdad —fila `extra` en la lista de cobros, con su concepto—, se
+  manda por el chat y se acepta solo diez segundos después. ⚠️ Al tocar el generador, **nunca agregues una
   tirada de `r()`**: corre el azar de todos los pedidos siguientes y rompe cosas sin relación.

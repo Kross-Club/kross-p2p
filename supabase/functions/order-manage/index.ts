@@ -1,9 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { cabeEnElMismoPaquete } from '../_shared/upsell.ts'
-import { puedeInvitar, puedeQuitar, puedeReasignar } from '../_shared/equipo-pedido.ts'
+import { puedeEscribir, puedeInvitar, puedeQuitar, puedeReasignar } from '../_shared/equipo-pedido.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
-import { resumenDelPedido } from '../_shared/resumen-pedido.ts'
+import { resumenDelPedido, montoTexto } from '../_shared/resumen-pedido.ts'
+import { sePuedeBorrar } from '../_shared/cobros.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -14,6 +15,10 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
 }
+/** Respuesta JSON con CORS. Estaba escrito a mano en cada `return`; con dos
+ *  acciones nuevas que fallan de cinco maneras, valía la pena tenerlo. */
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
 // El eje del pedido, en orden. `preparando` SALIÓ (ago-2026): no describía un
 // hecho verificable —nadie marca "ya lo empaqué"— y lo que de verdad separa
@@ -116,7 +121,11 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'mark_answered'
+    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'mark_answered' | 'add_cobro' | 'remove_cobro'
+    /** add_cobro: cuánto y por qué. remove_cobro: cuál. */
+    monto?: number
+    concepto?: string
+    cobro_id?: string
     session_id: string
     stage?: string
     invite_seller_id?: string
@@ -593,6 +602,78 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
+  }
+
+  // ─── COBRAR ALGO MÁS ────────────────────────────────────────────────────────
+  //
+  // Un flete a provincia, la diferencia por un cambio de talla, lo que sea que
+  // aparezca después de cerrar el pedido. Hasta el bloque §36 esto no existía:
+  // un pedido tenía dos cobros y los dos estaban ocupados.
+  //
+  // El cobro nace PENDING y **sin cupón**, y eso no es un paso a medias: el
+  // cupón se emite cuando el comprador toca "pagar" (`pay360-coupon`), igual que
+  // el saldo. Y tiene que ser así — el código de pago identifica al CLIENTE y el
+  // banco cobra SIEMPRE el cupón pendiente más antiguo, así que dos cupones
+  // vivos del mismo comprador terminan con él pagando el que no era.
+  if (body.action === 'add_cobro') {
+    const monto = Math.round((Number(body.monto) || 0) * 100) / 100
+    const concepto = String(body.concepto ?? '').trim().slice(0, 80)
+    if (!(monto > 0)) return json({ error: 'monto_invalido' }, 400)
+    // Sin concepto no se crea. Un monto sin razón es lo que el comprador recibe
+    // por el chat, y "págame S/ 20" sin decir de qué no lo paga nadie.
+    if (!concepto) return json({ error: 'falta_concepto' }, 400)
+
+    const yo = await quienLlama()
+    if (!yo || !puedeEscribir({ ...session, writer_seller_ids: writers }, yo)) {
+      return new Response('Not allowed', { status: 403, headers: corsHeaders })
+    }
+
+    const { data: cobro, error } = await supabase.from('cobros').insert({
+      session_id: session.id, store_id: session.store_id ?? null,
+      tipo: 'extra', monto, estado: 'PENDING', concepto, created_by: yo.id,
+    }).select().single()
+    if (error) return json({ error: error.message }, 400)
+
+    await broadcast(session.id, 'cobros_update', {})
+    return new Response(JSON.stringify({ ok: true, cobro }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── QUITARLO ───────────────────────────────────────────────────────────────
+  //
+  // Solo los que creó una persona y solo mientras no hayan entrado — la regla
+  // vive en `_shared/cobros.ts` y la comprueba el SERVIDOR, no el botón. El
+  // adelanto y el saldo no son del vendedor (los generan el checkout y la guía),
+  // y un cobro MATCHED es plata con rastro bancario: eso se reembolsa, no se
+  // borra de una lista.
+  //
+  // Se ANULA, no se borra la fila: el cobro existió, se le mandó al comprador y
+  // puede haber preguntado por él. Un `DELETE` dejaría una conversación sobre
+  // algo que en la base no pasó nunca.
+  if (body.action === 'remove_cobro') {
+    if (!body.cobro_id) return json({ error: 'falta_cobro' }, 400)
+
+    const yo = await quienLlama()
+    if (!yo || !puedeEscribir({ ...session, writer_seller_ids: writers }, yo)) {
+      return new Response('Not allowed', { status: 403, headers: corsHeaders })
+    }
+
+    const { data: cobro } = await supabase.from('cobros')
+      .select('id, tipo, estado, monto, concepto').eq('id', body.cobro_id).eq('session_id', session.id).maybeSingle()
+    if (!cobro) return json({ error: 'no_existe' }, 404)
+    if (!sePuedeBorrar(cobro)) return json({ error: 'no_se_puede_quitar' }, 409)
+
+    await supabase.from('cobros').update({ estado: 'ANULADO' }).eq('id', cobro.id)
+
+    // Queda dicho en el hilo, y solo para el equipo: el comprador no tiene por
+    // qué enterarse de un cobro que se dio de baja, pero el equipo sí — si
+    // alguien pregunta por esos S/ 20, la respuesta tiene que estar acá.
+    await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'system', sender_name: 'Kross',
+      type: 'text', visibility: 'sellers',
+      body: `🗑️ Se dio de baja el cobro de ${montoTexto(Number(cobro.monto))} · ${cobro.concepto ?? 'sin concepto'}`,
+    })
+    await broadcast(session.id, 'cobros_update', {})
+    return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   if (body.action === 'expel') {

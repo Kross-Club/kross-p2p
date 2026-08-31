@@ -5,8 +5,8 @@ import { isPickupDispatch, pickupBranchIdOf } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
 import PagarSaldo from '../../components/PagarSaldo'
 import TarjetaDePago from '../../components/TarjetaDePago'
-import { TIPO_COBRO, montoDeLaTarjeta } from '../../lib/cobro-por-chat'
-import { puedePagarSaldo, saldoDelPedido } from '../../lib/order-money'
+import { TIPO_COBRO, montoDeLaTarjeta, cobroDeLaTarjeta } from '../../lib/cobro-por-chat'
+import { puedePagarSaldo, saldoDelPedido, cobrosDelPedido } from '../../lib/order-money'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
@@ -140,10 +140,17 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
   // viejo queda como lo que es, un aviso que ya pasó, y no como un botón que
   // cobraría de menos. Es la misma condición que la tarjeta permanente.
   if (msg.type === TIPO_COBRO && pedido) {
+    // De qué cobro es. Con `cobro_id` (bloque §37) la tarjeta se pinta contra
+    // ESE cobro; sin él es la del saldo, que es lo que fue siempre. Lo que no
+    // se hace nunca es leer el monto del mensaje: se lee del pedido de HOY, y
+    // por eso una tarjeta vieja no cobra de menos después de un upsell.
+    const suyo = cobroDeLaTarjeta(msg, cobrosDelPedido(pedido))
     return (
       <TarjetaDePago
-        texto={msg.body} monto={montoDeLaTarjeta(pedido, saldoDelPedido(pedido))} pedido={pedido} role="buyer"
-        pagada={!puedePagarSaldo(pedido)} hora={time}
+        texto={msg.body}
+        monto={suyo ? suyo.monto : montoDeLaTarjeta(pedido, saldoDelPedido(pedido))}
+        pedido={pedido} cobro={suyo} role="buyer"
+        pagada={suyo ? suyo.verificado : !puedePagarSaldo(pedido)} hora={time}
       />
     )
   }

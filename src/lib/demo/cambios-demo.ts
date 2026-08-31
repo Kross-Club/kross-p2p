@@ -4,6 +4,7 @@ import { resumenDelPedido } from '../../../supabase/functions/_shared/resumen-pe
 import { cobradoDelPedido } from '../order-money'
 import type { OrderItem, Participant } from '../order-api'
 import type { StoreOrder } from '../store-orders'
+import type { FilaDeCobro } from '../../../supabase/functions/_shared/cobros.ts'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
 //
@@ -49,6 +50,8 @@ export interface MensajeDemo {
   created_at: string
   read_at: string | null
   offer?: { product_id?: string | null; nombre: string; precio: number; image?: string | null; accepted?: boolean } | null
+  /** A qué cobro apunta una tarjeta de pago (bloque §37). */
+  cobro_id?: string | null
   /** `sellers` = comentario interno. En el demo no hay comprador al otro lado,
    *  así que se guarda igual que cualquier mensaje: lo que se enseña es cómo se
    *  ve y dónde vive, no el candado —ese lo pone `get-session`. */
@@ -85,6 +88,9 @@ export interface CambioDemo {
   /** El saldo pagado, enseñando. Mueve la misma fila que movería el webhook. */
   saldo_verification?: string | null
   saldo_matched_at?: string | null
+  /** La lista de cobros (bloque §36). Se pisa entera y no se funde: quitar un
+   *  cobro es quitarlo, y un merge por índice dejaría el viejo debajo. */
+  cobros?: FilaDeCobro[]
 }
 
 type Cambios = Record<string, CambioDemo>
@@ -189,12 +195,16 @@ export function ofertaEnviadaEnDemo(
 /** El cobro, ENVIADO. Igual que la oferta: primer tiempo. */
 export function cobroEnviadoEnDemo(
   p: PedidoDemo, texto: string, quien: { nombre: string; rol: string | null },
+  /** De qué cobro es (bloque §37). Sin esto la tarjeta sería del saldo, y un
+   *  flete de S/ 20 se enseñaría con el monto y el botón del saldo. */
+  cobroId?: string,
 ): MensajeDemo {
   const ahora = Date.now()
   const msg: MensajeDemo = {
     id: `demo-cobro-${ahora}`, session_id: p.id, sender_role: 'seller',
     sender_name: quien.nombre, sender_role_label: quien.rol, read_at: null,
     type: 'cobro', body: texto, created_at: new Date(ahora).toISOString(),
+    cobro_id: cobroId ?? null,
   }
   agregarMensajeDemo(p.id, msg)
   return msg
@@ -564,4 +574,49 @@ export function quitarEnDemo(p: PedidoDemo, id: string): RespuestaDemo {
   const patch: CambioDemo = { participants }
   guardarCambio(p.id, patch)
   return { ok: true, patch }
+}
+
+
+// ─── Cobrar algo más, enseñando ──────────────────────────────────────────────
+//
+// Las tres mueven la LISTA de cobros, que es la misma que lee el panel en una
+// tienda de verdad (bloque §36). No hay atajo de pantalla: si el demo tocara
+// otra cosa, enseñaría un camino que en producción no existe.
+
+/** Un cobro nuevo, pendiente. Sin cupón, igual que en la tienda real: el cupón
+ *  se emite cuando el comprador toca pagar.
+ *
+ *  El id lleva la posición y no un azar: dos cobros creados en el mismo
+ *  milisegundo compartirían id, y el segundo pagaría por el primero. */
+export function cobroExtraEnDemo(p: PedidoDemo, monto: number, concepto: string): CambioDemo & { id: string } {
+  const previos = p.cobros ?? []
+  const id = `demo-extra-${previos.length}-${Date.now()}`
+  const cobros = [...previos, {
+    id, tipo: 'extra' as const, monto, estado: 'PENDING', concepto,
+    created_at: new Date().toISOString(),
+  }]
+  guardarCambio(p.id, { cobros })
+  return { cobros, id }
+}
+
+/** El comprador lo paga — segundo tiempo, diez segundos después.
+ *
+ *  Se marca POR ID y no "el primer pendiente": con dos cobros esperando, el que
+ *  se acepta tiene que ser el que se acaba de mandar. */
+export function cobroExtraPagadoEnDemo(p: PedidoDemo, cobroId: string): CambioDemo {
+  const cobros = (p.cobros ?? []).map(c =>
+    c.id === cobroId ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString() } : c)
+  const patch = { cobros }
+  guardarCambio(p.id, patch)
+  return patch
+}
+
+/** Darlo de baja. ANULADO y no borrado, igual que el servidor: el cobro existió
+ *  y se le mandó al comprador; borrarlo dejaría una conversación sobre algo que
+ *  en la base no pasó nunca. */
+export function quitarCobroEnDemo(p: PedidoDemo, cobroId: string): CambioDemo {
+  const cobros = (p.cobros ?? []).map(c => c.id === cobroId ? { ...c, estado: 'ANULADO' } : c)
+  const patch = { cobros }
+  guardarCambio(p.id, patch)
+  return patch
 }
