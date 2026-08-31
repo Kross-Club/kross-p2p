@@ -40,6 +40,52 @@ const supabase = createClient(
 const ok = (body: unknown = { received: true }, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
+// ─── Avisarle a quien esté mirando ───────────────────────────────────────────
+//
+// Esta función escribía en la base y no le avisaba a nadie. Mientras lo único
+// que cambiaba era el color de una tarjeta, se notaba poco: el vendedor recargaba
+// y ahí estaba. Con el COMPROBANTE deja de ser aceptable — el mensaje que lleva
+// el botón entra al hilo y el chat abierto no se entera, así que el pago cruza y
+// en pantalla no pasa nada. Es exactamente lo que uno mira cuando prueba un
+// cobro.
+//
+// Best-effort a propósito: el 2xx del webhook JAMÁS depende de esto. La plata ya
+// está confirmada en la base; que la pantalla se entere ahora o al recargar es
+// otra cosa, y perder el cobro por un aviso sería el peor negocio posible.
+async function broadcast(sessionId: string, event: string, payload: unknown) {
+  try {
+    await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      },
+      body: JSON.stringify({ messages: [{ topic: `order:${sessionId}`, event, payload }] }),
+    })
+  } catch (e) {
+    console.warn('[pay360-webhook] no se pudo avisar por el canal', String(e).slice(0, 200))
+  }
+}
+
+/**
+ * Los dos avisos que van juntos cuando un cobro entra: el mensaje nuevo y que
+ * la plata del pedido cambió.
+ *
+ * El mensaje se manda ENTERO por el canal —igual que lo hace el chat cuando
+ * escribe alguien— y `cobros_update` no lleva nada: la lista se vuelve a pedir
+ * por la puerta que la calcula. La plata no viaja por un canal de broadcast.
+ *
+ * ⚠️ Solo el acuse del comprador (`visibility: 'all'`). El mensaje INTERNO del
+ * cruce no se anuncia por acá: `order:<id>` es el canal del comprador —su chat
+ * está suscrito y pinta lo que llegue—, así que mandarlo se lo aparecería en
+ * pantalla en vivo. Una fuga peor que la de leerlo, porque no hay que buscarla.
+ */
+async function avisar(sessionId: string, acuse: unknown) {
+  if (acuse) await broadcast(sessionId, 'new_message', acuse)
+  await broadcast(sessionId, 'cobros_update', {})
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return ok({ error: 'Method not allowed' }, 405)
 
@@ -287,11 +333,12 @@ Deno.serve(async (req) => {
   // repo. Acá había una copia escrita a mano que no conocía `AGENCIA`.
   const esRecojo = isPickupDispatch(session.dispatch_type)
   if (esExtra) {
-    await supabase.from('chat_messages').insert({
+    const { data: acuse } = await supabase.from('chat_messages').insert({
       session_id: session.id, sender_role: 'system', sender_name: 'Kross',
       type: 'status_update', visibility: 'all', cobro_id: cobroId,
       body: acuseDePago({ tipo: 'extra', pagado: paid, total: Number(session.product_price ?? 0), esRecojo, concepto: cobroDelCupon?.concepto }),
-    })
+    }).select().single()
+    await avisar(session.id, acuse)
     // Y se corta acá, antes de CAPI: un cobro extra no es otra compra. Contarlo
     // como `Purchase` le sumaría a Meta y a TikTok una conversión por cada flete
     // cobrado, y el público "de los que sí pagaron" —que es para lo que existe
@@ -299,7 +346,7 @@ Deno.serve(async (req) => {
     return ok({ received: true, matched: true, extra: true })
   }
 
-  await supabase.from('chat_messages').insert({
+  const { data: acuse } = await supabase.from('chat_messages').insert({
     session_id: session.id, sender_role: 'system', sender_name: 'Kross',
     // Apunta al cobro: eso convierte este aviso en la tarjeta con el botón que
     // abre la constancia (`TarjetaDeComprobante`). Ver bloque §37.
@@ -308,7 +355,8 @@ Deno.serve(async (req) => {
       tipo: esSaldo ? 'saldo' : 'adelanto',
       pagado: paid, total: Number(session.product_price ?? 0), esRecojo,
     }),
-  })
+  }).select().single()
+  await avisar(session.id, acuse)
 
   // ─── CAPI · Purchase server-side ───────────────────────────────────────────
   //
