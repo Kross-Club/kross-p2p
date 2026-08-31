@@ -6,14 +6,16 @@
 // es lo que se busca.
 //
 // Vivía en DOS listas dentro de la misma tarjeta: una que se pintaba y otra que
-// armaba el texto del botón de copiar. Y ya discrepaban — el **cupón** estaba
-// solo en el texto copiado, con el argumento de que "es un alfanumérico de API
-// que no ayuda a cuadrar mirando". Ese argumento era del portal, no de quien
-// trabaja: el cupón es lo que soporte de 360pay pide para abrir un caso, y
-// tenerlo escondido detrás de un botón obliga a copiar-y-pegar a ciegas para
-// leer un dato que debería estar a la vista.
+// armaba el texto del botón de copiar. Una lista, dos usos: lo que se ve es
+// exactamente lo que se copia.
 //
-// Una lista, dos usos. Lo que se ve es exactamente lo que se copia.
+// **Qué NO va, y por qué** (31-ago-2026). Se llegó a pintar el `_id` del cupón,
+// suponiendo que era lo que soporte pediría. No lo es: el panel de 360pay
+// **titula sus cupones con el código de pago** —"Cupón: KSH34750200669"— y el
+// `_id` es de su API, no aparece en ninguna pantalla que use una persona. O sea
+// que el código de pago YA es el cupón, y poner los dos era pedirle a quien
+// mira que distinga entre dos nombres del mismo cupón. Sigue en la base
+// (`pay360_coupon_id`) para lo que se resuelva por API; en pantalla es ruido.
 
 import { fechaYHora } from './fechas'
 
@@ -21,9 +23,11 @@ export interface RastroDeCobro {
   /** Op. bancaria — lo que pide el banco en un reclamo. */
   operation_number?: string | null
   bank?: string | null
-  /** El `_id` del cupón en 360pay: lo que su soporte pide para abrir un caso. */
+  /** El `_id` interno de 360pay. Viaja porque un día puede hacer falta por API;
+   *  NO se pinta ni se copia — su propio panel no lo enseña. */
   coupon_id?: string | null
-  /** Código de pago del cliente (KSH…): con esto el portal LISTA el cupón. */
+  /** Código de pago (KSH…). Es lo que el panel de 360pay llama "Cupón" y con lo
+   *  que lista y abre cada uno: el único identificador que usa una persona. */
   payment_code?: string | null
 }
 
@@ -38,10 +42,10 @@ export interface DatoDeRastro {
 /**
  * Los datos con los que se sigue este cobro, en el orden en que se usan.
  *
- * El orden no es decorativo: así se busca. Primero el **código de pago**, que
- * es como el portal de 360pay lista los cupones; con el cupón abierto se coteja
- * el **id**; si hay que escalar al banco, la **operación**; y la **fecha y
- * hora** es lo que ubica la transacción en un listado de miles.
+ * El orden no es decorativo: así se busca. Primero el **código de pago**, que es
+ * con lo que el portal de 360pay lista y abre el cupón; si hay que escalar al
+ * banco, la **operación**; y la **fecha y hora** es lo que ubica la transacción
+ * en un listado de miles.
  *
  * Solo lo que existe: un campo vacío no se pinta ni se copia. Media línea
  * diciendo "Op. bancaria —" es ruido que hace dudar de si falta el dato o falló
@@ -62,7 +66,6 @@ export function datosDeRastro(entrada: {
 
   pon('Pedido', entrada.orderId)
   pon('Código de pago', t?.payment_code)
-  pon('Cupón 360pay', t?.coupon_id, true)
   // Operación y banco son UN dato: el número sin el banco no se busca en
   // ninguna parte, y el banco sin el número tampoco.
   const op = (t?.operation_number ?? '').trim()

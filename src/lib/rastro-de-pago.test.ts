@@ -20,14 +20,17 @@ describe('con qué se sigue un cobro', () => {
   // el cupón, y solo si hay que escalar aparece el banco.
   it('están los cuatro, en el orden en que se usan', () => {
     expect(etiquetas(datosDeRastro(ENTRADA)))
-      .toEqual(['Pedido', 'Código de pago', 'Cupón 360pay', 'Op. bancaria', 'Cobrado'])
+      .toEqual(['Pedido', 'Código de pago', 'Op. bancaria', 'Cobrado'])
   })
 
-  // El que faltaba en pantalla: vivía solo dentro del texto del botón de copiar,
-  // así que para leer el dato que pide soporte había que copiar a ciegas.
-  it('el cupón se ve, no solo se copia', () => {
-    expect(valorDe(datosDeRastro(ENTRADA), 'Cupón 360pay')).toBe('66d1f0a9c3e14b0012a7bf51')
-    expect(datosDeRastro(ENTRADA).find(d => d.etiqueta === 'Cupón 360pay')?.largo).toBe(true)
+  // El `_id` viaja en el rastro por si un día hace falta por API, pero NO se
+  // pinta: el panel de 360pay titula sus cupones con el CÓDIGO DE PAGO
+  // —"Cupón: KSH34750200669"— así que el código ya ES el cupón. Poner los dos
+  // era pedirle a quien mira que distinga entre dos nombres del mismo cupón.
+  it('el `_id` interno de 360pay no se enseña: su propio panel no lo usa', () => {
+    const texto = JSON.stringify(datosDeRastro(ENTRADA))
+    expect(texto).not.toContain('66d1f0a9c3e14b0012a7bf51')
+    expect(etiquetas(datosDeRastro(ENTRADA))).not.toContain('Cupón 360pay')
   })
 
   // Operación y banco son UN dato: el número sin el banco no se busca en
@@ -51,7 +54,7 @@ describe('con qué se sigue un cobro', () => {
   // y en el panel no aparece.
   it('un cupón sin pagar igual se puede rastrear', () => {
     expect(etiquetas(datosDeRastro({ trace: { payment_code: 'KSH0042', coupon_id: 'abc123' } })))
-      .toEqual(['Código de pago', 'Cupón 360pay'])
+      .toEqual(['Código de pago'])
   })
 })
 

@@ -31,6 +31,8 @@ import CustomerCard from '../../components/CustomerCard'
 import Confirmar from '../../components/Confirmar'
 import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
+import { TIPO_COBRO, textoDeCobro } from '../../lib/cobro-por-chat'
+import { saldoDelPedido, soles } from '../../lib/order-money'
 import { useSeller } from '../../lib/seller-session'
 import { puedeVerClientes } from '../../lib/store-clients'
 import { pedidoDemoPorToken, esTokenDemo, tiendaDemo, AUDIO_DEMO } from '../../lib/demo/tienda-demo'
@@ -871,6 +873,49 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     }
   }, [input, session, sending, sellerName, sellerRole, token, interno, equipoEtiquetable])
 
+  // ── Volver a pedir el saldo por el chat ──
+  //
+  // Es un mensaje normal con `type: 'cobro'`, y por eso no hizo falta nada nuevo
+  // en el servidor: `seller-send-message` lo inserta, lo emite al canal del
+  // comprador y dispara su push (y WhatsApp si no hay push). Lo único que ese
+  // tipo cambia es cómo lo pinta el chat del comprador — con el botón de Yape
+  // debajo.
+  //
+  // El monto sale del pedido de HOY, no de cuando se generó el cupón: con un
+  // upsell de por medio el saldo cambió, y prometer el viejo sería cobrar de
+  // menos.
+  const cobrarPorChat = useCallback(async () => {
+    if (!session) return
+    // `saldoDelPedido` y no una resta a mano: es la MISMA cuenta que pinta el
+    // anillo y que decide si el botón de pagar aparece. Tres restas iguales en
+    // tres sitios es como se llega a que el mensaje prometa un monto y la caja
+    // cobre otro.
+    const body = textoDeCobro(soles(saldoDelPedido(session)))
+
+    if (esTokenDemo(token)) {
+      const msg = {
+        id: `demo-cobro-${Date.now()}`, session_id: session.id, sender_role: 'seller',
+        sender_name: sellerName, sender_role_label: sellerRole, type: TIPO_COBRO,
+        body, created_at: new Date().toISOString(), read_at: null,
+      }
+      agregarMensajeDemo(session.id, msg)
+      setMessages(prev => [...prev, msg as unknown as OrderMessage])
+      return
+    }
+
+    const res = await fetch(`${BASE}/seller-send-message`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: session.id, seller_name: sellerName, seller_role: sellerRole,
+        type: TIPO_COBRO, body,
+      }),
+    })
+    if (!res.ok) { alert('No se pudo enviar el cobro. Revisa tu conexión e intenta de nuevo.'); return }
+    const saved: OrderMessage = await res.json()
+    setMessages(prev => prev.some(m => m.id === saved.id) ? prev : [...prev, saved])
+    channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
+  }, [session, token, sellerName, sellerRole])
+
   if (loading) {
     return (
       <div className="flex flex-col h-screen items-center justify-center" style={{ background: 'var(--chat-bg)' }}>
@@ -1291,7 +1336,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           hay), con su monto y su rastro contra el banco. Acá había además un
           `AdvancePanel` que repetía el mismo monto con otras palabras; se
           eliminó con la línea de la ficha del cliente que hacía lo mismo. */}
-      <PagoTrace session={session} />
+      <PagoTrace session={session} onCobrar={cobrarPorChat} />
       {/* El motivo del fallo, que no es del cobro sino de la EMISIÓN: por qué
           un pedido con adelanto ni siquiera tiene cupón. */}
       {session.payment_reason && session.payment_verification !== 'MATCHED' && (
