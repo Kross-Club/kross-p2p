@@ -1515,21 +1515,21 @@ CREATE TABLE IF NOT EXISTS cobros (
   pay360_coupon_id      text,
   pay360_consumer_code  text,
   coupon_expires_at     timestamptz,
-  /** Para los `extra`: qué se está cobrando. "Flete a Piura", "diferencia de
-   *  talla". Sin esto un cobro suelto es un monto sin razón, y el comprador que
-   *  lo recibe por el chat no tiene cómo saber qué está pagando. */
+  -- Para los `extra`: qué se está cobrando. "Flete a Piura", "diferencia de
+  -- talla". Sin esto un cobro suelto es un monto sin razón, y el comprador que
+  -- lo recibe por el chat no tiene cómo saber qué está pagando.
   concepto              text,
-  /** Quién lo creó, cuando lo creó una persona (`auth_user_id`). NULL = lo
-   *  emitió el sistema: el adelanto del checkout, el saldo de la guía. */
+  -- Quién lo creó, cuando lo creó una persona (`auth_user_id`). NULL = lo
+  -- emitió el sistema: el adelanto del checkout, el saldo de la guía.
   created_by            text,
   created_at            timestamptz DEFAULT now()
 );
 
+-- RLS encendido y SIN políticas, a propósito: así solo entra el service role.
+-- Ni el comprador ni el panel leen esta tabla directo — van por `get-session` y
+-- `get-store-sessions`, que deciden qué le toca ver a cada uno. Para la tabla de
+-- la plata, "nadie salvo el servidor" es la política correcta.
 ALTER TABLE cobros ENABLE ROW LEVEL SECURITY;
--- El comprador nunca lee esta tabla directo: va por `get-session`, que decide
--- qué le toca ver. El panel también. Sin políticas de SELECT, solo el service
--- role entra — que es lo que se quiere para la tabla de la plata.
-DROP POLICY IF EXISTS "cobros_service_only" ON cobros;
 
 CREATE INDEX IF NOT EXISTS idx_cobros_session ON cobros(session_id);
 CREATE INDEX IF NOT EXISTS idx_cobros_cupon   ON cobros(pay360_coupon_id) WHERE pay360_coupon_id IS NOT NULL;
