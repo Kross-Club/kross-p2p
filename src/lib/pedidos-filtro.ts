@@ -127,8 +127,15 @@ export const ESTADOS_DE_COBRO: { key: EstadoDeCobro; label: string }[] = [
  * garantiza que las cuatro partan la lista y que las cuentas sumen el total.
  */
 export function estadoDeCobro(p: StoreOrder): EstadoDeCobro {
-  const entrados = cobrosDelPedido(p).filter(c => c.verificado)
-  return entrados.length ? entrados[entrados.length - 1].tipo : 'sin_cobrar'
+  // Los `extra` no entran, y no es un descuido. Este filtro contesta **cómo se
+  // pagó el pedido** —adelantó, pagó todo, saldó— y un cobro adicional (un
+  // flete, una diferencia) no es una etapa de ese camino: es plata aparte. Si
+  // contara, cobrarle el flete a alguien lo sacaría del cajón "solo adelanto"
+  // sin que su adelanto hubiera cambiado, y el tablero mentiría sobre el
+  // embudo. Se ven en el pedido, no en esta casilla.
+  const entrados = cobrosDelPedido(p).filter(c => c.verificado && c.tipo !== 'extra')
+  const ultimo = entrados[entrados.length - 1]
+  return ultimo ? (ultimo.tipo as EstadoDeCobro) : 'sin_cobrar'
 }
 
 // ─── Buscar UN pedido ────────────────────────────────────────────────────────

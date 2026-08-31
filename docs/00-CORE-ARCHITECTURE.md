@@ -23,6 +23,49 @@ y actualizan.
   (`marca.krossclub.app`). `isPlatformHost()` separa la plataforma de una marca.
   Branding por marca con variable CSS `--brand`.
 
+## La plata: un pedido tiene N cobros ✅ (31-ago-2026)
+
+Un pedido tenía exactamente **dos** cobros y vivían como columnas de `order_sessions`:
+`advance_*` y `saldo_*`. Funcionó mientras el producto cobraba dos veces, y dejó de funcionar en
+cuanto hizo falta un tercero — un flete, una diferencia por un cambio de talla, un cobro que el
+vendedor arma a mano. Con columnas, el tercero **no tiene dónde ir**: o se le monta encima al
+saldo (y el saldo deja de ser el saldo) o no existe.
+
+Ahora un cobro es una **fila** (`cobros`, bloque §36). El adelanto y el saldo no son casos
+especiales: son dos filas más, con el mismo id, el mismo cupón y el mismo rastro bancario que
+cualquier otra.
+
+| tipo | quién lo emite |
+|---|---|
+| `adelanto` | el checkout, al cerrar |
+| `saldo` | la guía, cuando existe |
+| `extra` | una persona, con su `concepto` |
+
+**`total` no se guarda, se deduce.** "Pagó todo" es un adelanto que cubre el precio entero, y eso
+se decide contra el valor de **hoy**: un upsell lo convierte en adelanto sin que nadie reescriba
+la fila. Si estuviera guardado habría que acordarse de mantenerlo — y ese es justo el tipo de
+dato que se queda viejo sin avisar.
+
+### Cómo se migra la tabla de la plata sin apostar
+
+**Veintiún archivos** leen esas columnas. Moverlos todos de un golpe, sin poder probar contra la
+base de producción, sobre pedidos que respaldan un contrato de recaudación, es la clase de cambio
+que sale mal una vez y se paga durante meses. Así que va en tres tiempos:
+
+1. **la tabla existe, se llena con lo que ya había, y TODO la lee** ← aquí estamos;
+2. solo ella se escribe;
+3. las columnas se van.
+
+Mientras dura, se escribe en los dos sitios — **pero la traducción vive en UNA función**
+(`_shared/cobros.ts` · `columnasDe`), así que la tabla y las columnas no pueden separarse por un
+descuido en cualquiera de los veintiún archivos.
+
+Y lo que sostiene todo esto es que **`cobrosDelPedido` ya era el embudo único**: el anillo, el
+filtro de pagos del tablero, las tarjetas verdes y `cobradoDelPedido` pasan todos por ahí. Por
+eso la mudanza cabe en una función con dos entradas y una salida — con una prueba que corre los
+mismos datos por los dos caminos y exige el mismo resultado. El día que ninguna fila venga sin
+lista, esa prueba dirá que sobra la mitad de la función.
+
 ## Autenticación & roles ✅
 
 - **Supabase Auth** para el equipo (`sellers.auth_user_id`).

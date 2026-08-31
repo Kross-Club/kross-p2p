@@ -283,21 +283,28 @@ Deno.serve(async (req) => {
   // que falta — es plata mal cobrada: el banco paga SIEMPRE el pendiente más
   // antiguo, así que el huérfano se lleva el pago del próximo pedido de ese
   // mismo comprador. Solo esta fila permite anularlo después.
-  await supabase.from('order_sessions').update(esSaldo
-    ? {
-        pay360_saldo_coupon_id: coupon.data._id,
-        pay360_saldo_consumer_code: consumerCode,
-        pay360_saldo_coupon_expires_at: venceEl,
-        saldo_amount: rowAmount,
-        saldo_verification: 'PENDING',
-      }
-    : {
-        pay360_coupon_id: coupon.data._id,
-        pay360_consumer_code: consumerCode,
-        pay360_coupon_expires_at: venceEl,
-        payment_verification: 'PENDING',
-        payment_reason: null,
-      }).eq('id', session.id)
+  //
+  // Se escribe en LOS DOS sitios mientras dura la mudanza al bloque §36: la fila
+  // de `cobros`, que es el modelo, y las columnas de siempre, que es lo que
+  // veinte archivos siguen leyendo. La traducción la hace `columnasDe` —un solo
+  // sitio— para que los dos no puedan separarse por descuido.
+  const tipo = esSaldo ? 'saldo' : 'adelanto'
+  const delCobro = {
+    monto: rowAmount,
+    estado: 'PENDING',
+    pay360_coupon_id: coupon.data._id as string,
+    pay360_consumer_code: consumerCode,
+    coupon_expires_at: venceEl,
+  }
+
+  await supabase.from('cobros')
+    .upsert({ session_id: session.id, store_id: session.store_id ?? null, tipo, ...delCobro },
+            { onConflict: 'session_id,tipo' })
+
+  await supabase.from('order_sessions').update({
+    ...columnasDe(tipo, delCobro),
+    ...(esSaldo ? {} : { payment_reason: null }),
+  }).eq('id', session.id)
 
   // El enlace: primero el que mande 360pay, y si no viene, el que armamos.
   const deeplink = paymentUrlOf(coupon.data as Record<string, unknown>)

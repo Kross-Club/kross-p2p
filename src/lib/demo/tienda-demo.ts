@@ -437,6 +437,16 @@ async function construir(): Promise<TiendaDemo> {
 
     const miembro = elige(r, EQUIPO)
     const faseAt = t.fase ? new Date(ahora - entre(r, 0, 6) * DIA).toISOString() : null
+    // Cuándo entró cada cobro. Se calcula UNA vez y se usa en los dos sitios
+    // —las columnas y la lista de `cobros`— por dos razones que van juntas:
+    //
+    //  · cada `r()` corre el generador entero, así que una tirada de más acá le
+    //    cambia el azar a todos los pedidos de abajo (ver el aviso en CLAUDE.md);
+    //  · y si la lista dijera una fecha y la columna otra, el demo enseñaría un
+    //    pedido que no cuadra consigo mismo — justo lo que la mudanza al bloque
+    //    §36 existe para que no pase.
+    const cobradoEl = cruzado ? new Date(ahora - entre(r, 0, 8) * DIA).toISOString() : null
+    const saldoCobradoEl = saldoPagado ? new Date(ahora - entre(r, 0, 4) * DIA).toISOString() : null
 
     return {
       id: `demo-ped-${i}`,
@@ -479,14 +489,28 @@ async function construir(): Promise<TiendaDemo> {
       // —otro cupón, otra operación bancaria, otra fecha—, igual que en la
       // tienda real (bloque §31 del esquema).
       payment_trace: rastroDemo(r, i, cruzado),
-      payment_matched_at: cruzado ? new Date(ahora - entre(r, 0, 8) * DIA).toISOString() : null,
+      payment_matched_at: cobradoEl,
       saldo_trace: saldoPagado || saldoEmitido ? rastroDemo(r, i + 5000, saldoPagado) : null,
-      saldo_matched_at: saldoPagado ? new Date(ahora - entre(r, 0, 4) * DIA).toISOString() : null,
+      saldo_matched_at: saldoCobradoEl,
       // La tienda de ejemplo COBRA EN LÍNEA. Sin esta línea `puedePagarSaldo`
       // daba false en todo el demo, así que ni el comprador veía su botón de
       // pagar el saldo ni el vendedor el de mandarle la tarjeta: dos funciones
       // enteras invisibles justo donde se enseñan.
       payment_provider: '360PAY',
+      // Los cobros como LISTA (bloque §36), que es lo que lee el panel desde la
+      // mudanza. Se generan a partir de los mismos datos que las columnas de
+      // arriba: si el demo armara una lista distinta de sus propias columnas,
+      // enseñaría un pedido que no cuadra consigo mismo.
+      cobros: [
+        { id: `demo-cob-${i}-a`, tipo: 'adelanto' as const, monto: adelanto,
+          estado: cruzado ? 'MATCHED' : 'PENDING', matched_at: cobradoEl,
+          created_at: new Date(ahora - 9 * DIA).toISOString() },
+        ...(saldoPagado || saldoEmitido ? [{
+          id: `demo-cob-${i}-s`, tipo: 'saldo' as const, monto: falta,
+          estado: saldoPagado ? 'MATCHED' : 'PENDING', matched_at: saldoCobradoEl,
+          created_at: new Date(ahora - 2 * DIA).toISOString(),
+        }] : []),
+      ],
       // Y uno de cada cinco cupones de saldo está VENCIDO. Es lo que hace
       // visible el otro camino —"venció · generar otro código"—, que si no
       // habría que esperar un mes para verlo una vez.

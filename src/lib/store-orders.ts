@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { RastroDeCobro } from './rastro-de-pago'
+import type { FilaDeCobro } from '../../supabase/functions/_shared/cobros.ts'
 import type { SellerProfile } from './seller-session'
 import { useDemo } from './demo/modo-demo'
 import { tiendaDemo } from './demo/tienda-demo'
@@ -76,6 +77,10 @@ export interface StoreOrder {
    *  arma `get-session` cruzando el cupón de la fila con el evento del webhook;
    *  acá viajan ya armados porque es lo que lee la tarjeta de cobro. Dos, no
    *  uno: adelanto y saldo son operaciones distintas. */
+  /** Los cobros de este pedido (bloque §36). Cuando viene, `cobrosDelPedido`
+   *  lee de acá: es el modelo donde un pedido tiene N cobros y el adelanto y el
+   *  saldo son dos filas más. Las columnas de abajo son lo de antes. */
+  cobros?: FilaDeCobro[] | null
   payment_matched_at?: string | null
   saldo_matched_at?: string | null
   payment_trace?: RastroDeCobro | null

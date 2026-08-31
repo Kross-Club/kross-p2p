@@ -91,7 +91,10 @@ describe('cuánto del pedido ya está pagado', () => {
 describe('las operaciones de cobro', () => {
   it('media parte es un adelanto', () => {
     const c = cobrosDelPedido({ product_price: 180, advance_amount: 90, payment_verification: 'MATCHED' })
-    expect(c).toEqual([{ tipo: 'adelanto', monto: 90, verificado: true }])
+    // `toMatchObject` y no `toEqual`: al `Cobro` le van creciendo campos —id,
+    // vencimiento, concepto— y una comparación exacta convierte cada campo
+    // nuevo en una prueba rota que no descubrió nada.
+    expect(c).toMatchObject([{ tipo: 'adelanto', monto: 90, verificado: true }])
   })
 
   // Llamarlo adelanto haría buscar un saldo que no existe.
@@ -114,7 +117,7 @@ describe('las operaciones de cobro', () => {
       product_price: 180, advance_amount: 90, payment_verification: 'MATCHED',
       saldo_amount: 90, saldo_verification: 'PENDING',
     })
-    expect(c[1]).toEqual({ tipo: 'saldo', monto: 90, verificado: false })
+    expect(c[1]).toMatchObject({ tipo: 'saldo', monto: 90, verificado: false })
   })
 
   it('sin cobros no inventa ninguno', () => {
@@ -201,5 +204,85 @@ describe('un upsell cambia el total, y el anillo lo refleja', () => {
     expect(avanceDelPago(medio).fraccion).toBeCloseTo(0.5)
     expect(avanceDelPago({ ...medio, product_price: 260 }).fraccion).toBeCloseTo(90 / 260)
     expect(saldoDelPedido({ ...medio, product_price: 260 })).toBe(170)
+  })
+})
+
+// ─── Las dos formas de leer lo mismo (bloque §36) ────────────────────────────
+//
+// Un pedido tenía DOS cobros y vivían como columnas; ahora son N filas. Durante
+// la mudanza `cobrosDelPedido` acepta las dos entradas, y esta prueba es la que
+// impide que se conviertan en dos definiciones distintas: los mismos datos por
+// los dos caminos tienen que dar el mismo resultado. El día que ninguna fila
+// venga sin lista, sobra la mitad de la función — y esta prueba lo dirá.
+
+describe('la lista de cobros dice lo mismo que las columnas', () => {
+  const casos = [
+    { nombre: 'medio adelanto sin saldo', valor: 180, adelanto: 90, adelantoOk: true, saldo: 0, saldoOk: false },
+    { nombre: 'pago total', valor: 180, adelanto: 180, adelantoOk: true, saldo: 0, saldoOk: false },
+    { nombre: 'adelanto y saldo cobrados', valor: 180, adelanto: 90, adelantoOk: true, saldo: 90, saldoOk: true },
+    { nombre: 'saldo emitido sin pagar', valor: 180, adelanto: 90, adelantoOk: true, saldo: 90, saldoOk: false },
+    { nombre: 'nada cobrado', valor: 180, adelanto: 90, adelantoOk: false, saldo: 0, saldoOk: false },
+  ]
+
+  for (const c of casos) {
+    it(c.nombre, () => {
+      const porColumnas = {
+        product_price: c.valor,
+        advance_amount: c.adelanto || null,
+        payment_verification: c.adelantoOk ? 'MATCHED' : 'PENDING',
+        saldo_amount: c.saldo || null,
+        saldo_verification: c.saldo ? (c.saldoOk ? 'MATCHED' : 'PENDING') : null,
+      }
+      const porLista = {
+        product_price: c.valor,
+        cobros: [
+          ...(c.adelanto ? [{ id: 'a', tipo: 'adelanto' as const, monto: c.adelanto, estado: c.adelantoOk ? 'MATCHED' : 'PENDING' }] : []),
+          ...(c.saldo ? [{ id: 's', tipo: 'saldo' as const, monto: c.saldo, estado: c.saldoOk ? 'MATCHED' : 'PENDING' }] : []),
+        ],
+      }
+      const quita = (x: ReturnType<typeof cobrosDelPedido>) =>
+        x.map(({ tipo, monto, verificado }) => ({ tipo, monto, verificado }))
+
+      expect(quita(cobrosDelPedido(porLista))).toEqual(quita(cobrosDelPedido(porColumnas)))
+      expect(cobradoDelPedido(porLista)).toBe(cobradoDelPedido(porColumnas))
+      expect(saldoDelPedido(porLista)).toBe(saldoDelPedido(porColumnas))
+      expect(avanceDelPago(porLista).fraccion).toBeCloseTo(avanceDelPago(porColumnas).fraccion)
+    })
+  }
+})
+
+// ─── Lo que solo puede el modelo nuevo ───────────────────────────────────────
+
+describe('los cobros extra', () => {
+  const conFlete = {
+    product_price: 150,
+    cobros: [
+      { id: 'a', tipo: 'adelanto' as const, monto: 150, estado: 'MATCHED' },
+      { id: 'x', tipo: 'extra' as const, monto: 20, estado: 'MATCHED', concepto: 'Flete a Piura' },
+    ],
+  }
+
+  it('un tercer cobro existe, cosa que con dos columnas no podía', () => {
+    expect(cobrosDelPedido(conFlete).map(c => c.tipo)).toEqual(['total', 'extra'])
+    expect(cobrosDelPedido(conFlete)[1].concepto).toBe('Flete a Piura')
+  })
+
+  // El tope contra el precio es solo del primero: un `extra` es plata ADEMÁS del
+  // valor del pedido —un flete no abarata el producto—, así que recortarlo
+  // contra el precio sería perderlo.
+  it('no se recorta contra el precio del pedido', () => {
+    expect(cobrosDelPedido(conFlete)[1].monto).toBe(20)
+  })
+
+  // Y no cierra ni abre el pedido: el anillo mide el PRECIO cobrado.
+  it('no infla el anillo por encima del pedido', () => {
+    expect(avanceDelPago(conFlete).fraccion).toBe(1)
+    expect(cobradoDelPedido(conFlete)).toBe(150)
+  })
+
+  // Un anulado no está: ni cobrado ni pendiente.
+  it('un cobro anulado desaparece', () => {
+    const anulado = { ...conFlete, cobros: [{ id: 'x', tipo: 'extra' as const, monto: 20, estado: 'ANULADO' }] }
+    expect(cobrosDelPedido(anulado)).toEqual([])
   })
 })
