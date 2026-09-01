@@ -418,6 +418,22 @@ describe('en confirmado todos adelantaron la mitad', () => {
 // no conoce sería un hilo mintiendo.
 
 describe('la guía en los hilos del generador', () => {
+  // Y la de Shalom abre el PDF de muestra (el voucher real autorizado): el
+  // botón del demo enseña el documento formal, igual que la tienda real. Olva
+  // no tiene documento que enseñar, así que su tarjeta va sin PDF y el botón
+  // cae a la hoja de la app.
+  it('la guía de Shalom lleva el PDF de muestra; la de Olva no', () => {
+    const conGuia = t.pedidos.filter(p => (p.stage === 'en_camino' || p.stage === 'entregado') && p.tracking_numero)
+    const shalom = conGuia.find(p => String(p.tracking_courier).toUpperCase() === 'SHALOM')
+    expect(shalom).toBeTruthy()
+    const msg = (shalom?.chat_messages ?? []).find(m => m.type === 'guia')
+    expect(msg?.media_url).toContain('.pdf')
+    const olva = conGuia.find(p => String(p.tracking_courier).toUpperCase() === 'OLVA')
+    if (olva) {
+      expect((olva.chat_messages ?? []).find(m => m.type === 'guia')?.media_url ?? null).toBeNull()
+    }
+  })
+
   it('los pedidos con guía llevan su tarjeta, con su número', () => {
     const conGuia = t.pedidos.filter(p => (p.stage === 'en_camino' || p.stage === 'entregado') && p.tracking_numero)
     expect(conGuia.length).toBeGreaterThan(0)
