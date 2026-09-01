@@ -96,8 +96,11 @@ export default function GuiaPage() {
   }
   pon('Pedido', pedido.order_id)
   pon('Cliente', pedido.buyer_name)
-  pon('Guía', pedido.tracking_numero)
-  // El código va junto a la guía en el mostrador: con uno solo no atienden.
+  // Con el vocabulario del voucher de Shalom ("NRO. ORDEN"), que es el otro
+  // papel que el comprador puede tener en la mano — misma regla que el chat
+  // (`idsDeGuia`). En Olva la guía se llama guía.
+  pon(courier === 'OLVA' ? 'Guía' : 'Nro. de orden', pedido.tracking_numero)
+  // El código va junto al número en el mostrador: con uno solo no atienden.
   pon('Código', pedido.tracking_codigo)
   if (!pedido.tracking_numero) pon('Orden de servicio', pedido.tracking_ose_id)
   pon('Agencia de destino', pedido.agency_name ? `${courier} · ${pedido.agency_name}` : courier)

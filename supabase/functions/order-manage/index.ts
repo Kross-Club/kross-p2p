@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, tracking_phase')
+    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, tracking_phase')
     .eq('id', body.session_id)
     .single()
 

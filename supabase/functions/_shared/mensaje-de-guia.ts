@@ -13,6 +13,43 @@
 
 export type Courier = 'SHALOM' | 'OLVA'
 
+/**
+ * Cómo se NOMBRAN los identificadores de una guía, en todas partes.
+ *
+ * En Shalom, con el vocabulario de su propio voucher: **"Nro. de orden"** y
+ * **"Código"** — es lo que el comprador lee en el PDF y lo que le piden en el
+ * mostrador; llamarlo "Guía" acá y "NRO. ORDEN" allá lo deja traduciendo entre
+ * dos papeles que hablan de lo mismo. En Olva la guía se llama guía, porque así
+ * la llama Olva.
+ *
+ * La CLAVE de recojo no está aquí a propósito: estos ids identifican el envío y
+ * viajan por el chat; la clave lo ENTREGA, y se manda sola —`mensajeDeClave`—
+ * recién cuando el saldo está pagado.
+ */
+export function idsDeGuia(
+  courier: Courier,
+  g: { numero?: string | null; codigo?: string | null; oseId?: string | null },
+): string {
+  if (courier === 'OLVA') return `Guía ${g.numero}`
+  if (!g.numero) return `Orden de servicio ${g.oseId}`
+  return `Nro. de orden ${g.numero}${g.codigo ? ` · Código ${g.codigo}` : ''}`
+}
+
+/**
+ * La CLAVE DE RECOJO, entregada por el chat. La escriben tres: el webhook de
+ * 360pay cuando cruza el saldo, `registrarGuia` cuando la guía nace con el
+ * pedido ya pagado del todo, y el demo enseñando ese mismo momento.
+ *
+ * ⚠️ Este mensaje solo puede existir DESPUÉS de que el pedido quede sin saldo:
+ * quien tiene la clave se lleva el paquete, y en Kross se entrega contra el
+ * pago (02 §El saldo de agencia). Nunca por `visibility: 'sellers'` tampoco —
+ * `viewer=seller` se resuelve con el token del comprador.
+ */
+export function mensajeDeClave(clave: string): string {
+  return `🔑 Tu clave de recojo es ${clave}. La presentas en el mostrador junto con tu DNI `
+    + 'para retirar tu paquete. No la compartas con nadie.'
+}
+
 export function mensajeDeGuia(courier: Courier, ids: string, saldo: number): string {
   const cobroCopy = saldo > 0
     ? `Tu saldo de S/${saldo} lo pagas cuando quieras por esta misma app —nunca en la agencia— y apenas lo pagues te entregamos tu clave de recojo.`

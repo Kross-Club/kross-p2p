@@ -12,7 +12,7 @@ import {
   isDeclaredContent, isShalomSize, nuevoPickupCode, parseOrderResponse,
   resolveProductId, SHALOM_SIZES,
 } from '../../../supabase/functions/_shared/shalom-orders.ts'
-import { mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
 // El fuente del panel como texto (vite `?raw`): la última prueba compara las
 // dos listas de tamaños, no el render.
 import panelSource from '../../pages/vendedor/ProductosPage.tsx?raw'
@@ -224,10 +224,43 @@ describe('leer la guía que devuelve el proveedor', () => {
 // reclamo cada una: que es una PRE-GUÍA que se vuelve oficial en la agencia de
 // origen, dónde seguir el envío, y qué pasa con el saldo.
 
+// Y los IDS se nombran con el vocabulario del propio courier (`idsDeGuia`): el
+// voucher de Shalom dice "NRO. ORDEN" y "CÓDIGO", así que el chat, el panel y
+// la hoja de guía dicen lo mismo — el comprador no traduce entre papeles. La
+// CLAVE no está aquí: identifica ids ≠ entrega, y la entrega es contra el pago.
+
+describe('idsDeGuia', () => {
+  it('shalom habla como su voucher: nro. de orden y código', () => {
+    expect(idsDeGuia('SHALOM', { numero: '80574902', codigo: 'CJTW' }))
+      .toBe('Nro. de orden 80574902 · Código CJTW')
+  })
+
+  it('sin código no inventa uno; sin número queda la orden de servicio', () => {
+    expect(idsDeGuia('SHALOM', { numero: '80574902', codigo: null })).toBe('Nro. de orden 80574902')
+    expect(idsDeGuia('SHALOM', { numero: null, oseId: '990011' })).toBe('Orden de servicio 990011')
+  })
+
+  it('en olva la guía se llama guía', () => {
+    expect(idsDeGuia('OLVA', { numero: '123456' })).toBe('Guía 123456')
+  })
+})
+
+// La CLAVE DE RECOJO, palabra por palabra: la escriben el webhook (saldo
+// pagado), `registrarGuia` (pagó todo) y el demo, y si alguno dijera otra frase
+// el reconocimiento del hilo y la paridad del demo se romperían en silencio.
+describe('mensajeDeClave', () => {
+  it('la clave, el DNI y que no se comparte', () => {
+    expect(mensajeDeClave('2415')).toBe(
+      '🔑 Tu clave de recojo es 2415. La presentas en el mostrador junto con tu DNI '
+      + 'para retirar tu paquete. No la compartas con nadie.',
+    )
+  })
+})
+
 describe('mensajeDeGuia', () => {
   it('shalom: pre-guía, dónde seguirla, y el saldo', () => {
-    const m = mensajeDeGuia('SHALOM', 'Guía 80574902 · Código CJTW', 75)
-    expect(m).toContain('Guía 80574902 · Código CJTW')
+    const m = mensajeDeGuia('SHALOM', 'Nro. de orden 80574902 · Código CJTW', 75)
+    expect(m).toContain('Nro. de orden 80574902 · Código CJTW')
     expect(m).toContain('pre-guía')
     expect(m).toContain('agencia de origen')
     expect(m).toContain('sincronizada con tu guía')
@@ -237,7 +270,7 @@ describe('mensajeDeGuia', () => {
   // A quien pagó el total no se le habla de un saldo que no existe: su clave de
   // recojo va sin condición. Misma regla que el acuse del webhook.
   it('shalom con todo pagado: la clave va sin condición', () => {
-    const m = mensajeDeGuia('SHALOM', 'Guía 80574902 · Código CJTW', 0)
+    const m = mensajeDeGuia('SHALOM', 'Nro. de orden 80574902 · Código CJTW', 0)
     expect(m).toContain('Como ya pagaste el total')
     expect(m).not.toContain('Tu saldo')
   })

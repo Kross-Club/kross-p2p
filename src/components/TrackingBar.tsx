@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PackageCheck, Pencil, RefreshCw } from 'lucide-react'
+import { KeyRound, PackageCheck, Pencil, RefreshCw } from 'lucide-react'
 import { isPickupDispatch } from '../lib/session'
 import { trackShipment } from '../lib/checkout/services/OlvaTrackingService'
 
@@ -16,7 +16,13 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 // barrido cada 30 min — por eso en Olva hay botón "Actualizar": consulta al
 // courier al toque y el servidor persiste lo que encuentre.
 
+// `REGISTRADO` no es una fase del courier: es NUESTRA — hay guía emitida y
+// Shalom/Olva todavía no reporta nada (la pre-guía). Sin este paso la barra
+// salía entera apagada justo cuando el envío acababa de existir, que se lee
+// como "no pasó nada" cuando lo que pasó es el registro. Mismo paso
+// `registrado` que el eje del tablero (`order-tracking.ts`).
 const PHASES = [
+  { key: 'REGISTRADO', label: 'Registrado' },
   { key: 'EN_ORIGEN', label: 'En origen' },
   { key: 'EN_TRANSITO', label: 'En camino' },
   { key: 'EN_DESTINO', label: 'En agencia' },
@@ -35,6 +41,9 @@ export interface TrackingFields {
   tracking_year?: string | null
   tracking_phase?: string | null
   tracking_demora_at?: string | null
+  /** La clave de retiro. Solo se pinta al vendedor — y solo llega en su vista:
+   *  `get-session` la manda únicamente al equipo probado. */
+  shalom_pickup_code?: string | null
 }
 
 export default function TrackingBar({ sessionId, role, dispatchType, agencyName, tracking, onUpdated }: {
@@ -118,7 +127,11 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
     setRefreshing(false)
   }
 
-  const phaseIdx = PHASES.findIndex(p => p.key === tracking.tracking_phase)
+  // Sin fase reportada la barra NO está apagada: está en `Registrado` — la
+  // guía existe (si no, esta tarjeta ni se pinta) y el courier aún no habla.
+  const idxCourier = PHASES.findIndex(p => p.key === tracking.tracking_phase)
+  const phaseIdx = idxCourier >= 0 ? idxCourier : 0
+  const esPreguia = idxCourier < 0
   const showForm = role === 'seller' && (!registered || editing)
 
   return (
@@ -150,13 +163,29 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
 
       {registered && !editing && (
         <>
+          {/* Los identificadores, con el vocabulario del voucher de Shalom:
+              su PDF dice "NRO. ORDEN" y "CÓDIGO", y llamarlos igual acá es lo
+              que hace que en el mostrador no haya que traducir entre papeles
+              (`idsDeGuia` en `_shared/mensaje-de-guia.ts` — la misma regla del
+              mensaje del chat). En Olva la guía se llama guía. */}
           <p className="text-xs font-semibold text-gray-700 mt-1.5 break-words">
             {tracking.tracking_numero
               ? tracking.tracking_codigo
-                ? <>Guía <span className="font-black">{tracking.tracking_numero}</span> · Código <span className="font-black">{tracking.tracking_codigo}</span></>
-                : <>Guía <span className="font-black">{tracking.tracking_numero}</span></>
+                ? <>{isOlva ? 'Guía' : 'Nro. de orden'} <span className="font-black">{tracking.tracking_numero}</span> · Código <span className="font-black">{tracking.tracking_codigo}</span></>
+                : <>{isOlva ? 'Guía' : 'Nro. de orden'} <span className="font-black">{tracking.tracking_numero}</span></>
               : <>Orden de servicio <span className="font-black">{tracking.tracking_ose_id}</span></>}
           </p>
+          {/* ⚠️ La CLAVE, solo en el panel del vendedor. Al comprador le llega
+              por el chat recién cuando paga su saldo — por eso acá se dice
+              dónde termina, para que nadie la dicte por teléfono "de ayuda". */}
+          {role === 'seller' && tracking.shalom_pickup_code && (
+            <p className="text-xs font-semibold mt-1 flex items-start gap-1.5 rounded-xl px-2 py-1.5"
+              style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)', color: 'var(--text-muted)' }}>
+              <KeyRound size={12} className="flex-shrink-0 mt-0.5" />
+              <span>Clave de recojo <span className="font-black" style={{ color: 'var(--text)' }}>{tracking.shalom_pickup_code}</span>
+                {' '}— solo la ve tu equipo; al cliente le llega sola por el chat cuando paga su saldo.</span>
+            </p>
+          )}
           {/* Línea de fases: la actual y las ya pasadas en marca; el resto gris */}
           <div className="flex items-center gap-1 mt-2">
             {PHASES.map((p, i) => (
@@ -170,9 +199,14 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
               </div>
             ))}
           </div>
-          {phaseIdx < 0 && !refreshNote && (
+          {/* Qué significa `Registrado`: en Shalom es la PRE-GUÍA —con las
+              mismas palabras del chat y de la hoja de guía—; en Olva la guía ya
+              es oficial y solo falta que el courier reporte. */}
+          {esPreguia && !refreshNote && (
             <p className="text-[10px] font-semibold text-gray-400 mt-1">
-              Esperando el primer estado del courier…
+              {isOlva
+                ? 'Esperando el primer estado del courier…'
+                : 'Pre-guía: se vuelve oficial cuando el paquete entre a la agencia de origen.'}
             </p>
           )}
           {refreshNote && (

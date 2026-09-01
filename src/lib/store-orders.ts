@@ -92,9 +92,16 @@ export interface StoreOrder {
   pay360_saldo_coupon_expires_at?: string | null
   tracking_courier?: string | null
   tracking_numero?: string | null
+  /** El código de 4 caracteres de la guía Shalom. En la lista real no viaja
+   *  —el tablero no lo pinta—; el generador del demo sí lo trae para que el
+   *  pedido abierto enseñe los mismos identificadores que uno de verdad. */
+  tracking_codigo?: string | null
   tracking_phase?: string | null
   tracking_phase_at?: string | null
   tracking_demora_at?: string | null
+  /** La clave de retiro (solo demo por esta vía — en la tienda real la trae
+   *  `get-session` al equipo probado). Ver `OrderSession.shalom_pickup_code`. */
+  shalom_pickup_code?: string | null
   /** Cómo le fue al generador de guías Shalom (bloque 27.c del esquema):
    *  `CREATED` la emitió, `FAILED` el proveedor la rechazó, `SIMULADO` se armó
    *  sin llamar. Un `FAILED` es un pedido COBRADO que no va a salir hasta que
