@@ -92,6 +92,22 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### La guía en los hilos del demo, la hoja de guía, y el botón de saldo que no cobraba · solo frontend (01-set-2026)
+
+**Nada que desplegar.**
+
+- **Los hilos del demo con guía llevan su tarjeta** (pre-guía, dónde seguirla, saldo), con el botón
+  *Ver mi guía de Shalom/Olva*. Sin PDF del courier, el botón abre la **hoja de guía de la app**
+  (`/guia/<token>`): la misma regla en demo y en real — el PDF si la API lo trajo; si no, la hoja,
+  armada con los datos que el panel ya enseña. Con fases reportadas deja de decir pre-guía.
+- **De `confirmado` en adelante ya no hay adelantos sin pagar en el demo.** El sorteo dejaba un 8%
+  en ámbar dentro de Confirmado — un pedido diciendo dos cosas a la vez (lo que se vio con "Luis
+  Castillo"). La tirada se sigue haciendo (no correr el azar del resto) y se ignora.
+- **Bug real de paso:** `get-session` no devuelve `token`, así que el botón *Pagar S/X con Yape*
+  del comprador era un **no-op silencioso** en pedidos reales (`pedido.token` llegaba undefined y
+  `pagar()` retornaba sin hacer nada). Ahora las páginas ponen el token de su URL en la sesión al
+  cargar. ⚠️ Ojo: esto explica cualquier reporte de "el botón de pagar el saldo no hace nada".
+
 ### El push del pago recibido · 2 funciones (01-set-2026)
 
 **Qué se ve si no entra:** todo igual que hoy — el acuse llega al chat y en vivo, pero el

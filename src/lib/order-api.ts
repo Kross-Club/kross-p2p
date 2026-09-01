@@ -4,6 +4,12 @@ const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 export interface OrderSession {
+  /** El token del pedido — la llave de su chat, su hoja de guía y su botón de
+   *  pagar. `get-session` NO lo devuelve (se entra CON él): lo pone la página
+   *  al cargar, desde su propia URL. Sin esto, el botón de pagar el saldo del
+   *  comprador era un no-op silencioso en la tienda real — `pedido.token`
+   *  llegaba undefined y `pagar()` retornaba sin hacer nada. */
+  token?: string | null
   id: string
   order_id: string
   store_id: string | null

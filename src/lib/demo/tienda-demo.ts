@@ -5,6 +5,7 @@ import type { Cliente, PedidoDeCliente } from '../store-clients'
 import type { Curioso } from '../store-drafts'
 import type { GrupoEntrega } from '../mapa-entregas'
 import { conCambios, guardarCambio } from './cambios-demo'
+import { mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
@@ -200,6 +201,9 @@ export const AUDIO_DEMO = wavDeEjemplo()
 function conversacion(
   r: () => number, ahora: number, pedidoId: string,
   cliente: string, producto: string, vendedor: string, t: { stage: string; fase: string | null },
+  /** El envío ya registrado, si el pedido lo tiene: con esto el hilo lleva la
+   *  tarjeta de la guía —la misma copy que manda `registrarGuia`—. */
+  envio?: { courier: 'SHALOM' | 'OLVA'; numero: string; saldo: number } | null,
 ): NonNullable<StoreOrder['chat_messages']> {
   const msgs: NonNullable<StoreOrder['chat_messages']> = []
   let cuando = ahora - entre(r, 2, 9) * DIA
@@ -235,6 +239,20 @@ function conversacion(
   if (t.stage !== 'nuevo') {
     push('buyer', 'text', elige(r, ['Ya hice el pago', 'Listo, adelanté la mitad', 'Te mando el yapeo']))
     push('system', 'status_update', 'Adelanto verificado')
+  }
+  // La guía registrada, ANTES de que el courier reporte nada — que es cuando
+  // ocurrió. ⚠️ Sin tiradas: el reloj avanza fijo, porque un `entre(r,…)` acá
+  // correría el azar de todos los pedidos de abajo (aviso de CLAUDE.md).
+  if (envio) {
+    cuando += 45 * 60_000
+    msgs.push({
+      id: `${pedidoId}-m${msgs.length}`,
+      sender_role: 'system',
+      type: 'guia',
+      body: mensajeDeGuia(envio.courier, `Guía ${envio.numero}`, envio.saldo),
+      created_at: new Date(cuando).toISOString(),
+      read_at: new Date(cuando).toISOString(),
+    } as NonNullable<StoreOrder['chat_messages']>[number])
   }
   if (t.fase === 'EN_TRANSITO' || t.fase === 'EN_DESTINO' || t.fase === 'ENTREGADO') {
     push('system', 'status_update', '🚚 ¡Tu pedido va en camino a tu agencia!')
@@ -410,7 +428,12 @@ async function construir(): Promise<TiendaDemo> {
     // un 80% plano el anillo de avance mentía en las dos puntas: pedidos en
     // tránsito con el anillo vacío y pedidos en validación ya cobrados.
     const antesDeCobrar = t.stage === 'nuevo' || t.stage === 'validando'
-    const cruzado = antesDeCobrar ? r() < 0.15 : r() < 0.92
+    // La tirada se hace SIEMPRE (quitarla correría el azar del resto), pero de
+    // `confirmado` en adelante se ignora: el pedido está ahí PORQUE la plata
+    // entró, y el 8% que el sorteo dejaba sin pagar era justo la contradicción
+    // que el panel enseñaba — un "Confirmado" con el adelanto en ámbar.
+    const tiradaCruce = r()
+    const cruzado = antesDeCobrar ? tiradaCruce < 0.15 : true
 
     // ── El SALDO: la segunda operación ──
     // No es el adelanto con otro monto. Ocurre después —cuando la guía ya
@@ -456,7 +479,7 @@ async function construir(): Promise<TiendaDemo> {
     const cobradoEl = cruzado ? new Date(ahora - entre(r, 0, 8) * DIA).toISOString() : null
     const saldoCobradoEl = saldoPagado ? new Date(ahora - entre(r, 0, 4) * DIA).toISOString() : null
 
-    return {
+    const p: StoreOrder = {
       id: `demo-ped-${i}`,
       // Mismo formato que el de verdad (`ORD-<milisegundo>`): es lo que se
       // recorta para el código corto que se ve en la cabecera y en la ficha.
@@ -565,8 +588,22 @@ async function construir(): Promise<TiendaDemo> {
       // por WhatsApp, o era un "gracias". Sin alguno así, el estado "respondido"
       // tampoco se vería nunca.
       answered_at: r() < 0.25 ? new Date(ahora - entre(r, 0, 5) * 3_600_000).toISOString() : null,
-      chat_messages: conversacion(r, ahora, `demo-ped-${i}`, persona.nombre, prod.nombre, miembro.nombre, t),
     }
+
+    // La conversación se arma DESPUÉS del literal para poder contarle del
+    // envío ya registrado (la guía vive en `p.tracking_numero`, que un literal
+    // no puede leerse a sí mismo). `chat_messages` era el último campo, así que
+    // el orden de las tiradas queda EXACTAMENTE igual que antes.
+    p.chat_messages = conversacion(
+      r, ahora, `demo-ped-${i}`, persona.nombre, prod.nombre, miembro.nombre, t,
+      conGuia && p.tracking_numero
+        ? { courier: ruta.courier === 'OLVA' ? 'OLVA' : 'SHALOM', numero: p.tracking_numero,
+            // El saldo DE ESE MOMENTO: cuando la guía se registró, el saldo aún
+            // no se había pagado — la copy dice lo que se le dijo entonces.
+            saldo: Math.max(0, prod.precio - adelanto) }
+        : null,
+    )
+    return p
   }).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
 
   // ── El catálogo, con lo vendido de cada uno ──

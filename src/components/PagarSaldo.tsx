@@ -29,7 +29,7 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 //     asesor y prometer un botón que no cobra es peor que no ponerlo.
 
 export interface PedidoConSaldo {
-  token?: string
+  token?: string | null
   product_price?: number | null
   advance_amount?: number | string | null
   payment_verification?: string | null
