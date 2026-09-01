@@ -393,6 +393,46 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'sin respuesta' }, 502)
     }
 
+    /**
+     * La GUÍA FORMAL de Shalom, en PDF, para el botón del chat.
+     *
+     * `GET /v1/orders/{ose_id}/voucher` la devuelve como BINARIO —no hay URL
+     * que guardar—, así que se descarga una vez y se sube a Storage
+     * (`shalom-guias`, bucket público): el mensaje del chat lleva esa URL y el
+     * comprador abre el documento de Shalom de verdad, no una hoja nuestra.
+     * Si el voucher no está, se intenta el rótulo (`/label`), mismo contrato.
+     *
+     * Best-effort con timeout PROPIO (30 s, no los 145 s del login): un PDF que
+     * no baja jamás retrasa ni tumba el registro de la guía — sin él, el botón
+     * abre la hoja de guía de la app, que es el respaldo de siempre.
+     */
+    async function guardarPdfDeGuia(oseId: string | null, numero: string | null): Promise<string | null> {
+      if (!oseId) return null
+      try {
+        for (const doc of ['voucher', 'label']) {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 30_000)
+          const r = await fetch(`${SHALOM_API_BASE}/v1/orders/${oseId}/${doc}`, { headers: auth, signal: ctrl.signal })
+            .catch(() => null)
+          clearTimeout(t)
+          if (!r?.ok || !(r.headers.get('content-type') ?? '').includes('pdf')) continue
+          const bytes = new Uint8Array(await r.arrayBuffer())
+          if (bytes.length === 0) continue
+          const path = `${sessionId}/${numero ?? oseId}.pdf`
+          const up = await supabase.storage.from('shalom-guias')
+            .upload(path, bytes, { contentType: 'application/pdf', upsert: true })
+          if (up.error) {
+            console.error('[shalom-order] no se pudo subir el PDF de la guía', up.error.message)
+            return null
+          }
+          return supabase.storage.from('shalom-guias').getPublicUrl(path).data.publicUrl
+        }
+      } catch (e) {
+        console.error('[shalom-order] PDF de la guía no descargado', String(e).slice(0, 200))
+      }
+      return null
+    }
+
     /** Escribe la guía en el pedido. La clave de retiro se guarda en la fila y
      *  NO viaja a ningún chat: en Kross se entrega contra el saldo pagado. */
     async function guardar(
@@ -426,8 +466,11 @@ Deno.serve(async (req: Request) => {
 
       // `yaSuscrito`: la orden se creó con `track: true`, así que el webhook ya
       // la está mirando — no se gasta otra request en suscribirla. Y el PDF de
-      // la guía viaja con el mensaje: es el botón "Ver mi guía de Shalom".
-      const reg = await registrarGuia(session, g, { yaSuscrito: true, pdfUrl: guia.pdfUrl })
+      // la guía viaja con el mensaje: es el botón "Ver mi guía de Shalom" — la
+      // guía FORMAL de Shalom, descargada del voucher y guardada en Storage
+      // (si la respuesta trajera una URL directa, esa gana: cero descargas).
+      const pdfUrl = guia.pdfUrl ?? await guardarPdfDeGuia(guia.oseId, guia.numero)
+      const reg = await registrarGuia(session, g, { yaSuscrito: true, pdfUrl })
       await cerrar(sessionId, 'CREATED', reg.ok ? null : 'guía emitida, no se pudo escribir en el pedido', extra)
       if (!reg.ok) {
         console.error('[shalom-order] no se pudo escribir la guía en el pedido', sessionId, reg.error)

@@ -92,6 +92,34 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### La guía FORMAL de Shalom en PDF · SQL + 1 función (01-set-2026)
+
+**Qué se ve si no entra:** el botón *Ver mi guía de Shalom* sigue abriendo la hoja de guía de la
+app (el respaldo). Nada se rompe.
+
+La doc de la API (subida a la sesión el 01-set) lo confirma: `GET /v1/orders/{ose_id}/voucher`
+devuelve **la guía formal como PDF binario** — no hay URL que guardar. Así que `shalom-order` la
+descarga al emitir la guía (30 s de timeout propio, best-effort: un PDF que no baja jamás retrasa
+el registro) y la sube al bucket **`shalom-guias`**; el mensaje del chat lleva esa URL pública.
+Es el mismo patrón del proyecto Neural con su propio bucket `shalom-guias`.
+
+**1 · El SQL** (bloque §38; idempotente):
+
+```sql
+insert into storage.buckets (id, name, public)
+values ('shalom-guias', 'shalom-guias', true)
+on conflict (id) do nothing;
+```
+
+**2 · La función:**
+
+```
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> La guía registrada **a mano** sigue sin PDF (no pasa por el generador): su botón abre la hoja
+> de la app. Y en el demo igual — el demo no fabrica documentos de Shalom.
+
 ### La guía en los hilos del demo, la hoja de guía, y el botón de saldo que no cobraba · solo frontend (01-set-2026)
 
 **Nada que desplegar.**

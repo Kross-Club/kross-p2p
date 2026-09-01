@@ -796,11 +796,14 @@ solo-vendedores: un envío tan viejo sin cerrar es para mirarlo).
   pisa**: avisa en logs y se rota a mano (`POST /v1/webhooks/rotate`).
 
 De la familia de **crear pedido** usamos `POST /v1/orders` (ver § *Generador de
-guías Shalom*). Siguen sin usar: `GET /v1/tracking/{ose_id}/events` (solo
-hitos, por `ose_id`), el comprobante por ose_id (⚠️ su doc lo declara **fuera
-de servicio**: responde 404 para toda orden — no depender de él), el GRT (exige
-credenciales Shalom Pro + `cap_id` del carguero) y la cotización de tarifas +
-rótulo PDF.
+guías Shalom*) y **`GET /v1/orders/{ose_id}/voucher`** (01-set-2026): la guía
+formal de Shalom en PDF binario, que `shalom-order` descarga al emitir y sube
+al bucket `shalom-guias` (§38 del esquema) para el botón *"Ver mi guía de
+Shalom"* del chat; si falla, intenta el rótulo (`/label`, mismo contrato).
+⚠️ No confundir con `GET /v1/tracking/{ose_id}/voucher`, que su doc declara
+**fuera de servicio** (404 para toda orden). Siguen sin usar:
+`GET /v1/tracking/{ose_id}/events`, el GRT (exige credenciales Shalom Pro +
+`cap_id` del carguero) y la cotización de tarifas.
 
 ### Cuenta Shalom Pro por marca + semáforo de la API ✅
 
