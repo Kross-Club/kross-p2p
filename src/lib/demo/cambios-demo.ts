@@ -7,6 +7,7 @@ import type { RastroDeCobro } from '../rastro-de-pago'
 import type { StoreOrder } from '../store-orders'
 import type { FilaDeCobro } from '../../../supabase/functions/_shared/cobros.ts'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
+import { mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
 import { isPickupDispatch } from '../../../supabase/functions/_shared/despacho.ts'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
@@ -427,6 +428,22 @@ export function avanzarEnDemo(p: PedidoDemo): RespuestaDemo {
         : { stage: sig.stage, ...(sig.fase ? { tracking_phase: sig.fase, tracking_phase_at: ahora } : {}) }
 
   guardarCambio(p.id, patch)
+
+  // La guía registrada también se ANUNCIA, con la misma copy que manda
+  // `registrarGuia` en una tienda de verdad (`_shared/mensaje-de-guia.ts`):
+  // la pre-guía, dónde seguirla y qué pasa con el saldo. Sin botón de PDF —el
+  // demo no tiene un PDF de Shalom que abrir, y un botón hacia una página
+  // vacía enseña un producto roto.
+  if (sig.quien === 'guia') {
+    const courier = String(patch.tracking_courier ?? 'SHALOM').toUpperCase() === 'OLVA' ? 'OLVA' as const : 'SHALOM' as const
+    agregarMensajeDemo(p.id, {
+      id: `demo-guia-${Date.now()}`, session_id: p.id, sender_role: 'system',
+      sender_name: 'Kross', sender_role_label: null, read_at: null,
+      type: 'guia', visibility: 'all',
+      body: mensajeDeGuia(courier, `Guía ${patch.tracking_numero}`, saldoDelPedido(p)),
+      created_at: ahora,
+    })
+  }
   return { ok: true, patch }
 }
 

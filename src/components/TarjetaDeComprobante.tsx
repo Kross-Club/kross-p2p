@@ -25,7 +25,10 @@ export default function TarjetaDeComprobante({ texto, cobroId, hora }: {
 }) {
   return (
     <div className="flex justify-center mb-3">
-      <div className="max-w-[85%] rounded-2xl px-3.5 py-3"
+      {/* Ancho FIJO hasta 420px, no el del contenido: con un texto corto
+          ("Adelanto verificado") la tarjeta salía angosta y el botón apretado —
+          y esta es la tarjeta que el comprador va a tocar. */}
+      <div className="w-full max-w-[420px] rounded-2xl px-3.5 py-3"
         style={{ border: '0.5px solid var(--ok-border)', background: 'var(--ok-bg-soft)' }}>
         <p className="text-[10px] font-black uppercase tracking-wide flex items-center gap-1"
           style={{ color: 'var(--ok-fg)' }}>

@@ -6,6 +6,7 @@ import QuickReplies from '../../components/chat/QuickReplies'
 import PagarSaldo from '../../components/PagarSaldo'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
+import TarjetaDeGuia from '../../components/TarjetaDeGuia'
 import { TIPO_COBRO, montoDeLaTarjeta, cobroDeLaTarjeta } from '../../lib/cobro-por-chat'
 import { cobroDelAviso } from '../../lib/comprobante'
 import { puedePagarSaldo, saldoDelPedido, cobrosDelPedido } from '../../lib/order-money'
@@ -170,6 +171,12 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
         </div>
       </div>
     )
+  }
+
+  // La guía del envío, con su explicación de pre-guía y —cuando la emitió la
+  // API— el botón que abre el PDF de Shalom.
+  if (msg.type === 'guia') {
+    return <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url} hora={time} />
   }
 
   // El aviso de que ENTRÓ la plata, con su constancia. Va antes de la píldora
