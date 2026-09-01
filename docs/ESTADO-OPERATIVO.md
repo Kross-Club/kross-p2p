@@ -92,6 +92,20 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### La clave del demo ya no se entrega con saldo de upsell pendiente · solo frontend (01-set-2026)
+
+**Nada que desplegar.** El reporte fue una captura ("Luis Núñez"): un pedido con **"Saldo sin
+pagar S/ 180"** en el panel y **la clave de recojo ya entregada** en el chat. Era el upsell del
+generador: la guía calculaba su saldo con el precio BASE, así que a quien pagó el total base y
+llevaba upsell le decía *"ya pagaste el total"* y le soltaba la clave — con el panel cobrándole
+un saldo. Y el upsell viaja **en el paquete**, o sea que existía antes de registrar la guía: la
+guía debía cobrar el total de ese momento (`valorPedido`) y retener la clave. Ahora el invariante
+está probado sobre el generador entero: **ningún hilo con la clave entregada sigue debiendo**.
+
+> La tienda real no tenía este bug — `registrarGuia` cobra contra `product_price` de hoy. El
+> caso real que sí existe (un upsell DESPUÉS de entregada la clave) sigue siendo la deuda ya
+> anotada abajo: un saldo nuevo que la pasarela no cobra sola.
+
 ### La cobranza empieza en origen: la tarjeta del saldo la manda el tracking · 4 funciones, sin SQL (01-set-2026)
 
 **Qué se ve si no entra:** el paquete entra a la agencia de origen y el chat sigue mudo — ni el
