@@ -132,9 +132,13 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'no autorizado' }, 401)
   }
 
-  const body = await req.json().catch(() => ({})) as { session_id?: string }
+  const body = await req.json().catch(() => ({})) as { session_id?: string; retry?: boolean }
   const sessionId = String(body.session_id ?? '')
   if (!sessionId) return json({ error: 'session_id requerido' }, 400)
+  // Reintento a mano (vía `order-manage` · retry_shalom): SOLO reabre un
+  // expediente FAILED. `CREATED`/`SIMULADO`/`SKIPPED` siguen cerrados — sobre
+  // esos, volver a emitir es pagar dos guías o pisar una decisión.
+  const reintento = body.retry === true
 
   const { data: session } = await supabase.from('order_sessions')
     .select(SESSION_COLUMNS).eq('id', sessionId).maybeSingle()
@@ -152,14 +156,21 @@ Deno.serve(async (req: Request) => {
   if (session.tracking_numero || session.tracking_ose_id) {
     return json({ skipped: 'el pedido ya tiene guía' })
   }
-  if (session.shalom_order_status) return json({ skipped: `ya procesado (${session.shalom_order_status})` })
+  const expediente = String(session.shalom_order_status ?? '')
+  if (expediente && !(reintento && expediente === 'FAILED')) {
+    return json({ skipped: `ya procesado (${expediente})` })
+  }
 
   // ─── El candado ────────────────────────────────────────────────────────────
-  // Gana una sola llamada. `.is(null)` hace la condición en la base, no acá:
-  // dos invocaciones simultáneas no pueden pasar las dos.
-  const { data: claimed } = await supabase.from('order_sessions')
+  // Gana una sola llamada. La condición se hace en la base, no acá: dos
+  // invocaciones simultáneas no pueden pasar las dos. Un reintento reclama
+  // DESDE `FAILED` (y solo desde ahí); la corrida normal, desde el vacío.
+  const claim = supabase.from('order_sessions')
     .update({ shalom_order_status: 'PENDING', shalom_order_at: new Date().toISOString() })
-    .eq('id', sessionId).is('shalom_order_status', null)
+    .eq('id', sessionId)
+  const { data: claimed } = await (reintento
+    ? claim.eq('shalom_order_status', 'FAILED')
+    : claim.is('shalom_order_status', null))
     .select('id')
   if (!claimed?.length) return json({ skipped: 'otra corrida ya lo tomó' })
 
@@ -356,6 +367,30 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ─── Reintentos automáticos, solo donde reintentar tiene sentido ─────────
+    // Un error DEL SERVIDOR (5xx) se reintenta solo, hasta 3 INTENTOS EN TOTAL
+    // — pero nunca a ciegas: no hay clave de idempotencia, así que antes de
+    // cada re-emisión se pregunta si la orden ya existe (la misma consulta de
+    // `reconciliar`; un 500 no promete que no se creó). El backoff (2 s, 4 s)
+    // le da aire al proveedor. Un rechazo 4xx NO se reintenta: repetir lo
+    // inválido no lo vuelve válido — eso cierra en FAILED y el panel ofrece
+    // corregir y reintentar a mano (`retry_shalom`).
+    let intentos = 1
+    while (!res.ok && res.status >= 500 && intentos < 3) {
+      console.warn('[shalom-order] error del proveedor', sessionId, res.status, `intento ${intentos}`)
+      const r = await llamar(`${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
+      const encontrada = r?.ok ? buscarOrdenPorDni(await leerJson(r), dni) : null
+      if (encontrada) {
+        console.log('[shalom-order] la orden sí existía pese al error', sessionId, encontrada.numero)
+        return await guardar(encontrada, pickupCode, encontrada.orderId)
+      }
+      await new Promise(listo => setTimeout(listo, 2000 * intentos))
+      const otra = await post()
+      if (!otra) return await reconciliar()
+      res = otra
+      intentos++
+    }
+
     if (res.status === 401) {
       await credencialesRechazadas()
       return json({ error: 'credenciales rechazadas' }, 502)
@@ -366,7 +401,9 @@ Deno.serve(async (req: Request) => {
       // pay360: nada de terceros frente a la gente del chat).
       const detalle = await res.text().catch(() => '')
       console.error('[shalom-order] rechazo del proveedor', sessionId, res.status, detalle.slice(0, 500))
-      await cerrar(sessionId, 'FAILED', `el proveedor rechazó el envío (${res.status})`)
+      await cerrar(sessionId, 'FAILED', res.status >= 500
+        ? `el proveedor falló (${res.status}) tras ${intentos} intentos`
+        : `el proveedor rechazó el envío (${res.status})`)
       await aLogistica(sessionId,
         '📦 Guía automática no generada — Shalom rechazó el pedido de envío. '
         + 'Regístrala a mano cuando despaches; el detalle quedó en los logs de Kross.')

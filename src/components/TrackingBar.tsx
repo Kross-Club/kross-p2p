@@ -44,20 +44,42 @@ export interface TrackingFields {
   /** La clave de retiro. Solo se pinta al vendedor — y solo llega en su vista:
    *  `get-session` la manda únicamente al equipo probado. */
   shalom_pickup_code?: string | null
+  /** El adelanto cruzado es lo que autoriza a despachar (02 §Antes de
+   *  despachar): sin él no hay envío que registrar, y el formulario aquí
+   *  invitaba a emitir guías de pedidos sin cobrar. */
+  payment_verification?: string | null
+  /** El expediente del generador de guías (27.c): `FAILED` = el proveedor
+   *  rechazó el registro automático y este pedido espera a una persona. */
+  shalom_order_status?: string | null
+  shalom_order_reason?: string | null
 }
 
-export default function TrackingBar({ sessionId, role, dispatchType, agencyName, tracking, onUpdated }: {
+/** Lo que el demo hace en lugar del servidor: registrar la guía a mano y
+ *  reintentar por API. Devuelven el patch para reflejarlo al instante, o
+ *  `null` si no se pudo. Los pone la página del vendedor solo en pedidos de
+ *  ejemplo; sin esto, los botones del demo llamarían a un servidor que no
+ *  conoce ningún pedido `demo-…`. */
+export interface AccionesDemo {
+  registrar: (g: { numero: string; codigo: string; clave: string }) => TrackingFields | null
+  reintentar: () => TrackingFields | null
+}
+
+export default function TrackingBar({ sessionId, role, dispatchType, agencyName, tracking, onUpdated, demo }: {
   sessionId: string
   role: 'buyer' | 'seller'
   dispatchType?: string | null
   agencyName?: string | null
   tracking: TrackingFields
   onUpdated: (t: TrackingFields) => void
+  /** Solo en pedidos de ejemplo (los pone `VendedorPedidoPage`). */
+  demo?: AccionesDemo
 }) {
   const [editing, setEditing] = useState(false)
   const [numero, setNumero] = useState('')
   const [codigo, setCodigo] = useState('')
+  const [clave, setClave] = useState('')
   const [busy, setBusy] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
@@ -68,18 +90,41 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
   // Solo pedidos de recojo en agencia, y solo couriers con reflejo construido.
   if (!isPickupDispatch(dispatchType)) return null
   if (!registered && (role !== 'seller' || !SUPPORTED_COURIERS.includes(courier ?? ''))) return null
+  // Y solo COBRADOS: el adelanto es lo que autoriza a despachar (misma regla
+  // que `shalom-order`). Sin esto, un pedido recién creado ya ofrecía
+  // "Registrar envío" — la captura de "Wilder Flores" — invitando a emitir la
+  // guía de un pedido que todavía no pagó.
+  if (!registered && tracking.payment_verification !== 'MATCHED') return null
 
   const isOlva = courier === 'OLVA'
+  // El registro automático falló y este pedido espera a una persona: acá el
+  // formulario deja de ser "por si acaso" y pasa a ser LA tarea.
+  const fallo = String(tracking.shalom_order_status ?? '').toUpperCase() === 'FAILED'
   const numeroOk = isOlva
     ? /^\d{6,15}$/.test(numero.replace(/\D/g, ''))
     : /^\d{8,10}$/.test(numero.replace(/\D/g, ''))
   const codigoOk = isOlva || /^[A-Za-z0-9]{4}$/.test(codigo.trim())
+  // La clave de retiro viene impresa en el comprobante físico de Shalom, y se
+  // pide JUNTO con la guía: guardada en el pedido, el chat la entrega solo
+  // cuando el saldo se pague — igual que con una guía emitida por API.
+  const claveOk = isOlva || /^\d{4}$/.test(clave.trim())
 
   const save = async () => {
-    if (busy || !numeroOk || !codigoOk) return
+    if (busy || !numeroOk || !codigoOk || !claveOk) return
     setBusy(true)
     setError(null)
     try {
+      // En la tienda de ejemplo no hay servidor: el registro se guarda en el
+      // dispositivo y el hilo recibe el mismo mensaje que mandaría
+      // `registrarGuia` — la paridad es la regla del demo.
+      if (demo) {
+        const t = demo.registrar({ numero: numero.replace(/\D/g, ''), codigo: codigo.trim().toUpperCase(), clave: clave.trim() })
+        if (!t) throw new Error('failed')
+        onUpdated(t)
+        setEditing(false)
+        setNumero(''); setCodigo(''); setClave('')
+        return
+      }
       const res = await fetch(`${BASE}/order-manage`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
@@ -87,18 +132,48 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
           action: 'set_tracking', session_id: sessionId,
           tracking: isOlva
             ? { courier: 'OLVA', numero: numero.replace(/\D/g, '') }
-            : { courier: 'SHALOM', numero: numero.replace(/\D/g, ''), codigo: codigo.trim().toUpperCase() },
+            : { courier: 'SHALOM', numero: numero.replace(/\D/g, ''), codigo: codigo.trim().toUpperCase(), clave: clave.trim() },
         }),
       })
       const r = await res.json().catch(() => ({}))
       if (!res.ok || !r.ok) throw new Error('failed')
       onUpdated(r.tracking as TrackingFields)
       setEditing(false)
-      setNumero(''); setCodigo('')
+      setNumero(''); setCodigo(''); setClave('')
     } catch {
       setError('No se pudo registrar la guía. Revisa los datos e intenta de nuevo.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Reintentar la emisión por el API — solo cuando el automático YA agotó lo
+  // suyo (el servidor reintenta solo los errores reintentables, hasta 3 veces,
+  // antes de cerrar en FAILED). El botón existe para el después: se corrigió
+  // el producto en Shalom Pro, volvió el servicio, etc.
+  const reintentar = async () => {
+    if (retrying) return
+    setRetrying(true)
+    setError(null)
+    try {
+      if (demo) {
+        const t = demo.reintentar()
+        if (!t) throw new Error('failed')
+        onUpdated(t)
+        return
+      }
+      const res = await fetch(`${BASE}/order-manage`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'retry_shalom', session_id: sessionId }),
+      })
+      const r = await res.json().catch(() => ({}))
+      if (res.ok && r.tracking) { onUpdated(r.tracking as TrackingFields); return }
+      setError('Shalom volvió a rechazarlo. Regístrala a mano del comprobante físico.')
+    } catch {
+      setError('No se pudo reintentar. Revisa tu conexión e intenta de nuevo.')
+    } finally {
+      setRetrying(false)
     }
   }
 
@@ -217,9 +292,28 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
 
       {showForm && (
         <div className="mt-2">
+          {/* El registro automático falló: acá el formulario deja de ser "por
+              si acaso" y pasa a ser LA tarea — con las dos salidas: copiar la
+              guía del comprobante físico, o reintentar por el API (el servidor
+              ya reintentó solo lo reintentable antes de rendirse). */}
+          {fallo && !editing && (
+            <div className="mb-2 rounded-xl px-2.5 py-2"
+              style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)' }}>
+              <p className="text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                ⚠️ La guía automática falló{tracking.shalom_order_reason ? `: ${tracking.shalom_order_reason}` : ''}.
+                {' '}Emite el envío en Shalom por fuera y copia acá sus tres datos — o reintenta por el API.
+              </p>
+              <button onClick={reintentar} disabled={retrying}
+                className="mt-1.5 text-[10px] font-black px-2 py-1 rounded-lg disabled:opacity-50"
+                style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
+                <RefreshCw size={10} className={`inline mr-1 ${retrying ? 'animate-spin' : ''}`} />
+                {retrying ? 'Reintentando…' : 'Reintentar por el API de Shalom'}
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <input value={numero} onChange={e => setNumero(e.target.value)} inputMode="numeric"
-              placeholder={isOlva ? 'Guía (8 dígitos)' : 'Guía (8–10 dígitos)'} maxLength={isOlva ? 15 : 10}
+              placeholder={isOlva ? 'Guía (8 dígitos)' : 'Nro. de orden (8–10 dígitos)'} maxLength={isOlva ? 15 : 10}
               className="flex-1 min-w-0 text-xs font-semibold px-2.5 py-2 rounded-xl outline-none"
               style={{ border: '0.5px solid var(--border)' }} />
             {!isOlva && (
@@ -228,16 +322,35 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
                 className="w-20 text-xs font-semibold px-2.5 py-2 rounded-xl outline-none uppercase"
                 style={{ border: '0.5px solid var(--border)' }} />
             )}
-            <button onClick={save} disabled={busy || !numeroOk || !codigoOk}
-              className="text-[11px] font-black px-3 py-2 rounded-xl flex-shrink-0 disabled:opacity-40"
-              style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
-              {busy ? 'Guardando…' : 'Registrar'}
-            </button>
+            {isOlva && (
+              <button onClick={save} disabled={busy || !numeroOk}
+                className="text-[11px] font-black px-3 py-2 rounded-xl flex-shrink-0 disabled:opacity-40"
+                style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
+                {busy ? 'Guardando…' : 'Registrar'}
+              </button>
+            )}
           </div>
+          {/* La CLAVE junto a la guía, a propósito: guardada en el pedido, el
+              chat la entrega solo cuando el saldo se pague — la regla de
+              siempre, ahora también para la guía manual. Olva no lleva clave. */}
+          {!isOlva && (
+            <div className="flex items-center gap-2 mt-2">
+              <input value={clave} onChange={e => setClave(e.target.value.replace(/\D/g, ''))} inputMode="numeric"
+                placeholder="Clave de recojo" maxLength={4}
+                className="flex-1 min-w-0 text-xs font-semibold px-2.5 py-2 rounded-xl outline-none"
+                style={{ border: '0.5px solid var(--border)' }} />
+              <button onClick={save} disabled={busy || !numeroOk || !codigoOk || !claveOk}
+                className="text-[11px] font-black px-3 py-2 rounded-xl flex-shrink-0 disabled:opacity-40"
+                style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
+                {busy ? 'Guardando…' : 'Registrar'}
+              </button>
+            </div>
+          )}
           <p className="text-[10px] font-semibold text-gray-400 mt-1.5">
             {isOlva
               ? 'El número viene impreso en el comprobante de OLVA. La guía le llega al comprador por el chat.'
-              : `Los dos vienen impresos en el comprobante de ${courier}. La guía le llega al comprador por el chat.`}
+              : `Los tres vienen impresos en el comprobante de ${courier}. La guía le llega al comprador por el chat; `
+                + 'la clave se queda guardada y el chat se la entrega solo cuando pague su saldo.'}
           </p>
           {error && <p className="text-[10px] font-bold mt-1" style={{ color: 'var(--danger-fg)' }}>{error}</p>}
         </div>

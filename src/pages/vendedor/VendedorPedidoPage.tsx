@@ -11,6 +11,7 @@ import type { StoreOrder } from '../../lib/store-orders'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import TrackingBar from '../../components/TrackingBar'
+import type { TrackingFields } from '../../components/TrackingBar'
 import OrderDetailModal from '../../components/OrderDetailModal'
 import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
@@ -47,6 +48,7 @@ import {
   cobroEnviadoEnDemo, saldoPagadoEnDemo, cobroExtraEnDemo, cobroExtraPagadoEnDemo,
   quitarCobroEnDemo, ESPERA_CLIENTE_DEMO,
   invitarEnDemo, reasignarEnDemo, quitarEnDemo,
+  guiaManualEnDemo, reintentoShalomEnDemo,
 } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
@@ -1575,6 +1577,22 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         agencyName={session.agency_name}
         tracking={session}
         onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
+        // En la tienda de ejemplo, registrar a mano y reintentar por API pasan
+        // en el dispositivo — con los mismos mensajes que mandaría el servidor.
+        // Se relee el hilo entero porque el registro deja mensajes (la guía, y
+        // la clave si no debía nada), no solo campos.
+        demo={esTokenDemo(token) ? {
+          registrar: g => {
+            const patch = guiaManualEnDemo(session as unknown as StoreOrder, g)
+            reloadSession()
+            return patch as TrackingFields
+          },
+          reintentar: () => {
+            const patch = reintentoShalomEnDemo(session as unknown as StoreOrder)
+            reloadSession()
+            return patch as TrackingFields
+          },
+        } : undefined}
       />
 
       {/* El pedido en sí —productos, cantidades, nota del CRM, cancelar— cierra

@@ -92,6 +92,52 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### La guía manual con su clave, el reintento por API, y el demo sin estados imposibles · 2 funciones, sin SQL (01-set-2026)
+
+**Qué se ve si no entra:** el frontend sale solo con el merge (el formulario nuevo, el candado
+del cobro, el demo entero), pero **la clave de la guía manual no se guarda** (`order-manage`
+viejo la ignora) y **el botón "Reintentar por el API" devuelve error** (`shalom-order` viejo
+rechaza el flag). Sin desplegar nada, el demo enseña ambos flujos completos.
+
+Lo que entra:
+
+- **El formulario de registrar envío pide los TRES datos del comprobante físico** — nro. de
+  orden, código y **clave de recojo** (`set_tracking` con `clave`, solo Shalom, 4 dígitos). Con
+  la clave guardada, la guía manual entra al mismo circuito que la de API: el panel la enseña
+  al equipo y el chat la entrega solo contra el saldo pagado (o con la guía, si no debía nada).
+- **Y solo aparece en pedidos COBRADOS**: el adelanto es lo que autoriza a despachar (misma
+  regla que `shalom-order`). Antes, un pedido recién creado ya ofrecía "Registrar envío" — la
+  captura de "Wilder Flores".
+- **El expediente `FAILED` se explica y ofrece dos salidas**: copiar la guía emitida por fuera,
+  o **"Reintentar por el API de Shalom"** (`order-manage` · `retry_shalom` → `shalom-order` con
+  `retry: true`, que re-reclama el candado SOLO desde `FAILED`). El botón existe para el
+  después: se corrigió el producto en Shalom Pro, volvió el servicio.
+- **`shalom-order` reintenta solo lo reintentable, hasta 3 intentos en total**: un error del
+  servidor (5xx) se reintenta con backoff (2 s, 4 s) y **nunca a ciegas** — sin clave de
+  idempotencia, antes de cada re-emisión pregunta si la orden ya existe (la consulta de
+  `reconciliar`). Un 4xx no se reintenta: repetir lo inválido no lo vuelve válido. El botón
+  manual aparece recién cuando ese camino se agotó (el `FAILED`).
+- **La alerta "⚠️ Guía manual" se apaga al registrar la guía** (venga a mano o por reintento):
+  quedaba prendida para siempre sobre un pedido resuelto (`esperaGuiaManual`).
+- **El demo deja de fabricar estados imposibles** (la regla: lo que el demo enseña es lo que la
+  tienda real hace):
+  - **Nadie antes de `confirmado` tiene la plata cruzada** — el webhook escribe
+    `stage: 'confirmado'` en el mismo acto de cruzar, así que "Pedido creado" con el adelanto
+    pagado (la captura de Wilder) no puede existir. La tirada del generador se sigue haciendo
+    y se ignora (el azar de los demás pedidos no se corre).
+  - **El hilo de `validando` ya no dice "Adelanto verificado"** — validando es justamente "el
+    yapeo que todavía no cuadra".
+  - **`shalom_order_status` solo en pedidos Shalom** — un FAILED de Shalom en un pedido Olva
+    era un estado que `shalom-order` no puede producir (descarta Olva antes de reclamar).
+  - Y registrar a mano o reintentar **enseñando** funciona en el dispositivo, con los mismos
+    mensajes del servidor (`guiaManualEnDemo` / `reintentoShalomEnDemo`): la manual sin PDF
+    (su botón cae a la hoja de la app), la reintentada con el voucher de muestra.
+
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
 ### La clave del demo ya no se entrega con saldo de upsell pendiente · solo frontend (01-set-2026)
 
 **Nada que desplegar.** El reporte fue una captura ("Luis Núñez"): un pedido con **"Saldo sin

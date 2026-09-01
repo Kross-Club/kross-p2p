@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'mark_answered' | 'add_cobro' | 'remove_cobro'
+    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'retry_shalom' | 'mark_answered' | 'add_cobro' | 'remove_cobro'
     /** add_cobro: cuánto y por qué. remove_cobro: cuál. */
     monto?: number
     concepto?: string
@@ -142,14 +142,17 @@ Deno.serve(async (req) => {
     message_id?: string
     index?: number
     qty?: number
-    tracking?: { courier?: string; numero?: string; codigo?: string; ose_id?: string; year?: string }
+    /** `clave`: la de retiro, copiada del comprobante físico de Shalom (4
+     *  dígitos). Se guarda en el pedido — nunca viaja al chat por acá: el chat
+     *  la entrega solo contra el saldo pagado, igual que con la guía de API. */
+    tracking?: { courier?: string; numero?: string; codigo?: string; ose_id?: string; year?: string; clave?: string }
   }
 
   if (!body.session_id) return new Response('Missing session_id', { status: 400, headers: corsHeaders })
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, tracking_phase')
+    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, shalom_order_status, tracking_phase')
     .eq('id', body.session_id)
     .single()
 
@@ -265,12 +268,58 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: g.error }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    const r = await registrarGuia(session, g)
+    // La CLAVE DE RETIRO del comprobante físico, junto con la guía (02 §clave):
+    // guardada en el pedido, la entrega automática funciona igual que con una
+    // guía de API — el chat la suelta cuando el saldo se pague, o junto con la
+    // guía si ya no debe nada (por eso viaja en la sesión que se le pasa a
+    // `registrarGuia`). Solo Shalom y solo 4 dígitos; NUNCA sale por acá hacia
+    // ningún mensaje.
+    const clave = String(body.tracking?.clave ?? '').trim()
+    if (clave && (g.courier !== 'SHALOM' || !/^\d{4}$/.test(clave))) {
+      return new Response(JSON.stringify({ error: 'invalid_clave' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    if (clave) {
+      const { error } = await supabase.from('order_sessions')
+        .update({ shalom_pickup_code: clave }).eq('id', session.id)
+      if (error) {
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+    }
+
+    const r = await registrarGuia(clave ? { ...session, shalom_pickup_code: clave } : session, g)
     if (!r.ok) {
       return new Response(JSON.stringify({ error: r.error }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     return new Response(JSON.stringify({ ok: true, tracking: g.tracking }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── RETRY SHALOM (reintentar a mano la emisión automática que falló) ───────
+  // Solo sobre un expediente FAILED: el generador ya agotó sus reintentos
+  // automáticos (reintenta solo los errores del servidor, hasta 3 veces, antes
+  // de rendirse) — este botón existe para el después: se corrigió el producto
+  // en Shalom Pro, volvió el servicio. `shalom-order` exige la service role,
+  // así que el panel pasa por acá; la función trae sus propios candados
+  // (adelanto cruzado, sin guía previa, un solo reclamo a la vez).
+  if (body.action === 'retry_shalom') {
+    if (String(session.shalom_order_status ?? '').toUpperCase() !== 'FAILED') {
+      return new Response(JSON.stringify({ error: 'no_aplica' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    const r = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/shalom-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ session_id: session.id, retry: true }),
+    })
+    const cuerpo = await r.json().catch(() => ({})) as { tracking?: unknown; error?: string; skipped?: string }
+    if (r.ok && cuerpo.tracking) {
+      return new Response(JSON.stringify({ ok: true, tracking: cuerpo.tracking }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    // El detalle crudo se queda en los logs de `shalom-order`; al panel le
+    // basta saber que no salió.
+    return new Response(JSON.stringify({ ok: false, error: cuerpo.error ?? cuerpo.skipped ?? 'reintento fallido' }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   // ─── SET QTY (seller edits a product quantity → price follows the packs) ────

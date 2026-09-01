@@ -3,7 +3,7 @@ import {
   conCambios, listaConCambios, guardarCambio, agregarMensajeDemo, reiniciarDemo,
   hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo,
   ofertaEnviadaEnDemo, cobroEnviadoEnDemo, saldoPagadoEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo,
-  cobroExtraEnDemo, cobroExtraPagadoEnDemo,
+  cobroExtraEnDemo, cobroExtraPagadoEnDemo, guiaManualEnDemo, reintentoShalomEnDemo,
 } from './cambios-demo'
 import type { PedidoDemo } from './cambios-demo'
 import { avanceDelPago, cobrosDelPedido, cobradoDelPedido, saldoPorCobrar } from '../order-money'
@@ -161,6 +161,55 @@ describe('avanzar en el demo', () => {
     const msgs = conCambios(p).chat_messages ?? []
     expect(msgs.some(m => (m.body ?? '').includes('va en camino a tu agencia'))).toBe(true)
     expect(msgs.some(m => (m.body ?? '').includes('ya llegó a tu agencia'))).toBe(true)
+  })
+})
+
+// ─── El registro que falló: a mano, o reintentando por el API ────────────────
+//
+// El pedido FAILED espera a una persona, y esa persona tiene dos salidas — las
+// mismas que en la tienda real: copiar del comprobante físico los TRES datos
+// (nro. de orden, código y clave, para que la entrega automática funcione
+// igual), o reintentar la emisión por el API (`retry_shalom`).
+
+describe('la guía del registro fallido, enseñando', () => {
+  const fallido = (extra: Partial<PedidoDemo> = {}) => pedido({
+    stage: 'confirmado', shalom_order_status: 'FAILED',
+    product_price: 150, advance_amount: 75, ...extra,
+  })
+
+  it('registrar a mano guarda los tres datos y anuncia la guía SIN pdf', () => {
+    const p = fallido()
+    const patch = guiaManualEnDemo(p, { numero: '46276701', codigo: '9X2N', clave: '4767' })
+    expect(patch).toMatchObject({
+      tracking_courier: 'SHALOM', tracking_numero: '46276701',
+      tracking_codigo: '9X2N', shalom_pickup_code: '4767',
+    })
+    const guia = conCambios(p).chat_messages?.find(m => m.type === 'guia')
+    expect(guia?.body).toContain('Nro. de orden 46276701 · Código 9X2N')
+    // Manual = sin voucher del courier: el botón cae a la hoja de la app.
+    expect(guia?.media_url ?? null).toBeNull()
+    // Y con saldo pendiente, la clave NO sale: la entrega el pago.
+    expect(conCambios(p).chat_messages?.some(m => (m.body ?? '').includes('Tu clave de recojo es'))).toBe(false)
+  })
+
+  it('a mano con todo pagado, la clave sale junto con la guía', () => {
+    const p = fallido({ advance_amount: 150 })
+    guiaManualEnDemo(p, { numero: '46276701', codigo: '9X2N', clave: '4767' })
+    expect(conCambios(p).chat_messages?.some(m => m.body === mensajeDeClave('4767'))).toBe(true)
+  })
+
+  it('reintentar por API emite completa, con voucher, y cierra el expediente', () => {
+    const p = fallido()
+    const patch = reintentoShalomEnDemo(p)
+    expect(patch.tracking_numero).toMatch(/^\d{6}$/)
+    expect(patch.tracking_codigo).toMatch(/^[A-Z0-9]{4}$/)
+    expect(esPickupCodeValido(String(patch.shalom_pickup_code))).toBe(true)
+    expect(patch.shalom_order_status).toBe('CREATED')
+    const con = conCambios(p)
+    expect(con.chat_messages?.find(m => m.type === 'guia')?.media_url).toContain('.pdf')
+    // La columna pasa a `registrado` porque EXISTE la guía — el stage no se
+    // toca, igual que en la tienda real.
+    expect(columnaDelPedido(con)).toBe('registrado')
   })
 
   it('un pedido terminado no avanza', () => {
