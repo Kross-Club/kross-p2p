@@ -92,6 +92,21 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### El demo cobra con código de pago y el acuse sale sin recargar · solo frontend (01-set-2026)
+
+**Nada que desplegar.**
+
+- El saldo y el extra pagados en demo salían **sin "Código de pago"**: el rastro solo lo sembraba
+  el generador. Ahora el pago del demo lo siembra igual — el saldo con la serie del generador
+  (`KSH6xxx` en `saldo_trace`) y el extra con **el código del comprador**, que es el que usa la
+  tienda real.
+- El acuse con el comprobante quedaba guardado pero **la pantalla no lo pintaba hasta recargar**:
+  el segundo tiempo parcheaba solo la sesión. Ahora relee todo por la puerta del demo
+  (`reloadSession`), mensajes incluidos.
+
+En la tienda REAL el equivalente es el `broadcast` del webhook (PR #130): con `pay360-webhook`
+desplegado, el acuse le llega en vivo a los dos chats.
+
 ### El saldo sin cupón en el DEMO · solo frontend (31-ago-2026)
 
 **Nada que desplegar.**
