@@ -99,5 +99,7 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
   billetera crea un cobro de verdad —fila `extra` en la lista de cobros, con su concepto—, se
   manda por el chat y se acepta solo diez segundos después. Y al aceptarse sale el **comprobante**
   —la misma copy que manda el webhook—, que en el demo se arma en el dispositivo para que el
-  botón no abra una página vacía. ⚠️ Al tocar el generador, **nunca agregues una
+  botón no abra una página vacía. Y la **clave de recojo** (01-set-2026): pagar el saldo enseñando
+  la suelta por el chat, igual que el webhook — mientras se deba, solo la ve el vendedor en la
+  barra del envío. ⚠️ Al tocar el generador, **nunca agregues una
   tirada de `r()`**: corre el azar de todos los pedidos siguientes y rompe cosas sin relación.

@@ -92,6 +92,45 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### Los estados de Shalom completos y la clave de recojo · 4 funciones, sin SQL (01-set-2026)
+
+**Qué se ve si no entra:** el frontend sale solo con el merge (la barra del envío ya muestra
+**Registrado** encendido en la pre-guía, y los identificadores se llaman como en el voucher:
+*Nro. de orden* y *Código*), pero **la clave de recojo no aparece en el panel** (`get-session`
+viejo no la manda) y **pagar el saldo no la suelta por el chat** (`pay360-webhook` viejo). El
+demo enseña todo el flujo sin desplegar nada.
+
+Lo que entra:
+
+- **La barra del envío tiene su primer estado: `Registrado`** — encendido mientras la guía es
+  pre-guía (emitida, sin fase del courier). Antes la barra salía entera apagada con "Esperando el
+  primer estado…", que se lee como "no pasó nada" justo cuando el envío acaba de existir. Con la
+  nota de qué significa: pre-guía en Shalom, guía esperando reporte en Olva.
+- **Los identificadores hablan como el voucher de Shalom** (`idsDeGuia`, una sola definición):
+  *Nro. de orden* y *Código* en el chat, la barra y la hoja de guía. En Olva la guía se sigue
+  llamando guía.
+- **La clave de retiro se ve en el panel del vendedor** (barra del envío), detrás del candado
+  FUERTE de `get-session` (`puedeLeerInterno`, el mismo de los comentarios internos — nunca por
+  `viewer=seller`, que se escribe con el token del comprador).
+- **El pago del saldo suelta la clave solo, por el chat** (`mensajeDeClave`): el acuse promete
+  "Te enviamos tu clave de recojo por acá" y ahora el webhook cumple. Y si el pedido ya no debía
+  nada al registrarse la guía (pagó el total, o el saldo cruzó antes que la guía manual), la
+  clave sale **junto con la guía** (`registrarGuia`). Solo pedidos que la tienen: la guía
+  registrada a mano no eligió clave — la suya vive en el comprobante físico y la manda una
+  persona, como siempre.
+- **El demo, en paridad**: el generador deriva código y clave del número (cero tiradas nuevas),
+  los hilos con saldo pagado llevan su acuse con comprobante y su clave, los que deben no la
+  tienen, y pagar el saldo enseñando la suelta a los diez segundos igual que el webhook.
+
+```
+supabase functions deploy get-session    --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order   --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> Con esto se cierra la deuda "la clave no tiene quién se la entregue": la entrega el pago.
+
 ### La guía de muestra del demo · solo frontend (01-set-2026)
 
 **Nada que desplegar.** El botón *Ver mi guía de Shalom* del **demo** abre un voucher real de
@@ -1061,7 +1100,6 @@ Anotada donde vive, para que no haya que redescubrirla:
 | `manage-store` mantiene vivo el camino legacy `admin_auth_id` para branding. | `01-SALES-ENGINE.md` §3.3 · `manage-store/index.ts:82` | Doble superficie de auth. Los campos de cobro ya exigen JWT verificado; falta retirar el resto. |
 | Catálogo de distritos incompleto 🟡 | `02-SMART-LOGISTICS.md` § Deuda conocida | Afecta la cobertura de reparto. |
 | La key de prueba de Olva API Perú viajó por el chat al recibirse. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Rotarla al pasar a producción (se pide por el WhatsApp del proveedor) y recargar Vault/secret. Misma familia que el bloqueo #2. |
-| La **clave de retiro** que genera el envío (`shalom_pickup_code`) no tiene todavía quién se la entregue al comprador cuando paga el saldo. | `27.d` del esquema · `pay360-webhook` | El checkout la promete desde el día 1 ("apenas pagues te enviamos tu clave"). Hoy queda guardada en el pedido y la manda una persona; el paso natural es que el pago del saldo la suelte solo. **No puede ir por `visibility: 'sellers'`**: con el token del comprador se lee igual (`?viewer=seller`). |
 | Los mensajes automáticos salen como si los hubiera tecleado el vendedor asignado (`sender_role: 'seller'` + su nombre). | `register-buyer` (bienvenida) · algunos de `order-manage` · detalle en [`11-RELACIONES.md`](./11-RELACIONES.md) | Mientras siga así, un **% de involucramiento del equipo** contado desde el chat sale inflado: cada pedido nace con un mensaje "de" su vendedor que su vendedor no escribió. El arreglo es marcarlo en el origen —una columna `automatico` en `chat_messages`, o el rol `bot`— y redesplegar las funciones que escriben. |
 | Un **upsell después de haber cobrado el saldo** deja un saldo nuevo que la pasarela no cobra sola. | `src/lib/order-money.ts` · `puedePagarSaldo` | Las columnas guardan UNA operación de saldo, y el botón exige que no haya un saldo ya cruzado. Si al pedido se le agrega algo después, el anillo baja y el saldo aparece —eso sí funciona—, pero el cobro lo coordina el asesor por el chat. Arreglarlo pide un historial de cobros, no una columna más. |
 | `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. |

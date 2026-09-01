@@ -944,15 +944,23 @@ abrir el código:
 
 La orden **la elige Kross**, y con ella el destinatario se lleva el paquete de la
 agencia: quien la tiene, tiene el pedido. Vive en
-`order_sessions.shalom_pickup_code` y **no sale de ahí**:
+`order_sessions.shalom_pickup_code` y sale de ahí por **exactamente dos puertas**
+(01-set-2026):
 
-- no se expone por `get-session`;
-- no viaja a ningún mensaje del chat — **tampoco a los de `visibility: 'sellers'`**,
-  porque el viewer de vendedor se resuelve con el token del comprador
-  (`?viewer=seller`, la deuda anotada en `ESTADO-OPERATIVO`): un mensaje "solo
-  vendedores" con la clave adentro se la estaría regalando;
-- en Kross la clave se entrega **contra el saldo pagado** (§ *El saldo de
-  agencia*), que es justo lo que el checkout viene prometiendo.
+- **Al equipo**, por `get-session`, detrás del candado FUERTE (`puedeLeerInterno`,
+  el mismo de los comentarios internos: JWT verificado contra `sellers`). Nunca
+  por el `viewer=seller` a secas —se escribe con el token del comprador— y
+  **nunca en un mensaje `visibility: 'sellers'`**, que con ese token se lee
+  igual. El panel la pinta en la barra del envío, con la advertencia de que al
+  cliente le llega sola.
+- **Al comprador**, como mensaje del chat (`mensajeDeClave`,
+  `_shared/mensaje-de-guia.ts`), **contra el saldo pagado** (§ *El saldo de
+  agencia*) — que es justo lo que el checkout viene prometiendo. La sueltan dos:
+  `pay360-webhook` cuando cruza el saldo, y `registrarGuia` junto con la guía
+  cuando el pedido ya no debía nada (pagó el total, o el saldo cruzó antes que
+  una guía manual). La guía registrada a mano sin paso por el generador **no
+  tiene clave nuestra** —la suya está en el comprobante físico— y ahí la sigue
+  mandando una persona.
 
 Shalom rechaza claves repetidas (`1111`…`9999`) y consecutivas (`1234`…`6789`);
 el generador también descarta las descendentes — no están en la doc, cuestan 8

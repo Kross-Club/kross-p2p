@@ -24,6 +24,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { columnasDe } from '../_shared/cobros.ts'
 import { acuseDePago } from '../_shared/acuse-de-pago.ts'
+import { mensajeDeClave } from '../_shared/mensaje-de-guia.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
 import { notifyBuyer } from '../_shared/notificar.ts'
 import {
@@ -197,7 +198,7 @@ Deno.serve(async (req) => {
   }
 
   // ─── El pedido ─────────────────────────────────────────────────────────────
-  const sessionCols = 'id, order_id, token, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_name, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, pay360_saldo_coupon_id, pay360_consumer_code, pay360_saldo_consumer_code, saldo_amount, saldo_verification, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
+  const sessionCols = 'id, order_id, token, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_name, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, pay360_saldo_coupon_id, pay360_consumer_code, pay360_saldo_consumer_code, saldo_amount, saldo_verification, shalom_pickup_code, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
   const { data: session } = externalRef
     ? await supabase.from('order_sessions')
         .select(sessionCols)
@@ -397,6 +398,24 @@ Deno.serve(async (req) => {
   }).select().single()
   await avisar(session.id, acuse)
   if (acuse) await empujarAcuse({ sesion: session, tienda: store, cuerpo: acuse.body ?? '' })
+
+  // ─── La clave de recojo, contra el saldo pagado ────────────────────────────
+  //
+  // El acuse de arriba acaba de prometer "Te enviamos tu clave de recojo por
+  // acá", y esta es la entrega: el pago del saldo es EL momento en que la clave
+  // deja de estar retenida (02 §El saldo de agencia — quien la tiene se lleva
+  // el paquete). Solo si el pedido la tiene: la guía registrada a mano no
+  // eligió clave —la suya vive en el comprobante físico— y ahí la manda una
+  // persona, como siempre. Sin push aparte: el push del acuse ya lo trae al
+  // chat, donde la clave lo espera.
+  if (esSaldo && esRecojo && session.shalom_pickup_code) {
+    const { data: claveMsg } = await supabase.from('chat_messages').insert({
+      session_id: session.id, sender_role: 'system', sender_name: 'Kross',
+      type: 'status_update', visibility: 'all',
+      body: mensajeDeClave(session.shalom_pickup_code),
+    }).select().single()
+    if (claveMsg) await broadcast(session.id, 'new_message', claveMsg)
+  }
 
   // ─── CAPI · Purchase server-side ───────────────────────────────────────────
   //

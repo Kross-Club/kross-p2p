@@ -60,6 +60,7 @@ Deno.serve(async (req) => {
       dispatch_type, agency_name, agency_branch_id, delivery_reference,
       tracking_courier, tracking_numero, tracking_codigo, tracking_ose_id,
       tracking_year, tracking_phase, tracking_phase_at, tracking_demora_at,
+      shalom_pickup_code,
       payment_verification, payment_reason, payment_event_id,
       saldo_amount, saldo_verification, saldo_matched_at, saldo_event_id,
       pay360_saldo_consumer_code, pay360_saldo_coupon_id, pay360_saldo_coupon_expires_at,
@@ -257,6 +258,12 @@ Deno.serve(async (req) => {
     JSON.stringify({
       session: {
         ...session, ...sellerOnly,
+        // ⚠️ La CLAVE DE RETIRO va detrás del candado FUERTE (`puedeLeerInterno`),
+        // no del `viewer=seller` de los demás campos internos: `viewer=seller`
+        // se escribe con el token del comprador, y quien tiene la clave se
+        // lleva el paquete. Al comprador le llega por el chat —como mensaje—
+        // recién cuando su saldo cruza, nunca por esta vía.
+        shalom_pickup_code: puedeLeerInterno ? session.shalom_pickup_code : undefined,
         seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar,
         participants, buyer_can_call: buyerCanCall,
         buyer_contact: buyerContact, payment_trace: paymentTrace, saldo_trace: saldoTrace,

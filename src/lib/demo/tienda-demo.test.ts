@@ -5,6 +5,8 @@ import { columnaDelPedido, COLUMNAS } from '../order-tracking'
 import { avanceDelPago, cobrosDelPedido, saldoDelPedido } from '../order-money'
 import { conCambios, reiniciarDemo } from './cambios-demo'
 import { estaVivo } from '../store-orders'
+import { mensajeDeClave } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { esPickupCodeValido } from '../../../supabase/functions/_shared/shalom-orders.ts'
 
 const t = await tiendaDemo()
 
@@ -434,12 +436,18 @@ describe('la guía en los hilos del generador', () => {
     }
   })
 
-  it('los pedidos con guía llevan su tarjeta, con su número', () => {
+  // Con el vocabulario del voucher (`idsDeGuia`): en Shalom el número es el
+  // "Nro. de orden" y va con su código; en Olva la guía se llama guía.
+  it('los pedidos con guía llevan su tarjeta, con sus identificadores', () => {
     const conGuia = t.pedidos.filter(p => (p.stage === 'en_camino' || p.stage === 'entregado') && p.tracking_numero)
     expect(conGuia.length).toBeGreaterThan(0)
     for (const p of conGuia.slice(0, 20)) {
       const guia = (p.chat_messages ?? []).find(m => m.type === 'guia')
-      expect(guia?.body).toContain(`Guía ${p.tracking_numero}`)
+      if (String(p.tracking_courier).toUpperCase() === 'OLVA') {
+        expect(guia?.body).toContain(`Guía ${p.tracking_numero}`)
+      } else {
+        expect(guia?.body).toContain(`Nro. de orden ${p.tracking_numero} · Código ${p.tracking_codigo}`)
+      }
     }
   })
 
@@ -448,6 +456,69 @@ describe('la guía en los hilos del generador', () => {
     expect(sinGuia.length).toBeGreaterThan(0)
     for (const p of sinGuia.slice(0, 20)) {
       expect((p.chat_messages ?? []).some(m => m.type === 'guia')).toBe(false)
+    }
+  })
+
+  // Los identificadores de la guía Shalom, completos y con el formato real: el
+  // código de 4 alfanuméricos del voucher y una clave que pasa por el MISMO
+  // validador que usa `shalom-order` al emitir. Olva no lleva ninguno.
+  it('toda guía Shalom trae código y una clave que Shalom aceptaría', () => {
+    const shalom = t.pedidos.filter(p => p.tracking_numero && String(p.tracking_courier).toUpperCase() === 'SHALOM')
+    expect(shalom.length).toBeGreaterThan(0)
+    for (const p of shalom) {
+      expect(p.tracking_codigo).toMatch(/^[A-Z0-9]{4}$/)
+      expect(esPickupCodeValido(String(p.shalom_pickup_code))).toBe(true)
+    }
+    for (const p of t.pedidos.filter(x => String(x.tracking_courier).toUpperCase() === 'OLVA')) {
+      expect(p.shalom_pickup_code ?? null).toBeNull()
+    }
+  })
+})
+
+// ─── La clave de recojo se entrega contra el saldo pagado — y solo entonces ──
+//
+// Es la regla de seguridad del recojo (quien tiene la clave se lleva el
+// paquete) y el demo la enseña igual que la vive la tienda real: el hilo que ya
+// pagó su saldo lleva el acuse con su comprobante y la clave; el que debe, Nada.
+
+describe('la clave de recojo en los hilos del generador', () => {
+  const shalomConGuia = () => t.pedidos.filter(p =>
+    p.tracking_numero && String(p.tracking_courier).toUpperCase() === 'SHALOM')
+
+  it('el hilo que pagó su saldo lleva el acuse —con comprobante— y la clave', () => {
+    const pagados = shalomConGuia().filter(p => p.saldo_verification === 'MATCHED')
+    expect(pagados.length).toBeGreaterThan(0)
+    for (const p of pagados) {
+      const msgs = p.chat_messages ?? []
+      const acuse = msgs.find(m => /¡Recibimos tu saldo de/.test(m.body ?? ''))
+      expect(acuse?.cobro_id).toBe(p.cobros?.find(c => c.tipo === 'saldo')?.id)
+      expect(msgs.some(m => m.body === mensajeDeClave(String(p.shalom_pickup_code)))).toBe(true)
+    }
+  })
+
+  it('el que pagó TODO por adelantado la recibe junto con la guía', () => {
+    const total = shalomConGuia().filter(p => saldoDelPedido(p) === 0 && !p.saldo_verification)
+    expect(total.length).toBeGreaterThan(0)
+    for (const p of total.slice(0, 10)) {
+      expect((p.chat_messages ?? []).some(m => m.body === mensajeDeClave(String(p.shalom_pickup_code)))).toBe(true)
+    }
+  })
+
+  // La mitad que importa: a quien la guía le dijo "apenas lo pagues te
+  // entregamos tu clave" y no pagó, la entrega NO está en el hilo. Se pregunta
+  // por lo que la guía DIJO —"Tu saldo de S/…"— y no por el saldo de hoy: un
+  // upsell posterior puede crearle saldo nuevo a quien pagó todo y ya recibió
+  // su clave con la guía, y esa historia no se reescribe (igual que en la
+  // tienda real). Tampoco se barre por los 4 dígitos sueltos: aparecen por
+  // coincidencia en montos y operaciones — lo que revela la clave es el mensaje
+  // que la entrega.
+  it('el que todavía debe el saldo que la guía le cobró NO tiene la clave', () => {
+    const deben = shalomConGuia().filter(p =>
+      p.saldo_verification !== 'MATCHED'
+      && (p.chat_messages ?? []).some(m => m.type === 'guia' && (m.body ?? '').includes('Tu saldo de S/')))
+    expect(deben.length).toBeGreaterThan(0)
+    for (const p of deben) {
+      expect((p.chat_messages ?? []).some(m => (m.body ?? '').includes('Tu clave de recojo es'))).toBe(false)
     }
   })
 })

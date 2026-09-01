@@ -13,7 +13,7 @@
 import { broadcast, chatMessage, supabase } from './tracking.ts'
 import { shalomApiKey } from './shalom.ts'
 import { normalizeYear } from './olva.ts'
-import { mensajeDeGuia } from './mensaje-de-guia.ts'
+import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from './mensaje-de-guia.ts'
 import type { Courier } from './mensaje-de-guia.ts'
 export type { Courier } from './mensaje-de-guia.ts'
 
@@ -23,6 +23,13 @@ export interface GuiaSession {
   product_price: number | null
   advance_amount: number | null
   payment_verification: string | null
+  /** Si el saldo YA cruzó cuando la guía se registra —pasa cuando el proveedor
+   *  rechazó la emisión y el pago llegó antes que la guía manual—, la clave de
+   *  recojo sale junto con ella: la promesa era contra el pago, y ya pagó. */
+  saldo_verification?: string | null
+  /** La clave de retiro, si este pedido la tiene (la guía automática de Shalom
+   *  la elige; una registrada a mano no — su clave vive en el papel del counter). */
+  shalom_pickup_code?: string | null
   agency_name: string | null
 }
 
@@ -85,8 +92,13 @@ export function normalizarGuia(t: GuiaInput, agencyName: string | null, now = Da
       tracking_phase: null, tracking_phase_at: null,
       tracking_demora_at: null, tracking_checked_at: null,
     },
-    ids: courier === 'OLVA' ? `Guía ${numero}`
-      : numeroOk ? `Guía ${numero} · Código ${codigo}` : `Orden de servicio ${oseId}`,
+    // Los nombres, con el vocabulario del courier (`idsDeGuia`): en Shalom el
+    // número es el "Nro. de orden" de su propio voucher.
+    ids: idsDeGuia(courier, {
+      numero: numeroOk ? numero : null,
+      codigo: courier === 'SHALOM' && codigoOk ? codigo : null,
+      oseId,
+    }),
   }
 }
 
@@ -109,9 +121,12 @@ export async function registrarGuia(
 
   // El saldo DERIVADO, no asumido (misma regla que el acuse de pay360-webhook):
   // a quien pagó el total no se le habla de un saldo que no existe — su clave
-  // de recojo va sin condición.
+  // de recojo va sin condición. Y un saldo YA cruzado cuenta como pagado: si el
+  // pago llegó antes que la guía, la deuda no existe.
   const pagado = session.payment_verification === 'MATCHED' ? Number(session.advance_amount ?? 0) : 0
-  const saldo = Math.max(0, Number(session.product_price ?? 0) - pagado)
+  const saldo = session.saldo_verification === 'MATCHED'
+    ? 0
+    : Math.max(0, Number(session.product_price ?? 0) - pagado)
 
   await chatMessage(
     session.id,
@@ -122,6 +137,14 @@ export async function registrarGuia(
     // el mensaje sale igual, sin botón.
     { type: 'guia', media_url: opts.pdfUrl ?? null },
   )
+  // La CLAVE, solo si ya no queda nada por pagar: el mensaje de arriba acaba de
+  // prometer "junto con la guía te entregaremos tu clave de recojo", y esta es
+  // la entrega. Con saldo pendiente NO sale — la suelta el webhook cuando el
+  // saldo cruce. Y solo si el pedido la tiene: la guía registrada a mano no
+  // eligió clave (la suya vive en el comprobante físico del courier).
+  if (saldo === 0 && session.shalom_pickup_code) {
+    await chatMessage(session.id, mensajeDeClave(session.shalom_pickup_code), 'all')
+  }
   await broadcast(session.id, 'tracking_update', g.tracking)
   if (!opts.yaSuscrito) await suscribirWebhook(g)
   return { ok: true }

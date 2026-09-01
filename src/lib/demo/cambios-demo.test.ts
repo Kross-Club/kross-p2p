@@ -9,6 +9,8 @@ import type { PedidoDemo } from './cambios-demo'
 import { avanceDelPago, cobrosDelPedido, cobradoDelPedido, saldoPorCobrar } from '../order-money'
 import { columnaDelPedido } from '../order-tracking'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
+import { mensajeDeClave } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { esPickupCodeValido } from '../../../supabase/functions/_shared/shalom-orders.ts'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
 //
@@ -77,6 +79,30 @@ describe('avanzar en el demo', () => {
     expect(r.ok).toBe(true)
     expect(r.patch?.tracking_numero).toMatch(/^\d{6}$/)
     expect(columnaDelPedido(conCambios(p))).toBe('registrado')
+  })
+
+  // Completa, como la emite `shalom-order`: con el código del voucher —que
+  // viaja en el mensaje, con el vocabulario de Shalom— y una clave de retiro
+  // que su validador aceptaría. La clave NO va en el mensaje: este pedido aún
+  // debe su saldo.
+  it('la guía inventada trae código y clave, y el chat solo enseña los ids', () => {
+    const p = pedido({ stage: 'confirmado' })
+    const r = avanzarEnDemo(p)
+    expect(r.patch?.tracking_codigo).toMatch(/^[A-Z0-9]{4}$/)
+    expect(esPickupCodeValido(String(r.patch?.shalom_pickup_code))).toBe(true)
+    const guia = conCambios(p).chat_messages?.find(m => m.type === 'guia')
+    expect(guia?.body).toContain(`Nro. de orden ${r.patch?.tracking_numero} · Código ${r.patch?.tracking_codigo}`)
+    expect(conCambios(p).chat_messages?.some(m => m.body === mensajeDeClave(String(r.patch?.shalom_pickup_code))))
+      .toBe(false)
+  })
+
+  // Pero si el pedido ya no debe nada, la clave sale JUNTO con la guía — es lo
+  // que hace `registrarGuia` en la tienda real cuando pagaron el total.
+  it('con todo pagado, la clave sale junto con la guía', () => {
+    const p = pedido({ stage: 'confirmado', advance_amount: 150 })
+    const r = avanzarEnDemo(p)
+    expect(conCambios(p).chat_messages?.some(m => m.body === mensajeDeClave(String(r.patch?.shalom_pickup_code))))
+      .toBe(true)
   })
 
   it('y después mueve el reloj del courier, paso por paso', () => {
@@ -177,6 +203,31 @@ describe('el carrito en el demo', () => {
     expect(acuse?.body).toBe(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: true }))
     // Y apunta al cobro: sin eso el botón no tendría qué abrir.
     expect(acuse?.cobro_id).toBe('s')
+  })
+
+  // El acuse promete "Te enviamos tu clave de recojo por acá" — y el demo
+  // cumple igual que el webhook: la clave sale sola, DESPUÉS del acuse, solo si
+  // el pedido la tiene. Una guía registrada a mano no eligió clave, y ahí no
+  // hay nada que mandar.
+  it('el saldo pagado suelta la clave de recojo, después del acuse', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75, saldo_amount: 75, saldo_verification: 'PENDING',
+      tracking_courier: 'SHALOM', tracking_numero: '260368', shalom_pickup_code: '2415',
+    })
+    saldoPagadoEnDemo(base)
+    const msgs = conCambios(base).chat_messages ?? []
+    const iAcuse = msgs.findIndex(m => /¡Recibimos tu saldo de/.test(m.body ?? ''))
+    const iClave = msgs.findIndex(m => m.body === mensajeDeClave('2415'))
+    expect(iClave).toBeGreaterThan(iAcuse)
+  })
+
+  it('sin clave guardada no se inventa ninguna', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75, saldo_amount: 75, saldo_verification: 'PENDING',
+      tracking_courier: 'SHALOM', tracking_numero: '260368',
+    })
+    saldoPagadoEnDemo(base)
+    expect(conCambios(base).chat_messages?.some(m => (m.body ?? '').includes('clave de recojo es'))).toBe(false)
   })
 
   // ─── El caso que se rompió en producción ───────────────────────────────────

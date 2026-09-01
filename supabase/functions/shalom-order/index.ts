@@ -50,8 +50,8 @@ const json = (body: unknown, status = 200) =>
 
 const SESSION_COLUMNS =
   'id, order_id, store_id, origin_store_id, buyer_id, buyer_name, buyer_phone, product_id, product_name, ' +
-  'product_price, advance_amount, payment_verification, dispatch_type, agency_name, agency_branch_id, ' +
-  'delivery_reference, tracking_numero, tracking_ose_id, shalom_order_status'
+  'product_price, advance_amount, payment_verification, saldo_verification, dispatch_type, agency_name, ' +
+  'agency_branch_id, delivery_reference, tracking_numero, tracking_ose_id, shalom_order_status'
 
 /** Cierra el expediente del pedido. `status` es también el candado: una vez
  *  escrito, ninguna corrida futura vuelve a tomar este pedido sola. */
@@ -470,7 +470,10 @@ Deno.serve(async (req: Request) => {
       // guía FORMAL de Shalom, descargada del voucher y guardada en Storage
       // (si la respuesta trajera una URL directa, esa gana: cero descargas).
       const pdfUrl = guia.pdfUrl ?? await guardarPdfDeGuia(guia.oseId, guia.numero)
-      const reg = await registrarGuia(session, g, { yaSuscrito: true, pdfUrl })
+      // La clave recién elegida viaja con la sesión: si el pedido ya quedó sin
+      // saldo (pagó el total), `registrarGuia` la entrega junto con la guía —la
+      // fila de la base todavía no la tiene, la escribe `cerrar` después.
+      const reg = await registrarGuia({ ...session, shalom_pickup_code: code }, g, { yaSuscrito: true, pdfUrl })
       await cerrar(sessionId, 'CREATED', reg.ok ? null : 'guía emitida, no se pudo escribir en el pedido', extra)
       if (!reg.ok) {
         console.error('[shalom-order] no se pudo escribir la guía en el pedido', sessionId, reg.error)
@@ -480,7 +483,7 @@ Deno.serve(async (req: Request) => {
 
       await aLogistica(sessionId,
         `📦 Guía generada automáticamente en Shalom · ${g.ids}. El comprador ya la tiene en su chat. `
-        + 'Su clave de retiro quedó guardada en el pedido y se le entrega cuando pague el saldo.')
+        + 'Su clave de retiro quedó guardada en el pedido y el chat se la entrega solo contra el saldo pagado.')
       return json({ created: true, tracking: g.tracking })
     }
   }
