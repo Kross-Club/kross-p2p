@@ -25,6 +25,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { columnasDe } from '../_shared/cobros.ts'
 import { acuseDePago } from '../_shared/acuse-de-pago.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
+import { notifyBuyer } from '../_shared/notificar.ts'
 import {
   PAY360_HEADERS, getCoupon, isPaid, pay360BaseUrl, pickPartnerKey, verifySignature, type Pay360Env,
 } from '../_shared/pay360.ts'
@@ -84,6 +85,43 @@ async function broadcast(sessionId: string, event: string, payload: unknown) {
 async function avisar(sessionId: string, acuse: unknown) {
   if (acuse) await broadcast(sessionId, 'new_message', acuse)
   await broadcast(sessionId, 'cobros_update', {})
+}
+
+/**
+ * Y el PUSH, para el comprador que no tiene la app abierta — que es casi
+ * siempre: acaba de pagar en Yape y está en Yape. Es la mejor notificación que
+ * la tienda puede mandar, y hasta hoy el acuse solo existía dentro del chat.
+ *
+ * El mismo embudo que los mensajes del equipo (`_shared/notificar.ts`): push
+ * primero, WhatsApp de respaldo si está encendido, todo en `notifications_log`.
+ * Best-effort SIEMPRE: el 2xx del webhook jamás depende de un aviso.
+ */
+async function empujarAcuse(s: {
+  sesion: { id: string; token?: string | null; buyer_id?: string | null; buyer_name?: string | null
+            store_id?: string | null; product_name?: string | null }
+  tienda: { nombre?: string | null; notif_icon_url?: string | null; logo_url?: string | null } | null
+  cuerpo: string
+}) {
+  try {
+    const icono = s.tienda?.notif_icon_url ?? s.tienda?.logo_url ?? null
+    await notifyBuyer({
+      buyerId: s.sesion.buyer_id ?? null,
+      sessionId: s.sesion.id,
+      storeId: s.sesion.store_id ?? null,
+      title: `✅ ${s.tienda?.nombre ?? 'Kross'} · Pago recibido`,
+      // El acuse ya arranca con "✅ ¡Recibimos…": en el push el check va en el
+      // título, así que del cuerpo se quita para no decirlo dos veces.
+      body: s.cuerpo.replace(/^✅\s*/, '').slice(0, 140),
+      url: s.sesion.token ? `/p/${s.sesion.token}` : '/',
+      tag: `pago-${s.sesion.id}`,
+      type: 'status',
+      icon: icono, badge: icono,
+      waName: (s.sesion.buyer_name ?? 'Hola').split(' ')[0],
+      waProduct: s.sesion.product_name ?? 'tu pedido',
+    })
+  } catch (e) {
+    console.warn('[pay360-webhook] push del acuse no salió', String(e).slice(0, 200))
+  }
 }
 
 Deno.serve(async (req) => {
@@ -159,7 +197,7 @@ Deno.serve(async (req) => {
   }
 
   // ─── El pedido ─────────────────────────────────────────────────────────────
-  const sessionCols = 'id, order_id, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, pay360_saldo_coupon_id, pay360_consumer_code, pay360_saldo_consumer_code, saldo_amount, saldo_verification, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
+  const sessionCols = 'id, order_id, token, store_id, origin_store_id, buyer_name, buyer_phone, buyer_id, product_id, product_name, product_price, dispatch_type, advance_amount, payment_verification, payment_provider, pay360_coupon_id, pay360_saldo_coupon_id, pay360_consumer_code, pay360_saldo_consumer_code, saldo_amount, saldo_verification, ad_fbp, ad_fbc, ad_ttp, ad_ttclid, ad_client_ua, ad_client_ip, ad_source_url'
   const { data: session } = externalRef
     ? await supabase.from('order_sessions')
         .select(sessionCols)
@@ -229,7 +267,7 @@ Deno.serve(async (req) => {
 
   const originStoreId = String(session.origin_store_id ?? session.store_id)
   const { data: store } = await supabase.from('stores')
-    .select('pay360_env, meta_pixel_id, tiktok_pixel_id').eq('id', originStoreId).maybeSingle()
+    .select('pay360_env, meta_pixel_id, tiktok_pixel_id, nombre, notif_icon_url, logo_url').eq('id', originStoreId).maybeSingle()
   const env = (store?.pay360_env === 'live' ? 'live' : 'sandbox') as Pay360Env
 
   const coupon = await getCoupon(pay360BaseUrl(env, 'partner'),
@@ -339,6 +377,7 @@ Deno.serve(async (req) => {
       body: acuseDePago({ tipo: 'extra', pagado: paid, total: Number(session.product_price ?? 0), esRecojo, concepto: cobroDelCupon?.concepto }),
     }).select().single()
     await avisar(session.id, acuse)
+    if (acuse) await empujarAcuse({ sesion: session, tienda: store, cuerpo: acuse.body ?? '' })
     // Y se corta acá, antes de CAPI: un cobro extra no es otra compra. Contarlo
     // como `Purchase` le sumaría a Meta y a TikTok una conversión por cada flete
     // cobrado, y el público "de los que sí pagaron" —que es para lo que existe
@@ -357,6 +396,7 @@ Deno.serve(async (req) => {
     }),
   }).select().single()
   await avisar(session.id, acuse)
+  if (acuse) await empujarAcuse({ sesion: session, tienda: store, cuerpo: acuse.body ?? '' })
 
   // ─── CAPI · Purchase server-side ───────────────────────────────────────────
   //

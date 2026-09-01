@@ -92,6 +92,27 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### El push del pago recibido · 2 funciones (01-set-2026)
+
+**Qué se ve si no entra:** todo igual que hoy — el acuse llega al chat y en vivo, pero el
+comprador con la app cerrada no se entera hasta abrir.
+
+`pay360-webhook` ahora manda el **push** con el acuse ("✅ <marca> · Pago recibido") apenas cruza
+un cobro — adelanto, saldo o extra. Abre directo el chat del pedido, donde está el botón del
+comprobante. El aviso vive en **`_shared/notificar.ts`** (se mudó desde `seller-send-message`,
+que ahora lo importa): push primero, WhatsApp de respaldo si `WA_AUTO_FALLBACK=on`, todo en
+`notifications_log`. Best-effort siempre — el 2xx del webhook jamás depende de un aviso.
+
+```
+supabase functions deploy pay360-webhook      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy seller-send-message --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL.
+
+> Deuda anotada: `register-buyer`, `send-message`, `create-call-token` y `seller-call-token`
+> conservan sus copias viejas del push. Migrarlas a `_shared/notificar.ts` es una tarea aparte.
+
 ### La pre-guía de Shalom, con su PDF · 2 funciones (01-set-2026)
 
 **Qué se ve si no entra:** el mensaje de guía sigue saliendo como siempre (la píldora con la copy
