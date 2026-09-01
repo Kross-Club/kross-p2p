@@ -83,7 +83,10 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
   tipos de sesión —el store y el seed de maqueta se borraron (27-ago-2026)—; lo que queda ahí
   lo usa la capa de checkout.
 - **Modo demo** (`src/lib/demo/`): un interruptor en *Marca* llena todo el panel con una tienda
-  de ejemplo (~1.000 pedidos/día) para enseñar la herramienta. Vive en el dispositivo, no en
+  de ejemplo (~1.000 pedidos/día) para enseñar la herramienta. **La regla del demo es paridad**:
+  lo que el demo enseña es exactamente lo que la tienda real hace, y todo lo que se construye
+  para la tienda real se enseña en el demo — un demo que se comporte distinto vende un producto
+  que no existe. Vive en el dispositivo, no en
   `stores`, y el panel lo anuncia con una barra fija. Nunca toca la base.
   Y **se deja tocar** (29-ago-2026): avanzar de etapa, cambiar cantidades, agregar un producto,
   escribir en el chat, invitar y pasar el pedido funcionan enseñando. Los cambios se guardan

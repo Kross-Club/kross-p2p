@@ -7,6 +7,7 @@ import PagarSaldo from '../../components/PagarSaldo'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
 import { TIPO_COBRO, montoDeLaTarjeta, cobroDeLaTarjeta } from '../../lib/cobro-por-chat'
+import { cobroDelAviso } from '../../lib/comprobante'
 import { puedePagarSaldo, saldoDelPedido, cobrosDelPedido } from '../../lib/order-money'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -173,9 +174,13 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
 
   // El aviso de que ENTRÓ la plata, con su constancia. Va antes de la píldora
   // de estado y no dentro: el aviso más importante del hilo no puede verse igual
-  // que "cambió la etapa". Lo que lo distingue es que apunta a un cobro.
-  if (msg.type === 'status_update' && msg.cobro_id) {
-    return <TarjetaDeComprobante texto={msg.body} cobroId={msg.cobro_id} hora={time} />
+  // que "cambió la etapa". Los mensajes nuevos traen el puntero (`cobro_id`);
+  // los de ANTES del puntero se reconocen por su propia copy (`cobroDelAviso`),
+  // para que un pedido que pagó hace un mes enseñe el mismo botón que uno de
+  // hoy — sin reescribir su conversación.
+  if (msg.type === 'status_update' && pedido) {
+    const cobroId = msg.cobro_id ?? cobroDelAviso(msg, cobrosDelPedido(pedido))?.id
+    if (cobroId) return <TarjetaDeComprobante texto={msg.body} cobroId={cobroId} hora={time} />
   }
 
   if (msg.type === 'status_update') {

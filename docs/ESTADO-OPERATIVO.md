@@ -92,6 +92,18 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### El comprobante en los hilos viejos, y el ícono sin jerarquía · solo frontend (01-set-2026)
+
+**Nada que desplegar.**
+
+- **Todos los pedidos que ya pagaron su adelanto (o el total) enseñan su comprobante en el
+  chat**, aunque hayan pagado antes de que existiera. No se rellena la base: el aviso que ya
+  estaba en el hilo —el *"✅ ¡Recibimos tu adelanto…"* del webhook, el *"Adelanto verificado"* de
+  los hilos del demo— se reconoce por su propia copy (`cobroDelAviso`) y se pinta como la tarjeta
+  con el botón, en su misma posición del hilo. Igual para saldos y extras pagados.
+- El ícono de **billetera** deja el verde: mismo par de colores que la oferta. Son tres maneras
+  de escribir en el hilo y ninguna manda sobre las otras.
+
 ### El demo cobra con código de pago y el acuse sale sin recargar · solo frontend (01-set-2026)
 
 **Nada que desplegar.**
