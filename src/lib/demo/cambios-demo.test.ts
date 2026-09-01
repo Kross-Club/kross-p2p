@@ -3,6 +3,7 @@ import {
   conCambios, listaConCambios, guardarCambio, agregarMensajeDemo, reiniciarDemo,
   hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo,
   ofertaEnviadaEnDemo, cobroEnviadoEnDemo, saldoPagadoEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo,
+  cobroExtraEnDemo, cobroExtraPagadoEnDemo,
 } from './cambios-demo'
 import type { PedidoDemo } from './cambios-demo'
 import { avanceDelPago, cobrosDelPedido, cobradoDelPedido, saldoPorCobrar } from '../order-money'
@@ -220,6 +221,37 @@ describe('el carrito en el demo', () => {
     const suyo = conCambios(base).cobros?.find(c => c.tipo === 'saldo')
     expect(acuse?.cobro_id).toBe(suyo?.id)
     expect(acuse?.cobro_id).toBeTruthy()
+  })
+
+  // Un cobro que entró se sigue por su código de pago — es lo que se enseña.
+  // El generador siembra el rastro del saldo en `saldo_trace` con la serie
+  // KSH6xxx (`rastroDemo` con i+5000); el pago del demo usa la misma convención,
+  // y sin esto la tarjeta verde salía sin "Código de pago".
+  it('el saldo pagado deja su código de pago, con la serie del generador', () => {
+    const base = pedido({
+      id: 'demo-ped-13', product_price: 150, advance_amount: 75,
+      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
+    })
+    saldoPagadoEnDemo(base)
+    const p = conCambios(base)
+    expect(p.saldo_trace?.payment_code).toBe('KSH6013')
+    expect(p.saldo_trace?.operation_number).toBeTruthy()
+  })
+
+  // Y el extra pagado lleva el código del COMPRADOR, que es el que usa en la
+  // tienda real: `pay360-coupon` emite sus cupones con el código estable del
+  // cliente, no con uno propio.
+  it('el extra pagado lleva el código de pago del comprador', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75,
+      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      payment_trace: { payment_code: 'KSH1042', coupon_id: null, operation_number: '1', bank: 'BCP' },
+    })
+    const { id } = cobroExtraEnDemo(base, 50, 'Flete')
+    cobroExtraPagadoEnDemo(conCambios(base), id)
+    const suyo = conCambios(base).cobros?.find(c => c.id === id)
+    expect(suyo).toMatchObject({ estado: 'MATCHED', pay360_consumer_code: 'KSH1042' })
   })
 
   // Y en la LISTA, que es de donde lee el panel desde el bloque §36. El

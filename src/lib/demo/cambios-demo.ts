@@ -3,6 +3,7 @@ import { siguientePaso } from '../order-tracking'
 import { resumenDelPedido } from '../../../supabase/functions/_shared/resumen-pedido.ts'
 import { cobradoDelPedido, saldoDelPedido } from '../order-money'
 import type { OrderItem, Participant } from '../order-api'
+import type { RastroDeCobro } from '../rastro-de-pago'
 import type { StoreOrder } from '../store-orders'
 import type { FilaDeCobro } from '../../../supabase/functions/_shared/cobros.ts'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
@@ -94,6 +95,10 @@ export interface CambioDemo {
    *  emisión del cupón; acá, el pago — que es cuando el demo se entera de
    *  cuánto era. */
   saldo_amount?: number | null
+  /** El rastro del saldo (código de pago, operación, banco), en el MISMO sitio
+   *  donde lo pone el generador: la tarjeta del panel y el comprobante leen de
+   *  ahí para los saldos. */
+  saldo_trace?: RastroDeCobro | null
   /** La lista de cobros (bloque §36). Se pisa entera y no se funde: quitar un
    *  cobro es quitarlo, y un merge por índice dejaría el viejo debajo. */
   cobros?: FilaDeCobro[]
@@ -260,12 +265,26 @@ export function saldoPagadoEnDemo(p: PedidoDemo): CambioDemo {
         matched_at: cuando, created_at: cuando,
       }]
 
+  // El rastro del cobro, con la MISMA convención del generador: el saldo va en
+  // `saldo_trace` y su código es la serie KSH6xxx (`rastroDemo` con `i + 5000`).
+  // Sin esto la tarjeta verde salía sin "Código de pago" — que es justo el dato
+  // con el que se enseña a seguir una transacción. Del ÍNDICE, nunca de `r()`:
+  // una tirada acá le corre el azar a todos los pedidos (aviso de CLAUDE.md).
+  const i = Number(/demo-ped-(\d+)/.exec(p.id)?.[1] ?? 0)
+  const rastroSaldo = p.saldo_trace ?? {
+    payment_code: `KSH${String(6000 + i).slice(-4)}`,
+    coupon_id: null,
+    operation_number: String(10000000 + ((i * 7919 + 4242) % 89999999)),
+    bank: 'BCP',
+  }
+
   const patch: CambioDemo = {
     // Las dos mitades, como escribe el servidor mientras dura la mudanza al
     // bloque §36: la fila y la columna.
     saldo_amount: monto,
     saldo_verification: 'MATCHED',
     saldo_matched_at: cuando,
+    saldo_trace: rastroSaldo,
     // Vacío no se manda: una lista `[]` no es "este pedido no cobró nada", es
     // "no me llegó lista", y pisar la del generador con una vacía haría que el
     // pedido se viera SIN COBRAR. Ver `order-money.ts`.
@@ -682,7 +701,13 @@ export function cobroExtraEnDemo(p: PedidoDemo, monto: number, concepto: string)
  *  se acepta tiene que ser el que se acaba de mandar. */
 export function cobroExtraPagadoEnDemo(p: PedidoDemo, cobroId: string): CambioDemo {
   const cobros = (p.cobros ?? []).map(c =>
-    c.id === cobroId ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString() } : c)
+    c.id === cobroId
+      ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString(),
+          // El código de pago del COMPRADOR, que es el que usa un extra en la
+          // tienda real (`pay360-coupon` emite con `session.pay360_consumer_code`,
+          // estable por comprador). Sin él la tarjeta verde salía sin código.
+          pay360_consumer_code: p.payment_trace?.payment_code ?? null }
+      : c)
   const patch = { cobros }
   guardarCambio(p.id, patch)
   const suyo = cobros.find(c => c.id === cobroId)

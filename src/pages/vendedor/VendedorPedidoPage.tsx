@@ -956,8 +956,11 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       const msg = cobroEnviadoEnDemo(session as unknown as StoreOrder, body, { nombre: sellerName, rol: sellerRole })
       setMessages(prev => [...prev, msg as unknown as OrderMessage])
       alRato(() => {
-        const patch = saldoPagadoEnDemo(session as unknown as StoreOrder)
-        setSession(s => s ? { ...s, ...patch } as OrderSession : s)
+        saldoPagadoEnDemo(session as unknown as StoreOrder)
+        // Se relee TODO por la misma puerta del demo —sesión y mensajes—, no se
+        // parchea a mano: el pago deja también el acuse con su comprobante en el
+        // hilo, y parchear solo la sesión lo dejaba invisible hasta recargar.
+        reloadSession()
       })
       return
     }
@@ -973,7 +976,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     const saved: OrderMessage = await res.json()
     setMessages(prev => prev.some(m => m.id === saved.id) ? prev : [...prev, saved])
     channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
-  }, [session, token, sellerName, sellerRole, alRato])
+  }, [session, token, sellerName, sellerRole, alRato, reloadSession])
 
   /**
    * Las acciones de EQUIPO y de COBRO —invitar, sacar, pasar el pedido, crear o
@@ -1015,8 +1018,9 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       // de antes del clic y no lo tiene, así que buscarlo ahí no encontraría
       // nada que aceptar.
       alRato(() => {
-        const pagado = cobroExtraPagadoEnDemo({ ...session, ...patch } as unknown as StoreOrder, id)
-        setSession(s => s ? { ...s, ...pagado } as OrderSession : s)
+        cobroExtraPagadoEnDemo({ ...session, ...patch } as unknown as StoreOrder, id)
+        // Íd. que el saldo: releer, no parchear — el acuse también es del hilo.
+        reloadSession()
       })
       return
     }
