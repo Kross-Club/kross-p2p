@@ -69,6 +69,13 @@ export interface Cobro {
   id?: string | null
   /** Solo en los `extra`: qué se está cobrando. */
   concepto?: string | null
+  /** Lo que se le descontó al comercio por este cobro, y lo que le queda
+   *  después (bloque §38). `null` = el evento de la pasarela no trajo desglose,
+   *  y entonces no se pinta nada: una comisión estimada al lado de un monto
+   *  real se leería como medida. Solo viajan al VENDEDOR — lo que el comercio
+   *  le paga a Kross no es asunto de quien compró. */
+  comision?: number | null
+  neto?: number | null
   /** Lo que hace falta para seguirlo y para saber si su cupón sirve. */
   matchedAt?: string | null
   venceEl?: string | null
@@ -148,11 +155,21 @@ const tipoDelPrimero = (monto: number, valor: number): TipoDeCobro =>
 /** Una fila de `cobros`, leída como lo que la pantalla necesita. */
 function deFila(f: FilaDeCobro, valor: number): Cobro {
   const monto = Math.max(0, num(f.monto))
+  // El tope contra el valor es solo del primero: un `extra` es plata ADEMÁS
+  // del precio (un flete), así que recortarlo sería perderlo.
+  const cobrado = f.tipo === 'adelanto' ? Math.min(monto, valor || monto) : monto
+  // La comisión se lee, no se calcula: la aplica la pasarela y la guardó el
+  // webhook desde el evento (§38). Recalcularla acá daría un segundo número
+  // para lo mismo, y el que se vería no sería el que se descontó.
+  const comision = f.comision_pen == null ? null : Math.max(0, num(f.comision_pen))
   return {
     tipo: f.tipo === 'adelanto' ? tipoDelPrimero(monto, valor) : f.tipo === 'saldo' ? 'saldo' : 'extra',
-    // El tope contra el valor es solo del primero: un `extra` es plata ADEMÁS
-    // del precio (un flete), así que recortarlo sería perderlo.
-    monto: f.tipo === 'adelanto' ? Math.min(monto, valor || monto) : monto,
+    monto: cobrado,
+    comision,
+    // Se resta contra el monto QUE SE MUESTRA, no contra el de la fila: si el
+    // tope de arriba recortó algo, un neto sacado del otro no cuadraría con la
+    // resta que cualquiera haría mirando la tarjeta.
+    neto: comision == null ? null : Math.max(0, Math.round((cobrado - comision) * 100) / 100),
     verificado: entro(f),
     id: f.id,
     concepto: f.concepto ?? null,
@@ -272,6 +289,20 @@ export function avanceDelPago(p: PedidoConPlata): AvancePago {
  */
 export function soles(n: number | string | null | undefined): string {
   return `S/ ${Math.round(num(n)).toLocaleString('es-PE')}`
+}
+
+/**
+ * Soles CON céntimos. La excepción a la regla de arriba, y tiene una razón
+ * estrecha: la comisión.
+ *
+ * Redondear al sol vale para los montos porque los céntimos no cambian ninguna
+ * decisión. En una comisión sí la cambian: S/1.45 pintado como "S/ 1" hace que
+ * el neto no cuadre con la resta que cualquiera haría mirando la tarjeta, y
+ * discutir un descuento de comisión con un número redondeado es discutir otro
+ * número. Se usa solo donde el céntimo es el dato, no en los montos.
+ */
+export function solesExactos(n: number | string | null | undefined): string {
+  return `S/ ${num(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 /**

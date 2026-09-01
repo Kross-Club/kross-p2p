@@ -4,7 +4,7 @@ import type { StoreOrder } from '../store-orders'
 import type { Cliente, PedidoDeCliente } from '../store-clients'
 import type { Curioso } from '../store-drafts'
 import type { GrupoEntrega } from '../mapa-entregas'
-import { conCambios, guardarCambio } from './cambios-demo'
+import { conCambios, guardarCambio, comisionDemo } from './cambios-demo'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
@@ -504,10 +504,12 @@ async function construir(): Promise<TiendaDemo> {
       cobros: [
         { id: `demo-cob-${i}-a`, tipo: 'adelanto' as const, monto: adelanto,
           estado: cruzado ? 'MATCHED' : 'PENDING', matched_at: cobradoEl,
+          ...comisionDemo(adelanto, cruzado),
           created_at: new Date(ahora - 9 * DIA).toISOString() },
         ...(saldoPagado || saldoEmitido ? [{
           id: `demo-cob-${i}-s`, tipo: 'saldo' as const, monto: falta,
           estado: saldoPagado ? 'MATCHED' : 'PENDING', matched_at: saldoCobradoEl,
+          ...comisionDemo(falta, saldoPagado),
           created_at: new Date(ahora - 2 * DIA).toISOString(),
         }] : []),
         // Y uno de cada diecisiete lleva un cobro EXTRA sin pagar —un flete—,

@@ -181,10 +181,12 @@ Deno.serve(async (req) => {
   // que es lo que hace que un upsell reclasifique sin reescribir nada.
   const { data: cobros } = viewerIsSeller
     ? await supabase.from('cobros')
-        .select('id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, coupon_expires_at, concepto, created_by, created_at')
+        .select('id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, coupon_expires_at, concepto, created_by, created_at, comision_pen, costo_pasarela_pen')
         .eq('session_id', session.id).order('created_at', { ascending: true })
     // Al COMPRADOR no le viaja `pay360_coupon_id` ni quién lo creó: son datos
-    // internos, igual que en el resto de esta respuesta.
+    // internos, igual que en el resto de esta respuesta. **La comisión tampoco**
+    // —lo que el comercio le paga a Kross no es asunto de quien compró— y ese es
+    // el motivo de que estas dos listas no se puedan unificar.
     : await supabase.from('cobros')
         .select('id, tipo, monto, estado, matched_at, pay360_consumer_code, coupon_expires_at, concepto, created_at')
         .eq('session_id', session.id).order('created_at', { ascending: true })

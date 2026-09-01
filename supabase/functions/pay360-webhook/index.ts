@@ -23,6 +23,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { columnasDe } from '../_shared/cobros.ts'
+import { comisionDeKross, desgloseDelEvento, hayDesvio } from '../_shared/comision.ts'
 import { acuseDePago } from '../_shared/acuse-de-pago.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
 import {
@@ -282,7 +283,30 @@ Deno.serve(async (req) => {
   // pagarse, y un pedido puede tener varios cobros vivos. Buscar por tipo daría
   // por cobrado el que no fue en cuanto exista un `extra`.
   const tipo = esExtra ? 'extra' : esSaldo ? 'saldo' : 'adelanto'
-  const delCobro = { monto: paid, estado: 'MATCHED', matched_at: matchedAt, payment_event_id: ev?.id ?? null }
+
+  // Lo que se le descontó al comercio por ESTE cobro (bloque §38). Sale del
+  // evento y no del cálculo: `fee_platform + fee_partner` es lo que de verdad
+  // se descuenta de la liquidación, y la marca tiene derecho a ver eso y no lo
+  // que nuestra tabla cree. Si 360pay no mandó el desglose queda NULL — un
+  // número estimado en una columna de plata no se distingue de uno medido.
+  const desglose = desgloseDelEvento(coupon.data.fee_platform, coupon.data.fee_partner)
+
+  // Y el control: la tarifa la aplica la PASARELA, así que si lo descontado no
+  // coincide con la tarifa de Kross, el config del business quedó con la vieja.
+  // Solo se registra —la plata ya entró y rechazarla sería mucho peor que
+  // cobrar de más— pero sin esta línea el desvío no lo notaría nadie.
+  if (desglose && hayDesvio(comisionDeKross(paid), desglose.comision)) {
+    console.warn(`[comision] desvío en ${session.id}: cobro de S/${paid} `
+      + `→ esperado S/${comisionDeKross(paid)}, descontado S/${desglose.comision}`)
+  }
+
+  const delCobro = {
+    monto: paid, estado: 'MATCHED', matched_at: matchedAt, payment_event_id: ev?.id ?? null,
+    // `columnasDe` ignora lo que no sabe espejar, así que estos dos no viajan
+    // a `order_sessions`: viven solo en la fila del cobro, que es de quien son.
+    comision_pen: desglose?.comision ?? null,
+    costo_pasarela_pen: desglose?.costo ?? null,
+  }
 
   // Y su id se guarda: es la dirección del COMPROBANTE que sale enseguida por el
   // chat. Sin él el comprador recibe un "gracias por tu pago" sin nada que

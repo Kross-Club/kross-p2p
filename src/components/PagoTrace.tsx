@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CreditCard, Check, Clock, Copy, Send, RefreshCw, Trash2 } from 'lucide-react'
-import { cobrosDelPedido, soles } from '../lib/order-money'
+import { cobrosDelPedido, soles, solesExactos } from '../lib/order-money'
 import type { Cobro, TipoDeCobro } from '../lib/order-money'
 import { datosDeRastro, textoParaSoporte } from '../lib/rastro-de-pago'
 import { puedePagarSaldo } from '../lib/order-money'
@@ -211,6 +211,27 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahor
       </div>
 
       <div className="mt-1.5 space-y-0.5 text-[10px]" style={{ color: ok ? 'var(--ok-fg)' : 'var(--text-faint)' }}>
+        {/* Lo que se le descontó al comercio, y lo que le queda. Va PRIMERO y
+            pegado al monto porque es la resta que se hace mirando la tarjeta:
+            el monto grande es lo que pagó el cliente, no lo que entra a la
+            cuenta, y esa diferencia se buscaba cuadrando a mano.
+
+            Solo cuando la pasarela mandó el desglose (§38). Con NULL no se
+            pinta nada: estimar la comisión y ponerla al lado de un monto real
+            la haría leerse como medida, y es justo el número que se discute
+            cuando una liquidación no cuadra.
+
+            Con céntimos, que es la excepción a `soles()` — sin ellos el neto no
+            cuadraría con la resta. */}
+        {ok && cobro.comision != null && cobro.neto != null && (
+          <p className="mb-1">
+            <span className="opacity-60">Comisión</span>{' '}
+            <span className="tabular font-bold">{solesExactos(cobro.comision)}</span>
+            <span className="opacity-60"> · recibes </span>
+            <span className="tabular font-bold">{solesExactos(cobro.neto)}</span>
+          </p>
+        )}
+
         {/* Un cupón emitido no es plata. Decirlo evita el error caro: despachar
             leyendo el monto y dando por hecho que entró. Va ARRIBA de los datos
             porque cambia lo que significan: los mismos códigos, buscando por qué

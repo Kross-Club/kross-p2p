@@ -42,6 +42,12 @@ export interface FilaDeCobro {
   coupon_expires_at?: string | null
   /** Para los `extra`: qué se está cobrando. Un monto sin razón no se paga. */
   concepto?: string | null
+  /** Lo que se le descontó al comercio por este cobro, y lo que de eso se quedó
+   *  el riel (bloque §38). Salen del EVENTO de la pasarela, no del cálculo:
+   *  `null` significa que no vino desglose, y no se rellena — una comisión
+   *  estimada no se distingue de una medida una vez guardada. */
+  comision_pen?: number | string | null
+  costo_pasarela_pen?: number | string | null
   /** `auth_user_id` de quien lo creó a mano. NULL = lo emitió el sistema. */
   created_by?: string | null
   created_at?: string | null

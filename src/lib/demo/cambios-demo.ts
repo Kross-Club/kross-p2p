@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { comisionDeKross, costoDePasarela, proveedorPara } from '../../../supabase/functions/_shared/comision.ts'
 import { siguientePaso } from '../order-tracking'
 import { resumenDelPedido } from '../../../supabase/functions/_shared/resumen-pedido.ts'
 import { cobradoDelPedido } from '../order-money'
@@ -212,6 +213,33 @@ export function cobroEnviadoEnDemo(
   return msg
 }
 
+// ─── La comisión de un cobro, en el demo ─────────────────────────────────────
+//
+// En una tienda real estos dos números salen del EVENTO de la pasarela: es lo
+// que de verdad se descontó (bloque §38). Acá no hay pasarela, así que se
+// derivan de la tarifa (`_shared/comision.ts`) sobre el monto — que es
+// exactamente lo que esa tarifa produciría, o sea que el demo enseña la cifra
+// correcta y no una inventada.
+//
+// Vive acá y no en el generador porque lo usan LOS DOS: el generador, para los
+// cobros que nacen pagados, y los cambios, para el que el usuario paga durante
+// la demo. Si cada uno lo calculara por su lado, el cobro que acabas de pagar
+// podría enseñar otra comisión que el de al lado.
+//
+// ⚠️ **Cero `r()`**: sale del monto y nada más. Una tirada dentro del generador
+// le correría el azar a todos los pedidos de abajo (el aviso de CLAUDE.md).
+//
+// Y **solo si el cobro entró**: un cupón emitido y sin pagar no tiene comisión
+// todavía, igual que en producción. Nadie descontó nada.
+export function comisionDemo(monto: number | string, entro: boolean) {
+  if (!entro) return { comision_pen: null, costo_pasarela_pen: null }
+  const m = Math.max(0, Number(monto) || 0)
+  return {
+    comision_pen: comisionDeKross(m),
+    costo_pasarela_pen: costoDePasarela(m, proveedorPara(m)),
+  }
+}
+
 /**
  * El comprador pagó el saldo — segundo tiempo del cobro.
  *
@@ -229,7 +257,11 @@ export function cobroEnviadoEnDemo(
 export function saldoPagadoEnDemo(p: PedidoDemo): CambioDemo {
   const cuando = new Date().toISOString()
   const cobros = (p.cobros ?? []).map(c =>
-    c.tipo === 'saldo' ? { ...c, estado: 'MATCHED', matched_at: cuando } : c)
+    // La comisión va con el cobro, igual que la escribe el webhook: sin ella el
+    // que acabas de pagar sería el único sin la línea de "recibes".
+    c.tipo === 'saldo'
+      ? { ...c, estado: 'MATCHED', matched_at: cuando, ...comisionDemo(c.monto, true) }
+      : c)
   const patch: CambioDemo = {
     saldo_verification: 'MATCHED',
     saldo_matched_at: cuando,
@@ -650,7 +682,9 @@ export function cobroExtraEnDemo(p: PedidoDemo, monto: number, concepto: string)
  *  se acepta tiene que ser el que se acaba de mandar. */
 export function cobroExtraPagadoEnDemo(p: PedidoDemo, cobroId: string): CambioDemo {
   const cobros = (p.cobros ?? []).map(c =>
-    c.id === cobroId ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString() } : c)
+    c.id === cobroId
+      ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString(), ...comisionDemo(c.monto, true) }
+      : c)
   const patch = { cobros }
   guardarCambio(p.id, patch)
   const suyo = cobros.find(c => c.id === cobroId)

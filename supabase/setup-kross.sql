@@ -662,8 +662,12 @@ CREATE TRIGGER trg_complaints_codigo BEFORE INSERT ON complaints
 -- 16.a El cobro en línea entra a `payment_events` como un pago más: misma
 -- trazabilidad, misma tabla que audita cuánto cobró cada marca. `provider`
 -- distingue la fuente del dinero, `provider_charge_id` el identificador del
--- cobro en el proveedor, y `provider_fee_pen` la comisión en soles (para que la
--- marca vea lo que de verdad recibe). El anti-duplicado NO necesita índice
+-- cobro en el proveedor, y `provider_fee_pen` lo que se quedó LA PASARELA.
+--
+-- ⚠️ `provider_fee_pen` NO es lo que paga la marca, y decía que sí: guarda el
+-- `fee_platform` de 360pay (S/3.72), pero a la marca se le descuentan S/5.00 —
+-- la diferencia es el margen de Kross. Lo que paga la marca vive en
+-- `cobros.comision_pen` (§38). El anti-duplicado NO necesita índice
 -- nuevo: el `dedupe_key` prefijado por proveedor reutiliza el índice único
 -- (store_id, dedupe_key) del 13.c, así que un evento repetido choca en 23505 y
 -- es no-op.
@@ -1612,3 +1616,40 @@ ON CONFLICT DO NOTHING;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS cobro_id uuid REFERENCES cobros(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_cobro ON chat_messages(cobro_id) WHERE cobro_id IS NOT NULL;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §38 · LO QUE SE LE DESCONTÓ AL COMERCIO POR CADA COBRO  (01-sep-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Hasta acá el comercio no tenía dónde ver su comisión, y no por olvido: era
+-- SIEMPRE la misma —S/5.00 planos de 360pay— así que no había nada que mirar.
+-- Eso deja de ser cierto con la tarifa propia de Kross (5% + S/1.20, en
+-- `_shared/comision.ts`) y con una segunda pasarela cuyo costo es un
+-- PORCENTAJE: dos cobros del mismo pedido ya no pagan lo mismo.
+--
+--   comision_pen        lo que se le descontó al comercio
+--   costo_pasarela_pen  la parte que se quedó el riel; el resto es de Kross
+--
+-- ⚠️ **Salen del EVENTO, no del cálculo.** 360pay manda el desglose al pagarse
+-- (`fee_platform` + `fee_partner`, verificado contra el primer pago real:
+-- 3.72 + 1.28 = 5.00) y esa es la cifra que vale, porque es la que de verdad
+-- se descuenta de la liquidación. Lo que Kross calcula es la EXPECTATIVA, y
+-- sirve para otra cosa: si no coincide, el config del business quedó con la
+-- tarifa vieja. Eso hoy no lo avisaría nadie.
+--
+-- ⚠️ **NULL cuando el evento no trajo desglose, y no se rellena con el
+-- cálculo.** Confundir una comisión medida con una estimada es el mismo error
+-- que `order-money.ts` no se permite con el dinero —un adelanto declarado no es
+-- plata que entró—: con NULL la tarjeta no pinta la línea, con un número
+-- inventado pintaría una mentira que nadie podría distinguir.
+--
+-- Se CONGELAN al cobrarse. Cambiar la tarifa mañana no puede reescribir lo ya
+-- liquidado, igual que `saldo_amount` no se mueve al pagarse (§31).
+--
+-- Van en `cobros` y no en `order_sessions` porque un pedido tiene N cobros y
+-- cada uno paga su propia comisión: con tarifa `% + fijo`, partir un pedido en
+-- adelanto + saldo paga la parte fija DOS veces. Es correcto —son dos
+-- operaciones bancarias— pero solo se puede ver si cada fila lleva la suya.
+ALTER TABLE cobros ADD COLUMN IF NOT EXISTS comision_pen       numeric;
+ALTER TABLE cobros ADD COLUMN IF NOT EXISTS costo_pasarela_pen numeric;

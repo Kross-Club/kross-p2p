@@ -197,6 +197,24 @@ describe('el carrito en el demo', () => {
     expect(cobradoDelPedido(p)).toBe(150)
   })
 
+  // El webhook escribe la comisión en el mismo momento en que cruza el pago, así
+  // que el demo también tiene que hacerlo: si no, el cobro que el usuario acaba
+  // de pagar sería el ÚNICO de la pantalla sin su línea de "recibes".
+  it('el saldo pagado se lleva su comisión, igual que la escribe el webhook', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75, saldo_amount: 75, saldo_verification: 'PENDING',
+      cobros: [
+        { id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' },
+        { id: 's', tipo: 'saldo', monto: 75, estado: 'PENDING' },
+      ],
+    })
+    saldoPagadoEnDemo(base)
+    const saldo = cobrosDelPedido(conCambios(base)).find(c => c.tipo === 'saldo')
+    // 5% de 75 + S/1.20
+    expect(saldo?.comision).toBe(4.95)
+    expect(saldo?.neto).toBe(70.05)
+  })
+
   // Lo que el upsell tiene que poder ENSEÑAR: el adelanto ya no cubre el pedido,
   // así que el anillo baja aunque no se haya tocado la plata.
   it('el anillo baja al crecer el pedido', () => {
