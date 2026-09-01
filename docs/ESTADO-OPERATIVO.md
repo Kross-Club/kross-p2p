@@ -92,6 +92,14 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### La guía de muestra del demo · solo frontend (01-set-2026)
+
+**Nada que desplegar.** El botón *Ver mi guía de Shalom* del **demo** abre un voucher real de
+Shalom (autorizado por el dueño; vive en el Storage del proyecto Neural, bucket `shalom-guias`).
+La URL está en `GUIA_DEMO_PDF` (`src/lib/demo/cambios-demo.ts`) — para cambiar la muestra basta
+reemplazarla. Las guías **Olva** del demo van sin PDF (no hay documento que enseñar): su botón
+cae a la hoja de guía de la app.
+
 ### La guía FORMAL de Shalom en PDF · SQL + 1 función (01-set-2026)
 
 **Qué se ve si no entra:** el botón *Ver mi guía de Shalom* sigue abriendo la hoja de guía de la

@@ -4,7 +4,7 @@ import type { StoreOrder } from '../store-orders'
 import type { Cliente, PedidoDeCliente } from '../store-clients'
 import type { Curioso } from '../store-drafts'
 import type { GrupoEntrega } from '../mapa-entregas'
-import { conCambios, guardarCambio } from './cambios-demo'
+import { conCambios, guardarCambio, GUIA_DEMO_PDF } from './cambios-demo'
 import { mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
@@ -250,6 +250,9 @@ function conversacion(
       sender_role: 'system',
       type: 'guia',
       body: mensajeDeGuia(envio.courier, `Guía ${envio.numero}`, envio.saldo),
+      // La guía de muestra (PDF real de Shalom, autorizado por el dueño): lo
+      // que en una tienda real es el voucher subido por `shalom-order`.
+      media_url: envio.courier === 'SHALOM' ? GUIA_DEMO_PDF : null,
       created_at: new Date(cuando).toISOString(),
       read_at: new Date(cuando).toISOString(),
     } as NonNullable<StoreOrder['chat_messages']>[number])

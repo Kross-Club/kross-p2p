@@ -129,6 +129,8 @@ export interface StoreOrder {
     /** A qué cobro apunta (bloque §37): una tarjeta de pago, o el acuse que
      *  lleva el botón del comprobante. */
     cobro_id?: string | null
+    /** El adjunto del mensaje: en una tarjeta de guía, el PDF de Shalom. */
+    media_url?: string | null
     mentions?: string[] | null
     created_at: string
     read_at: string | null

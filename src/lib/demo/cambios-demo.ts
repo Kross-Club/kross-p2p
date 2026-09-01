@@ -179,6 +179,16 @@ export function actualizarMensajeDemo(id: string, mensajeId: string, patch: Part
 //
 // Diez segundos: lo que dura contar qué acaba de pasar antes de que ocurra lo
 // siguiente. Menos, y se pisan; más, y hay que rellenar.
+/**
+ * La guía de MUESTRA del demo: un PDF real de Shalom (formato voucher), alojado
+ * en el Storage del proyecto Neural del propio dueño, que autorizó usarlo solo
+ * en la tienda de ejemplo. Es lo que abre "Ver mi guía de Shalom" en el demo —
+ * el mismo documento formal que en una tienda real sube `shalom-order` al
+ * bucket `shalom-guias` (§38). Para cambiarla, basta reemplazar esta URL.
+ */
+export const GUIA_DEMO_PDF =
+  'https://nqibrziksedspoctjhmc.supabase.co/storage/v1/object/public/shalom-guias/559a6002-cb37-47b6-b5d8-450fbe4c1da8/93076937-95c3c1cf503b48fdb2e1.pdf'
+
 export const ESPERA_CLIENTE_DEMO = 10_000
 
 /**
@@ -441,6 +451,9 @@ export function avanzarEnDemo(p: PedidoDemo): RespuestaDemo {
       sender_name: 'Kross', sender_role_label: null, read_at: null,
       type: 'guia', visibility: 'all',
       body: mensajeDeGuia(courier, `Guía ${patch.tracking_numero}`, saldoDelPedido(p)),
+      // La guía de muestra: en una tienda real acá va el voucher que subió
+      // `shalom-order`. Solo Shalom — de Olva no hay documento que enseñar.
+      media_url: courier === 'SHALOM' ? GUIA_DEMO_PDF : null,
       created_at: ahora,
     })
   }
