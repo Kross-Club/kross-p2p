@@ -92,6 +92,19 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### El saldo sin cupón en el DEMO · solo frontend (31-ago-2026)
+
+**Nada que desplegar.**
+
+Con la tarjeta del saldo sin cupón, el demo pasó a recorrer un camino que antes no existía: un
+pedido cuyo saldo **no tiene fila ni `saldo_amount`**, porque esa columna solo la escribe la
+emisión del cupón. Y pasaba mal por partida doble — anunciaba *"¡Recibimos tu saldo de S/0!"* y la
+tarjeta del saldo, en vez de ponerse verde, **desaparecía** (`saldoPorCobrar` deja de devolverla
+en cuanto el saldo está cruzado, y no había fila que ocupara su lugar).
+
+Ahora `saldoPagadoEnDemo` deriva el monto con `saldoDelPedido` y **crea la fila del saldo si no
+existe**, que es justo lo que hace el webhook cuando le entra un cupón sin fila previa.
+
 ### El saldo sin cupón, y el botón invisible · solo frontend (31-ago-2026)
 
 **Nada que desplegar.** Sale con el merge, como todo el frontend.

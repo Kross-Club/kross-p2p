@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { siguientePaso } from '../order-tracking'
 import { resumenDelPedido } from '../../../supabase/functions/_shared/resumen-pedido.ts'
-import { cobradoDelPedido } from '../order-money'
+import { cobradoDelPedido, saldoDelPedido } from '../order-money'
 import type { OrderItem, Participant } from '../order-api'
 import type { StoreOrder } from '../store-orders'
 import type { FilaDeCobro } from '../../../supabase/functions/_shared/cobros.ts'
@@ -90,6 +90,10 @@ export interface CambioDemo {
   /** El saldo pagado, enseñando. Mueve la misma fila que movería el webhook. */
   saldo_verification?: string | null
   saldo_matched_at?: string | null
+  /** El importe del cobro del saldo. En una tienda de verdad lo escribe la
+   *  emisión del cupón; acá, el pago — que es cuando el demo se entera de
+   *  cuánto era. */
+  saldo_amount?: number | null
   /** La lista de cobros (bloque §36). Se pisa entera y no se funde: quitar un
    *  cobro es quitarlo, y un merge por índice dejaría el viejo debajo. */
   cobros?: FilaDeCobro[]
@@ -228,9 +232,38 @@ export function cobroEnviadoEnDemo(
  */
 export function saldoPagadoEnDemo(p: PedidoDemo): CambioDemo {
   const cuando = new Date().toISOString()
-  const cobros = (p.cobros ?? []).map(c =>
-    c.tipo === 'saldo' ? { ...c, estado: 'MATCHED', matched_at: cuando } : c)
+
+  // Cuánto es el saldo se DERIVA del pedido; no se lee de `saldo_amount`.
+  //
+  // Esa columna solo existe si alguien emitió un cupón, y desde que el panel
+  // puede mandar la tarjeta de un saldo que todavía no tiene cupón, puede no
+  // existir. Leyéndola, el demo anunciaba **"¡Recibimos tu saldo de S/0!"**.
+  // `saldoDelPedido` es la misma cuenta que pinta la tarjeta y que el botón le
+  // promete al comprador: tres restas iguales en tres sitios es como se llega a
+  // que el mensaje diga un monto y la caja cobre otro.
+  const monto = saldoDelPedido(p)
+
+  // Y si el saldo todavía no es una fila, se CREA — que es exactamente lo que
+  // hace el webhook cuando le entra un cupón sin fila previa. Sin esto la
+  // tarjeta del saldo no se ponía verde: desaparecía. `saldoPorCobrar` deja de
+  // devolverla en cuanto el saldo está cruzado, y no había ninguna fila que
+  // ocupara su lugar.
+  const previos = p.cobros ?? []
+  const suyo = previos.find(c => c.tipo === 'saldo')
+  const cobros = suyo
+    ? previos.map(c => c.tipo === 'saldo' ? { ...c, monto, estado: 'MATCHED', matched_at: cuando } : c)
+    : [...previos, {
+        // El mismo formato que el generador (`demo-cob-<i>-s`), para que el
+        // comprobante lo encuentre por el camino corto.
+        id: `demo-cob-${/demo-ped-(\d+)/.exec(p.id)?.[1] ?? p.id}-s`,
+        tipo: 'saldo' as const, monto, estado: 'MATCHED',
+        matched_at: cuando, created_at: cuando,
+      }]
+
   const patch: CambioDemo = {
+    // Las dos mitades, como escribe el servidor mientras dura la mudanza al
+    // bloque §36: la fila y la columna.
+    saldo_amount: monto,
     saldo_verification: 'MATCHED',
     saldo_matched_at: cuando,
     // Vacío no se manda: una lista `[]` no es "este pedido no cobró nada", es
@@ -239,8 +272,7 @@ export function saldoPagadoEnDemo(p: PedidoDemo): CambioDemo {
     ...(cobros.length ? { cobros } : {}),
   }
   guardarCambio(p.id, patch)
-  acusarPagoEnDemo(p, 'saldo', Number(p.saldo_amount ?? 0),
-    cobros.find(c => c.tipo === 'saldo')?.id ?? null)
+  acusarPagoEnDemo(p, 'saldo', monto, cobros.find(c => c.tipo === 'saldo')?.id ?? null)
   return patch
 }
 
