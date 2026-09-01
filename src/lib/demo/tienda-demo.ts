@@ -395,7 +395,15 @@ async function construir(): Promise<TiendaDemo> {
     const persona = personas[entre(r, 0, TOTAL_CLIENTES - 1)]
     const conGuia = t.stage === 'en_camino' || t.stage === 'entregado'
     // Mitad y mitad es el reparto típico del adelanto; algunos pagan todo.
-    const adelanto = r() < 0.25 ? prod.precio : Math.round(prod.precio / 2)
+    //
+    // ⚠️ La tirada se hace SIEMPRE, se use o no: quitarla en una rama correría
+    // el azar de todos los pedidos siguientes (aviso de CLAUDE.md). En
+    // CONFIRMADO se ignora y todos adelantan LA MITAD: esa es la columna donde
+    // se enseñan el comprobante del pago y la pre-guía —el pedido recién
+    // cobrado, listo para registrar su envío—, y un "pagó todo" ahí no deja
+    // saldo que cobrar ni flujo que mostrar.
+    const sorteo = r() < 0.25 ? prod.precio : Math.round(prod.precio / 2)
+    const adelanto = t.stage === 'confirmado' ? Math.round(prod.precio / 2) : sorteo
     // Que el adelanto esté CRUZADO depende de la etapa, y no al revés que antes.
     // `validando` significa exactamente "hay un yapeo que todavía no cuadra", y
     // de `confirmado` en adelante el pedido está ahí PORQUE la plata entró. Con

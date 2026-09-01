@@ -388,3 +388,23 @@ describe('los cobros del demo', () => {
     }
   })
 })
+
+
+// ─── La columna CONFIRMADO es la vitrina del cobro ───────────────────────────
+//
+// Ahí se enseñan el comprobante del adelanto y la pre-guía: el pedido recién
+// cobrado, listo para registrar su envío. Por eso todos sus pedidos adelantan
+// LA MITAD — un "pagó todo" en esa columna no deja saldo que cobrar ni flujo
+// que mostrar. (La tirada del azar se hace igual, se use o no: quitarla
+// correría el azar de todos los pedidos siguientes.)
+
+describe('en confirmado todos adelantaron la mitad', () => {
+  it('ninguno pagó el total: siempre queda saldo que enseñar', () => {
+    const confirmados = t.pedidos.filter(p => p.stage === 'confirmado' && estaVivo(p))
+    expect(confirmados.length).toBeGreaterThan(0)
+    for (const p of confirmados) {
+      expect(saldoDelPedido(p)).toBeGreaterThan(0)
+      expect(cobrosDelPedido(p).map(c => c.tipo)).toContain('adelanto')
+    }
+  })
+})
