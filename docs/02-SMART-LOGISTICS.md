@@ -748,14 +748,24 @@ esa latencia y no obliga a custodiar un password de terceros.
    courier no encuentra (`not_found` real) avisa solo-vendedores en el primer
    chequeo. **La fase jamás mueve `stage`**: el pipeline lo avanza una persona
    (misma regla que `no_entregado`).
-4. **Cobrar** — al pasar a `EN_DESTINO`: mensaje al comprador con el saldo
-   derivado ("por esta misma app, nunca en la agencia; la clave de recojo
-   contra el saldo pagado"), aviso solo-vendedores para la llamada (la "cola de
-   llamadas" v1 🔮 es este aviso; la cola formal sigue pendiente) y **plantilla
-   WhatsApp automática** si la tienda configuró `stores.wa_recojo_template`
-   (usa `send-wa-template`; NULL = sin auto-envío). En `ENTREGADO`: cierre al
-   comprador + recordatorio de confirmar la entrega en el pipeline — de ahí
-   sale la tasa de recojo (`EN_DESTINO` vs `ENTREGADO`).
+4. **Cobrar** — y la cobranza empieza en `EN_ORIGEN` (01-set-2026): al entrar el
+   paquete a la agencia de origen sale el aviso del momento (`mensajeDeOrigen`
+   — la pre-guía de Shalom volviéndose oficial, con las palabras que la guía
+   prometió) y, si el pedido debe su saldo, **la tarjeta de pago sola**
+   (`type: 'cobro'`, la MISMA copy que la del vendedor —
+   `_shared/cobro-por-chat.ts`): el saldo se paga por la app mientras el
+   paquete viaja, no con el paquete en el mostrador. Condiciones: adelanto
+   cruzado, saldo sin cruzar (`saldoOf` cuenta el saldo MATCHED como pagado),
+   tienda en `360PAY`, y que nadie haya mandado ya una tarjeta del saldo (el
+   vendedor pudo adelantarse a mano). En `EN_DESTINO`: mensaje al comprador con
+   el saldo derivado ("por esta misma app, nunca en la agencia; la clave de
+   recojo contra el saldo pagado"), aviso solo-vendedores para la llamada (la
+   "cola de llamadas" v1 🔮 es este aviso; la cola formal sigue pendiente) y
+   **plantilla WhatsApp automática** si la tienda configuró
+   `stores.wa_recojo_template` (usa `send-wa-template`; NULL = sin auto-envío).
+   En `ENTREGADO`: cierre al comprador + recordatorio de confirmar la entrega
+   en el pipeline — de ahí sale la tasa de recojo (`EN_DESTINO` vs
+   `ENTREGADO`).
 
 Verificado contra el proveedor real: el batch responde por ítem (guía
 inexistente → `not_found` en ese ítem, el resto sigue) y el ciclo entero se

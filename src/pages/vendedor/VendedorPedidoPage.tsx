@@ -1512,9 +1512,26 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         esDemo={esTokenDemo(token)}
         onAdvanced={(patch, handedOff) => {
           setSession(s => s ? { ...s, ...patch } : s)
-          // Ceded the lead → back to my list; otherwise refresh in place
+          // Ceded the lead → back to my list; otherwise refresh in place.
+          // También en el demo: avanzar deja mensajes en el hilo —la guía, el
+          // aviso de origen, la tarjeta del saldo— y sin releer aparecían
+          // recién al reabrir el pedido. `reloadSession` en demo lee del
+          // dispositivo, no llama a nadie.
           if (handedOff) onCerrar()
-          else if (!esTokenDemo(token)) reloadSession()
+          else reloadSession()
+          // El paquete entró a ORIGEN y salió la tarjeta del saldo
+          // (`avanzarEnDemo`, espejo del tracking real): a los diez segundos el
+          // comprador "paga", como todas las tarjetas del demo — y el pago deja
+          // su acuse, su comprobante y la clave de recojo, la misma cascada del
+          // webhook. En la tienda real NO: la tarjeta espera el pago de verdad.
+          if (esTokenDemo(token) && session && patch.tracking_phase === 'EN_ORIGEN'
+            && saldoDelPedido({ ...session, ...patch }) > 0) {
+            const avanzado = { ...session, ...patch }
+            alRato(() => {
+              saldoPagadoEnDemo(avanzado as unknown as StoreOrder)
+              reloadSession()
+            })
+          }
         }}
       />
       )}

@@ -5,8 +5,9 @@ import type { Cliente, PedidoDeCliente } from '../store-clients'
 import type { Curioso } from '../store-drafts'
 import type { GrupoEntrega } from '../mapa-entregas'
 import { claveDemoDeRecojo, codigoDemoDeGuia, conCambios, guardarCambio, GUIA_DEMO_PDF } from './cambios-demo'
-import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { idsDeGuia, mensajeDeClave, mensajeDeGuia, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
+import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
@@ -284,6 +285,21 @@ function conversacion(
     if (envio.saldo === 0 && envio.clave) {
       cuando += 60_000
       sistema('status_update', mensajeDeClave(envio.clave))
+    }
+    // El paquete ENTRÓ A ORIGEN (cualquier fase reportada implica que pasó por
+    // ahí): el aviso que la guía prometió y, si el pedido debía su saldo, LA
+    // TARJETA DE PAGO que el tracking manda sola en la tienda real — la misma
+    // copy que la del vendedor (`_shared/cobro-por-chat.ts`). En los hilos que
+    // después pagaron se ve pagada, porque la tarjeta se pinta contra el pedido
+    // de hoy; en los que deben, sigue cobrando. Antes del acuse a propósito:
+    // primero se cobra, después entra la plata.
+    if (t.fase) {
+      cuando += 60 * 60_000
+      sistema('status_update', mensajeDeOrigen(envio.courier))
+      if (envio.saldo > 0) {
+        cuando += 60_000
+        sistema('cobro', textoDeCobro(soles(envio.saldo)))
+      }
     }
     if (envio.pagado) {
       cuando += 90 * 60_000

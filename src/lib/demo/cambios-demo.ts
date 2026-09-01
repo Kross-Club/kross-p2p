@@ -7,7 +7,8 @@ import type { RastroDeCobro } from '../rastro-de-pago'
 import type { StoreOrder } from '../store-orders'
 import type { FilaDeCobro } from '../../../supabase/functions/_shared/cobros.ts'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
-import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { idsDeGuia, mensajeDeClave, mensajeDeGuia, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
 import { esPickupCodeValido } from '../../../supabase/functions/_shared/shalom-orders.ts'
 import { isPickupDispatch } from '../../../supabase/functions/_shared/despacho.ts'
 
@@ -528,6 +529,34 @@ export function avanzarEnDemo(p: PedidoDemo): RespuestaDemo {
       })
     }
   }
+
+  // Avanzar el reloj del courier también HABLA, como en la tienda real
+  // (`onTransition` de `_shared/tracking.ts`): sin esto, mover la fase
+  // enseñando dejaba el chat mudo mientras el hilo del generador sí lleva
+  // estos avisos — el mismo gesto contando dos historias.
+  // El sufijo distingue dos avisos del mismo milisegundo (aviso + tarjeta):
+  // con el reloj solo compartirían id, y un id repetido pisa al otro al pintar.
+  let nAviso = 0
+  const aviso = (tipo: string, cuerpo: string) => agregarMensajeDemo(p.id, {
+    id: `demo-fase-${Date.now()}-${nAviso++}`, session_id: p.id, sender_role: 'system',
+    sender_name: 'Kross', sender_role_label: null, read_at: null,
+    type: tipo, visibility: 'all', body: cuerpo, created_at: ahora,
+  })
+  if (sig.fase === 'EN_ORIGEN') {
+    aviso('status_update', mensajeDeOrigen(courierNuevo))
+    // Y LA COBRANZA EMPIEZA AQUÍ, igual que el tracking real: la tarjeta del
+    // saldo sale sola —misma copy que la del vendedor— si hay deuda de verdad
+    // y nadie la mandó ya. El que la acepta a los diez segundos es quien llamó
+    // (`VendedorPedidoPage`), como todas las tarjetas del demo.
+    const debe = saldoDelPedido(p)
+    if (debe > 0 && p.payment_provider === '360PAY'
+      && !(p.chat_messages ?? []).some(m => m.type === 'cobro' && !m.cobro_id)) {
+      aviso('cobro', textoDeCobro(soles(debe)))
+    }
+  }
+  if (sig.fase === 'EN_TRANSITO') aviso('status_update', '🚚 ¡Tu pedido va en camino a tu agencia!')
+  if (sig.fase === 'EN_DESTINO') aviso('status_update', '📍 ¡Tu pedido ya llegó a tu agencia!')
+
   return { ok: true, patch }
 }
 

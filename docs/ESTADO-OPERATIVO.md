@@ -92,6 +92,45 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### La cobranza empieza en origen: la tarjeta del saldo la manda el tracking · 4 funciones, sin SQL (01-set-2026)
+
+**Qué se ve si no entra:** el paquete entra a la agencia de origen y el chat sigue mudo — ni el
+aviso de que la guía ya es oficial (que la tarjeta de la guía promete) ni la tarjeta de pago del
+saldo. La cobranza sigue esperando a `EN_DESTINO` como hasta hoy. El demo enseña el flujo entero
+sin desplegar nada.
+
+Lo que entra (`onTransition` en `_shared/tracking.ts` — el reflejo COMPARTIDO, así que vale igual
+venga por webhook o por barrido, Shalom u Olva):
+
+- **`EN_ORIGEN` ahora habla**: el aviso del momento (`mensajeDeOrigen`, una sola copy) — en
+  Shalom, la pre-guía volviéndose oficial con las palabras que la guía prometió ("por acá te
+  avisamos apenas pase").
+- **Y cobra**: si el pedido debe su saldo, sale sola **la tarjeta de pago** (`type: 'cobro'`),
+  la MISMA que manda el vendedor a mano — la copy se mudó a `_shared/cobro-por-chat.ts` (con
+  `soles`; el frontend re-exporta) para que el cobro automático y el manual no puedan decir
+  frases distintas. El comprador la paga DE VERDAD: su cupón se emite al tocar el botón, como
+  siempre. Condiciones: adelanto cruzado, saldo sin cruzar, tienda en `360PAY`, y ninguna
+  tarjeta del saldo ya en el hilo (el vendedor pudo adelantarse).
+- **De paso, un bug real**: `saldoOf` no sabía del saldo ya pagado — un pedido con el saldo
+  cruzado recibía en `EN_DESTINO` un "paga tu saldo de S/X" por una deuda que no existía. Ahora
+  el saldo MATCHED cuenta como pagado (misma regla que `registrarGuia`).
+- **El demo, en paridad**: los hilos del generador que pasaron por origen llevan el aviso y la
+  tarjeta (pagada en los que pagaron, cobrando en los que deben); avanzar la fase enseñando
+  deja los mismos avisos (antes el chat quedaba mudo), y en `EN_ORIGEN` con deuda la tarjeta
+  sale y **el cliente la paga a los diez segundos** — acuse, comprobante y clave de recojo, la
+  cascada entera del webhook.
+
+```
+supabase functions deploy shalom-webhook       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking-sync   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking        --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> La tarjeta automática no manda push propio todavía: llega como mensaje (y en vivo si el chat
+> está abierto). El empujón con push/WhatsApp puede montarse después sobre el mismo mensaje,
+> como la plantilla de recojo de `EN_DESTINO`.
+
 ### Los estados de Shalom completos y la clave de recojo · 4 funciones, sin SQL (01-set-2026)
 
 **Qué se ve si no entra:** el frontend sale solo con el merge (la barra del envío ya muestra

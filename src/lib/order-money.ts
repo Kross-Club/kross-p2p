@@ -265,14 +265,11 @@ export function avanceDelPago(p: PedidoConPlata): AvancePago {
 }
 
 /**
- * Soles, como se escriben en Perú.
- *
- * Se redondea al sol: los céntimos no cambian ninguna decisión del panel y
- * hacen que una columna de totales deje de alinearse.
+ * Soles, como se escriben en Perú. La definición se mudó a
+ * `_shared/cobro-por-chat.ts` —el tracking escribe la tarjeta del saldo con el
+ * mismo formato— y acá queda el re-export para no tocar a quien ya lo usaba.
  */
-export function soles(n: number | string | null | undefined): string {
-  return `S/ ${Math.round(num(n)).toLocaleString('es-PE')}`
-}
+export { soles } from '../../supabase/functions/_shared/cobro-por-chat.ts'
 
 /**
  * ¿Se le puede ofrecer al comprador pagar su saldo ahora mismo?
