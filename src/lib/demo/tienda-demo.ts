@@ -249,7 +249,22 @@ function conversacion(
 
   if (t.stage !== 'nuevo') {
     push('buyer', 'text', elige(r, ['Ya hice el pago', 'Listo, adelanté la mitad', 'Te mando el yapeo']))
-    push('system', 'status_update', 'Adelanto verificado')
+    // El acuse solo si el adelanto DE VERDAD cruzó: `validando` es justamente
+    // "hay un yapeo que todavía no cuadra", y su hilo decía "Adelanto
+    // verificado" con el panel en ámbar — el pedido contradiciéndose solo.
+    // ⚠️ La tirada del reloj se hace SIEMPRE (saltarla correría el azar de
+    // todos los pedidos de abajo); lo condicional es solo escribir el mensaje.
+    cuando += entre(r, 2, 90) * 60_000
+    if (t.stage !== 'validando') {
+      msgs.push({
+        id: `${pedidoId}-m${msgs.length}`,
+        sender_role: 'system',
+        type: 'status_update',
+        body: 'Adelanto verificado',
+        created_at: new Date(cuando).toISOString(),
+        read_at: new Date(cuando).toISOString(),
+      } as NonNullable<StoreOrder['chat_messages']>[number])
+    }
   }
   // La guía registrada, ANTES de que el courier reporte nada — que es cuando
   // ocurrió. ⚠️ Sin tiradas: el reloj avanza fijo, porque un `entre(r,…)` acá
@@ -483,18 +498,19 @@ async function construir(): Promise<TiendaDemo> {
     // saldo que cobrar ni flujo que mostrar.
     const sorteo = r() < 0.25 ? prod.precio : Math.round(prod.precio / 2)
     const adelanto = t.stage === 'confirmado' ? Math.round(prod.precio / 2) : sorteo
-    // Que el adelanto esté CRUZADO depende de la etapa, y no al revés que antes.
-    // `validando` significa exactamente "hay un yapeo que todavía no cuadra", y
-    // de `confirmado` en adelante el pedido está ahí PORQUE la plata entró. Con
-    // un 80% plano el anillo de avance mentía en las dos puntas: pedidos en
-    // tránsito con el anillo vacío y pedidos en validación ya cobrados.
+    // Que el adelanto esté CRUZADO lo decide la etapa ENTERA, en las dos
+    // direcciones. `validando` significa exactamente "hay un yapeo que todavía
+    // no cuadra", y de `confirmado` en adelante el pedido está ahí PORQUE la
+    // plata entró. Y al revés también: en la tienda real el webhook escribe
+    // `stage: 'confirmado'` EN EL MISMO ACTO de cruzar el adelanto, así que un
+    // pedido en `nuevo` o `validando` con la plata cruzada no puede existir —
+    // era la captura de "Wilder Flores": Pedido creado con el adelanto pagado,
+    // el anillo apagado y el formulario de registrar envío ofrecido.
+    // La tirada se hace SIEMPRE y se ignora entera (quitarla correría el azar
+    // de todos los pedidos de abajo — aviso de CLAUDE.md).
     const antesDeCobrar = t.stage === 'nuevo' || t.stage === 'validando'
-    // La tirada se hace SIEMPRE (quitarla correría el azar del resto), pero de
-    // `confirmado` en adelante se ignora: el pedido está ahí PORQUE la plata
-    // entró, y el 8% que el sorteo dejaba sin pagar era justo la contradicción
-    // que el panel enseñaba — un "Confirmado" con el adelanto en ámbar.
-    const tiradaCruce = r()
-    const cruzado = antesDeCobrar ? tiradaCruce < 0.15 : true
+    r()
+    const cruzado = !antesDeCobrar
 
     // ── El SALDO: la segunda operación ──
     // No es el adelanto con otro monto. Ocurre después —cuando la guía ya
@@ -639,7 +655,15 @@ async function construir(): Promise<TiendaDemo> {
       // Cobrado y sin guía porque el proveedor rechazó el registro. Pasa de
       // verdad y es el atasco más caro del tablero: sin un par de estos en el
       // demo, la alerta que existe para verlo no se ve nunca.
-      shalom_order_status: t.stage === 'confirmado' && r() < 0.18 ? 'FAILED' : conGuia ? 'CREATED' : null,
+      // Solo en pedidos SHALOM: `shalom_order_status` lo escribe `shalom-order`,
+      // que descarta los de Olva antes de reclamar nada — un FAILED de Shalom
+      // en un pedido Olva es un estado que la tienda real no puede producir.
+      // ⚠️ La tirada se evalúa EXACTAMENTE cuando antes (solo en confirmado,
+      // por el cortocircuito): mover el filtro de courier adentro del ternario
+      // y no alrededor de `r()` es lo que mantiene el azar idéntico.
+      shalom_order_status: t.stage === 'confirmado' && r() < 0.18
+        ? (ruta.courier === 'OLVA' ? null : 'FAILED')
+        : conGuia && ruta.courier !== 'OLVA' ? 'CREATED' : null,
       shalom_order_reason: null,
       assigned_seller_id: miembro.auth_user_id,
       seller_name: miembro.nombre,

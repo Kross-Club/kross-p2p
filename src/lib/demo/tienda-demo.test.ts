@@ -606,4 +606,36 @@ describe('de confirmado en adelante la plata entró', () => {
     expect(cobrados.length).toBeGreaterThan(0)
     for (const p of cobrados) expect(p.payment_verification).toBe('MATCHED')
   })
+
+  // Y al revés TAMPOCO: el webhook escribe `stage: 'confirmado'` en el mismo
+  // acto de cruzar el adelanto, así que un pedido en `nuevo` o `validando` con
+  // la plata cruzada no puede existir. Era la captura de "Wilder Flores":
+  // Pedido creado con el adelanto pagado, cobrado hace días, y el anillo
+  // apagado — el pedido diciendo dos cosas a la vez.
+  it('ni un solo adelanto cruzado antes de confirmado', () => {
+    const tempranos = t.pedidos.filter(p => ['nuevo', 'validando'].includes(String(p.stage)))
+    expect(tempranos.length).toBeGreaterThan(0)
+    for (const p of tempranos) expect(p.payment_verification).not.toBe('MATCHED')
+  })
+
+  // `validando` es "hay un yapeo que todavía no cuadra": su hilo decía
+  // "Adelanto verificado" con el panel en ámbar.
+  it('el hilo de validando no anuncia un adelanto que no cruzó', () => {
+    const validando = t.pedidos.filter(p => p.stage === 'validando')
+    expect(validando.length).toBeGreaterThan(0)
+    for (const p of validando) {
+      expect((p.chat_messages ?? []).some(m => m.body === 'Adelanto verificado')).toBe(false)
+    }
+  })
+
+  // El expediente `shalom_order_status` lo escribe `shalom-order`, que descarta
+  // los pedidos de Olva antes de reclamar nada: un FAILED de Shalom en un
+  // pedido Olva es un estado que la tienda real no puede producir.
+  it('el expediente de la guía automática solo existe en pedidos Shalom', () => {
+    const olva = t.pedidos.filter(p => String(p.agency_name).toUpperCase() === 'OLVA')
+    expect(olva.length).toBeGreaterThan(0)
+    for (const p of olva) expect(p.shalom_order_status ?? null).toBeNull()
+    // Y los FAILED que se enseñan (la alerta "Guía manual") siguen existiendo.
+    expect(t.pedidos.some(p => p.shalom_order_status === 'FAILED')).toBe(true)
+  })
 })

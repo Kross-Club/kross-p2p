@@ -79,6 +79,10 @@ export interface CambioDemo {
   /** La clave de retiro que la guía del demo elige al registrarse — la misma
    *  que el panel del vendedor enseña y que el chat entrega al pagar el saldo. */
   shalom_pickup_code?: string | null
+  /** El expediente del generador de guías: reintentar por API lo cierra en
+   *  `CREATED`, igual que `shalom-order` en una tienda real. */
+  shalom_order_status?: string | null
+  shalom_order_reason?: string | null
   items?: ItemDemo[]
   product_price?: number
   answered_at?: string | null
@@ -501,33 +505,10 @@ export function avanzarEnDemo(p: PedidoDemo): RespuestaDemo {
   // demo no tiene un PDF de Shalom que abrir, y un botón hacia una página
   // vacía enseña un producto roto.
   if (sig.quien === 'guia') {
-    const saldo = saldoDelPedido(p)
-    agregarMensajeDemo(p.id, {
-      id: `demo-guia-${Date.now()}`, session_id: p.id, sender_role: 'system',
-      sender_name: 'Kross', sender_role_label: null, read_at: null,
-      type: 'guia', visibility: 'all',
-      // Los mismos ids que el mensaje real (`idsDeGuia`): en Shalom, el nro. de
-      // orden y el código del voucher.
-      body: mensajeDeGuia(courierNuevo,
-        idsDeGuia(courierNuevo, { numero: numeroNuevo, codigo: patch.tracking_codigo }), saldo),
-      // La guía de muestra: en una tienda real acá va el voucher que subió
-      // `shalom-order`. Solo Shalom — de Olva no hay documento que enseñar.
-      media_url: courierNuevo === 'SHALOM' ? GUIA_DEMO_PDF : null,
-      created_at: ahora,
-    })
-    // Y si el pedido ya no debe nada, la clave sale JUNTO con la guía — el
-    // mensaje de arriba acaba de prometerlo, y es lo que hace `registrarGuia`
-    // en una tienda real. Con saldo pendiente se queda guardada: la entrega el
-    // pago (`saldoPagadoEnDemo`, espejo del webhook).
-    if (saldo === 0 && patch.shalom_pickup_code) {
-      agregarMensajeDemo(p.id, {
-        id: `demo-clave-${Date.now()}`, session_id: p.id, sender_role: 'system',
-        sender_name: 'Kross', sender_role_label: null, read_at: null,
-        type: 'status_update', visibility: 'all',
-        body: mensajeDeClave(patch.shalom_pickup_code),
-        created_at: ahora,
-      })
-    }
+    anunciarGuiaEnDemo(p, courierNuevo,
+      { numero: numeroNuevo, codigo: patch.tracking_codigo ?? null, clave: patch.shalom_pickup_code ?? null },
+      // El avance imita la emisión por API: con el voucher de muestra.
+      true)
   }
 
   // Avanzar el reloj del courier también HABLA, como en la tienda real
@@ -558,6 +539,95 @@ export function avanzarEnDemo(p: PedidoDemo): RespuestaDemo {
   if (sig.fase === 'EN_DESTINO') aviso('status_update', '📍 ¡Tu pedido ya llegó a tu agencia!')
 
   return { ok: true, patch }
+}
+
+/**
+ * El anuncio de una guía NUEVA en el hilo del demo — el mensaje de
+ * `registrarGuia`, con su clave si el pedido ya no debe nada. Lo comparten los
+ * tres caminos por los que una guía entra enseñando (avanzar, registrar a
+ * mano, reintentar por API), que son los mismos tres de la tienda real.
+ *
+ * `pdf` solo en las emitidas por API: la guía manual no tiene documento del
+ * courier —se copió de un comprobante físico— y su botón cae a la hoja de
+ * guía de la app, igual que en la tienda real.
+ */
+function anunciarGuiaEnDemo(
+  p: PedidoDemo, courier: 'SHALOM' | 'OLVA',
+  ids: { numero: string; codigo: string | null; clave: string | null }, pdf: boolean,
+) {
+  const ahora = new Date().toISOString()
+  const saldo = saldoDelPedido(p)
+  agregarMensajeDemo(p.id, {
+    id: `demo-guia-${Date.now()}`, session_id: p.id, sender_role: 'system',
+    sender_name: 'Kross', sender_role_label: null, read_at: null,
+    type: 'guia', visibility: 'all',
+    // Los mismos ids que el mensaje real (`idsDeGuia`): en Shalom, el nro. de
+    // orden y el código del voucher — la clave NO va aquí.
+    body: mensajeDeGuia(courier, idsDeGuia(courier, ids), saldo),
+    media_url: pdf && courier === 'SHALOM' ? GUIA_DEMO_PDF : null,
+    created_at: ahora,
+  })
+  // La clave JUNTO con la guía solo si no queda nada por pagar — es lo que
+  // hace `registrarGuia`. Con saldo pendiente se queda guardada: la entrega
+  // el pago (`saldoPagadoEnDemo`, espejo del webhook).
+  if (saldo === 0 && ids.clave) {
+    agregarMensajeDemo(p.id, {
+      id: `demo-clave-${Date.now()}`, session_id: p.id, sender_role: 'system',
+      sender_name: 'Kross', sender_role_label: null, read_at: null,
+      type: 'status_update', visibility: 'all',
+      body: mensajeDeClave(ids.clave),
+      created_at: ahora,
+    })
+  }
+}
+
+/**
+ * La guía registrada A MANO, enseñando — espejo de `set_tracking`.
+ *
+ * Es el camino del pedido cuyo registro automático falló (`FAILED`): la guía
+ * se emitió por fuera, en el mostrador, y acá se copian sus tres datos del
+ * comprobante físico — nro. de orden, código y CLAVE. Con la clave guardada,
+ * la entrega automática funciona igual que con una guía de API: el chat la
+ * suelta cuando el saldo se pague.
+ */
+export function guiaManualEnDemo(
+  p: PedidoDemo, g: { numero: string; codigo: string; clave: string },
+): CambioDemo {
+  const courier = String(p.tracking_courier ?? p.agency_name ?? 'SHALOM').toUpperCase() === 'OLVA'
+    ? 'OLVA' as const : 'SHALOM' as const
+  const patch: CambioDemo = {
+    tracking_courier: courier,
+    tracking_numero: g.numero,
+    tracking_codigo: courier === 'SHALOM' ? g.codigo : null,
+    shalom_pickup_code: courier === 'SHALOM' && g.clave ? g.clave : null,
+  }
+  guardarCambio(p.id, patch)
+  anunciarGuiaEnDemo(p, courier, { numero: g.numero, codigo: patch.tracking_codigo ?? null, clave: patch.shalom_pickup_code ?? null }, false)
+  return patch
+}
+
+/**
+ * El REINTENTO por API de un registro que falló — espejo de `retry_shalom`.
+ *
+ * En una tienda real `shalom-order` vuelve a emitir y cierra el expediente en
+ * `CREATED`; acá la guía se inventa con el mismo formato (número del reloj,
+ * código y clave derivados) y sale con el voucher de muestra, porque ESTA sí
+ * la emitió "la API". El stage no se toca: la columna pasa a `registrado`
+ * porque existe la guía, igual que en la tienda real.
+ */
+export function reintentoShalomEnDemo(p: PedidoDemo): CambioDemo {
+  const numero = String(100000 + (Date.now() % 900000))
+  const patch: CambioDemo = {
+    tracking_courier: 'SHALOM',
+    tracking_numero: numero,
+    tracking_codigo: codigoDemoDeGuia(numero),
+    shalom_pickup_code: claveDemoDeRecojo(numero),
+    shalom_order_status: 'CREATED',
+    shalom_order_reason: null,
+  }
+  guardarCambio(p.id, patch)
+  anunciarGuiaEnDemo(p, 'SHALOM', { numero, codigo: patch.tracking_codigo ?? null, clave: patch.shalom_pickup_code ?? null }, true)
+  return patch
 }
 
 /** El resto de acciones, con la misma forma que las del servidor. */

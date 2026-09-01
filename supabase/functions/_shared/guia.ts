@@ -27,8 +27,9 @@ export interface GuiaSession {
    *  rechazó la emisión y el pago llegó antes que la guía manual—, la clave de
    *  recojo sale junto con ella: la promesa era contra el pago, y ya pagó. */
   saldo_verification?: string | null
-  /** La clave de retiro, si este pedido la tiene (la guía automática de Shalom
-   *  la elige; una registrada a mano no — su clave vive en el papel del counter). */
+  /** La clave de retiro, si este pedido la tiene: la guía automática de Shalom
+   *  la elige, y la manual la copia del comprobante físico (`set_tracking`
+   *  con `clave`). Sin ella no hay entrega automática — la manda una persona. */
   shalom_pickup_code?: string | null
   agency_name: string | null
 }
@@ -140,8 +141,8 @@ export async function registrarGuia(
   // La CLAVE, solo si ya no queda nada por pagar: el mensaje de arriba acaba de
   // prometer "junto con la guía te entregaremos tu clave de recojo", y esta es
   // la entrega. Con saldo pendiente NO sale — la suelta el webhook cuando el
-  // saldo cruce. Y solo si el pedido la tiene: la guía registrada a mano no
-  // eligió clave (la suya vive en el comprobante físico del courier).
+  // saldo cruce. Y solo si el pedido la tiene: la eligió la emisión automática,
+  // o la copió Logística del comprobante físico al registrar a mano.
   if (saldo === 0 && session.shalom_pickup_code) {
     await chatMessage(session.id, mensajeDeClave(session.shalom_pickup_code), 'all')
   }

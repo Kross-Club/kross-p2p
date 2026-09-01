@@ -968,9 +968,10 @@ agencia: quien la tiene, tiene el pedido. Vive en
   agencia*) — que es justo lo que el checkout viene prometiendo. La sueltan dos:
   `pay360-webhook` cuando cruza el saldo, y `registrarGuia` junto con la guía
   cuando el pedido ya no debía nada (pagó el total, o el saldo cruzó antes que
-  una guía manual). La guía registrada a mano sin paso por el generador **no
-  tiene clave nuestra** —la suya está en el comprobante físico— y ahí la sigue
-  mandando una persona.
+  una guía manual). La guía registrada **a mano** también entra al circuito
+  (01-set-2026): el formulario del panel pide sus TRES datos del comprobante
+  físico —nro. de orden, código y clave— y `set_tracking` guarda la clave en el
+  pedido; sin ella no hay entrega automática y la manda una persona, como antes.
 
 Shalom rechaza claves repetidas (`1111`…`9999`) y consecutivas (`1234`…`6789`);
 el generador también descarta las descendentes — no están en la doc, cuestan 8

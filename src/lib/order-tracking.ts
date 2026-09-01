@@ -253,9 +253,17 @@ export function pedidoAbierto(p: PedidoRastreable & { status?: string | null }):
  *
  * Se pregunta por `FAILED` y no por "no tiene guía": un pedido recién cobrado
  * tampoco la tiene, y marcarlos a todos convertiría la alerta en decoración.
+ * Pero un FAILED que YA tiene guía —alguien la registró a mano, o el reintento
+ * por API la emitió— dejó de esperar: la alerta sin esto quedaba prendida para
+ * siempre sobre un pedido resuelto.
  */
-export function esperaGuiaManual(p: { shalom_order_status?: string | null }): boolean {
+export function esperaGuiaManual(p: {
+  shalom_order_status?: string | null
+  tracking_numero?: string | null
+  tracking_ose_id?: string | null
+}): boolean {
   return String(p.shalom_order_status ?? '').toUpperCase() === 'FAILED'
+    && !p.tracking_numero && !p.tracking_ose_id
 }
 
 export function conPlataEnJuego(col: PasoKey): boolean {
