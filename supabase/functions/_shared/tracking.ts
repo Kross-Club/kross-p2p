@@ -36,10 +36,16 @@ export async function broadcast(sessionId: string, event: string, payload: unkno
   } catch { /* ignore */ }
 }
 
-export async function chatMessage(sessionId: string, body: string, visibility: 'all' | 'sellers') {
+export async function chatMessage(
+  sessionId: string, body: string, visibility: 'all' | 'sellers',
+  /** `type` para los mensajes que se pintan distinto (la guía, con su botón);
+   *  `media_url` para el adjunto que ese botón abre (el PDF de Shalom). */
+  extra: { type?: string; media_url?: string | null } = {},
+) {
   const { data: msg } = await supabase.from('chat_messages').insert({
     session_id: sessionId, sender_role: 'system', sender_name: 'Kross',
-    type: 'status_update', visibility, body,
+    type: extra.type ?? 'status_update', visibility, body,
+    media_url: extra.media_url ?? null,
   }).select().single()
   if (msg) await broadcast(sessionId, 'new_message', msg)
 }

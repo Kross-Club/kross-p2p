@@ -33,6 +33,7 @@ import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
+import TarjetaDeGuia from '../../components/TarjetaDeGuia'
 import { cobroDelAviso } from '../../lib/comprobante'
 import { TIPO_COBRO, textoDeCobro, textoDeCobroExtra, montoDeLaTarjeta, cobroDeLaTarjeta, MORADO_YAPE } from '../../lib/cobro-por-chat'
 import { puedePagarSaldo, saldoDelPedido, soles, cobrosDelPedido } from '../../lib/order-money'
@@ -469,6 +470,14 @@ function MessageBubble({ msg, audio, equipo = [], pedido }: {
           {audio && <audio controls preload="none" src={audio} className="w-full h-8 mt-2" />}
         </div>
       </div>
+    )
+  }
+
+  // La guía, igual que la ve el comprador — pre-guía y botón del PDF incluidos.
+  if (msg.type === 'guia') {
+    return (
+      <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url}
+        hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
     )
   }
 

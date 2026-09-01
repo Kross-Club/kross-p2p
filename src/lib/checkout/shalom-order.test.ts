@@ -12,6 +12,7 @@ import {
   isDeclaredContent, isShalomSize, nuevoPickupCode, parseOrderResponse,
   resolveProductId, SHALOM_SIZES,
 } from '../../../supabase/functions/_shared/shalom-orders.ts'
+import { mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
 // El fuente del panel como texto (vite `?raw`): la última prueba compara las
 // dos listas de tamaños, no el render.
 import panelSource from '../../pages/vendedor/ProductosPage.tsx?raw'
@@ -190,6 +191,65 @@ describe('leer la guía que devuelve el proveedor', () => {
     expect(esRastreable(parseOrderResponse(null))).toBe(false)
     expect(esRastreable(parseOrderResponse('no soy json'))).toBe(false)
     expect(esRastreable(parseOrderResponse([{ nada: 1 }]))).toBe(false)
+  })
+
+  // El PDF de la guía —el botón "Ver mi guía de Shalom"— también sin casarse
+  // con el nombre del campo: primero cualquier URL que apunte a un .pdf, y si
+  // no, una cuyo campo diga qué es (rótulo, etiqueta, comprobante).
+  it('encuentra el PDF de la guía por la extensión o por el campo', () => {
+    expect(parseOrderResponse({
+      guia: '80574902', codigo: 'CJTW',
+      data: { docs: { rotulo: 'https://cdn.shalom.pe/ordenes/80574902.pdf?t=1' } },
+    }).pdfUrl).toBe('https://cdn.shalom.pe/ordenes/80574902.pdf?t=1')
+
+    expect(parseOrderResponse({
+      guia: '80574902', codigo: 'CJTW', rotulo_url: 'https://pro.shalom.pe/rotulo/584210',
+    }).pdfUrl).toBe('https://pro.shalom.pe/rotulo/584210')
+  })
+
+  // Una URL suelta que ni es .pdf ni su campo dice qué es, NO se toma: mandarle
+  // al comprador un botón sin saber qué abre es peor que no mandar botón.
+  it('una URL cualquiera no se convierte en el botón de la guía', () => {
+    expect(parseOrderResponse({
+      guia: '80574902', codigo: 'CJTW', avatar: 'https://cdn.shalom.pe/logo.png',
+    }).pdfUrl).toBeNull()
+    expect(parseOrderResponse({ guia: '80574902', codigo: 'CJTW' }).pdfUrl).toBeNull()
+  })
+})
+
+// ─── Lo que se le dice al comprador cuando su envío queda registrado ─────────
+//
+// La copy vive en `_shared/mensaje-de-guia.ts` porque la dicen dos: la tienda
+// real (`registrarGuia`) y el demo. Y en Shalom dice tres cosas que costaban un
+// reclamo cada una: que es una PRE-GUÍA que se vuelve oficial en la agencia de
+// origen, dónde seguir el envío, y qué pasa con el saldo.
+
+describe('mensajeDeGuia', () => {
+  it('shalom: pre-guía, dónde seguirla, y el saldo', () => {
+    const m = mensajeDeGuia('SHALOM', 'Guía 80574902 · Código CJTW', 75)
+    expect(m).toContain('Guía 80574902 · Código CJTW')
+    expect(m).toContain('pre-guía')
+    expect(m).toContain('agencia de origen')
+    expect(m).toContain('sincronizada con tu guía')
+    expect(m).toContain('Tu saldo de S/75')
+  })
+
+  // A quien pagó el total no se le habla de un saldo que no existe: su clave de
+  // recojo va sin condición. Misma regla que el acuse del webhook.
+  it('shalom con todo pagado: la clave va sin condición', () => {
+    const m = mensajeDeGuia('SHALOM', 'Guía 80574902 · Código CJTW', 0)
+    expect(m).toContain('Como ya pagaste el total')
+    expect(m).not.toContain('Tu saldo')
+  })
+
+  // Olva no tiene pre-guía: su copy es la de siempre, entera.
+  it('olva conserva su copy de siempre', () => {
+    expect(mensajeDeGuia('OLVA', 'Guía 123456', 75)).toBe(
+      '📦 ¡Tu envío ya está registrado en OLVA! Guía 123456. Guárdala para el recojo. '
+      + 'Tu saldo de S/75 lo pagas cuando quieras por esta misma app —nunca en la agencia— '
+      + 'y apenas lo pagues te entregamos tu clave de recojo.'
+      + ' Por aquí te avisamos cuando tu pedido llegue a tu agencia.',
+    )
   })
 })
 

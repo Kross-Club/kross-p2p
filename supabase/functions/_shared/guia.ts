@@ -13,8 +13,9 @@
 import { broadcast, chatMessage, supabase } from './tracking.ts'
 import { shalomApiKey } from './shalom.ts'
 import { normalizeYear } from './olva.ts'
-
-export type Courier = 'SHALOM' | 'OLVA'
+import { mensajeDeGuia } from './mensaje-de-guia.ts'
+import type { Courier } from './mensaje-de-guia.ts'
+export type { Courier } from './mensaje-de-guia.ts'
 
 /** Lo que el pedido necesita aportar para registrar una guía. */
 export interface GuiaSession {
@@ -101,7 +102,7 @@ export async function registrarGuia(
   /** `yaSuscrito`: la guía nació suscrita al webhook (el generador manda
    *  `track: true` en la misma llamada que la emite). Suscribirla otra vez
    *  gastaría una request del cupo para no cambiar nada. */
-  opts: { yaSuscrito?: boolean } = {},
+  opts: { yaSuscrito?: boolean; pdfUrl?: string | null } = {},
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { error } = await supabase.from('order_sessions').update(g.tracking).eq('id', session.id)
   if (error) return { ok: false, error: error.message }
@@ -111,16 +112,15 @@ export async function registrarGuia(
   // de recojo va sin condición.
   const pagado = session.payment_verification === 'MATCHED' ? Number(session.advance_amount ?? 0) : 0
   const saldo = Math.max(0, Number(session.product_price ?? 0) - pagado)
-  const cobroCopy = saldo > 0
-    ? `Tu saldo de S/${saldo} lo pagas cuando quieras por esta misma app —nunca en la agencia— y apenas lo pagues te entregamos tu clave de recojo.`
-    : 'Como ya pagaste el total, junto con la guía te entregaremos tu clave de recojo.'
 
   await chatMessage(
     session.id,
-    `📦 ¡Tu envío ya está registrado en ${g.courier}! ${g.ids}. `
-      + `${g.courier === 'OLVA' ? 'Guárdala' : 'Guárdalos'} para el recojo. `
-      + cobroCopy + ' Por aquí te avisamos cuando tu pedido llegue a tu agencia.',
+    mensajeDeGuia(g.courier, g.ids, saldo),
     'all',
+    // `guia` con su PDF: es lo que el chat pinta como tarjeta con el botón
+    // "Ver mi guía de Shalom". Sin PDF —la guía registrada a mano no lo trae—
+    // el mensaje sale igual, sin botón.
+    { type: 'guia', media_url: opts.pdfUrl ?? null },
   )
   await broadcast(session.id, 'tracking_update', g.tracking)
   if (!opts.yaSuscrito) await suscribirWebhook(g)

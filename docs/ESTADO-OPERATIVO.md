@@ -92,6 +92,31 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### La pre-guía de Shalom, con su PDF · 2 funciones (01-set-2026)
+
+**Qué se ve si no entra:** el mensaje de guía sigue saliendo como siempre (la píldora con la copy
+vieja) y sin el botón del PDF. Nada se rompe.
+
+Al registrarse la guía —a mano o por el generador automático— el comprador recibe una **tarjeta**
+que explica que es una **pre-guía** (se vuelve oficial cuando el paquete entra a la agencia de
+origen y por el chat se le avisa), que puede seguir su envío desde la app —sincronizada con su
+guía— o en Shalom, y qué pasa con su saldo. Si la guía la emitió la API, lleva además el botón
+**"Ver mi guía de Shalom"** que abre el PDF de la orden (la URL se extrae de la respuesta de
+`POST /v1/orders`, sin casarse con el nombre del campo). La guía registrada **a mano** no trae
+PDF: misma tarjeta, sin botón.
+
+```
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL (el mensaje usa `media_url`, que existe desde siempre).
+
+> ⚠️ **Por confirmar con una guía real**: la doc de la API de Shalom no la puedo leer desde este
+> entorno (el proxy bloquea el dominio), así que el extractor del PDF acepta cualquier URL `.pdf`
+> o un campo que se llame rótulo/etiqueta/comprobante. Si la primera guía automática sale sin
+> botón, pide los logs de `shalom-order` y ajustamos el extractor al campo real.
+
 ### El comprobante en los hilos viejos, y el ícono sin jerarquía · solo frontend (01-set-2026)
 
 **Nada que desplegar.**

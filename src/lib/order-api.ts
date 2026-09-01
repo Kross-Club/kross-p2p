@@ -149,7 +149,7 @@ export interface OrderMessage {
   /** `cobro` = el vendedor volvió a pedir el saldo: el chat del comprador lo
    *  pinta con el botón de Yape debajo (ver lib/cobro-por-chat.ts). La columna
    *  es texto libre, así que no hizo falta tocar el esquema. */
-  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer' | 'cobro'
+  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer' | 'cobro' | 'guia'
   body: string | null
   media_url: string | null
   offer?: { product_id?: string; nombre: string; precio: number; image?: string | null; accepted?: boolean } | null

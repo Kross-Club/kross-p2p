@@ -425,8 +425,9 @@ Deno.serve(async (req: Request) => {
       }
 
       // `yaSuscrito`: la orden se creó con `track: true`, así que el webhook ya
-      // la está mirando — no se gasta otra request en suscribirla.
-      const reg = await registrarGuia(session, g, { yaSuscrito: true })
+      // la está mirando — no se gasta otra request en suscribirla. Y el PDF de
+      // la guía viaja con el mensaje: es el botón "Ver mi guía de Shalom".
+      const reg = await registrarGuia(session, g, { yaSuscrito: true, pdfUrl: guia.pdfUrl })
       await cerrar(sessionId, 'CREATED', reg.ok ? null : 'guía emitida, no se pudo escribir en el pedido', extra)
       if (!reg.ok) {
         console.error('[shalom-order] no se pudo escribir la guía en el pedido', sessionId, reg.error)
