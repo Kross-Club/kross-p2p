@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { valorDelPedido, cobradoDelPedido, saldoDelPedido, plataDe, soles, avanceDelPago, cobrosDelPedido, puedePagarSaldo } from './order-money'
+import { valorDelPedido, cobradoDelPedido, saldoDelPedido, plataDe, soles, avanceDelPago, cobrosDelPedido, puedePagarSaldo, saldoPorCobrar } from './order-money'
 import { sePuedeBorrar } from '../../supabase/functions/_shared/cobros.ts'
 
 describe('la plata de un pedido', () => {
@@ -342,5 +342,58 @@ describe('una lista vacía no significa "no cobró nada"', () => {
   it('una lista de puros anulados es cero, y eso sí lo decide la lista', () => {
     const p = { ...conPlata, cobros: [{ id: 'a', tipo: 'adelanto' as const, monto: 90, estado: 'ANULADO' }] }
     expect(cobradoDelPedido(p)).toBe(0)
+  })
+})
+
+
+// ─── El saldo que todavía no es una fila ─────────────────────────────────────
+//
+// Nadie del servidor emite el cupón del saldo: se emite cuando el COMPRADOR toca
+// pagar. Entre que el adelanto cruza y el comprador entra por su cuenta, el
+// saldo no existe como cobro — y el panel, que pinta la lista, no enseñaba ni el
+// monto pendiente ni el botón para pedirlo. El vendedor esperando a que el
+// cliente hiciera solo lo que él tenía que pedirle.
+
+describe('saldoPorCobrar', () => {
+  const conAdelanto = {
+    product_price: 180, advance_amount: 90,
+    payment_verification: 'MATCHED', payment_provider: '360PAY',
+    cobros: [{ id: 'a', tipo: 'adelanto' as const, monto: 90, estado: 'MATCHED' }],
+  }
+
+  it('el saldo que falta, aunque no tenga fila', () => {
+    expect(saldoPorCobrar(conAdelanto)).toMatchObject({ tipo: 'saldo', monto: 90, verificado: false })
+  })
+
+  // Si ya tiene fila, esa manda: trae su cupón, su vencimiento y su rastro.
+  // Devolver las dos pintaría el mismo saldo dos veces.
+  it('si ya es una fila, no se duplica', () => {
+    const conFila = {
+      ...conAdelanto,
+      cobros: [...conAdelanto.cobros, { id: 's', tipo: 'saldo' as const, monto: 90, estado: 'PENDING' }],
+    }
+    expect(saldoPorCobrar(conFila)).toBeNull()
+  })
+
+  // Las mismas condiciones que el botón del comprador: sin ellas la tarjeta
+  // ofrecería cobrar algo que el servidor va a rechazar.
+  it('no antes de que cruce el adelanto', () => {
+    expect(saldoPorCobrar({ ...conAdelanto, payment_verification: 'PENDING' })).toBeNull()
+  })
+
+  it('no sin pasarela en línea', () => {
+    expect(saldoPorCobrar({ ...conAdelanto, payment_provider: null })).toBeNull()
+  })
+
+  it('no si pagó todo', () => {
+    expect(saldoPorCobrar({ ...conAdelanto, advance_amount: 180,
+      cobros: [{ id: 'a', tipo: 'adelanto' as const, monto: 180, estado: 'MATCHED' }] })).toBeNull()
+  })
+
+  // Y NO entra en la lista de cobros: eso es lo que hay, esto es lo que falta.
+  // Meterlo ahí le agregaría un cobro fantasma al anillo y al filtro de pagos.
+  it('no se cuela en la lista de cobros ni en la plata', () => {
+    expect(cobrosDelPedido(conAdelanto)).toHaveLength(1)
+    expect(cobradoDelPedido(conAdelanto)).toBe(90)
   })
 })

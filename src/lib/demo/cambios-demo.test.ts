@@ -5,7 +5,7 @@ import {
   ofertaEnviadaEnDemo, cobroEnviadoEnDemo, saldoPagadoEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo,
 } from './cambios-demo'
 import type { PedidoDemo } from './cambios-demo'
-import { avanceDelPago, cobrosDelPedido, cobradoDelPedido } from '../order-money'
+import { avanceDelPago, cobrosDelPedido, cobradoDelPedido, saldoPorCobrar } from '../order-money'
 import { columnaDelPedido } from '../order-tracking'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
 
@@ -176,6 +176,50 @@ describe('el carrito en el demo', () => {
     expect(acuse?.body).toBe(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: true }))
     // Y apunta al cobro: sin eso el botón no tendría qué abrir.
     expect(acuse?.cobro_id).toBe('s')
+  })
+
+  // ─── El caso que se rompió en producción ───────────────────────────────────
+  //
+  // Un pedido con el adelanto cruzado y el saldo SIN CUPÓN: no tiene fila de
+  // saldo ni `saldo_amount`, porque ese cupón lo emite el comprador al tocar
+  // pagar. Desde que el panel puede mandarle la tarjeta igual, el demo pasa por
+  // acá — y pasaba mal por partida doble: anunciaba "¡Recibimos tu saldo de
+  // S/0!" y la tarjeta del saldo, en vez de ponerse verde, DESAPARECÍA.
+  it('el saldo sin cupón: se crea su fila, con su monto, y la tarjeta se pone verde', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75,
+      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
+    })
+    // Antes de pagar: no es una fila, pero el panel lo enseña igual.
+    expect(saldoPorCobrar(base)).toMatchObject({ tipo: 'saldo', monto: 75 })
+
+    saldoPagadoEnDemo(base)
+    const p = conCambios(base)
+
+    // Ahora SÍ es una fila, cobrada, y por el monto que era.
+    const suyo = cobrosDelPedido(p).find(c => c.tipo === 'saldo')
+    expect(suyo).toMatchObject({ monto: 75, verificado: true })
+    expect(cobradoDelPedido(p)).toBe(150)
+    // Y deja de ser "lo que falta", porque ya no falta.
+    expect(saldoPorCobrar(p)).toBeNull()
+  })
+
+  it('y el acuse dice el monto de verdad, con su comprobante', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75,
+      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      dispatch_type: 'AGENCIA_PROVINCIA',
+      cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
+    })
+    saldoPagadoEnDemo(base)
+    const acuse = conCambios(base).chat_messages?.find(m => m.type === 'status_update')
+    // No "S/0": el monto sale del pedido, no de una columna que aún no existe.
+    expect(acuse?.body).toBe(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: true }))
+    // Y apunta al cobro recién creado, que es lo que pinta el botón.
+    const suyo = conCambios(base).cobros?.find(c => c.tipo === 'saldo')
+    expect(acuse?.cobro_id).toBe(suyo?.id)
+    expect(acuse?.cobro_id).toBeTruthy()
   })
 
   // Y en la LISTA, que es de donde lee el panel desde el bloque §36. El

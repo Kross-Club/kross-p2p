@@ -92,6 +92,35 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
 
+### El saldo sin cupón en el DEMO · solo frontend (31-ago-2026)
+
+**Nada que desplegar.**
+
+Con la tarjeta del saldo sin cupón, el demo pasó a recorrer un camino que antes no existía: un
+pedido cuyo saldo **no tiene fila ni `saldo_amount`**, porque esa columna solo la escribe la
+emisión del cupón. Y pasaba mal por partida doble — anunciaba *"¡Recibimos tu saldo de S/0!"* y la
+tarjeta del saldo, en vez de ponerse verde, **desaparecía** (`saldoPorCobrar` deja de devolverla
+en cuanto el saldo está cruzado, y no había fila que ocupara su lugar).
+
+Ahora `saldoPagadoEnDemo` deriva el monto con `saldoDelPedido` y **crea la fila del saldo si no
+existe**, que es justo lo que hace el webhook cuando le entra un cupón sin fila previa.
+
+### El saldo sin cupón, y el botón invisible · solo frontend (31-ago-2026)
+
+**Nada que desplegar.** Sale con el merge, como todo el frontend.
+
+Dos cosas que solo se veían mirando la pantalla:
+
+- **El texto del botón del comprobante no se veía.** `--ok-bg` y `--ok-fg` son **el mismo lima** en
+  tema oscuro; el color de texto válido sobre el lima es `--ok-on`, y así lo usa el resto del
+  panel. Le pasaba igual al "Pago recibido" del comprador.
+- **Un pedido con el adelanto cruzado y el saldo sin pedir no enseñaba nada del saldo.** El cupón
+  del saldo **no lo emite nadie del servidor**: se emite cuando el comprador toca pagar. Como el
+  panel pinta la lista de cobros y esa fila todavía no existe, no había ni monto pendiente ni
+  botón para mandarle la tarjeta — el vendedor esperando a que el cliente hiciera solo lo que él
+  tenía que pedirle. Ahora sale como tarjeta ámbar aunque no sea una fila (`saldoPorCobrar`), y
+  dice lo que es: *"todavía no se le ha pedido"*.
+
 ### El webhook avisa por el canal · `pay360-webhook` (31-ago-2026)
 
 **Qué se ve si no entra:** un cobro cruza y **en la pantalla abierta no pasa nada**. El mensaje

@@ -288,6 +288,29 @@ export function soles(n: number | string | null | undefined): string {
  *   · la tienda cobra en línea. Prometer un botón que no cobra es peor que no
  *     ponerlo: sin `360PAY` el saldo lo coordina el asesor por el chat.
  */
+/**
+ * El saldo que se puede cobrar y **todavía no es una fila**.
+ *
+ * Nadie del servidor emite el cupón del saldo: se emite cuando el COMPRADOR
+ * toca pagar. Así que entre que el adelanto cruza y el comprador entra por su
+ * cuenta, el saldo no existe como cobro — y el panel, que pinta la lista de
+ * cobros, no enseñaba nada. Ni el monto que falta ni el botón de mandarle la
+ * tarjeta, que es justo lo que hace falta ahí: el vendedor se quedaba esperando
+ * a que el cliente hiciera solo lo que él tenía que pedirle.
+ *
+ * No entra en la lista de `cobrosDelPedido` a propósito: eso es lo que HAY, y
+ * esto es lo que falta. Meterlo ahí le agregaría un cobro fantasma al tablero,
+ * al anillo y al filtro de pagos. Es una tarjeta de la pantalla, no una fila.
+ */
+export function saldoPorCobrar(p: PedidoConPlata & {
+  payment_provider?: string | null
+}): Cobro | null {
+  if (!puedePagarSaldo(p)) return null
+  // Si ya tiene su fila, esa manda: trae el cupón, el vencimiento y su rastro.
+  if (cobrosDelPedido(p).some(c => c.tipo === 'saldo')) return null
+  return { tipo: 'saldo', monto: saldoDelPedido(p), verificado: false }
+}
+
 export function puedePagarSaldo(p: PedidoConPlata & {
   payment_provider?: string | null
 }): boolean {
