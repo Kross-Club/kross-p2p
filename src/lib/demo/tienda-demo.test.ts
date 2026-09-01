@@ -408,3 +408,42 @@ describe('en confirmado todos adelantaron la mitad', () => {
     }
   })
 })
+
+
+// ─── El hilo cuenta lo del envío ─────────────────────────────────────────────
+//
+// Un pedido con guía la ANUNCIÓ en su momento: el hilo lleva la tarjeta de la
+// guía —la misma copy que manda `registrarGuia`— antes de que el courier
+// reporte nada. Y los que no tienen guía, no: una guía anunciada que el panel
+// no conoce sería un hilo mintiendo.
+
+describe('la guía en los hilos del generador', () => {
+  it('los pedidos con guía llevan su tarjeta, con su número', () => {
+    const conGuia = t.pedidos.filter(p => (p.stage === 'en_camino' || p.stage === 'entregado') && p.tracking_numero)
+    expect(conGuia.length).toBeGreaterThan(0)
+    for (const p of conGuia.slice(0, 20)) {
+      const guia = (p.chat_messages ?? []).find(m => m.type === 'guia')
+      expect(guia?.body).toContain(`Guía ${p.tracking_numero}`)
+    }
+  })
+
+  it('los que no tienen guía, no la anuncian', () => {
+    const sinGuia = t.pedidos.filter(p => p.stage === 'confirmado')
+    expect(sinGuia.length).toBeGreaterThan(0)
+    for (const p of sinGuia.slice(0, 20)) {
+      expect((p.chat_messages ?? []).some(m => m.type === 'guia')).toBe(false)
+    }
+  })
+})
+
+// Y la contradicción que se vio en producción no vuelve: NINGÚN pedido de
+// confirmado en adelante tiene el adelanto sin cruzar. "Está en Confirmado
+// PORQUE la plata entró" — el 8% que el sorteo dejaba en ámbar era un pedido
+// diciendo dos cosas a la vez.
+describe('de confirmado en adelante la plata entró', () => {
+  it('ni un solo adelanto sin pagar después de validando', () => {
+    const cobrados = t.pedidos.filter(p => !['nuevo', 'validando'].includes(String(p.stage)))
+    expect(cobrados.length).toBeGreaterThan(0)
+    for (const p of cobrados) expect(p.payment_verification).toBe('MATCHED')
+  })
+})

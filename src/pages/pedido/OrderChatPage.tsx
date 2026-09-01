@@ -176,7 +176,10 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
   // La guía del envío, con su explicación de pre-guía y —cuando la emitió la
   // API— el botón que abre el PDF de Shalom.
   if (msg.type === 'guia') {
-    return <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url} hora={time} />
+    return (
+      <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url} hora={time}
+        token={pedido?.token} courier={pedido?.tracking_courier ?? pedido?.agency_name} />
+    )
   }
 
   // El aviso de que ENTRÓ la plata, con su constancia. Va antes de la píldora
@@ -574,7 +577,9 @@ export default function OrderChatPage() {
     getSession(token)
       .then(({ session: s, messages: m }) => {
         if (s.status === 'expired') { setState('expired'); return }
-        setSession(s)
+        // El token viaja EN la sesión: el servidor no lo devuelve (se entra con
+        // él) y varias tarjetas lo necesitan — pagar el saldo, la hoja de guía.
+        setSession({ ...s, token })
         setMessages(m)
         setState('ok')
         markRead(token).catch(() => {})
@@ -634,7 +639,7 @@ export default function OrderChatPage() {
       // nada: el botón seguía ofreciéndole pagar lo que acababa de pagar.
       .on('broadcast', { event: 'cobros_update' }, () => {
         getSession(token!)
-          .then(({ session: s, messages: m }) => { setSession(s); setMessages(m) })
+          .then(({ session: s, messages: m }) => { setSession({ ...s, token }); setMessages(m) })
           .catch(() => {})
       })
       .on('broadcast', { event: 'assignment_update' }, ({ payload }) => {

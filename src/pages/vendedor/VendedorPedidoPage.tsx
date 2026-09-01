@@ -477,6 +477,7 @@ function MessageBubble({ msg, audio, equipo = [], pedido }: {
   if (msg.type === 'guia') {
     return (
       <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url}
+        token={pedido?.token} courier={pedido?.tracking_courier ?? pedido?.agency_name}
         hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
     )
   }
@@ -698,7 +699,8 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       })
       if (!res.ok) return
       const { session: s, messages: m } = await res.json() as { session: OrderSession; messages: OrderMessage[] }
-      setSession(s)
+      // Íd. que en el chat del comprador: el token va EN la sesión, puesto acá.
+      setSession({ ...s, token })
       setMessages(m)
     } finally {
       setLoading(false)
