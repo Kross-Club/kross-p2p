@@ -12,7 +12,7 @@ import {
   isDeclaredContent, isShalomSize, nuevoPickupCode, parseOrderResponse,
   resolveProductId, SHALOM_SIZES,
 } from '../../../supabase/functions/_shared/shalom-orders.ts'
-import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { idsDeGuia, mensajeDeClave, mensajeDeGuia, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
 // El fuente del panel como texto (vite `?raw`): la última prueba compara las
 // dos listas de tamaños, no el render.
 import panelSource from '../../pages/vendedor/ProductosPage.tsx?raw'
@@ -242,6 +242,25 @@ describe('idsDeGuia', () => {
 
   it('en olva la guía se llama guía', () => {
     expect(idsDeGuia('OLVA', { numero: '123456' })).toBe('Guía 123456')
+  })
+})
+
+// El aviso de ORIGEN, palabra por palabra: lo escriben el reflejo de tracking y
+// el demo. Es el momento que la tarjeta de la guía promete ("por acá te
+// avisamos apenas pase") — en Shalom, la pre-guía volviéndose oficial.
+describe('mensajeDeOrigen', () => {
+  it('shalom: la pre-guía se volvió oficial', () => {
+    expect(mensajeDeOrigen('SHALOM')).toBe(
+      '🏬 ¡Tu paquete entró a la agencia de origen: tu guía de SHALOM ya es oficial! '
+      + 'Por aquí te avisamos cada avance.',
+    )
+  })
+
+  // Olva no tiene pre-guía que oficializar: solo la noticia.
+  it('olva: solo la noticia, sin pre-guía', () => {
+    expect(mensajeDeOrigen('OLVA')).toBe(
+      '🏬 ¡Tu paquete entró a la agencia de origen de OLVA! Por aquí te avisamos cada avance.',
+    )
   })
 })
 

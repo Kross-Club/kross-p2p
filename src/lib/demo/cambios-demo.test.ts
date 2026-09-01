@@ -9,7 +9,8 @@ import type { PedidoDemo } from './cambios-demo'
 import { avanceDelPago, cobrosDelPedido, cobradoDelPedido, saldoPorCobrar } from '../order-money'
 import { columnaDelPedido } from '../order-tracking'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
-import { mensajeDeClave } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { mensajeDeClave, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
 import { esPickupCodeValido } from '../../../supabase/functions/_shared/shalom-orders.ts'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
@@ -115,6 +116,51 @@ describe('avanzar en el demo', () => {
       columnas.push(columnaDelPedido(p))
     }
     expect(columnas).toEqual(['en_origen', 'transito', 'en_agencia', 'entregado'])
+  })
+
+  // La cobranza real empieza en origen (`onTransition` de `_shared/tracking.ts`)
+  // y el demo enseña ese mismo momento: el aviso de que la pre-guía ya es
+  // oficial y, si el pedido debe su saldo, la tarjeta de pago — sola, con la
+  // MISMA copy que la del vendedor.
+  it('entrar a origen anuncia la guía oficial y manda la tarjeta del saldo', () => {
+    const p = pedido({ stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY' })
+    avanzarEnDemo(p)
+    const msgs = conCambios(p).chat_messages ?? []
+    expect(msgs.some(m => m.body === mensajeDeOrigen('SHALOM'))).toBe(true)
+    const tarjeta = msgs.find(m => m.type === 'cobro')
+    expect(tarjeta?.body).toBe(textoDeCobro('S/ 75'))
+    expect(tarjeta?.sender_role).toBe('system')
+  })
+
+  it('sin deuda no hay tarjeta: el aviso va solo', () => {
+    const p = pedido({ stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY', advance_amount: 150 })
+    avanzarEnDemo(p)
+    const msgs = conCambios(p).chat_messages ?? []
+    expect(msgs.some(m => m.body === mensajeDeOrigen('SHALOM'))).toBe(true)
+    expect(msgs.some(m => m.type === 'cobro')).toBe(false)
+  })
+
+  // El vendedor pudo mandarla a mano antes de que el courier reporte:
+  // repetírsela es cobrarle dos veces a la vista (misma regla que el tracking).
+  it('si la tarjeta ya está en el hilo, no se repite', () => {
+    const p = pedido({
+      stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY',
+      chat_messages: [{ id: 'x', sender_role: 'seller', type: 'cobro', body: 'Te queda un saldo de S/ 75.', created_at: '', read_at: null }],
+    })
+    avanzarEnDemo(p)
+    const cambio = cambiosDemo()[p.id]
+    expect((cambio?.mensajes ?? []).some(m => m.type === 'cobro')).toBe(false)
+  })
+
+  // Y las fases siguientes también hablan, como en los hilos del generador.
+  it('en tránsito y en destino dejan su aviso en el hilo', () => {
+    let p = pedido({ stage: 'en_camino', tracking_numero: '145446', tracking_phase: 'EN_ORIGEN' })
+    avanzarEnDemo(p)
+    p = conCambios(p)
+    avanzarEnDemo(p)
+    const msgs = conCambios(p).chat_messages ?? []
+    expect(msgs.some(m => (m.body ?? '').includes('va en camino a tu agencia'))).toBe(true)
+    expect(msgs.some(m => (m.body ?? '').includes('ya llegó a tu agencia'))).toBe(true)
   })
 
   it('un pedido terminado no avanza', () => {

@@ -36,6 +36,23 @@ export function idsDeGuia(
 }
 
 /**
+ * El aviso de que el paquete ENTRÓ A LA AGENCIA DE ORIGEN.
+ *
+ * Es el momento que la tarjeta de la guía promete ("por acá te avisamos apenas
+ * pase"): en Shalom la pre-guía se vuelve oficial exactamente aquí, y decirlo
+ * cierra ese ciclo con las mismas palabras. Lo escriben dos —el reflejo de
+ * tracking (`_shared/tracking.ts`) y el demo—, así que vive acá, como todo lo
+ * que se dice dos veces.
+ */
+export function mensajeDeOrigen(courier: Courier): string {
+  if (courier === 'OLVA') {
+    return '🏬 ¡Tu paquete entró a la agencia de origen de OLVA! Por aquí te avisamos cada avance.'
+  }
+  return '🏬 ¡Tu paquete entró a la agencia de origen: tu guía de SHALOM ya es oficial! '
+    + 'Por aquí te avisamos cada avance.'
+}
+
+/**
  * La CLAVE DE RECOJO, entregada por el chat. La escriben tres: el webhook de
  * 360pay cuando cruza el saldo, `registrarGuia` cuando la guía nace con el
  * pedido ya pagado del todo, y el demo enseñando ese mismo momento.

@@ -5,7 +5,8 @@ import { columnaDelPedido, COLUMNAS } from '../order-tracking'
 import { avanceDelPago, cobrosDelPedido, saldoDelPedido } from '../order-money'
 import { conCambios, reiniciarDemo } from './cambios-demo'
 import { estaVivo } from '../store-orders'
-import { mensajeDeClave } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { mensajeDeClave, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
 import { esPickupCodeValido } from '../../../supabase/functions/_shared/shalom-orders.ts'
 
 const t = await tiendaDemo()
@@ -519,6 +520,64 @@ describe('la clave de recojo en los hilos del generador', () => {
     expect(deben.length).toBeGreaterThan(0)
     for (const p of deben) {
       expect((p.chat_messages ?? []).some(m => (m.body ?? '').includes('Tu clave de recojo es'))).toBe(false)
+    }
+  })
+})
+
+// ─── La cobranza empieza en origen ───────────────────────────────────────────
+//
+// Cuando el paquete entra a la agencia de origen, el tracking real anuncia el
+// momento (la pre-guía se volvió oficial) y —si el pedido debe su saldo— manda
+// solo LA TARJETA DE PAGO, la misma que mandaría el vendedor. Los hilos del
+// generador cuentan esa misma historia.
+
+describe('la tarjeta del saldo que manda el tracking, en los hilos', () => {
+  const pasaronPorOrigen = () => t.pedidos.filter(p => p.tracking_numero && p.tracking_phase)
+
+  it('todo hilo que pasó por origen lleva el aviso, y la tarjeta si debía', () => {
+    const conFase = pasaronPorOrigen()
+    expect(conFase.length).toBeGreaterThan(0)
+    for (const p of conFase.slice(0, 20)) {
+      const msgs = p.chat_messages ?? []
+      const courier = String(p.tracking_courier).toUpperCase() === 'OLVA' ? 'OLVA' as const : 'SHALOM' as const
+      expect(msgs.some(m => m.body === mensajeDeOrigen(courier))).toBe(true)
+      // La guía dice si al registrarse había deuda; la tarjeta va solo entonces.
+      const debia = msgs.some(m => m.type === 'guia' && (m.body ?? '').includes('Tu saldo de S/'))
+      expect(msgs.some(m => m.type === 'cobro' && m.sender_role === 'system')).toBe(debia)
+    }
+  })
+
+  // Con la MISMA copy que la tarjeta del vendedor — dos cobros que no se
+  // parecen para la misma deuda es lo que la definición única evita.
+  it('la tarjeta dice la copy del vendedor, con el saldo de ese momento', () => {
+    const p = pasaronPorOrigen().find(x =>
+      (x.chat_messages ?? []).some(m => m.type === 'cobro' && m.sender_role === 'system'))
+    const tarjeta = (p?.chat_messages ?? []).find(m => m.type === 'cobro')
+    const guia = (p?.chat_messages ?? []).find(m => m.type === 'guia')
+    const saldo = Number(/Tu saldo de S\/(\d+)/.exec(guia?.body ?? '')?.[1])
+    expect(tarjeta?.body).toBe(textoDeCobro(soles(saldo)))
+  })
+
+  // El orden es el de la vida real: se cobra primero, la plata entra después.
+  it('en los hilos que pagaron, la tarjeta va antes del acuse', () => {
+    const pagados = pasaronPorOrigen().filter(p => p.saldo_verification === 'MATCHED')
+    expect(pagados.length).toBeGreaterThan(0)
+    for (const p of pagados) {
+      const msgs = p.chat_messages ?? []
+      const iTarjeta = msgs.findIndex(m => m.type === 'cobro')
+      const iAcuse = msgs.findIndex(m => /¡Recibimos tu saldo de/.test(m.body ?? ''))
+      expect(iTarjeta).toBeGreaterThanOrEqual(0)
+      expect(iAcuse).toBeGreaterThan(iTarjeta)
+    }
+  })
+
+  // Sin reporte del courier no hay cobranza automática: el paquete todavía no
+  // entró a origen, y una tarjeta del sistema ahí sería cobrar antes de tiempo.
+  it('el hilo sin fase reportada no lleva tarjeta del sistema', () => {
+    const sinFase = t.pedidos.filter(p => p.tracking_numero && !p.tracking_phase)
+    expect(sinFase.length).toBeGreaterThan(0)
+    for (const p of sinFase) {
+      expect((p.chat_messages ?? []).some(m => m.type === 'cobro')).toBe(false)
     }
   })
 })
