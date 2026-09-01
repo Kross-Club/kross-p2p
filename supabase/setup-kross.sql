@@ -1612,3 +1612,21 @@ ON CONFLICT DO NOTHING;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS cobro_id uuid REFERENCES cobros(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_chat_messages_cobro ON chat_messages(cobro_id) WHERE cobro_id IS NOT NULL;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §38 · EL PDF DE LA GUÍA DE SHALOM  (01-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- La API de Shalom devuelve la guía formal (`GET /v1/orders/{ose_id}/voucher`)
+-- como PDF BINARIO — no hay URL que guardar. Así que `shalom-order` la descarga
+-- una vez al emitir la guía y la sube acá; el mensaje del chat lleva la URL
+-- pública y el comprador abre el documento de Shalom de verdad.
+--
+-- PÚBLICO a propósito, igual que el bucket de guías del proyecto Neural: la
+-- ruta lleva el uuid del pedido y el número de guía —no se adivinan— y el
+-- documento es el mismo que el comprador ya tiene en su chat. La clave de
+-- recojo NO está en él.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('shalom-guias', 'shalom-guias', true)
+ON CONFLICT (id) DO NOTHING;
