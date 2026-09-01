@@ -505,14 +505,28 @@ describe('la clave de recojo en los hilos del generador', () => {
     }
   })
 
+  // EL invariante entero, sin excepciones — el reporte fue una captura: un
+  // pedido con "Saldo sin pagar S/ 180" en el panel y la clave ya entregada en
+  // el chat. Era el upsell: el generador calculaba el saldo de la guía con el
+  // precio BASE, así que a quien pagó el total base le soltaba la clave aunque
+  // el upsell —que viaja EN el paquete, o sea que existía antes de registrar
+  // la guía— le dejara deuda. La clave entregada implica que hoy no se debe
+  // nada, o que el saldo cruzó.
+  it('ningún hilo con la clave entregada sigue debiendo', () => {
+    const conClave = t.pedidos.filter(p =>
+      (p.chat_messages ?? []).some(m => (m.body ?? '').includes('Tu clave de recojo es')))
+    expect(conClave.length).toBeGreaterThan(0)
+    for (const p of conClave) {
+      expect(saldoDelPedido(p) === 0 || p.saldo_verification === 'MATCHED').toBe(true)
+    }
+  })
+
   // La mitad que importa: a quien la guía le dijo "apenas lo pagues te
   // entregamos tu clave" y no pagó, la entrega NO está en el hilo. Se pregunta
-  // por lo que la guía DIJO —"Tu saldo de S/…"— y no por el saldo de hoy: un
-  // upsell posterior puede crearle saldo nuevo a quien pagó todo y ya recibió
-  // su clave con la guía, y esa historia no se reescribe (igual que en la
-  // tienda real). Tampoco se barre por los 4 dígitos sueltos: aparecen por
-  // coincidencia en montos y operaciones — lo que revela la clave es el mensaje
-  // que la entrega.
+  // por lo que la guía DIJO —"Tu saldo de S/…"—, que con el upsell contado en
+  // la guía (arriba) es lo mismo que el saldo de hoy sin cruzar. No se barre
+  // por los 4 dígitos sueltos: aparecen por coincidencia en montos y
+  // operaciones — lo que revela la clave es el mensaje que la entrega.
   it('el que todavía debe el saldo que la guía le cobró NO tiene la clave', () => {
     const deben = shalomConGuia().filter(p =>
       p.saldo_verification !== 'MATCHED'

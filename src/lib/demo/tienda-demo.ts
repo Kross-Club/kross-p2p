@@ -669,9 +669,14 @@ async function construir(): Promise<TiendaDemo> {
       conGuia && p.tracking_numero
         ? { courier: ruta.courier === 'OLVA' ? 'OLVA' : 'SHALOM', numero: p.tracking_numero,
             codigo: p.tracking_codigo ?? null, clave: p.shalom_pickup_code ?? null,
-            // El saldo DE ESE MOMENTO: cuando la guía se registró, el saldo aún
-            // no se había pagado — la copy dice lo que se le dijo entonces.
-            saldo: Math.max(0, prod.precio - adelanto),
+            // El saldo DE ESE MOMENTO, contra el TOTAL de ese momento
+            // (`valorPedido`, upsell incluido): el upsell viaja EN el paquete,
+            // así que existía antes de registrar la guía. Con el precio base
+            // acá, a quien pagó el total base y llevaba upsell la guía le decía
+            // "ya pagaste el total" y le soltaba la clave — con el panel
+            // cobrándole un saldo. Es la captura de "Luis Núñez": la clave
+            // entregada a quien todavía debe.
+            saldo: Math.max(0, valorPedido - adelanto),
             // Y si este hilo YA pagó su saldo, el acuse y la clave que el
             // webhook habría escrito entonces, con su comprobante.
             pagado: saldoPagado
