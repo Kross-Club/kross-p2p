@@ -75,3 +75,52 @@ export function fechaDelComprobante(d: DatosDeComprobante): string {
 export function enlaceDeComprobante(cobroId: string): string {
   return `/comprobante/${encodeURIComponent(cobroId)}`
 }
+
+/**
+ * ¿De qué cobro habla este AVISO de pago viejo?
+ *
+ * Los mensajes nuevos llevan el puntero (`cobro_id`) y no pasan por acá. Pero
+ * los pedidos que pagaron ANTES del puntero ya tenían su aviso en el hilo —el
+ * "✅ ¡Recibimos tu adelanto…" del webhook en la tienda real, el "Adelanto
+ * verificado" del generador en los hilos del demo— y ese aviso se pintaba como
+ * píldora, sin comprobante. Esta función lo reconoce por su propia copy (que es
+ * NUESTRA copy: `_shared/acuse-de-pago.ts` y el generador, no texto ajeno) y lo
+ * ata al cobro pagado que le corresponde, para que el hilo viejo enseñe el
+ * mismo botón que uno de hoy.
+ *
+ * Se hace al PINTAR y no rellenando la base: reescribir conversaciones viejas
+ * para insertarles mensajes es inventar historia, y esto es solo reconocer la
+ * que ya está escrita.
+ *
+ * Solo devuelve cobros PAGADOS y con id: sin id no hay página que abrir, y un
+ * aviso atado a un cobro sin pagar sería un comprobante de algo que no pasó.
+ */
+export function cobroDelAviso<T extends {
+  tipo: string; verificado: boolean; id?: string | null; concepto?: string | null; monto: number
+}>(
+  mensaje: { type?: string; body?: string | null },
+  cobros: T[],
+): T | null {
+  if (mensaje.type !== 'status_update') return null
+  const body = mensaje.body ?? ''
+  const pagados = cobros.filter(c => c.verificado && c.id)
+
+  // El primer cobro: el adelanto, o el pago total (que es un adelanto que cubre
+  // el precio entero — por eso se buscan los dos tipos).
+  if (/¡Recibimos tu (adelanto|pago completo) de/.test(body) || body === 'Adelanto verificado') {
+    return pagados.find(c => c.tipo === 'adelanto' || c.tipo === 'total') ?? null
+  }
+  if (/¡Recibimos tu saldo de/.test(body)) {
+    return pagados.find(c => c.tipo === 'saldo') ?? null
+  }
+  // Un extra se reconoce por su concepto —que la copy pone después de "por"— o,
+  // si no lo trae, por el monto. Puede haber varios extras pagados y el aviso
+  // tiene que abrir el comprobante del suyo, no el del primero.
+  const extra = /¡Recibimos tu pago de S\/(\d+(?:\.\d+)?)/.exec(body)
+  if (extra) {
+    const monto = Number(extra[1])
+    return pagados.find(c => c.tipo === 'extra'
+      && ((c.concepto && body.includes(` por ${c.concepto}!`)) || Number(c.monto) === monto)) ?? null
+  }
+  return null
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nombreDelCobro, lineasDelComprobante, enlaceDeComprobante } from './comprobante'
+import { nombreDelCobro, lineasDelComprobante, enlaceDeComprobante, cobroDelAviso } from './comprobante'
 import type { DatosDeComprobante } from '../../supabase/functions/_shared/comprobante.ts'
 import { tieneComprobante } from '../../supabase/functions/_shared/comprobante.ts'
 
@@ -99,5 +99,56 @@ describe('tieneComprobante', () => {
     expect(tieneComprobante({ estado: 'PENDING' })).toBe(false)
     expect(tieneComprobante({ estado: 'ANULADO' })).toBe(false)
     expect(tieneComprobante({})).toBe(false)
+  })
+})
+
+
+// ─── El aviso viejo también abre su comprobante ──────────────────────────────
+//
+// Los pedidos que pagaron antes del puntero (`cobro_id`) ya tenían su aviso en
+// el hilo. Se reconoce por su propia copy —la del webhook y la del generador del
+// demo— y se ata al cobro pagado, para que un hilo de hace un mes enseñe el
+// mismo botón que uno de hoy sin reescribir su conversación.
+
+describe('cobroDelAviso', () => {
+  const cobros = [
+    { id: 'a', tipo: 'total', verificado: true, monto: 150, concepto: null },
+    { id: 's', tipo: 'saldo', verificado: true, monto: 75, concepto: null },
+    { id: 'x1', tipo: 'extra', verificado: true, monto: 20, concepto: 'Flete a Piura' },
+    { id: 'x2', tipo: 'extra', verificado: true, monto: 11, concepto: 'Hey' },
+  ]
+  const aviso = (body: string) => ({ type: 'status_update', body })
+
+  it('la copy del webhook: adelanto, pago completo y saldo', () => {
+    expect(cobroDelAviso(aviso('✅ ¡Recibimos tu adelanto de S/75! Te queda un saldo de S/75…'), cobros)?.id).toBe('a')
+    expect(cobroDelAviso(aviso('✅ ¡Recibimos tu pago completo de S/150! No te queda ningún saldo pendiente.'), cobros)?.id).toBe('a')
+    expect(cobroDelAviso(aviso('✅ ¡Recibimos tu saldo de S/75! Ya no te queda nada pendiente.'), cobros)?.id).toBe('s')
+  })
+
+  // Los hilos del generador del demo dicen otra frase, y también cuentan.
+  it('la copy del generador del demo', () => {
+    expect(cobroDelAviso(aviso('Adelanto verificado'), cobros)?.id).toBe('a')
+  })
+
+  // Con dos extras pagados, el aviso abre el comprobante del SUYO.
+  it('un extra se reconoce por su concepto, no por ser el primero', () => {
+    expect(cobroDelAviso(aviso('✅ ¡Recibimos tu pago de S/11 por Hey! Gracias.'), cobros)?.id).toBe('x2')
+    expect(cobroDelAviso(aviso('✅ ¡Recibimos tu pago de S/20 por Flete a Piura! Gracias.'), cobros)?.id).toBe('x1')
+  })
+
+  // Un cobro sin pagar no tiene comprobante que abrir, y un aviso cualquiera no
+  // es un aviso de pago.
+  it('ni cobros sin pagar, ni mensajes que no son avisos de pago', () => {
+    const sinPagar = [{ id: 'a', tipo: 'adelanto', verificado: false, monto: 75, concepto: null }]
+    expect(cobroDelAviso(aviso('Adelanto verificado'), sinPagar)).toBeNull()
+    expect(cobroDelAviso(aviso('🚚 ¡Tu pedido va en camino a tu agencia!'), cobros)).toBeNull()
+    expect(cobroDelAviso({ type: 'text', body: 'Adelanto verificado' }, cobros)).toBeNull()
+  })
+
+  // Sin id no hay página que abrir: un cobro que todavía se lee de las columnas
+  // viejas no puede prometer un botón que va a dar 404.
+  it('sin id no hay comprobante', () => {
+    const sinId = [{ id: null, tipo: 'total', verificado: true, monto: 150, concepto: null }]
+    expect(cobroDelAviso(aviso('Adelanto verificado'), sinId)).toBeNull()
   })
 })

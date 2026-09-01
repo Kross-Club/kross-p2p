@@ -33,6 +33,7 @@ import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
+import { cobroDelAviso } from '../../lib/comprobante'
 import { TIPO_COBRO, textoDeCobro, textoDeCobroExtra, montoDeLaTarjeta, cobroDeLaTarjeta, MORADO_YAPE } from '../../lib/cobro-por-chat'
 import { puedePagarSaldo, saldoDelPedido, soles, cobrosDelPedido } from '../../lib/order-money'
 import { mensajePanel } from '../../lib/panel-errors'
@@ -474,12 +475,16 @@ function MessageBubble({ msg, audio, equipo = [], pedido }: {
   // Íd. que del lado del comprador: el vendedor ve la MISMA constancia. No la
   // necesita para trabajar —tiene la columna de cobros—, pero cuando el cliente
   // dice "el comprobante dice otra cosa", la respuesta tiene que estar en la
-  // pantalla donde se lo está preguntando.
-  if (msg.type === 'status_update' && msg.cobro_id) {
-    return (
-      <TarjetaDeComprobante texto={msg.body} cobroId={msg.cobro_id}
-        hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
-    )
+  // pantalla donde se lo está preguntando. Y también en los hilos de ANTES del
+  // puntero: el aviso viejo se reconoce por su copy (`cobroDelAviso`).
+  if (msg.type === 'status_update' && pedido) {
+    const cobroId = msg.cobro_id ?? cobroDelAviso(msg, cobrosDelPedido(pedido))?.id
+    if (cobroId) {
+      return (
+        <TarjetaDeComprobante texto={msg.body} cobroId={cobroId}
+          hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
+      )
+    }
   }
 
   if (msg.type === 'status_update') {
@@ -1607,10 +1612,14 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
             </button>
             {/* Cobrar algo más: un flete, una diferencia. Va acá y no en la
                 columna de la derecha porque es un gesto de CONVERSACIÓN —se le
-                cobra a alguien, por el chat— igual que mandar una oferta. */}
+                cobra a alguien, por el chat— igual que mandar una oferta.
+                Y con el MISMO par de colores que la oferta, a propósito: son
+                tres maneras de escribir en el hilo y ninguna manda sobre las
+                otras. El verde de "plata que entró" pintaba este botón como el
+                importante — y es el que menos se usa. */}
             <button onClick={() => setShowCobro(true)}
               className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'var(--ok-bg-soft)', color: 'var(--ok-fg)' }}
+              style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}
               title="Cobrar algo más">
               <Wallet size={16} />
             </button>
