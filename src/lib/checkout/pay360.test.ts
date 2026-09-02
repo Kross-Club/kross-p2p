@@ -349,7 +349,7 @@ import { initialCheckoutState } from './machine'
 import type { CheckoutState } from './types'
 import type { StorePay360 } from './types'
 
-const ref = { token: 't', orderCode: 'ORD-1', sessionId: 's1' }
+const ref = { token: 't', orderCode: 'ORD-1', sessionId: 's1', rail: '360PAY' as const }
 const cupon: CouponRef = { deeplink: 'https://www.yape.com.pe/app/…', consumerCode: 'KRS12345678901', amountPen: 5 }
 const run = (start: PayPhase, ...evs: Parameters<typeof payPhaseReducer>[1][]) =>
   evs.reduce(payPhaseReducer, start)
@@ -357,7 +357,7 @@ const run = (start: PayPhase, ...evs: Parameters<typeof payPhaseReducer>[1][]) =
 describe('fases del cobro con 360pay', () => {
   it('el camino feliz: emitir → esperar → pagado', () => {
     const p = run({ k: 'IDLE' },
-      { type: 'REGISTERED_PAY360', ...ref },
+      { type: 'REGISTERED_ONLINE', ...ref },
       { type: 'COUPON_ISSUED', coupon: cupon },
       { type: 'PAID' })
     expect(p.k).toBe('DONE')
@@ -365,7 +365,7 @@ describe('fases del cobro con 360pay', () => {
   })
 
   it('AWAITING lleva el enlace y el código de respaldo', () => {
-    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
+    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
     expect(p.k).toBe('AWAITING')
     if (p.k === 'AWAITING') expect(p.coupon.consumerCode).toBe('KRS12345678901')
   })
@@ -377,7 +377,7 @@ describe('fases del cobro con 360pay', () => {
     // comprador no pagaba algo que sí existía y quedaba vivo esperando cobrarse.
     // Sin enlace se espera igual: el código se teclea en “Pagar servicios”.
     const p = run({ k: 'IDLE' },
-      { type: 'REGISTERED_PAY360', ...ref },
+      { type: 'REGISTERED_ONLINE', ...ref },
       { type: 'COUPON_ISSUED', coupon: { ...cupon, deeplink: null } })
     expect(p.k).toBe('AWAITING')
     if (p.k === 'AWAITING') {
@@ -389,7 +389,7 @@ describe('fases del cobro con 360pay', () => {
 
   it('sin enlace el pago igual se confirma solo', () => {
     const p = run({ k: 'IDLE' },
-      { type: 'REGISTERED_PAY360', ...ref },
+      { type: 'REGISTERED_ONLINE', ...ref },
       { type: 'COUPON_ISSUED', coupon: { ...cupon, deeplink: null } },
       { type: 'PAID' })
     expect(p.k).toBe('DONE')
@@ -400,52 +400,52 @@ describe('fases del cobro con 360pay', () => {
     // CONFIRMING significa "el dinero pudo salir y hay que averiguar"; AWAITING
     // significa "todavía no paga". Reusar CONFIRMING haría que un pedido recién
     // emitido se leyera como un cobro dudoso.
-    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
+    const p = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
     expect(p.k).not.toBe('CONFIRMING')
   })
 
   it('desde AWAITING no se puede re-emitir: el cupón está vivo', () => {
-    const awaiting = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
+    const awaiting = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
     expect(payPhaseReducer(awaiting, { type: 'RETRY' })).toEqual(awaiting)
   })
 
   it('un cupón que llega tarde no pisa el estado', () => {
     // Respuesta atrasada de un intento anterior: pintar su enlace mandaría al
     // comprador a pagar un cupón que ya se anuló.
-    const done = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref },
+    const done = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref },
       { type: 'COUPON_ISSUED', coupon: cupon }, { type: 'PAID' })
     expect(payPhaseReducer(done, { type: 'COUPON_ISSUED', coupon: cupon })).toEqual(done)
   })
 
   it('el fallo al emitir sí se puede reintentar', () => {
-    const failed = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'ISSUE_FAILED' })
+    const failed = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref }, { type: 'ISSUE_FAILED' })
     expect(failed.k).toBe('ISSUE_FAILED')
     expect(payPhaseReducer(failed, { type: 'RETRY' }).k).toBe('ISSUING')
   })
 
   it('si pagó mientras reintentaba, gana el pago', () => {
     // Decirle "falló" a quien ya pagó es el peor final posible.
-    const failed = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'ISSUE_FAILED' })
+    const failed = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref }, { type: 'ISSUE_FAILED' })
     const p = payPhaseReducer(failed, { type: 'PAID' })
     expect(p.k).toBe('DONE')
     if (p.k === 'DONE') expect(p.paid).toBe(true)
   })
 
   it('"prefiero que me escriban" sale desde la espera', () => {
-    const awaiting = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
+    const awaiting = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref }, { type: 'COUPON_ISSUED', coupon: cupon })
     const p = payPhaseReducer(awaiting, { type: 'GIVE_UP' })
     expect(p.k).toBe('DONE')
     if (p.k === 'DONE') expect(p.unpaid).toBe(true)
   })
 
   it('emitido = pedido ya registrado: cerrar no es abandonar un carrito', () => {
-    const issuing = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref })
+    const issuing = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref })
     expect(orderRegistered(issuing)).toBe(true)
   })
 
   it('no se puede emitir dos veces desde IDLE ni saltarse el registro', () => {
-    const issuing = run({ k: 'IDLE' }, { type: 'REGISTERED_PAY360', ...ref })
-    expect(payPhaseReducer(issuing, { type: 'REGISTERED_PAY360', ...ref })).toEqual(issuing)
+    const issuing = run({ k: 'IDLE' }, { type: 'REGISTERED_ONLINE', ...ref })
+    expect(payPhaseReducer(issuing, { type: 'REGISTERED_ONLINE', ...ref })).toEqual(issuing)
     expect(payPhaseReducer({ k: 'IDLE' }, { type: 'COUPON_ISSUED', coupon: cupon })).toEqual({ k: 'IDLE' })
   })
 

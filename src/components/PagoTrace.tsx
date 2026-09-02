@@ -8,6 +8,7 @@ import { seCobraPorChat } from '../lib/cobro-por-chat'
 import { sePuedeBorrar } from '../../supabase/functions/_shared/cobros.ts'
 import { vigenciaDeCupon, sePuedeEnviarCobro, avisoDeVigencia } from '../lib/vigencia-de-cupon'
 import type { OrderSession, PagoTrazado } from '../lib/order-api'
+import type { Proveedor } from '../../supabase/functions/_shared/comision.ts'
 
 // ─── La plata que entró, operación por operación ─────────────────────────────
 //
@@ -40,15 +41,23 @@ import type { OrderSession, PagoTrazado } from '../lib/order-api'
 // pagador —ni a 360pay ni al comercio—; lo que sí llega es el rastro bancario
 // (N° de operación + banco), y eso es lo que se muestra.
 
-const TITULO: Record<TipoDeCobro, string> = {
-  adelanto: 'Adelanto pagado con Yape (360pay)',
-  total: 'Pago completo con Yape (360pay)',
-  saldo: 'Saldo pagado con Yape (360pay)',
+/** El nombre del riel como lo conoce el comercio: es con quién habla cuando un
+ *  cobro se discute, así que sí se nombra — al comprador no, a Ventas sí. */
+export const NOMBRE_RIEL: Record<Proveedor, string> = { '360PAY': '360pay', FLOW: 'Flow' }
+
+const TITULO_BASE: Record<TipoDeCobro, string> = {
+  adelanto: 'Adelanto pagado con Yape',
+  total: 'Pago completo con Yape',
+  saldo: 'Saldo pagado con Yape',
   // El cobro adicional no dice "adicional" en la tarjeta: para el comprador es
   // simplemente lo que le cobraron, y el CONCEPTO —el flete, la diferencia—
   // aparece debajo, que es el dato que de verdad le falta.
-  extra: 'Cobro pagado con Yape (360pay)',
+  extra: 'Cobro pagado con Yape',
 }
+
+/** El título con el riel de ESTE cobro. Sale del cobro y no del pedido: con
+ *  dos rieles, el pedido no dice por dónde fue cada uno. */
+const titulo = (tipo: TipoDeCobro, riel: Proveedor) => `${TITULO_BASE[tipo]} (${NOMBRE_RIEL[riel]})`
 
 /** Lo que queda claro solo diciéndolo. "Adelanto" sin más deja al vendedor
  *  restando de cabeza para saber si todavía falta cobrar algo. */
@@ -99,6 +108,9 @@ export default function PagoTrace({ session, onCobrar, onReemitir, onQuitar }: {
           // repetiría y React pintaría uno solo.
           key={cobro.id ?? cobro.tipo}
           cobro={cobro}
+          // El de la fila cuando lo hay; si no, el del pedido. Los cobros de las
+          // columnas viejas no lo traen y son todos de 360pay.
+          riel={cobro.riel ?? (session.payment_provider === 'FLOW' ? 'FLOW' : '360PAY')}
           orderId={session.order_id ?? null}
           trace={rastroDe(cobro, session)}
           cobradoEn={cobro.matchedAt
@@ -148,8 +160,9 @@ function rastroDe(cobro: Cobro, session: OrderSession): PagoTrazado | null {
  * Una operación. Verde cuando entró; ámbar mientras el cupón está emitido y sin
  * pagar — que no es lo mismo y confundirlos es despachar sin haber cobrado.
  */
-function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahora, onCobrar, onReemitir, onQuitar }: {
+function TarjetaDeCobro({ cobro, riel, orderId, trace, cobradoEn, falta, venceEl, ahora, onCobrar, onReemitir, onQuitar }: {
   cobro: Cobro
+  riel: Proveedor
   orderId: string | null
   trace: PagoTrazado | null
   /** Cuándo entró la plata. Es lo que ubica la transacción en un listado de
@@ -187,7 +200,7 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahor
   const ok = cobro.verificado
   // Una lista para las dos cosas: lo que se pinta es exactamente lo que se copia.
   const datos = datosDeRastro({ orderId, trace, cobradoEn: ok ? cobradoEn : null })
-  const paraSoporte = textoParaSoporte(TITULO[cobro.tipo], soles(cobro.monto), datos)
+  const paraSoporte = textoParaSoporte(titulo(cobro.tipo, riel), soles(cobro.monto), datos)
 
   const pie = ok ? PIE[cobro.tipo](falta) : null
 
@@ -200,7 +213,7 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahor
         <p className="flex items-center gap-2 text-[11px] font-bold min-w-0"
           style={{ color: ok ? 'var(--ok-fg)' : 'var(--text-muted)' }}>
           {ok ? <CreditCard size={13} className="flex-shrink-0" /> : <Clock size={13} className="flex-shrink-0" />}
-          <span className="truncate">{ok ? TITULO[cobro.tipo] : `${TITULO[cobro.tipo].split(' ')[0]} sin pagar`}</span>
+          <span className="truncate">{ok ? titulo(cobro.tipo, riel) : `${TITULO_BASE[cobro.tipo].split(' ')[0]} sin pagar`}</span>
         </p>
         {/* El MONTO, acá y en ningún otro sitio. Es el dato por el que se abre
             esta tarjeta, así que va grande y a la derecha. */}
@@ -281,7 +294,7 @@ function TarjetaDeCobro({ cobro, orderId, trace, cobradoEn, falta, venceEl, ahor
             style={{ border: '0.5px solid var(--ok-border)', color: 'var(--ok-fg)' }}
           >
             {copiado ? <Check size={11} /> : <Copy size={11} />}
-            {copiado ? 'Copiado' : 'Copiar para soporte 360pay'}
+            {copiado ? 'Copiado' : `Copiar para soporte ${NOMBRE_RIEL[riel]}`}
           </button>
         )}
 

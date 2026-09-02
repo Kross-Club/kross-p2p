@@ -16,6 +16,8 @@
 
 import { cobrosVivos, entro } from '../../supabase/functions/_shared/cobros.ts'
 import type { FilaDeCobro } from '../../supabase/functions/_shared/cobros.ts'
+import { esRielEnLinea } from '../../supabase/functions/_shared/comision.ts'
+import type { Proveedor } from '../../supabase/functions/_shared/comision.ts'
 
 export interface PedidoConPlata {
   /** La LISTA de cobros (bloque §36). Cuando viene, manda: es el modelo nuevo,
@@ -81,6 +83,11 @@ export interface Cobro {
   venceEl?: string | null
   couponId?: string | null
   paymentCode?: string | null
+  /** Por qué riel se cobró (o se está cobrando) ESTE cobro. Sale de la fila
+   *  —un cobro tiene el cupón de 360pay o el token de Flow, nunca ambos— y no
+   *  del pedido: con dos rieles, el pedido no dice por dónde fue cada uno. `null`
+   *  en los cobros leídos de las columnas viejas, que son todos de 360pay. */
+  riel?: Proveedor | null
   /** La fila de `cobros` tal cual, cuando el cobro viene de la tabla (§36).
    *  Está para que quien necesite una regla del modelo —"¿esto se puede dar de
    *  baja?"— se la pregunte a `_shared/cobros.ts` en vez de volver a escribirla
@@ -177,6 +184,7 @@ function deFila(f: FilaDeCobro, valor: number): Cobro {
     venceEl: f.coupon_expires_at ?? null,
     couponId: f.pay360_coupon_id ?? null,
     paymentCode: f.pay360_consumer_code ?? null,
+    riel: f.flow_token ? 'FLOW' : f.pay360_coupon_id ? '360PAY' : null,
     // La fila entera, para poder preguntarle a la REGLA —`sePuedeBorrar`— en
     // vez de reescribirla acá. Es lo único que no se puede reconstruir desde
     // los campos de arriba sin volver a decidir lo que ya decidió el modelo.
@@ -317,14 +325,15 @@ export function solesExactos(n: number | string | null | undefined): string {
  *     antiguo, así que con el adelanto sin pagar, quien viene a pagar el saldo
  *     terminaría pagando el adelanto — por otro monto;
  *   · la tienda cobra en línea. Prometer un botón que no cobra es peor que no
- *     ponerlo: sin `360PAY` el saldo lo coordina el asesor por el chat.
+ *     ponerlo: sin riel el saldo lo coordina el asesor por el chat. Cuál riel
+ *     lo decide `esRielEnLinea` —la única definición—, no un literal acá.
  */
 export function puedePagarSaldo(p: PedidoConPlata & {
   payment_provider?: string | null
 }): boolean {
   const falta = Math.max(0, valorDelPedido(p) - Math.max(0, num(p.advance_amount)))
   return falta > 0
-    && p.payment_provider === '360PAY'
+    && esRielEnLinea(p.payment_provider)
     && cruzado(p.payment_verification)
     && !cruzado(p.saldo_verification)
 }

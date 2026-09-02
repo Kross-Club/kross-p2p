@@ -34,6 +34,63 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Flow Pagos, el segundo riel · SQL + 8 funciones (01-sep-2026)
+
+**Qué se ve si no entra:** nada distinto — y esa es la gracia. Sin desplegar, ninguna tienda
+tiene `flow_enabled` y el ruteo devuelve `'360PAY'` para todo, así que el checkout cobra
+exactamente como hoy. Lo que NO entra hasta desplegar: la línea *"Comisión · recibes"* en la
+tarjeta de cada cobro (§38), y **un arreglo de `pay360-coupon`** que sí importa — ver abajo.
+
+**Primero el SQL** (bloques §38 y §39; idempotente):
+
+```sql
+alter table cobros add column if not exists comision_pen       numeric;
+alter table cobros add column if not exists costo_pasarela_pen numeric;
+alter table stores add column if not exists flow_enabled        boolean default false;
+alter table stores add column if not exists flow_merchant_id    text;
+alter table stores add column if not exists flow_payment_method integer;
+alter table stores add column if not exists flow_env            text default 'sandbox';
+alter table stores drop constraint if exists stores_flow_env_check;
+alter table stores add constraint stores_flow_env_check
+  check (flow_env is null or flow_env = any (array['sandbox'::text, 'live'::text]));
+alter table cobros add column if not exists flow_token   text;
+alter table cobros add column if not exists flow_pay_url text;
+create index if not exists idx_cobros_flow_token on cobros(flow_token) where flow_token is not null;
+```
+
+**Después las funciones:**
+
+```
+supabase functions deploy pay360-coupon      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy flow-order         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy flow-confirm       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy flow-return        --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy register-buyer     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> ⚠️ **`pay360-coupon` en `main` llama a `columnasDe` sin importarlo** desde el commit
+> `be173da` (la mudanza al bloque §36). Si la función desplegada es la de ese commit o
+> posterior, **cada emisión de cupón de adelanto/saldo revienta** justo después de crear el
+> cupón en 360pay y de escribir la fila de `cobros`, y antes de espejar las columnas: el
+> comprador ve *"no pudimos generar tu pago"*, reintenta, y el segundo intento anula el primero
+> y emite otro. Se corrigió con una línea de import; **desplegarlo primero**.
+
+**Y los secretos de Flow, cuando lleguen** (Kross es el comercio integrador; son de plataforma,
+nada va a `store_secrets`):
+
+```
+supabase secrets set FLOW_API_KEY=… FLOW_SECRET_KEY=… --project-ref ofdjghntvmrdfjhazfvz
+supabase secrets set FLOW_API_KEY_LIVE=… FLOW_SECRET_KEY_LIVE=… --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Lo que falta para cobrar por Flow **no es código**: la cuenta de sandbox, conectar Kross Shop
+desde el panel y que Flow apruebe el comercio, y **resolver la unidad de `amount` para PEN** con
+una orden de S/10 mirando cuánto muestra su checkout. Ver `docs/12-FLOW.md` §7.
+
 ### El vencimiento del cupón · SQL + `pay360-coupon` + `get-session` (31-ago-2026)
 
 **Qué se ve si no entra:** el botón *Enviar tarjeta de pago* aparece siempre (los cupones sin

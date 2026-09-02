@@ -49,6 +49,40 @@ export const TARIFA_KROSS = { pct: 0.05, fijo: 1.20 }
 
 export type Proveedor = '360PAY' | 'FLOW'
 
+/** Los rieles que cobran en línea. `payment_provider` solo puede valer uno de
+ *  estos o NULL (sin cobro en línea: el adelanto lo coordina un asesor). */
+export const RIELES: readonly Proveedor[] = ['360PAY', 'FLOW'] as const
+
+/**
+ * ¿Este pedido cobra en línea?
+ *
+ * Es la única lectura de `payment_provider` que debería existir en el front.
+ * Antes era `=== '360PAY'` escrito en tres sitios, y agregar un riel obligaba
+ * a acordarse de los tres — el que se olvidara dejaría a los pedidos de Flow
+ * sin botón de pagar el saldo, en silencio.
+ */
+export function esRielEnLinea(p: string | null | undefined): p is Proveedor {
+  return (RIELES as readonly string[]).includes(String(p ?? ''))
+}
+
+/**
+ * Qué riel le toca a este cobro, de entre los que la tienda tiene ENCENDIDOS.
+ *
+ * `proveedorPara` dice cuál conviene; esta dice cuál se puede. Con los dos
+ * encendidos manda el corte de S/90; con uno, ese; sin ninguno, `null` — el
+ * pedido se cierra igual y el adelanto lo coordina un asesor. Nunca elige un
+ * riel apagado: un `'FLOW'` sin comercio dado de alta deja al comprador con
+ * un pedido creado y sin forma de pagarlo.
+ */
+export function rielPara(
+  monto: number | string, habilitados: readonly Proveedor[],
+): Proveedor | null {
+  if (habilitados.length === 0) return null
+  const preferido = proveedorPara(monto)
+  if (habilitados.includes(preferido)) return preferido
+  return habilitados[0]
+}
+
 /**
  * Lo que cada riel se queda por transacción, con IGV para poder compararlos.
  *
@@ -128,13 +162,12 @@ export const CRUCE_DE_RIELES = redondear(
 )
 
 /**
- * Qué riel conviene para este monto.
+ * Qué riel CONVIENE para este monto, sin mirar cuáles están encendidos.
  *
- * ⚠️ **Todavía no lo consume nadie.** Devuelve el riel PREFERIDO; quien lo
- * enchufe tendrá que caer al que la tienda tenga encendido, y hoy solo existe
- * 360pay (el motor de Culqi se borró el 21-ago-2026 y con él la dimensión de
- * proveedor). Está acá para que el número quede fijado en un test en vez de en
- * un documento.
+ * Devuelve el preferido; `rielPara` es la que cae al que la tienda tenga. Lo
+ * consume `register-buyer` al registrar el pedido — es el único sitio donde
+ * se decide el riel, y se decide por el monto del ADELANTO. El saldo y los
+ * extras del mismo pedido van por el riel del pedido (ver `docs/12-FLOW.md`).
  *
  * El corte es `>=` y no `>`: a S/90 los dos cuestan igual, y el empate se
  * resuelve hacia el riel plano porque de ahí para arriba solo mejora.

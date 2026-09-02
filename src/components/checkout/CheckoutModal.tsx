@@ -9,13 +9,16 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { ArrowLeft, Loader2, X } from 'lucide-react'
 import { useCheckout } from '../../lib/checkout/useCheckout'
-import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN, PAY360_POLL_MS, pay360ActiveFor } from '../../lib/checkout/checkout.config'
+import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN, PAY360_POLL_MS, onlinePayActiveFor, preferredRailFor } from '../../lib/checkout/checkout.config'
 import { trackEvent } from '../../lib/checkout/analytics'
-import type { CheckoutState, StorePay360 } from '../../lib/checkout/types'
+import type { CheckoutState, StoreFlow, StorePay360 } from '../../lib/checkout/types'
+import { esRielEnLinea } from '../../../supabase/functions/_shared/comision.ts'
+import type { Proveedor } from '../../../supabase/functions/_shared/comision.ts'
 import type { CheckoutAbMode } from '../../lib/checkout/variant'
 import { effectivePrice } from '../../lib/checkout/product-packs'
 import { fetchPaymentVerification, submitOrder } from '../../lib/checkout/services/OrderService'
 import { issueCoupon } from '../../lib/checkout/services/Pay360Service'
+import { createFlowOrder, goToFlow } from '../../lib/checkout/services/FlowService'
 import Pay360Box from './payment/Pay360Box'
 import { saveLastOrder } from '../../lib/checkout/persistence'
 import { orderRegistered, payPhaseReducer } from '../../lib/checkout/pay-phase'
@@ -45,6 +48,8 @@ interface CheckoutModalProps {
   homeDeliveryEnabled?: boolean
   /** Config 360pay de la tienda (columnas públicas). Puede llegar asíncrona. */
   pay360?: StorePay360 | null
+  /** Íd. para Flow. Cuál de los dos cobra este pedido lo decide el servidor. */
+  flow?: StoreFlow | null
   /** Cómo reparte la tienda el A/B (`stores.checkout_ab_mode`). Asíncrona igual
    *  que `pay360`: hasta que llegue vale el sorteo 50/50 de siempre. */
   abMode?: CheckoutAbMode
@@ -52,7 +57,7 @@ interface CheckoutModalProps {
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, homeDeliveryEnabled = true, pay360 = null, abMode = 'SPLIT',
+  submitContext, homeDeliveryEnabled = true, pay360 = null, flow = null, abMode = 'SPLIT',
 }: CheckoutModalProps) {
   const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled })
   const { state, dispatch, errors, touch } = co
@@ -74,6 +79,9 @@ export default function CheckoutModal({
   useEffect(() => {
     dispatch({ type: 'SET_PAY360_CONFIG', pay360: pay360 ?? null })
   }, [pay360, dispatch])
+  useEffect(() => {
+    dispatch({ type: 'SET_FLOW_CONFIG', flow: flow ?? null })
+  }, [flow, dispatch])
 
   // Igual que la de 360pay: llega asíncrona y con deps reales se corrige sola.
   useEffect(() => {
@@ -171,14 +179,35 @@ export default function CheckoutModal({
   // vuelve a llamar en el retry, y re-crearlo en cada cambio de fase reintroduce
   // el doble tap que el reducer justamente evita.
   const phaseRef = useRef('')
+  // Y el riel, por la misma razón: el retry tiene que saber a qué servicio
+  // volver a llamar, y lo decidió el servidor al registrar.
+  const railRef = useRef<Proveedor | null>(null)
   useEffect(() => {
-    if (phase.k !== 'IDLE' && 'token' in phase) phaseRef.current = phase.token
+    if (phase.k !== 'IDLE' && 'token' in phase) { phaseRef.current = phase.token; railRef.current = phase.rail }
   }, [phase])
 
-  // ─── Fase 2 (360pay) · emitir el cupón ────────────────────────────────────
-  // No cobra: devuelve CÓMO pagar. El "sí, entró" llega después, por el webhook,
-  // y esta pantalla lo ve por el polling de abajo.
+  // ─── Fase 2 · emitir: el cupón (360pay) o la orden (Flow) ─────────────────
+  // Ninguna cobra: devuelven CÓMO pagar. Con 360pay el "sí, entró" llega por
+  // el webhook y esta pantalla lo ve por el polling; con Flow el comprador SE
+  // VA a la página de pago y vuelve solo, así que acá no hay espera — la fase
+  // queda en ISSUING mientras el navegador navega.
   const issue = useCallback(async () => {
+    if (railRef.current === 'FLOW') {
+      const res = await createFlowOrder({ orderToken: phaseRef.current })
+      if (res.ok) {
+        if (res.alreadyPaid) {
+          phaseDispatch({ type: 'PAID' })
+          return
+        }
+        trackEvent({ name: 'flow_order_created', orderId: state.orderId })
+        goToFlow(res.payUrl)
+        return
+      }
+      trackEvent({ name: 'flow_issue_failed', orderId: state.orderId, stage: res.stage, code: res.code })
+      phaseDispatch({ type: 'ISSUE_FAILED' })
+      saveLastOrder(phaseRef.current, '', submitContext?.productId ?? null, { advancePending: true })
+      return
+    }
     const res = await issueCoupon({ orderToken: phaseRef.current })
     if (res.ok) {
       if (res.alreadyPaid) {
@@ -205,7 +234,7 @@ export default function CheckoutModal({
     // Guard duro del doble tap: con un pago ya en marcha, este botón no existe
     // (el pie se desmonta), pero el guard queda por si algo lo re-monta.
     if (phase.k !== 'IDLE') return
-    const pay360Active = pay360ActiveFor(state)
+    const onlineActive = onlinePayActiveFor(state)
     setSubmitError(null)
     dispatch({ type: 'SUBMITTING' })
     try {
@@ -226,15 +255,22 @@ export default function CheckoutModal({
       // El borrador deja de existir: un pedido enviado no se reabre.
       co.clear()
 
-      if (pay360Active) {
+      // El riel lo dijo el SERVIDOR (`payment_provider`, por monto). Si la
+      // función desplegada es anterior al ruteo y no lo devuelve, se sigue con
+      // lo que el front prefirió: una tienda solo con 360pay cobra igual.
+      const rail: Proveedor | null = res.payment_provider === undefined
+        ? (preferredRailFor(state) ?? null)
+        : esRielEnLinea(res.payment_provider) ? res.payment_provider : null
+      if (onlineActive && rail) {
         phaseRef.current = ref.token
-        phaseDispatch({ type: 'REGISTERED_PAY360', ...ref })
+        railRef.current = rail
+        phaseDispatch({ type: 'REGISTERED_ONLINE', ...ref, rail })
         await issue()
         return
       }
       // Sin cobro en línea: directo a la pantalla final. Es el camino de las
-      // marcas que aún no tienen 360pay y el de los pedidos sin adelanto.
-      phaseDispatch({ type: 'REGISTERED_MANUAL', ...ref })
+      // marcas que no tienen ningún riel y el de los pedidos sin adelanto.
+      phaseDispatch({ type: 'REGISTERED_MANUAL', ...ref, rail: null })
     } catch (err) {
       const reason = err instanceof Error ? err.message : 'error desconocido'
       dispatch({ type: 'ERROR' })
@@ -275,7 +311,7 @@ export default function CheckoutModal({
   const submitting = state.status === 'SUBMITTING'
   // La misma lectura que hace el submit: calcularla distinto aquí pintaría una
   // pantalla que no corresponde al cobro que después se ejecuta.
-  const pay360Active = pay360ActiveFor(state)
+  const onlineActive = onlinePayActiveFor(state)
   const done = phase.k === 'DONE'
 
   return (
@@ -352,7 +388,7 @@ export default function CheckoutModal({
               state={state}
               packName={pack?.nombre ?? null}
               price={price}
-              pay360={pay360Active}
+              onlinePay={onlineActive}
               onAdvanceChoice={choice => dispatch({ type: 'SET_ADVANCE_CHOICE', choice })}
               submitError={submitError}
             />
@@ -364,7 +400,15 @@ export default function CheckoutModal({
           {phase.k === 'ISSUING' && (
             <div className="py-10 text-center">
               <Loader2 size={34} className="animate-spin mx-auto mb-4 text-[#742284]" />
-              <p className="text-base font-black text-gray-900">{COPY.submitting}</p>
+              {/* Con Flow el comprador está a punto de SALIR de la PWA: se le
+                  dice a dónde va y que vuelve solo, antes de que la pantalla
+                  cambie. Sin nombrar el motor — para él es Yape. */}
+              <p className="text-base font-black text-gray-900">
+                {phase.rail === 'FLOW' ? COPY.flowRedirecting : COPY.submitting}
+              </p>
+              {phase.rail === 'FLOW' && (
+                <p className="mt-1.5 px-4 text-[13px] leading-relaxed text-gray-600">{COPY.flowRedirectingHint}</p>
+              )}
             </div>
           )}
 

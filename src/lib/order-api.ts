@@ -53,7 +53,8 @@ export interface OrderSession {
   /** Cuándo se dio por respondida la última pregunta del comprador. */
   answered_at?: string | null
   advance_amount?: number | string | null
-  /** '360PAY' = el adelanto se cobra en línea; NULL = sin cobro en línea. */
+  /** El riel: '360PAY' | 'FLOW' = el adelanto se cobra en línea; NULL = sin
+   *  cobro en línea. La lista vive en `_shared/comision.ts` (`RIELES`). */
   payment_provider?: string | null
   items?: OrderItem[] | null
   buyer_can_call?: boolean

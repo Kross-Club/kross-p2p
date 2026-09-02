@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
   const filas = (data ?? []) as { id: string }[]
   if (filas.length > 0) {
     const { data: cobros } = await supabase.from('cobros')
-      .select('id, session_id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, coupon_expires_at, concepto, created_by, created_at, comision_pen, costo_pasarela_pen')
+      .select('id, session_id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, flow_token, coupon_expires_at, concepto, created_by, created_at, comision_pen, costo_pasarela_pen')
       .in('session_id', filas.map(f => f.id))
       .order('created_at', { ascending: true })
     if (cobros) {

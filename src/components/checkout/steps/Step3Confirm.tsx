@@ -25,15 +25,17 @@ interface Step3Props {
   /** Nombre y precio ya con descuento del pack elegido. */
   packName: string | null
   price: number
-  /** true = este pedido se cobra con 360pay (`pay360ActiveFor`, lo decide el
-   *  modal). false = la tienda aún no lo tiene y va por la caja manual. */
-  pay360: boolean
+  /** true = este pedido se cobra EN LÍNEA, por el riel que sea
+   *  (`onlinePayActiveFor`, lo decide el modal). false = la tienda no tiene
+   *  ninguno y va por la caja manual. Cuál riel no le importa a esta pantalla:
+   *  el copy no nombra el motor. */
+  onlinePay: boolean
   onAdvanceChoice: (choice: AdvanceChoice) => void
   submitError: string | null
 }
 
 export default function Step3Confirm({
-  state, packName, price, pay360, onAdvanceChoice, submitError,
+  state, packName, price, onlinePay, onAdvanceChoice, submitError,
 }: Step3Props) {
   const advance = state.advanceAmount
   const isProvincia = state.locationType === 'PROVINCIA'
@@ -92,7 +94,7 @@ export default function Step3Confirm({
           pantalla de Yape llega al terminar el pedido. Aquí vivió una caja que
           anunciaba el botón y repetía el monto — puro eco del resumen de arriba,
           y se quitó. */}
-      {advance > 0 && !pay360 && (
+      {advance > 0 && !onlinePay && (
         /* Sin 360pay conectado no hay nada que cobrar aquí: el pedido se cierra
            igual y el adelanto lo coordina un asesor por el chat. Decirlo es
            mejor que no decir nada — quien esperaba pagar ahora sabe qué sigue. */

@@ -14,7 +14,7 @@ import type { CheckoutAbMode } from './variant'
 import type {
   AgencyName, CheckoutState, CheckoutStepId, CheckoutVariant, DistrictCoverage,
   AdvanceChoice, LimaAddress, LocationType, PackId, PaymentVerification, PickupPoint,
-  ProvinciaConfig, StorePay360,
+  ProvinciaConfig, StoreFlow, StorePay360,
 } from './types'
 
 /** uuid v4. `randomUUID` exige contexto seguro; el fallback cubre dev por http. */
@@ -50,6 +50,7 @@ export function initialCheckoutState(
     pickup: { ...EMPTY_PICKUP },
     needsLocationConfirmation: false,
     pay360: null,
+    flow: null,
     advanceAmount: 0,
     discountPen: 0,
     exitOfferShown: false,
@@ -90,6 +91,7 @@ export type CheckoutAction =
   | { type: 'SET_DELIVERY_METHOD'; method: 'DOMICILIO' | 'AGENCIA' }
   /** Config de la tienda, inyectada por el modal (puede llegar asíncrona). */
   | { type: 'SET_PAY360_CONFIG'; pay360: StorePay360 | null }
+  | { type: 'SET_FLOW_CONFIG'; flow: StoreFlow | null }
   /** Cómo reparte la tienda el experimento (`stores.checkout_ab_mode`). Llega
    *  asíncrona, como la config de cobro, así que re-resuelve la variante. */
   | { type: 'SET_AB_MODE'; mode: CheckoutAbMode }
@@ -378,6 +380,8 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
     // derivado en derive() y esta acción no lo toca.
     case 'SET_PAY360_CONFIG':
       return derive({ ...state, pay360: action.pay360 })
+    case 'SET_FLOW_CONFIG':
+      return derive({ ...state, flow: action.flow })
 
     // Con la tienda en 'A'/'B' el sorteo del navegador no manda. Se re-resuelve
     // en vez de asignar `action.mode` a secas porque `?checkout=` sigue ganando

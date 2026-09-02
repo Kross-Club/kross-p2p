@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Wallet, ExternalLink, Check } from 'lucide-react'
 import { puedePagarSaldo, saldoDelPedido, soles } from '../lib/order-money'
 import { etiquetaDePago, MORADO_YAPE } from '../lib/cobro-por-chat'
+import { createFlowOrder, goToFlow } from '../lib/checkout/services/FlowService'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -59,6 +60,26 @@ export function BotonPagarSaldo({ pedido, cobro }: {
   const pagar = async () => {
     if (pidiendo || !pedido.token) return
     setPidiendo(true); setError(null)
+    // Flow: la orden se pide igual, pero el enlace es a la PÁGINA de pago de
+    // Flow y el comprador se va en la misma pestaña. Vuelve solo, por
+    // `flow-return`. El riel es el del PEDIDO: el saldo y los extras van por
+    // donde fue el adelanto (ver docs/12-FLOW.md).
+    if (pedido.payment_provider === 'FLOW') {
+      try {
+        const r = await createFlowOrder(cobro?.id
+          ? { orderToken: pedido.token, cobroId: cobro.id }
+          : { orderToken: pedido.token, tipo: 'saldo' })
+        if (!r.ok) {
+          setError(r.userMessage ?? 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.')
+          return
+        }
+        if (r.alreadyPaid) return
+        goToFlow(r.payUrl)
+      } finally {
+        setPidiendo(false)
+      }
+      return
+    }
     try {
       const r = await fetch(`${BASE}/pay360-coupon`, {
         method: 'POST',

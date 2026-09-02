@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import CheckoutModal from '../components/checkout/CheckoutModal'
 import { COPY } from '../lib/checkout/checkout.config'
-import type { StorePay360 } from '../lib/checkout/types'
+import type { StoreFlow, StorePay360 } from '../lib/checkout/types'
 import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
@@ -46,6 +46,7 @@ export default function LandingProductoPage() {
   const [homeDelivery, setHomeDelivery] = useState(true)
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
   const [pay360, setPay360] = useState<StorePay360 | null>(null)
+  const [flow, setFlow] = useState<StoreFlow | null>(null)
   // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
   const [abMode, setAbMode] = useState<CheckoutAbMode>('SPLIT')
 
@@ -84,7 +85,7 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     supabase.from('stores')
-      .select('home_delivery_enabled, pay360_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
+      .select('home_delivery_enabled, pay360_enabled, flow_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         // Degradación POR CAMPO: si el select entero falla (p. ej. una columna
@@ -99,6 +100,8 @@ export default function LandingProductoPage() {
         // es apagado — encenderlo sin negocio dado de alta deja al comprador
         // con un pedido creado y sin forma de pagar.
         setPay360(data.pay360_enabled ? { enabled: true } : null)
+        // Mismo default seguro que 360pay: sin la columna, apagado.
+        setFlow((data as { flow_enabled?: boolean | null }).flow_enabled ? { enabled: true } : null)
         // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
         // reparto por defecto nunca puede depender de un dato mal escrito.
         setAbMode(abModeOf(data.checkout_ab_mode))
@@ -189,6 +192,7 @@ export default function LandingProductoPage() {
           onPartialLead={state => saveCheckoutDraft(state, product)}
           homeDeliveryEnabled={homeDelivery}
           pay360={pay360}
+          flow={flow}
           abMode={abMode}
           submitContext={{
             storeId: product.store_id ?? '',
