@@ -345,7 +345,7 @@ export function esFinalSinPago(s: Pick<FlowStatus, 'status'>): boolean {
 }
 
 /**
- * El desglose que trae el estado, para el bloque §38.
+ * El desglose que trae el estado, para el bloque §39.
  *
  * `fee` es lo que se quedó Flow. La comisión de Kross NO viene acá —se
  * configura por contrato y no aparece en `getStatus`—, así que `comision`

@@ -341,4 +341,12 @@ describe('cobrado y esperando guía a mano', () => {
     expect(esperaGuiaManual({ shalom_order_status: 'SIMULADO' })).toBe(false)
     expect(esperaGuiaManual({ shalom_order_status: 'SKIPPED' })).toBe(false)
   })
+
+  // Y un FAILED que YA tiene guía dejó de esperar: alguien la registró a mano
+  // o el reintento por API la emitió. La alerta sin esto quedaba prendida para
+  // siempre sobre un pedido resuelto.
+  it('la guía registrada apaga la alerta, venga por donde venga', () => {
+    expect(esperaGuiaManual({ shalom_order_status: 'FAILED', tracking_numero: '462767' })).toBe(false)
+    expect(esperaGuiaManual({ shalom_order_status: 'FAILED', tracking_ose_id: '990011' })).toBe(false)
+  })
 })

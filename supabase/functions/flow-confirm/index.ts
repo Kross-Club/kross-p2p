@@ -9,7 +9,7 @@
 // `application/x-www-form-urlencoded` con SOLO `token`. Sin estado y sin firma.
 // Por eso el orden de las defensas es distinto al de 360pay:
 //   1. El token, del body crudo.
-//   2. La fila de `cobros` que lo conoce (bloque §39). Un token que no es de
+//   2. La fila de `cobros` que lo conoce (bloque §40). Un token que no es de
 //      ninguna fila no es de nadie.
 //   3. Dedupe por token contra el índice único (store_id, dedupe_key).
 //   4. **`payment/getStatus` firmado con NUESTRA secret key.** Es lo que da la
@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
   const matchedAt = new Date().toISOString()
   const pd = estado.data.paymentData ?? null
   const flowOrder = estado.data.flowOrder != null ? String(estado.data.flowOrder) : null
-  // El desglose del bloque §38. `fee` es lo de Flow; la comisión de Kross no
+  // El desglose del bloque §39. `fee` es lo de Flow; la comisión de Kross no
   // viene en el estado —se configura por contrato— y queda NULL a propósito.
   const desglose = desgloseDeFlow(pd)
 

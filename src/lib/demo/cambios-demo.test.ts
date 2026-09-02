@@ -3,11 +3,15 @@ import {
   conCambios, listaConCambios, guardarCambio, agregarMensajeDemo, reiniciarDemo,
   hayCambiosDemo, cambiosDemo, ejecutarEnDemo, avanzarEnDemo, ofertaAceptadaEnDemo,
   ofertaEnviadaEnDemo, cobroEnviadoEnDemo, saldoPagadoEnDemo, invitarEnDemo, reasignarEnDemo, quitarEnDemo,
+  cobroExtraEnDemo, cobroExtraPagadoEnDemo, guiaManualEnDemo, reintentoShalomEnDemo,
 } from './cambios-demo'
 import type { PedidoDemo } from './cambios-demo'
-import { avanceDelPago, cobrosDelPedido, cobradoDelPedido } from '../order-money'
+import { avanceDelPago, cobrosDelPedido, cobradoDelPedido, saldoPorCobrar } from '../order-money'
 import { columnaDelPedido } from '../order-tracking'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
+import { mensajeDeClave, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
+import { esPickupCodeValido } from '../../../supabase/functions/_shared/shalom-orders.ts'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
 //
@@ -78,6 +82,30 @@ describe('avanzar en el demo', () => {
     expect(columnaDelPedido(conCambios(p))).toBe('registrado')
   })
 
+  // Completa, como la emite `shalom-order`: con el código del voucher —que
+  // viaja en el mensaje, con el vocabulario de Shalom— y una clave de retiro
+  // que su validador aceptaría. La clave NO va en el mensaje: este pedido aún
+  // debe su saldo.
+  it('la guía inventada trae código y clave, y el chat solo enseña los ids', () => {
+    const p = pedido({ stage: 'confirmado' })
+    const r = avanzarEnDemo(p)
+    expect(r.patch?.tracking_codigo).toMatch(/^[A-Z0-9]{4}$/)
+    expect(esPickupCodeValido(String(r.patch?.shalom_pickup_code))).toBe(true)
+    const guia = conCambios(p).chat_messages?.find(m => m.type === 'guia')
+    expect(guia?.body).toContain(`Nro. de orden ${r.patch?.tracking_numero} · Código ${r.patch?.tracking_codigo}`)
+    expect(conCambios(p).chat_messages?.some(m => m.body === mensajeDeClave(String(r.patch?.shalom_pickup_code))))
+      .toBe(false)
+  })
+
+  // Pero si el pedido ya no debe nada, la clave sale JUNTO con la guía — es lo
+  // que hace `registrarGuia` en la tienda real cuando pagaron el total.
+  it('con todo pagado, la clave sale junto con la guía', () => {
+    const p = pedido({ stage: 'confirmado', advance_amount: 150 })
+    const r = avanzarEnDemo(p)
+    expect(conCambios(p).chat_messages?.some(m => m.body === mensajeDeClave(String(r.patch?.shalom_pickup_code))))
+      .toBe(true)
+  })
+
   it('y después mueve el reloj del courier, paso por paso', () => {
     let p = pedido({ stage: 'en_camino', tracking_numero: '145446' })
     const columnas: string[] = []
@@ -88,6 +116,100 @@ describe('avanzar en el demo', () => {
       columnas.push(columnaDelPedido(p))
     }
     expect(columnas).toEqual(['en_origen', 'transito', 'en_agencia', 'entregado'])
+  })
+
+  // La cobranza real empieza en origen (`onTransition` de `_shared/tracking.ts`)
+  // y el demo enseña ese mismo momento: el aviso de que la pre-guía ya es
+  // oficial y, si el pedido debe su saldo, la tarjeta de pago — sola, con la
+  // MISMA copy que la del vendedor.
+  it('entrar a origen anuncia la guía oficial y manda la tarjeta del saldo', () => {
+    const p = pedido({ stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY' })
+    avanzarEnDemo(p)
+    const msgs = conCambios(p).chat_messages ?? []
+    expect(msgs.some(m => m.body === mensajeDeOrigen('SHALOM'))).toBe(true)
+    const tarjeta = msgs.find(m => m.type === 'cobro')
+    expect(tarjeta?.body).toBe(textoDeCobro('S/ 75'))
+    expect(tarjeta?.sender_role).toBe('system')
+  })
+
+  it('sin deuda no hay tarjeta: el aviso va solo', () => {
+    const p = pedido({ stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY', advance_amount: 150 })
+    avanzarEnDemo(p)
+    const msgs = conCambios(p).chat_messages ?? []
+    expect(msgs.some(m => m.body === mensajeDeOrigen('SHALOM'))).toBe(true)
+    expect(msgs.some(m => m.type === 'cobro')).toBe(false)
+  })
+
+  // El vendedor pudo mandarla a mano antes de que el courier reporte:
+  // repetírsela es cobrarle dos veces a la vista (misma regla que el tracking).
+  it('si la tarjeta ya está en el hilo, no se repite', () => {
+    const p = pedido({
+      stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY',
+      chat_messages: [{ id: 'x', sender_role: 'seller', type: 'cobro', body: 'Te queda un saldo de S/ 75.', created_at: '', read_at: null }],
+    })
+    avanzarEnDemo(p)
+    const cambio = cambiosDemo()[p.id]
+    expect((cambio?.mensajes ?? []).some(m => m.type === 'cobro')).toBe(false)
+  })
+
+  // Y las fases siguientes también hablan, como en los hilos del generador.
+  it('en tránsito y en destino dejan su aviso en el hilo', () => {
+    let p = pedido({ stage: 'en_camino', tracking_numero: '145446', tracking_phase: 'EN_ORIGEN' })
+    avanzarEnDemo(p)
+    p = conCambios(p)
+    avanzarEnDemo(p)
+    const msgs = conCambios(p).chat_messages ?? []
+    expect(msgs.some(m => (m.body ?? '').includes('va en camino a tu agencia'))).toBe(true)
+    expect(msgs.some(m => (m.body ?? '').includes('ya llegó a tu agencia'))).toBe(true)
+  })
+})
+
+// ─── El registro que falló: a mano, o reintentando por el API ────────────────
+//
+// El pedido FAILED espera a una persona, y esa persona tiene dos salidas — las
+// mismas que en la tienda real: copiar del comprobante físico los TRES datos
+// (nro. de orden, código y clave, para que la entrega automática funcione
+// igual), o reintentar la emisión por el API (`retry_shalom`).
+
+describe('la guía del registro fallido, enseñando', () => {
+  const fallido = (extra: Partial<PedidoDemo> = {}) => pedido({
+    stage: 'confirmado', shalom_order_status: 'FAILED',
+    product_price: 150, advance_amount: 75, ...extra,
+  })
+
+  it('registrar a mano guarda los tres datos y anuncia la guía SIN pdf', () => {
+    const p = fallido()
+    const patch = guiaManualEnDemo(p, { numero: '46276701', codigo: '9X2N', clave: '4767' })
+    expect(patch).toMatchObject({
+      tracking_courier: 'SHALOM', tracking_numero: '46276701',
+      tracking_codigo: '9X2N', shalom_pickup_code: '4767',
+    })
+    const guia = conCambios(p).chat_messages?.find(m => m.type === 'guia')
+    expect(guia?.body).toContain('Nro. de orden 46276701 · Código 9X2N')
+    // Manual = sin voucher del courier: el botón cae a la hoja de la app.
+    expect(guia?.media_url ?? null).toBeNull()
+    // Y con saldo pendiente, la clave NO sale: la entrega el pago.
+    expect(conCambios(p).chat_messages?.some(m => (m.body ?? '').includes('Tu clave de recojo es'))).toBe(false)
+  })
+
+  it('a mano con todo pagado, la clave sale junto con la guía', () => {
+    const p = fallido({ advance_amount: 150 })
+    guiaManualEnDemo(p, { numero: '46276701', codigo: '9X2N', clave: '4767' })
+    expect(conCambios(p).chat_messages?.some(m => m.body === mensajeDeClave('4767'))).toBe(true)
+  })
+
+  it('reintentar por API emite completa, con voucher, y cierra el expediente', () => {
+    const p = fallido()
+    const patch = reintentoShalomEnDemo(p)
+    expect(patch.tracking_numero).toMatch(/^\d{6}$/)
+    expect(patch.tracking_codigo).toMatch(/^[A-Z0-9]{4}$/)
+    expect(esPickupCodeValido(String(patch.shalom_pickup_code))).toBe(true)
+    expect(patch.shalom_order_status).toBe('CREATED')
+    const con = conCambios(p)
+    expect(con.chat_messages?.find(m => m.type === 'guia')?.media_url).toContain('.pdf')
+    // La columna pasa a `registrado` porque EXISTE la guía — el stage no se
+    // toca, igual que en la tienda real.
+    expect(columnaDelPedido(con)).toBe('registrado')
   })
 
   it('un pedido terminado no avanza', () => {
@@ -176,6 +298,106 @@ describe('el carrito en el demo', () => {
     expect(acuse?.body).toBe(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: true }))
     // Y apunta al cobro: sin eso el botón no tendría qué abrir.
     expect(acuse?.cobro_id).toBe('s')
+  })
+
+  // El acuse promete "Te enviamos tu clave de recojo por acá" — y el demo
+  // cumple igual que el webhook: la clave sale sola, DESPUÉS del acuse, solo si
+  // el pedido la tiene. Una guía registrada a mano no eligió clave, y ahí no
+  // hay nada que mandar.
+  it('el saldo pagado suelta la clave de recojo, después del acuse', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75, saldo_amount: 75, saldo_verification: 'PENDING',
+      tracking_courier: 'SHALOM', tracking_numero: '260368', shalom_pickup_code: '2415',
+    })
+    saldoPagadoEnDemo(base)
+    const msgs = conCambios(base).chat_messages ?? []
+    const iAcuse = msgs.findIndex(m => /¡Recibimos tu saldo de/.test(m.body ?? ''))
+    const iClave = msgs.findIndex(m => m.body === mensajeDeClave('2415'))
+    expect(iClave).toBeGreaterThan(iAcuse)
+  })
+
+  it('sin clave guardada no se inventa ninguna', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75, saldo_amount: 75, saldo_verification: 'PENDING',
+      tracking_courier: 'SHALOM', tracking_numero: '260368',
+    })
+    saldoPagadoEnDemo(base)
+    expect(conCambios(base).chat_messages?.some(m => (m.body ?? '').includes('clave de recojo es'))).toBe(false)
+  })
+
+  // ─── El caso que se rompió en producción ───────────────────────────────────
+  //
+  // Un pedido con el adelanto cruzado y el saldo SIN CUPÓN: no tiene fila de
+  // saldo ni `saldo_amount`, porque ese cupón lo emite el comprador al tocar
+  // pagar. Desde que el panel puede mandarle la tarjeta igual, el demo pasa por
+  // acá — y pasaba mal por partida doble: anunciaba "¡Recibimos tu saldo de
+  // S/0!" y la tarjeta del saldo, en vez de ponerse verde, DESAPARECÍA.
+  it('el saldo sin cupón: se crea su fila, con su monto, y la tarjeta se pone verde', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75,
+      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
+    })
+    // Antes de pagar: no es una fila, pero el panel lo enseña igual.
+    expect(saldoPorCobrar(base)).toMatchObject({ tipo: 'saldo', monto: 75 })
+
+    saldoPagadoEnDemo(base)
+    const p = conCambios(base)
+
+    // Ahora SÍ es una fila, cobrada, y por el monto que era.
+    const suyo = cobrosDelPedido(p).find(c => c.tipo === 'saldo')
+    expect(suyo).toMatchObject({ monto: 75, verificado: true })
+    expect(cobradoDelPedido(p)).toBe(150)
+    // Y deja de ser "lo que falta", porque ya no falta.
+    expect(saldoPorCobrar(p)).toBeNull()
+  })
+
+  it('y el acuse dice el monto de verdad, con su comprobante', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75,
+      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      dispatch_type: 'AGENCIA_PROVINCIA',
+      cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
+    })
+    saldoPagadoEnDemo(base)
+    const acuse = conCambios(base).chat_messages?.find(m => m.type === 'status_update')
+    // No "S/0": el monto sale del pedido, no de una columna que aún no existe.
+    expect(acuse?.body).toBe(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: true }))
+    // Y apunta al cobro recién creado, que es lo que pinta el botón.
+    const suyo = conCambios(base).cobros?.find(c => c.tipo === 'saldo')
+    expect(acuse?.cobro_id).toBe(suyo?.id)
+    expect(acuse?.cobro_id).toBeTruthy()
+  })
+
+  // Un cobro que entró se sigue por su código de pago — es lo que se enseña.
+  // El generador siembra el rastro del saldo en `saldo_trace` con la serie
+  // KSH6xxx (`rastroDemo` con i+5000); el pago del demo usa la misma convención,
+  // y sin esto la tarjeta verde salía sin "Código de pago".
+  it('el saldo pagado deja su código de pago, con la serie del generador', () => {
+    const base = pedido({
+      id: 'demo-ped-13', product_price: 150, advance_amount: 75,
+      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
+    })
+    saldoPagadoEnDemo(base)
+    const p = conCambios(base)
+    expect(p.saldo_trace?.payment_code).toBe('KSH6013')
+    expect(p.saldo_trace?.operation_number).toBeTruthy()
+  })
+
+  // Y el extra pagado lleva el código del COMPRADOR, que es el que usa en la
+  // tienda real: `pay360-coupon` emite sus cupones con el código estable del
+  // cliente, no con uno propio.
+  it('el extra pagado lleva el código de pago del comprador', () => {
+    const base = pedido({
+      product_price: 150, advance_amount: 75,
+      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      payment_trace: { payment_code: 'KSH1042', coupon_id: null, operation_number: '1', bank: 'BCP' },
+    })
+    const { id } = cobroExtraEnDemo(base, 50, 'Flete')
+    cobroExtraPagadoEnDemo(conCambios(base), id)
+    const suyo = conCambios(base).cobros?.find(c => c.id === id)
+    expect(suyo).toMatchObject({ estado: 'MATCHED', pay360_consumer_code: 'KSH1042' })
   })
 
   // Y en la LISTA, que es de donde lee el panel desde el bloque §36. El

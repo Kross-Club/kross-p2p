@@ -11,6 +11,7 @@ import type { StoreOrder } from '../../lib/store-orders'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import TrackingBar from '../../components/TrackingBar'
+import type { TrackingFields } from '../../components/TrackingBar'
 import OrderDetailModal from '../../components/OrderDetailModal'
 import OfferCard from '../../components/OfferCard'
 import { sendCallCancel, listenCallReject } from '../../lib/call-signal'
@@ -33,6 +34,8 @@ import PanelCliente from '../../components/PanelCliente'
 import PagoTrace from '../../components/PagoTrace'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
+import TarjetaDeGuia from '../../components/TarjetaDeGuia'
+import { cobroDelAviso } from '../../lib/comprobante'
 import { TIPO_COBRO, textoDeCobro, textoDeCobroExtra, montoDeLaTarjeta, cobroDeLaTarjeta, MORADO_YAPE } from '../../lib/cobro-por-chat'
 import { puedePagarSaldo, saldoDelPedido, soles, cobrosDelPedido } from '../../lib/order-money'
 import { mensajePanel } from '../../lib/panel-errors'
@@ -45,6 +48,7 @@ import {
   cobroEnviadoEnDemo, saldoPagadoEnDemo, cobroExtraEnDemo, cobroExtraPagadoEnDemo,
   quitarCobroEnDemo, ESPERA_CLIENTE_DEMO,
   invitarEnDemo, reasignarEnDemo, quitarEnDemo,
+  guiaManualEnDemo, reintentoShalomEnDemo,
 } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
@@ -471,15 +475,28 @@ function MessageBubble({ msg, audio, equipo = [], pedido }: {
     )
   }
 
+  // La guía, igual que la ve el comprador — pre-guía y botón del PDF incluidos.
+  if (msg.type === 'guia') {
+    return (
+      <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url}
+        token={pedido?.token} courier={pedido?.tracking_courier ?? pedido?.agency_name}
+        hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
+    )
+  }
+
   // Íd. que del lado del comprador: el vendedor ve la MISMA constancia. No la
   // necesita para trabajar —tiene la columna de cobros—, pero cuando el cliente
   // dice "el comprobante dice otra cosa", la respuesta tiene que estar en la
-  // pantalla donde se lo está preguntando.
-  if (msg.type === 'status_update' && msg.cobro_id) {
-    return (
-      <TarjetaDeComprobante texto={msg.body} cobroId={msg.cobro_id}
-        hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
-    )
+  // pantalla donde se lo está preguntando. Y también en los hilos de ANTES del
+  // puntero: el aviso viejo se reconoce por su copy (`cobroDelAviso`).
+  if (msg.type === 'status_update' && pedido) {
+    const cobroId = msg.cobro_id ?? cobroDelAviso(msg, cobrosDelPedido(pedido))?.id
+    if (cobroId) {
+      return (
+        <TarjetaDeComprobante texto={msg.body} cobroId={cobroId}
+          hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
+      )
+    }
   }
 
   if (msg.type === 'status_update') {
@@ -684,7 +701,8 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       })
       if (!res.ok) return
       const { session: s, messages: m } = await res.json() as { session: OrderSession; messages: OrderMessage[] }
-      setSession(s)
+      // Íd. que en el chat del comprador: el token va EN la sesión, puesto acá.
+      setSession({ ...s, token })
       setMessages(m)
     } finally {
       setLoading(false)
@@ -956,8 +974,11 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       const msg = cobroEnviadoEnDemo(session as unknown as StoreOrder, body, { nombre: sellerName, rol: sellerRole })
       setMessages(prev => [...prev, msg as unknown as OrderMessage])
       alRato(() => {
-        const patch = saldoPagadoEnDemo(session as unknown as StoreOrder)
-        setSession(s => s ? { ...s, ...patch } as OrderSession : s)
+        saldoPagadoEnDemo(session as unknown as StoreOrder)
+        // Se relee TODO por la misma puerta del demo —sesión y mensajes—, no se
+        // parchea a mano: el pago deja también el acuse con su comprobante en el
+        // hilo, y parchear solo la sesión lo dejaba invisible hasta recargar.
+        reloadSession()
       })
       return
     }
@@ -973,7 +994,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
     const saved: OrderMessage = await res.json()
     setMessages(prev => prev.some(m => m.id === saved.id) ? prev : [...prev, saved])
     channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
-  }, [session, token, sellerName, sellerRole, alRato])
+  }, [session, token, sellerName, sellerRole, alRato, reloadSession])
 
   /**
    * Las acciones de EQUIPO y de COBRO —invitar, sacar, pasar el pedido, crear o
@@ -1015,8 +1036,9 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
       // de antes del clic y no lo tiene, así que buscarlo ahí no encontraría
       // nada que aceptar.
       alRato(() => {
-        const pagado = cobroExtraPagadoEnDemo({ ...session, ...patch } as unknown as StoreOrder, id)
-        setSession(s => s ? { ...s, ...pagado } as OrderSession : s)
+        cobroExtraPagadoEnDemo({ ...session, ...patch } as unknown as StoreOrder, id)
+        // Íd. que el saldo: releer, no parchear — el acuse también es del hilo.
+        reloadSession()
       })
       return
     }
@@ -1492,9 +1514,26 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         esDemo={esTokenDemo(token)}
         onAdvanced={(patch, handedOff) => {
           setSession(s => s ? { ...s, ...patch } : s)
-          // Ceded the lead → back to my list; otherwise refresh in place
+          // Ceded the lead → back to my list; otherwise refresh in place.
+          // También en el demo: avanzar deja mensajes en el hilo —la guía, el
+          // aviso de origen, la tarjeta del saldo— y sin releer aparecían
+          // recién al reabrir el pedido. `reloadSession` en demo lee del
+          // dispositivo, no llama a nadie.
           if (handedOff) onCerrar()
-          else if (!esTokenDemo(token)) reloadSession()
+          else reloadSession()
+          // El paquete entró a ORIGEN y salió la tarjeta del saldo
+          // (`avanzarEnDemo`, espejo del tracking real): a los diez segundos el
+          // comprador "paga", como todas las tarjetas del demo — y el pago deja
+          // su acuse, su comprobante y la clave de recojo, la misma cascada del
+          // webhook. En la tienda real NO: la tarjeta espera el pago de verdad.
+          if (esTokenDemo(token) && session && patch.tracking_phase === 'EN_ORIGEN'
+            && saldoDelPedido({ ...session, ...patch }) > 0) {
+            const avanzado = { ...session, ...patch }
+            alRato(() => {
+              saldoPagadoEnDemo(avanzado as unknown as StoreOrder)
+              reloadSession()
+            })
+          }
         }}
       />
       )}
@@ -1538,6 +1577,22 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         agencyName={session.agency_name}
         tracking={session}
         onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
+        // En la tienda de ejemplo, registrar a mano y reintentar por API pasan
+        // en el dispositivo — con los mismos mensajes que mandaría el servidor.
+        // Se relee el hilo entero porque el registro deja mensajes (la guía, y
+        // la clave si no debía nada), no solo campos.
+        demo={esTokenDemo(token) ? {
+          registrar: g => {
+            const patch = guiaManualEnDemo(session as unknown as StoreOrder, g)
+            reloadSession()
+            return patch as TrackingFields
+          },
+          reintentar: () => {
+            const patch = reintentoShalomEnDemo(session as unknown as StoreOrder)
+            reloadSession()
+            return patch as TrackingFields
+          },
+        } : undefined}
       />
 
       {/* El pedido en sí —productos, cantidades, nota del CRM, cancelar— cierra
@@ -1603,10 +1658,14 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
             </button>
             {/* Cobrar algo más: un flete, una diferencia. Va acá y no en la
                 columna de la derecha porque es un gesto de CONVERSACIÓN —se le
-                cobra a alguien, por el chat— igual que mandar una oferta. */}
+                cobra a alguien, por el chat— igual que mandar una oferta.
+                Y con el MISMO par de colores que la oferta, a propósito: son
+                tres maneras de escribir en el hilo y ninguna manda sobre las
+                otras. El verde de "plata que entró" pintaba este botón como el
+                importante — y es el que menos se usa. */}
             <button onClick={() => setShowCobro(true)}
               className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'var(--ok-bg-soft)', color: 'var(--ok-fg)' }}
+              style={{ background: 'var(--warn-bg)', color: 'var(--warn-fg)' }}
               title="Cobrar algo más">
               <Wallet size={16} />
             </button>

@@ -36,7 +36,7 @@ interface StoreRow {
   /** Presencia = la marca ya es un negocio en 360pay. No es un secreto. */
   pay360_business_id?: string | null
   pay360_payment_prefix?: string | null
-  // Flow, el segundo riel (bloque §39). Presencia de `flow_merchant_id` = la
+  // Flow, el segundo riel (bloque §40). Presencia de `flow_merchant_id` = la
   // marca ya es comercio asociado. Nada de esto es secreto.
   flow_enabled?: boolean
   flow_env?: string | null

@@ -77,12 +77,18 @@ export async function comprobanteDemo(
     concepto: cobro.concepto ?? null,
     monto: cobro.monto,
     cobrado_en: cobro.matchedAt ?? null,
-    payment_code: cobro.paymentCode ?? null,
-    // El rastro bancario del demo sale del pedido, que es donde el generador lo
-    // sembró: dos operaciones distintas, una por cobro, igual que en la tienda
-    // real.
-    operation_number: (cobro.tipo === 'saldo' ? pedido.saldo_trace : pedido.payment_trace)?.operation_number ?? null,
-    bank: (cobro.tipo === 'saldo' ? pedido.saldo_trace : pedido.payment_trace)?.bank ?? null,
+    // El rastro del demo sale del pedido, que es donde el generador (y
+    // `saldoPagadoEnDemo`) lo siembran: una operación por cobro, igual que en la
+    // tienda real. Un `extra` NO hereda el del adelanto — su constancia saldría
+    // con la operación bancaria de otro pago— : lo suyo es lo de su fila.
+    payment_code: cobro.paymentCode
+      ?? (cobro.tipo === 'saldo' ? pedido.saldo_trace?.payment_code
+        : cobro.tipo === 'extra' ? null : pedido.payment_trace?.payment_code)
+      ?? null,
+    operation_number: (cobro.tipo === 'saldo' ? pedido.saldo_trace
+      : cobro.tipo === 'extra' ? null : pedido.payment_trace)?.operation_number ?? null,
+    bank: (cobro.tipo === 'saldo' ? pedido.saldo_trace
+      : cobro.tipo === 'extra' ? null : pedido.payment_trace)?.bank ?? null,
     total,
     pagado,
     saldo: Math.max(0, total - pagado),

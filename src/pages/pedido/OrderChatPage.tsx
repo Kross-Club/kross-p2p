@@ -6,7 +6,9 @@ import QuickReplies from '../../components/chat/QuickReplies'
 import PagarSaldo from '../../components/PagarSaldo'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
+import TarjetaDeGuia from '../../components/TarjetaDeGuia'
 import { TIPO_COBRO, montoDeLaTarjeta, cobroDeLaTarjeta } from '../../lib/cobro-por-chat'
+import { cobroDelAviso } from '../../lib/comprobante'
 import { puedePagarSaldo, saldoDelPedido, cobrosDelPedido } from '../../lib/order-money'
 import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -171,11 +173,24 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
     )
   }
 
+  // La guía del envío, con su explicación de pre-guía y —cuando la emitió la
+  // API— el botón que abre el PDF de Shalom.
+  if (msg.type === 'guia') {
+    return (
+      <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url} hora={time}
+        token={pedido?.token} courier={pedido?.tracking_courier ?? pedido?.agency_name} />
+    )
+  }
+
   // El aviso de que ENTRÓ la plata, con su constancia. Va antes de la píldora
   // de estado y no dentro: el aviso más importante del hilo no puede verse igual
-  // que "cambió la etapa". Lo que lo distingue es que apunta a un cobro.
-  if (msg.type === 'status_update' && msg.cobro_id) {
-    return <TarjetaDeComprobante texto={msg.body} cobroId={msg.cobro_id} hora={time} />
+  // que "cambió la etapa". Los mensajes nuevos traen el puntero (`cobro_id`);
+  // los de ANTES del puntero se reconocen por su propia copy (`cobroDelAviso`),
+  // para que un pedido que pagó hace un mes enseñe el mismo botón que uno de
+  // hoy — sin reescribir su conversación.
+  if (msg.type === 'status_update' && pedido) {
+    const cobroId = msg.cobro_id ?? cobroDelAviso(msg, cobrosDelPedido(pedido))?.id
+    if (cobroId) return <TarjetaDeComprobante texto={msg.body} cobroId={cobroId} hora={time} />
   }
 
   if (msg.type === 'status_update') {
@@ -562,7 +577,9 @@ export default function OrderChatPage() {
     getSession(token)
       .then(({ session: s, messages: m }) => {
         if (s.status === 'expired') { setState('expired'); return }
-        setSession(s)
+        // El token viaja EN la sesión: el servidor no lo devuelve (se entra con
+        // él) y varias tarjetas lo necesitan — pagar el saldo, la hoja de guía.
+        setSession({ ...s, token })
         setMessages(m)
         setState('ok')
         markRead(token).catch(() => {})
@@ -622,7 +639,7 @@ export default function OrderChatPage() {
       // nada: el botón seguía ofreciéndole pagar lo que acababa de pagar.
       .on('broadcast', { event: 'cobros_update' }, () => {
         getSession(token!)
-          .then(({ session: s, messages: m }) => { setSession(s); setMessages(m) })
+          .then(({ session: s, messages: m }) => { setSession({ ...s, token }); setMessages(m) })
           .catch(() => {})
       })
       .on('broadcast', { event: 'assignment_update' }, ({ payload }) => {

@@ -50,8 +50,8 @@ const json = (body: unknown, status = 200) =>
 
 const SESSION_COLUMNS =
   'id, order_id, store_id, origin_store_id, buyer_id, buyer_name, buyer_phone, product_id, product_name, ' +
-  'product_price, advance_amount, payment_verification, dispatch_type, agency_name, agency_branch_id, ' +
-  'delivery_reference, tracking_numero, tracking_ose_id, shalom_order_status'
+  'product_price, advance_amount, payment_verification, saldo_verification, dispatch_type, agency_name, ' +
+  'agency_branch_id, delivery_reference, tracking_numero, tracking_ose_id, shalom_order_status'
 
 /** Cierra el expediente del pedido. `status` es también el candado: una vez
  *  escrito, ninguna corrida futura vuelve a tomar este pedido sola. */
@@ -132,9 +132,13 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'no autorizado' }, 401)
   }
 
-  const body = await req.json().catch(() => ({})) as { session_id?: string }
+  const body = await req.json().catch(() => ({})) as { session_id?: string; retry?: boolean }
   const sessionId = String(body.session_id ?? '')
   if (!sessionId) return json({ error: 'session_id requerido' }, 400)
+  // Reintento a mano (vía `order-manage` · retry_shalom): SOLO reabre un
+  // expediente FAILED. `CREATED`/`SIMULADO`/`SKIPPED` siguen cerrados — sobre
+  // esos, volver a emitir es pagar dos guías o pisar una decisión.
+  const reintento = body.retry === true
 
   const { data: session } = await supabase.from('order_sessions')
     .select(SESSION_COLUMNS).eq('id', sessionId).maybeSingle()
@@ -152,14 +156,21 @@ Deno.serve(async (req: Request) => {
   if (session.tracking_numero || session.tracking_ose_id) {
     return json({ skipped: 'el pedido ya tiene guía' })
   }
-  if (session.shalom_order_status) return json({ skipped: `ya procesado (${session.shalom_order_status})` })
+  const expediente = String(session.shalom_order_status ?? '')
+  if (expediente && !(reintento && expediente === 'FAILED')) {
+    return json({ skipped: `ya procesado (${expediente})` })
+  }
 
   // ─── El candado ────────────────────────────────────────────────────────────
-  // Gana una sola llamada. `.is(null)` hace la condición en la base, no acá:
-  // dos invocaciones simultáneas no pueden pasar las dos.
-  const { data: claimed } = await supabase.from('order_sessions')
+  // Gana una sola llamada. La condición se hace en la base, no acá: dos
+  // invocaciones simultáneas no pueden pasar las dos. Un reintento reclama
+  // DESDE `FAILED` (y solo desde ahí); la corrida normal, desde el vacío.
+  const claim = supabase.from('order_sessions')
     .update({ shalom_order_status: 'PENDING', shalom_order_at: new Date().toISOString() })
-    .eq('id', sessionId).is('shalom_order_status', null)
+    .eq('id', sessionId)
+  const { data: claimed } = await (reintento
+    ? claim.eq('shalom_order_status', 'FAILED')
+    : claim.is('shalom_order_status', null))
     .select('id')
   if (!claimed?.length) return json({ skipped: 'otra corrida ya lo tomó' })
 
@@ -356,6 +367,30 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ─── Reintentos automáticos, solo donde reintentar tiene sentido ─────────
+    // Un error DEL SERVIDOR (5xx) se reintenta solo, hasta 3 INTENTOS EN TOTAL
+    // — pero nunca a ciegas: no hay clave de idempotencia, así que antes de
+    // cada re-emisión se pregunta si la orden ya existe (la misma consulta de
+    // `reconciliar`; un 500 no promete que no se creó). El backoff (2 s, 4 s)
+    // le da aire al proveedor. Un rechazo 4xx NO se reintenta: repetir lo
+    // inválido no lo vuelve válido — eso cierra en FAILED y el panel ofrece
+    // corregir y reintentar a mano (`retry_shalom`).
+    let intentos = 1
+    while (!res.ok && res.status >= 500 && intentos < 3) {
+      console.warn('[shalom-order] error del proveedor', sessionId, res.status, `intento ${intentos}`)
+      const r = await llamar(`${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
+      const encontrada = r?.ok ? buscarOrdenPorDni(await leerJson(r), dni) : null
+      if (encontrada) {
+        console.log('[shalom-order] la orden sí existía pese al error', sessionId, encontrada.numero)
+        return await guardar(encontrada, pickupCode, encontrada.orderId)
+      }
+      await new Promise(listo => setTimeout(listo, 2000 * intentos))
+      const otra = await post()
+      if (!otra) return await reconciliar()
+      res = otra
+      intentos++
+    }
+
     if (res.status === 401) {
       await credencialesRechazadas()
       return json({ error: 'credenciales rechazadas' }, 502)
@@ -366,7 +401,9 @@ Deno.serve(async (req: Request) => {
       // pay360: nada de terceros frente a la gente del chat).
       const detalle = await res.text().catch(() => '')
       console.error('[shalom-order] rechazo del proveedor', sessionId, res.status, detalle.slice(0, 500))
-      await cerrar(sessionId, 'FAILED', `el proveedor rechazó el envío (${res.status})`)
+      await cerrar(sessionId, 'FAILED', res.status >= 500
+        ? `el proveedor falló (${res.status}) tras ${intentos} intentos`
+        : `el proveedor rechazó el envío (${res.status})`)
       await aLogistica(sessionId,
         '📦 Guía automática no generada — Shalom rechazó el pedido de envío. '
         + 'Regístrala a mano cuando despaches; el detalle quedó en los logs de Kross.')
@@ -391,6 +428,46 @@ Deno.serve(async (req: Request) => {
         + 'llegó a crearse. ANTES de emitir otra, revísalo en pro.shalom.pe — puede existir. '
         + 'Si existe, registra esa guía acá con el botón de siempre.')
       return json({ error: 'sin respuesta' }, 502)
+    }
+
+    /**
+     * La GUÍA FORMAL de Shalom, en PDF, para el botón del chat.
+     *
+     * `GET /v1/orders/{ose_id}/voucher` la devuelve como BINARIO —no hay URL
+     * que guardar—, así que se descarga una vez y se sube a Storage
+     * (`shalom-guias`, bucket público): el mensaje del chat lleva esa URL y el
+     * comprador abre el documento de Shalom de verdad, no una hoja nuestra.
+     * Si el voucher no está, se intenta el rótulo (`/label`), mismo contrato.
+     *
+     * Best-effort con timeout PROPIO (30 s, no los 145 s del login): un PDF que
+     * no baja jamás retrasa ni tumba el registro de la guía — sin él, el botón
+     * abre la hoja de guía de la app, que es el respaldo de siempre.
+     */
+    async function guardarPdfDeGuia(oseId: string | null, numero: string | null): Promise<string | null> {
+      if (!oseId) return null
+      try {
+        for (const doc of ['voucher', 'label']) {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 30_000)
+          const r = await fetch(`${SHALOM_API_BASE}/v1/orders/${oseId}/${doc}`, { headers: auth, signal: ctrl.signal })
+            .catch(() => null)
+          clearTimeout(t)
+          if (!r?.ok || !(r.headers.get('content-type') ?? '').includes('pdf')) continue
+          const bytes = new Uint8Array(await r.arrayBuffer())
+          if (bytes.length === 0) continue
+          const path = `${sessionId}/${numero ?? oseId}.pdf`
+          const up = await supabase.storage.from('shalom-guias')
+            .upload(path, bytes, { contentType: 'application/pdf', upsert: true })
+          if (up.error) {
+            console.error('[shalom-order] no se pudo subir el PDF de la guía', up.error.message)
+            return null
+          }
+          return supabase.storage.from('shalom-guias').getPublicUrl(path).data.publicUrl
+        }
+      } catch (e) {
+        console.error('[shalom-order] PDF de la guía no descargado', String(e).slice(0, 200))
+      }
+      return null
     }
 
     /** Escribe la guía en el pedido. La clave de retiro se guarda en la fila y
@@ -425,8 +502,15 @@ Deno.serve(async (req: Request) => {
       }
 
       // `yaSuscrito`: la orden se creó con `track: true`, así que el webhook ya
-      // la está mirando — no se gasta otra request en suscribirla.
-      const reg = await registrarGuia(session, g, { yaSuscrito: true })
+      // la está mirando — no se gasta otra request en suscribirla. Y el PDF de
+      // la guía viaja con el mensaje: es el botón "Ver mi guía de Shalom" — la
+      // guía FORMAL de Shalom, descargada del voucher y guardada en Storage
+      // (si la respuesta trajera una URL directa, esa gana: cero descargas).
+      const pdfUrl = guia.pdfUrl ?? await guardarPdfDeGuia(guia.oseId, guia.numero)
+      // La clave recién elegida viaja con la sesión: si el pedido ya quedó sin
+      // saldo (pagó el total), `registrarGuia` la entrega junto con la guía —la
+      // fila de la base todavía no la tiene, la escribe `cerrar` después.
+      const reg = await registrarGuia({ ...session, shalom_pickup_code: code }, g, { yaSuscrito: true, pdfUrl })
       await cerrar(sessionId, 'CREATED', reg.ok ? null : 'guía emitida, no se pudo escribir en el pedido', extra)
       if (!reg.ok) {
         console.error('[shalom-order] no se pudo escribir la guía en el pedido', sessionId, reg.error)
@@ -436,7 +520,7 @@ Deno.serve(async (req: Request) => {
 
       await aLogistica(sessionId,
         `📦 Guía generada automáticamente en Shalom · ${g.ids}. El comprador ya la tiene en su chat. `
-        + 'Su clave de retiro quedó guardada en el pedido y se le entrega cuando pague el saldo.')
+        + 'Su clave de retiro quedó guardada en el pedido y el chat se la entrega solo contra el saldo pagado.')
       return json({ created: true, tracking: g.tracking })
     }
   }

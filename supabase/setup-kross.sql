@@ -667,7 +667,7 @@ CREATE TRIGGER trg_complaints_codigo BEFORE INSERT ON complaints
 -- ⚠️ `provider_fee_pen` NO es lo que paga la marca, y decía que sí: guarda el
 -- `fee_platform` de 360pay (S/3.72), pero a la marca se le descuentan S/5.00 —
 -- la diferencia es el margen de Kross. Lo que paga la marca vive en
--- `cobros.comision_pen` (§38). El anti-duplicado NO necesita índice
+-- `cobros.comision_pen` (§39). El anti-duplicado NO necesita índice
 -- nuevo: el `dedupe_key` prefijado por proveedor reutiliza el índice único
 -- (store_id, dedupe_key) del 13.c, así que un evento repetido choca en 23505 y
 -- es no-op.
@@ -1619,7 +1619,24 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_cobro ON chat_messages(cobro_id) WH
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- §38 · LO QUE SE LE DESCONTÓ AL COMERCIO POR CADA COBRO  (01-sep-2026)
+-- §38 · EL PDF DE LA GUÍA DE SHALOM  (01-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- La API de Shalom devuelve la guía formal (`GET /v1/orders/{ose_id}/voucher`)
+-- como PDF BINARIO — no hay URL que guardar. Así que `shalom-order` la descarga
+-- una vez al emitir la guía y la sube acá; el mensaje del chat lleva la URL
+-- pública y el comprador abre el documento de Shalom de verdad.
+--
+-- PÚBLICO a propósito, igual que el bucket de guías del proyecto Neural: la
+-- ruta lleva el uuid del pedido y el número de guía —no se adivinan— y el
+-- documento es el mismo que el comprador ya tiene en su chat. La clave de
+-- recojo NO está en él.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('shalom-guias', 'shalom-guias', true)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- §39 · LO QUE SE LE DESCONTÓ AL COMERCIO POR CADA COBRO  (01-sep-2026)
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- Hasta acá el comercio no tenía dónde ver su comisión, y no por olvido: era
@@ -1656,7 +1673,7 @@ ALTER TABLE cobros ADD COLUMN IF NOT EXISTS costo_pasarela_pen numeric;
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- §39 · FLOW PAGOS, EL SEGUNDO RIEL  (01-sep-2026)
+-- §40 · FLOW PAGOS, EL SEGUNDO RIEL  (01-sep-2026)
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- Hasta acá había UN riel de cobro en línea, 360pay, y por eso `payment_provider`

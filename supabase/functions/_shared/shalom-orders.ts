@@ -235,6 +235,10 @@ export interface GuideResult {
   oseId: string | null
   /** Prefijo del talonario. Informativo: Shalom no lo pide para rastrear. */
   serie: string | null
+  /** El PDF de la guía (el rótulo/comprobante que la API adjunta a la orden),
+   *  si la respuesta lo trae. Es lo que el comprador abre con "Ver mi guía de
+   *  Shalom"; sin él, el mensaje sale igual pero sin botón. */
+  pdfUrl: string | null
 }
 
 /** Las mismas reglas con las que el tracking valida una guía real. */
@@ -250,6 +254,7 @@ export const GUIA_CODIGO = /^[A-Z0-9]{4}$/
  */
 export function parseOrderResponse(json: unknown): GuideResult {
   const found = new Map<string, string>()
+  const urls: { key: string; val: string }[] = []
 
   const visit = (v: unknown, depth: number) => {
     if (depth > 6 || !v || typeof v !== 'object') return
@@ -259,10 +264,21 @@ export function parseOrderResponse(json: unknown): GuideResult {
       if (typeof raw === 'string' || typeof raw === 'number') {
         const val = String(raw).trim()
         if (val && !found.has(key)) found.set(key, val)
+        if (/^https?:\/\//i.test(val)) urls.push({ key, val })
       } else visit(raw, depth + 1)
     }
   }
   visit(json, 0)
+
+  // El PDF de la guía. Como todo en esta función, sin depender del nombre
+  // exacto del campo —la respuesta real trae más de lo que la doc dice—:
+  // primero cualquier URL que apunte a un .pdf, y si no, una cuyo campo diga
+  // qué es (rótulo, etiqueta, comprobante). Una URL suelta sin ninguna de las
+  // dos cosas no se toma: mandarle al comprador un enlace sin saber qué abre
+  // es peor que no mandar botón.
+  const pdfUrl = urls.find(u => /\.pdf([?#]|$)/i.test(u.val))?.val
+    ?? urls.find(u => /(pdf|rotulo|etiqueta|label|comprobante)/.test(u.key))?.val
+    ?? null
 
   const first = (keys: string[], test?: RegExp): string | null => {
     for (const k of keys) {
@@ -278,6 +294,7 @@ export function parseOrderResponse(json: unknown): GuideResult {
     codigo: codigo ? codigo.toUpperCase() : null,
     oseId: first(['oseid', 'ose'], /^\d+$/),
     serie: first(['serie']),
+    pdfUrl,
   }
 }
 

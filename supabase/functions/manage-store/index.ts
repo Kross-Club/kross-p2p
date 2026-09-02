@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     pay360_env?: string                // 'sandbox' | 'live'
     /** Da de alta la marca como negocio en 360pay. Ver `connectPay360`. */
     pay360_connect?: { payment_prefix?: string; name?: string }
-    // Flow, el segundo riel (bloque §39). Mismo trato que 360pay: JWT verificado.
+    // Flow, el segundo riel (bloque §40). Mismo trato que 360pay: JWT verificado.
     flow_enabled?: boolean
     flow_env?: string                  // 'sandbox' | 'live'
     /** El ID de Yape en el portal de Flow. `null` = selector de medios. */
@@ -535,7 +535,7 @@ Deno.serve(async (req) => {
       if (!connected) return json({ error: 'pay360_sin_conectar' }, 400)
     }
 
-    // ─── Flow (bloque §39) ────────────────────────────────────────────────────
+    // ─── Flow (bloque §40) ────────────────────────────────────────────────────
     if (typeof body.flow_enabled === 'boolean') patch.flow_enabled = body.flow_enabled
     if (body.flow_env === 'sandbox' || body.flow_env === 'live') patch.flow_env = body.flow_env
     if (body.flow_payment_method !== undefined) {

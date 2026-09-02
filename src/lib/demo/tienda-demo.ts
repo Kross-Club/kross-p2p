@@ -4,7 +4,10 @@ import type { StoreOrder } from '../store-orders'
 import type { Cliente, PedidoDeCliente } from '../store-clients'
 import type { Curioso } from '../store-drafts'
 import type { GrupoEntrega } from '../mapa-entregas'
-import { conCambios, guardarCambio, comisionDemo } from './cambios-demo'
+import { claveDemoDeRecojo, codigoDemoDeGuia, comisionDemo, conCambios, guardarCambio, GUIA_DEMO_PDF } from './cambios-demo'
+import { idsDeGuia, mensajeDeClave, mensajeDeGuia, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
+import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
@@ -200,6 +203,18 @@ export const AUDIO_DEMO = wavDeEjemplo()
 function conversacion(
   r: () => number, ahora: number, pedidoId: string,
   cliente: string, producto: string, vendedor: string, t: { stage: string; fase: string | null },
+  /** El envío ya registrado, si el pedido lo tiene: con esto el hilo lleva la
+   *  tarjeta de la guía —la misma copy que manda `registrarGuia`—. */
+  envio?: {
+    courier: 'SHALOM' | 'OLVA'; numero: string
+    /** El código del voucher y la clave de retiro (solo Shalom). El código
+     *  viaja con la guía; la clave, RECIÉN contra el saldo pagado. */
+    codigo: string | null; clave: string | null
+    saldo: number
+    /** El saldo YA pagado en este hilo: el acuse y la clave que el webhook
+     *  habría escrito entonces. `null` = todavía debe (o no había saldo). */
+    pagado?: { cobroId: string; monto: number; total: number } | null
+  } | null,
 ): NonNullable<StoreOrder['chat_messages']> {
   const msgs: NonNullable<StoreOrder['chat_messages']> = []
   let cuando = ahora - entre(r, 2, 9) * DIA
@@ -234,7 +249,83 @@ function conversacion(
 
   if (t.stage !== 'nuevo') {
     push('buyer', 'text', elige(r, ['Ya hice el pago', 'Listo, adelanté la mitad', 'Te mando el yapeo']))
-    push('system', 'status_update', 'Adelanto verificado')
+    // El acuse solo si el adelanto DE VERDAD cruzó: `validando` es justamente
+    // "hay un yapeo que todavía no cuadra", y su hilo decía "Adelanto
+    // verificado" con el panel en ámbar — el pedido contradiciéndose solo.
+    // ⚠️ La tirada del reloj se hace SIEMPRE (saltarla correría el azar de
+    // todos los pedidos de abajo); lo condicional es solo escribir el mensaje.
+    cuando += entre(r, 2, 90) * 60_000
+    if (t.stage !== 'validando') {
+      msgs.push({
+        id: `${pedidoId}-m${msgs.length}`,
+        sender_role: 'system',
+        type: 'status_update',
+        body: 'Adelanto verificado',
+        created_at: new Date(cuando).toISOString(),
+        read_at: new Date(cuando).toISOString(),
+      } as NonNullable<StoreOrder['chat_messages']>[number])
+    }
+  }
+  // La guía registrada, ANTES de que el courier reporte nada — que es cuando
+  // ocurrió. ⚠️ Sin tiradas: el reloj avanza fijo, porque un `entre(r,…)` acá
+  // correría el azar de todos los pedidos de abajo (aviso de CLAUDE.md).
+  if (envio) {
+    // Reloj fijo también para estos: cada mensaje del sistema que este bloque
+    // agrega va SIN tirada, igual que la guía.
+    const sistema = (tipo: string, cuerpo: string, extra: Record<string, unknown> = {}) => {
+      msgs.push({
+        id: `${pedidoId}-m${msgs.length}`,
+        sender_role: 'system',
+        type: tipo,
+        body: cuerpo,
+        created_at: new Date(cuando).toISOString(),
+        read_at: new Date(cuando).toISOString(),
+        ...extra,
+      } as NonNullable<StoreOrder['chat_messages']>[number])
+    }
+    cuando += 45 * 60_000
+    sistema('guia',
+      // Los mismos ids que el mensaje real (`idsDeGuia`): en Shalom, el nro. de
+      // orden y el código del voucher — la clave NO va aquí.
+      mensajeDeGuia(envio.courier,
+        idsDeGuia(envio.courier, { numero: envio.numero, codigo: envio.codigo }), envio.saldo),
+      // La guía de muestra (PDF real de Shalom, autorizado por el dueño): lo
+      // que en una tienda real es el voucher subido por `shalom-order`.
+      { media_url: envio.courier === 'SHALOM' ? GUIA_DEMO_PDF : null })
+
+    // La CLAVE, exactamente cuando la entrega la tienda real (`registrarGuia` /
+    // el webhook): junto con la guía si el pedido ya no debía nada, o pegada al
+    // acuse del saldo si lo pagó después. Un hilo del demo con saldo pendiente
+    // NO la enseña — esa retención es la regla que se está enseñando.
+    if (envio.saldo === 0 && envio.clave) {
+      cuando += 60_000
+      sistema('status_update', mensajeDeClave(envio.clave))
+    }
+    // El paquete ENTRÓ A ORIGEN (cualquier fase reportada implica que pasó por
+    // ahí): el aviso que la guía prometió y, si el pedido debía su saldo, LA
+    // TARJETA DE PAGO que el tracking manda sola en la tienda real — la misma
+    // copy que la del vendedor (`_shared/cobro-por-chat.ts`). En los hilos que
+    // después pagaron se ve pagada, porque la tarjeta se pinta contra el pedido
+    // de hoy; en los que deben, sigue cobrando. Antes del acuse a propósito:
+    // primero se cobra, después entra la plata.
+    if (t.fase) {
+      cuando += 60 * 60_000
+      sistema('status_update', mensajeDeOrigen(envio.courier))
+      if (envio.saldo > 0) {
+        cuando += 60_000
+        sistema('cobro', textoDeCobro(soles(envio.saldo)))
+      }
+    }
+    if (envio.pagado) {
+      cuando += 90 * 60_000
+      sistema('status_update',
+        acuseDePago({ tipo: 'saldo', pagado: envio.pagado.monto, total: envio.pagado.total, esRecojo: true }),
+        { cobro_id: envio.pagado.cobroId })
+      if (envio.clave) {
+        cuando += 60_000
+        sistema('status_update', mensajeDeClave(envio.clave))
+      }
+    }
   }
   if (t.fase === 'EN_TRANSITO' || t.fase === 'EN_DESTINO' || t.fase === 'ENTREGADO') {
     push('system', 'status_update', '🚚 ¡Tu pedido va en camino a tu agencia!')
@@ -242,7 +333,10 @@ function conversacion(
   if (t.fase === 'EN_DESTINO' || t.fase === 'ENTREGADO') {
     push('system', 'status_update', '📍 ¡Tu pedido ya llegó a tu agencia!')
     push('buyer', 'text', '¿Con qué documento lo recojo?')
-    push('seller', 'text', 'Con tu DNI. Te paso la clave de recojo por acá.')
+    // Coherente con la regla nueva: la clave no la "pasa" una persona — la
+    // entrega el chat solo, contra el saldo pagado (o ya la entregó, si no
+    // había saldo). El vendedor solo señala dónde está.
+    push('seller', 'text', 'Con tu DNI y tu clave de recojo, que te llega por este mismo chat.')
   }
 
   // Y en una parte de los hilos, la última palabra es del comprador.
@@ -395,14 +489,28 @@ async function construir(): Promise<TiendaDemo> {
     const persona = personas[entre(r, 0, TOTAL_CLIENTES - 1)]
     const conGuia = t.stage === 'en_camino' || t.stage === 'entregado'
     // Mitad y mitad es el reparto típico del adelanto; algunos pagan todo.
-    const adelanto = r() < 0.25 ? prod.precio : Math.round(prod.precio / 2)
-    // Que el adelanto esté CRUZADO depende de la etapa, y no al revés que antes.
-    // `validando` significa exactamente "hay un yapeo que todavía no cuadra", y
-    // de `confirmado` en adelante el pedido está ahí PORQUE la plata entró. Con
-    // un 80% plano el anillo de avance mentía en las dos puntas: pedidos en
-    // tránsito con el anillo vacío y pedidos en validación ya cobrados.
+    //
+    // ⚠️ La tirada se hace SIEMPRE, se use o no: quitarla en una rama correría
+    // el azar de todos los pedidos siguientes (aviso de CLAUDE.md). En
+    // CONFIRMADO se ignora y todos adelantan LA MITAD: esa es la columna donde
+    // se enseñan el comprobante del pago y la pre-guía —el pedido recién
+    // cobrado, listo para registrar su envío—, y un "pagó todo" ahí no deja
+    // saldo que cobrar ni flujo que mostrar.
+    const sorteo = r() < 0.25 ? prod.precio : Math.round(prod.precio / 2)
+    const adelanto = t.stage === 'confirmado' ? Math.round(prod.precio / 2) : sorteo
+    // Que el adelanto esté CRUZADO lo decide la etapa ENTERA, en las dos
+    // direcciones. `validando` significa exactamente "hay un yapeo que todavía
+    // no cuadra", y de `confirmado` en adelante el pedido está ahí PORQUE la
+    // plata entró. Y al revés también: en la tienda real el webhook escribe
+    // `stage: 'confirmado'` EN EL MISMO ACTO de cruzar el adelanto, así que un
+    // pedido en `nuevo` o `validando` con la plata cruzada no puede existir —
+    // era la captura de "Wilder Flores": Pedido creado con el adelanto pagado,
+    // el anillo apagado y el formulario de registrar envío ofrecido.
+    // La tirada se hace SIEMPRE y se ignora entera (quitarla correría el azar
+    // de todos los pedidos de abajo — aviso de CLAUDE.md).
     const antesDeCobrar = t.stage === 'nuevo' || t.stage === 'validando'
-    const cruzado = antesDeCobrar ? r() < 0.15 : r() < 0.92
+    r()
+    const cruzado = !antesDeCobrar
 
     // ── El SALDO: la segunda operación ──
     // No es el adelanto con otro monto. Ocurre después —cuando la guía ya
@@ -448,7 +556,7 @@ async function construir(): Promise<TiendaDemo> {
     const cobradoEl = cruzado ? new Date(ahora - entre(r, 0, 8) * DIA).toISOString() : null
     const saldoCobradoEl = saldoPagado ? new Date(ahora - entre(r, 0, 4) * DIA).toISOString() : null
 
-    return {
+    const p: StoreOrder = {
       id: `demo-ped-${i}`,
       // Mismo formato que el de verdad (`ORD-<milisegundo>`): es lo que se
       // recorta para el código corto que se ve en la cabecera y en la ficha.
@@ -549,7 +657,15 @@ async function construir(): Promise<TiendaDemo> {
       // Cobrado y sin guía porque el proveedor rechazó el registro. Pasa de
       // verdad y es el atasco más caro del tablero: sin un par de estos en el
       // demo, la alerta que existe para verlo no se ve nunca.
-      shalom_order_status: t.stage === 'confirmado' && r() < 0.18 ? 'FAILED' : conGuia ? 'CREATED' : null,
+      // Solo en pedidos SHALOM: `shalom_order_status` lo escribe `shalom-order`,
+      // que descarta los de Olva antes de reclamar nada — un FAILED de Shalom
+      // en un pedido Olva es un estado que la tienda real no puede producir.
+      // ⚠️ La tirada se evalúa EXACTAMENTE cuando antes (solo en confirmado,
+      // por el cortocircuito): mover el filtro de courier adentro del ternario
+      // y no alrededor de `r()` es lo que mantiene el azar idéntico.
+      shalom_order_status: t.stage === 'confirmado' && r() < 0.18
+        ? (ruta.courier === 'OLVA' ? null : 'FAILED')
+        : conGuia && ruta.courier !== 'OLVA' ? 'CREATED' : null,
       shalom_order_reason: null,
       assigned_seller_id: miembro.auth_user_id,
       seller_name: miembro.nombre,
@@ -559,8 +675,42 @@ async function construir(): Promise<TiendaDemo> {
       // por WhatsApp, o era un "gracias". Sin alguno así, el estado "respondido"
       // tampoco se vería nunca.
       answered_at: r() < 0.25 ? new Date(ahora - entre(r, 0, 5) * 3_600_000).toISOString() : null,
-      chat_messages: conversacion(r, ahora, `demo-ped-${i}`, persona.nombre, prod.nombre, miembro.nombre, t),
     }
+
+    // Los identificadores que faltaban de la guía Shalom, DERIVADOS del número
+    // ya sorteado — cero tiradas nuevas (aviso de CLAUDE.md): el código del
+    // voucher, que viaja por el chat, y la clave de retiro, que se queda en el
+    // panel del vendedor hasta que el saldo se pague. Olva no lleva ninguno.
+    if (p.tracking_numero && ruta.courier !== 'OLVA') {
+      p.tracking_codigo = codigoDemoDeGuia(p.tracking_numero)
+      p.shalom_pickup_code = claveDemoDeRecojo(p.tracking_numero)
+    }
+
+    // La conversación se arma DESPUÉS del literal para poder contarle del
+    // envío ya registrado (la guía vive en `p.tracking_numero`, que un literal
+    // no puede leerse a sí mismo). `chat_messages` era el último campo, así que
+    // el orden de las tiradas queda EXACTAMENTE igual que antes.
+    p.chat_messages = conversacion(
+      r, ahora, `demo-ped-${i}`, persona.nombre, prod.nombre, miembro.nombre, t,
+      conGuia && p.tracking_numero
+        ? { courier: ruta.courier === 'OLVA' ? 'OLVA' : 'SHALOM', numero: p.tracking_numero,
+            codigo: p.tracking_codigo ?? null, clave: p.shalom_pickup_code ?? null,
+            // El saldo DE ESE MOMENTO, contra el TOTAL de ese momento
+            // (`valorPedido`, upsell incluido): el upsell viaja EN el paquete,
+            // así que existía antes de registrar la guía. Con el precio base
+            // acá, a quien pagó el total base y llevaba upsell la guía le decía
+            // "ya pagaste el total" y le soltaba la clave — con el panel
+            // cobrándole un saldo. Es la captura de "Luis Núñez": la clave
+            // entregada a quien todavía debe.
+            saldo: Math.max(0, valorPedido - adelanto),
+            // Y si este hilo YA pagó su saldo, el acuse y la clave que el
+            // webhook habría escrito entonces, con su comprobante.
+            pagado: saldoPagado
+              ? { cobroId: `demo-cob-${i}-s`, monto: falta, total: valorPedido }
+              : null }
+        : null,
+    )
+    return p
   }).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
 
   // ── El catálogo, con lo vendido de cada uno ──

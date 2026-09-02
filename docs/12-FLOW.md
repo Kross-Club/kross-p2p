@@ -124,7 +124,7 @@ Cinco defensas, en este orden porque el POST no trae ni estado ni firma:
 5. Contraste de monto contra la fila.
 
 Al cruzar: `cobros` → `MATCHED` con `costo_pasarela_pen = paymentData.fee` y **`comision_pen`
-NULL** (§38: la comisión de Kross no viene en el estado y no se rellena con la tarifa); las
+NULL** (§39: la comisión de Kross no viene en el estado y no se rellena con la tarifa); las
 columnas de siempre vía `columnasDe`; el `raw` del evento pasa a ser el **estado**, con
 `operation_number = flowOrder` y `bank_tx_id = media`, para que el rastro del panel tenga con
 qué buscarlo en el portal de Flow; los dos mensajes del chat con la misma copy; CAPI y la guía
@@ -179,7 +179,7 @@ prende sin comercio conectado, mismo gate que 360pay. Todo exige JWT verificado.
   `columnasDe`: el nombre es de 360pay, el significado ("cuándo vence el enlace de pago") no, y
   `vigencia-de-cupon.ts` lo lee igual para los dos.
 
-## 6. Esquema (§39)
+## 6. Esquema (§40)
 
 `stores`: `flow_enabled`, `flow_merchant_id`, `flow_payment_method` (integer), `flow_env`.
 `cobros`: `flow_token` (índice parcial), `flow_pay_url`. **Nada en `store_secrets`**: las
@@ -191,7 +191,7 @@ llaves son de plataforma — `FLOW_API_KEY`, `FLOW_SECRET_KEY`, `FLOW_API_KEY_LI
 | Paso | Estado |
 |---|---|
 | Cuenta de sandbox en `sandbox.flow.cl` y sus llaves → `supabase secrets set FLOW_API_KEY FLOW_SECRET_KEY` | ⏳ |
-| Correr §39 en el SQL Editor de `ofdjghntvmrdfjhazfvz` | ⏳ |
+| Correr §40 en el SQL Editor de `ofdjghntvmrdfjhazfvz` | ⏳ |
 | Desplegar `flow-order`, `flow-confirm --no-verify-jwt`, `flow-return --no-verify-jwt`, `register-buyer`, `manage-store`, `get-session`, `get-store-sessions` | ⏳ |
 | Conectar Kross Shop desde el panel y esperar la aprobación de Flow | ⏳ |
 | **Resolver la unidad de `amount`**: crear una orden de S/10 y mirar cuánto muestra el checkout de Flow | ⏳ bloquea cobrar |

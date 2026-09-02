@@ -278,7 +278,7 @@ desvió de la tarifa**. Si lo calculado no coincide con lo descontado, el config
 quedó con la tarifa vieja — y eso hoy no lo avisaría nadie.
 
 Lo que se le descontó a cada cobro se guarda en su fila (`cobros.comision_pen` /
-`costo_pasarela_pen`, bloque §38), **sacado del evento y no del cálculo**: `fee_platform +
+`costo_pasarela_pen`, bloque §39), **sacado del evento y no del cálculo**: `fee_platform +
 fee_partner` es lo que de verdad se descuenta de la liquidación. Si el evento no trae desglose
 quedan en NULL y la tarjeta no pinta la línea — una comisión estimada al lado de un monto real
 se leería como medida, y es justo el número que se discute cuando una liquidación no cuadra.

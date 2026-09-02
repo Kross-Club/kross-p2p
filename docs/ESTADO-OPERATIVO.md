@@ -39,9 +39,9 @@ madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entr�
 **Qué se ve si no entra:** nada distinto — y esa es la gracia. Sin desplegar, ninguna tienda
 tiene `flow_enabled` y el ruteo devuelve `'360PAY'` para todo, así que el checkout cobra
 exactamente como hoy. Lo que NO entra hasta desplegar: la línea *"Comisión · recibes"* en la
-tarjeta de cada cobro (§38), y **un arreglo de `pay360-coupon`** que sí importa — ver abajo.
+tarjeta de cada cobro (§39), y **un arreglo de `pay360-coupon`** que sí importa — ver abajo.
 
-**Primero el SQL** (bloques §38 y §39; idempotente):
+**Primero el SQL** (bloques §39 y §40; idempotente):
 
 ```sql
 alter table cobros add column if not exists comision_pen       numeric;
@@ -70,6 +70,19 @@ supabase functions deploy register-buyer     --project-ref ofdjghntvmrdfjhazfvz
 supabase functions deploy manage-store       --project-ref ofdjghntvmrdfjhazfvz
 supabase functions deploy get-session        --project-ref ofdjghntvmrdfjhazfvz
 supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**Y cuatro más, sin apuro, cuando la rama se junte con `main`.** El merge trajo el cobro
+automático en origen (`_shared/tracking.ts`) y ahí la condición pasó de
+`payment_provider === '360PAY'` a `esRielEnLinea(payment_provider)` —la misma que usa el
+panel—, así que las funciones que empaquetan ese módulo cargan una versión nueva. **No corre
+prisa:** sin desplegarlas rige la vieja, que con Flow apagado se comporta idéntico.
+
+```
+supabase functions deploy shalom-webhook       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking-sync   --project-ref ofdjghntvmrdfjhazfvz
 ```
 
 > ⚠️ **`pay360-coupon` en `main` llama a `columnasDe` sin importarlo** desde el commit
@@ -148,6 +161,298 @@ supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
 
 > Si la consulta de arriba NO cuadra, **no sigas**: avísame con los dos números. Que la tabla
 > diga una plata distinta a las columnas es lo único que este paso no puede permitirse.
+
+### La guía manual con su clave, el reintento por API, y el demo sin estados imposibles · 2 funciones, sin SQL (01-set-2026)
+
+**Qué se ve si no entra:** el frontend sale solo con el merge (el formulario nuevo, el candado
+del cobro, el demo entero), pero **la clave de la guía manual no se guarda** (`order-manage`
+viejo la ignora) y **el botón "Reintentar por el API" devuelve error** (`shalom-order` viejo
+rechaza el flag). Sin desplegar nada, el demo enseña ambos flujos completos.
+
+Lo que entra:
+
+- **El formulario de registrar envío pide los TRES datos del comprobante físico** — nro. de
+  orden, código y **clave de recojo** (`set_tracking` con `clave`, solo Shalom, 4 dígitos). Con
+  la clave guardada, la guía manual entra al mismo circuito que la de API: el panel la enseña
+  al equipo y el chat la entrega solo contra el saldo pagado (o con la guía, si no debía nada).
+- **Y solo aparece en pedidos COBRADOS**: el adelanto es lo que autoriza a despachar (misma
+  regla que `shalom-order`). Antes, un pedido recién creado ya ofrecía "Registrar envío" — la
+  captura de "Wilder Flores".
+- **El expediente `FAILED` se explica y ofrece dos salidas**: copiar la guía emitida por fuera,
+  o **"Reintentar por el API de Shalom"** (`order-manage` · `retry_shalom` → `shalom-order` con
+  `retry: true`, que re-reclama el candado SOLO desde `FAILED`). El botón existe para el
+  después: se corrigió el producto en Shalom Pro, volvió el servicio.
+- **`shalom-order` reintenta solo lo reintentable, hasta 3 intentos en total**: un error del
+  servidor (5xx) se reintenta con backoff (2 s, 4 s) y **nunca a ciegas** — sin clave de
+  idempotencia, antes de cada re-emisión pregunta si la orden ya existe (la consulta de
+  `reconciliar`). Un 4xx no se reintenta: repetir lo inválido no lo vuelve válido. El botón
+  manual aparece recién cuando ese camino se agotó (el `FAILED`).
+- **La alerta "⚠️ Guía manual" se apaga al registrar la guía** (venga a mano o por reintento):
+  quedaba prendida para siempre sobre un pedido resuelto (`esperaGuiaManual`).
+- **El demo deja de fabricar estados imposibles** (la regla: lo que el demo enseña es lo que la
+  tienda real hace):
+  - **Nadie antes de `confirmado` tiene la plata cruzada** — el webhook escribe
+    `stage: 'confirmado'` en el mismo acto de cruzar, así que "Pedido creado" con el adelanto
+    pagado (la captura de Wilder) no puede existir. La tirada del generador se sigue haciendo
+    y se ignora (el azar de los demás pedidos no se corre).
+  - **El hilo de `validando` ya no dice "Adelanto verificado"** — validando es justamente "el
+    yapeo que todavía no cuadra".
+  - **`shalom_order_status` solo en pedidos Shalom** — un FAILED de Shalom en un pedido Olva
+    era un estado que `shalom-order` no puede producir (descarta Olva antes de reclamar).
+  - Y registrar a mano o reintentar **enseñando** funciona en el dispositivo, con los mismos
+    mensajes del servidor (`guiaManualEnDemo` / `reintentoShalomEnDemo`): la manual sin PDF
+    (su botón cae a la hoja de la app), la reintentada con el voucher de muestra.
+
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
+### La clave del demo ya no se entrega con saldo de upsell pendiente · solo frontend (01-set-2026)
+
+**Nada que desplegar.** El reporte fue una captura ("Luis Núñez"): un pedido con **"Saldo sin
+pagar S/ 180"** en el panel y **la clave de recojo ya entregada** en el chat. Era el upsell del
+generador: la guía calculaba su saldo con el precio BASE, así que a quien pagó el total base y
+llevaba upsell le decía *"ya pagaste el total"* y le soltaba la clave — con el panel cobrándole
+un saldo. Y el upsell viaja **en el paquete**, o sea que existía antes de registrar la guía: la
+guía debía cobrar el total de ese momento (`valorPedido`) y retener la clave. Ahora el invariante
+está probado sobre el generador entero: **ningún hilo con la clave entregada sigue debiendo**.
+
+> La tienda real no tenía este bug — `registrarGuia` cobra contra `product_price` de hoy. El
+> caso real que sí existe (un upsell DESPUÉS de entregada la clave) sigue siendo la deuda ya
+> anotada abajo: un saldo nuevo que la pasarela no cobra sola.
+
+### La cobranza empieza en origen: la tarjeta del saldo la manda el tracking · 4 funciones, sin SQL (01-set-2026)
+
+**Qué se ve si no entra:** el paquete entra a la agencia de origen y el chat sigue mudo — ni el
+aviso de que la guía ya es oficial (que la tarjeta de la guía promete) ni la tarjeta de pago del
+saldo. La cobranza sigue esperando a `EN_DESTINO` como hasta hoy. El demo enseña el flujo entero
+sin desplegar nada.
+
+Lo que entra (`onTransition` en `_shared/tracking.ts` — el reflejo COMPARTIDO, así que vale igual
+venga por webhook o por barrido, Shalom u Olva):
+
+- **`EN_ORIGEN` ahora habla**: el aviso del momento (`mensajeDeOrigen`, una sola copy) — en
+  Shalom, la pre-guía volviéndose oficial con las palabras que la guía prometió ("por acá te
+  avisamos apenas pase").
+- **Y cobra**: si el pedido debe su saldo, sale sola **la tarjeta de pago** (`type: 'cobro'`),
+  la MISMA que manda el vendedor a mano — la copy se mudó a `_shared/cobro-por-chat.ts` (con
+  `soles`; el frontend re-exporta) para que el cobro automático y el manual no puedan decir
+  frases distintas. El comprador la paga DE VERDAD: su cupón se emite al tocar el botón, como
+  siempre. Condiciones: adelanto cruzado, saldo sin cruzar, tienda en `360PAY`, y ninguna
+  tarjeta del saldo ya en el hilo (el vendedor pudo adelantarse).
+- **De paso, un bug real**: `saldoOf` no sabía del saldo ya pagado — un pedido con el saldo
+  cruzado recibía en `EN_DESTINO` un "paga tu saldo de S/X" por una deuda que no existía. Ahora
+  el saldo MATCHED cuenta como pagado (misma regla que `registrarGuia`).
+- **El demo, en paridad**: los hilos del generador que pasaron por origen llevan el aviso y la
+  tarjeta (pagada en los que pagaron, cobrando en los que deben); avanzar la fase enseñando
+  deja los mismos avisos (antes el chat quedaba mudo), y en `EN_ORIGEN` con deuda la tarjeta
+  sale y **el cliente la paga a los diez segundos** — acuse, comprobante y clave de recojo, la
+  cascada entera del webhook.
+
+```
+supabase functions deploy shalom-webhook       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking-sync   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking        --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> La tarjeta automática no manda push propio todavía: llega como mensaje (y en vivo si el chat
+> está abierto). El empujón con push/WhatsApp puede montarse después sobre el mismo mensaje,
+> como la plantilla de recojo de `EN_DESTINO`.
+
+### Los estados de Shalom completos y la clave de recojo · 4 funciones, sin SQL (01-set-2026)
+
+**Qué se ve si no entra:** el frontend sale solo con el merge (la barra del envío ya muestra
+**Registrado** encendido en la pre-guía, y los identificadores se llaman como en el voucher:
+*Nro. de orden* y *Código*), pero **la clave de recojo no aparece en el panel** (`get-session`
+viejo no la manda) y **pagar el saldo no la suelta por el chat** (`pay360-webhook` viejo). El
+demo enseña todo el flujo sin desplegar nada.
+
+Lo que entra:
+
+- **La barra del envío tiene su primer estado: `Registrado`** — encendido mientras la guía es
+  pre-guía (emitida, sin fase del courier). Antes la barra salía entera apagada con "Esperando el
+  primer estado…", que se lee como "no pasó nada" justo cuando el envío acaba de existir. Con la
+  nota de qué significa: pre-guía en Shalom, guía esperando reporte en Olva.
+- **Los identificadores hablan como el voucher de Shalom** (`idsDeGuia`, una sola definición):
+  *Nro. de orden* y *Código* en el chat, la barra y la hoja de guía. En Olva la guía se sigue
+  llamando guía.
+- **La clave de retiro se ve en el panel del vendedor** (barra del envío), detrás del candado
+  FUERTE de `get-session` (`puedeLeerInterno`, el mismo de los comentarios internos — nunca por
+  `viewer=seller`, que se escribe con el token del comprador).
+- **El pago del saldo suelta la clave solo, por el chat** (`mensajeDeClave`): el acuse promete
+  "Te enviamos tu clave de recojo por acá" y ahora el webhook cumple. Y si el pedido ya no debía
+  nada al registrarse la guía (pagó el total, o el saldo cruzó antes que la guía manual), la
+  clave sale **junto con la guía** (`registrarGuia`). Solo pedidos que la tienen: la guía
+  registrada a mano no eligió clave — la suya vive en el comprobante físico y la manda una
+  persona, como siempre.
+- **El demo, en paridad**: el generador deriva código y clave del número (cero tiradas nuevas),
+  los hilos con saldo pagado llevan su acuse con comprobante y su clave, los que deben no la
+  tienen, y pagar el saldo enseñando la suelta a los diez segundos igual que el webhook.
+
+```
+supabase functions deploy get-session    --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order   --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> Con esto se cierra la deuda "la clave no tiene quién se la entregue": la entrega el pago.
+
+### La guía de muestra del demo · solo frontend (01-set-2026)
+
+**Nada que desplegar.** El botón *Ver mi guía de Shalom* del **demo** abre un voucher real de
+Shalom (autorizado por el dueño; vive en el Storage del proyecto Neural, bucket `shalom-guias`).
+La URL está en `GUIA_DEMO_PDF` (`src/lib/demo/cambios-demo.ts`) — para cambiar la muestra basta
+reemplazarla. Las guías **Olva** del demo van sin PDF (no hay documento que enseñar): su botón
+cae a la hoja de guía de la app.
+
+### La guía FORMAL de Shalom en PDF · SQL + 1 función (01-set-2026)
+
+**Qué se ve si no entra:** el botón *Ver mi guía de Shalom* sigue abriendo la hoja de guía de la
+app (el respaldo). Nada se rompe.
+
+La doc de la API (subida a la sesión el 01-set) lo confirma: `GET /v1/orders/{ose_id}/voucher`
+devuelve **la guía formal como PDF binario** — no hay URL que guardar. Así que `shalom-order` la
+descarga al emitir la guía (30 s de timeout propio, best-effort: un PDF que no baja jamás retrasa
+el registro) y la sube al bucket **`shalom-guias`**; el mensaje del chat lleva esa URL pública.
+Es el mismo patrón del proyecto Neural con su propio bucket `shalom-guias`.
+
+**1 · El SQL** (bloque §38; idempotente):
+
+```sql
+insert into storage.buckets (id, name, public)
+values ('shalom-guias', 'shalom-guias', true)
+on conflict (id) do nothing;
+```
+
+**2 · La función:**
+
+```
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> La guía registrada **a mano** sigue sin PDF (no pasa por el generador): su botón abre la hoja
+> de la app. Y en el demo igual — el demo no fabrica documentos de Shalom.
+
+### La guía en los hilos del demo, la hoja de guía, y el botón de saldo que no cobraba · solo frontend (01-set-2026)
+
+**Nada que desplegar.**
+
+- **Los hilos del demo con guía llevan su tarjeta** (pre-guía, dónde seguirla, saldo), con el botón
+  *Ver mi guía de Shalom/Olva*. Sin PDF del courier, el botón abre la **hoja de guía de la app**
+  (`/guia/<token>`): la misma regla en demo y en real — el PDF si la API lo trajo; si no, la hoja,
+  armada con los datos que el panel ya enseña. Con fases reportadas deja de decir pre-guía.
+- **De `confirmado` en adelante ya no hay adelantos sin pagar en el demo.** El sorteo dejaba un 8%
+  en ámbar dentro de Confirmado — un pedido diciendo dos cosas a la vez (lo que se vio con "Luis
+  Castillo"). La tirada se sigue haciendo (no correr el azar del resto) y se ignora.
+- **Bug real de paso:** `get-session` no devuelve `token`, así que el botón *Pagar S/X con Yape*
+  del comprador era un **no-op silencioso** en pedidos reales (`pedido.token` llegaba undefined y
+  `pagar()` retornaba sin hacer nada). Ahora las páginas ponen el token de su URL en la sesión al
+  cargar. ⚠️ Ojo: esto explica cualquier reporte de "el botón de pagar el saldo no hace nada".
+
+### El push del pago recibido · 2 funciones (01-set-2026)
+
+**Qué se ve si no entra:** todo igual que hoy — el acuse llega al chat y en vivo, pero el
+comprador con la app cerrada no se entera hasta abrir.
+
+`pay360-webhook` ahora manda el **push** con el acuse ("✅ <marca> · Pago recibido") apenas cruza
+un cobro — adelanto, saldo o extra. Abre directo el chat del pedido, donde está el botón del
+comprobante. El aviso vive en **`_shared/notificar.ts`** (se mudó desde `seller-send-message`,
+que ahora lo importa): push primero, WhatsApp de respaldo si `WA_AUTO_FALLBACK=on`, todo en
+`notifications_log`. Best-effort siempre — el 2xx del webhook jamás depende de un aviso.
+
+```
+supabase functions deploy pay360-webhook      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy seller-send-message --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL.
+
+> Deuda anotada: `register-buyer`, `send-message`, `create-call-token` y `seller-call-token`
+> conservan sus copias viejas del push. Migrarlas a `_shared/notificar.ts` es una tarea aparte.
+
+### La pre-guía de Shalom, con su PDF · 2 funciones (01-set-2026)
+
+**Qué se ve si no entra:** el mensaje de guía sigue saliendo como siempre (la píldora con la copy
+vieja) y sin el botón del PDF. Nada se rompe.
+
+Al registrarse la guía —a mano o por el generador automático— el comprador recibe una **tarjeta**
+que explica que es una **pre-guía** (se vuelve oficial cuando el paquete entra a la agencia de
+origen y por el chat se le avisa), que puede seguir su envío desde la app —sincronizada con su
+guía— o en Shalom, y qué pasa con su saldo. Si la guía la emitió la API, lleva además el botón
+**"Ver mi guía de Shalom"** que abre el PDF de la orden (la URL se extrae de la respuesta de
+`POST /v1/orders`, sin casarse con el nombre del campo). La guía registrada **a mano** no trae
+PDF: misma tarjeta, sin botón.
+
+```
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL (el mensaje usa `media_url`, que existe desde siempre).
+
+> ⚠️ **Por confirmar con una guía real**: la doc de la API de Shalom no la puedo leer desde este
+> entorno (el proxy bloquea el dominio), así que el extractor del PDF acepta cualquier URL `.pdf`
+> o un campo que se llame rótulo/etiqueta/comprobante. Si la primera guía automática sale sin
+> botón, pide los logs de `shalom-order` y ajustamos el extractor al campo real.
+
+### El comprobante en los hilos viejos, y el ícono sin jerarquía · solo frontend (01-set-2026)
+
+**Nada que desplegar.**
+
+- **Todos los pedidos que ya pagaron su adelanto (o el total) enseñan su comprobante en el
+  chat**, aunque hayan pagado antes de que existiera. No se rellena la base: el aviso que ya
+  estaba en el hilo —el *"✅ ¡Recibimos tu adelanto…"* del webhook, el *"Adelanto verificado"* de
+  los hilos del demo— se reconoce por su propia copy (`cobroDelAviso`) y se pinta como la tarjeta
+  con el botón, en su misma posición del hilo. Igual para saldos y extras pagados.
+- El ícono de **billetera** deja el verde: mismo par de colores que la oferta. Son tres maneras
+  de escribir en el hilo y ninguna manda sobre las otras.
+
+### El demo cobra con código de pago y el acuse sale sin recargar · solo frontend (01-set-2026)
+
+**Nada que desplegar.**
+
+- El saldo y el extra pagados en demo salían **sin "Código de pago"**: el rastro solo lo sembraba
+  el generador. Ahora el pago del demo lo siembra igual — el saldo con la serie del generador
+  (`KSH6xxx` en `saldo_trace`) y el extra con **el código del comprador**, que es el que usa la
+  tienda real.
+- El acuse con el comprobante quedaba guardado pero **la pantalla no lo pintaba hasta recargar**:
+  el segundo tiempo parcheaba solo la sesión. Ahora relee todo por la puerta del demo
+  (`reloadSession`), mensajes incluidos.
+
+En la tienda REAL el equivalente es el `broadcast` del webhook (PR #130): con `pay360-webhook`
+desplegado, el acuse le llega en vivo a los dos chats.
+
+### El saldo sin cupón en el DEMO · solo frontend (31-ago-2026)
+
+**Nada que desplegar.**
+
+Con la tarjeta del saldo sin cupón, el demo pasó a recorrer un camino que antes no existía: un
+pedido cuyo saldo **no tiene fila ni `saldo_amount`**, porque esa columna solo la escribe la
+emisión del cupón. Y pasaba mal por partida doble — anunciaba *"¡Recibimos tu saldo de S/0!"* y la
+tarjeta del saldo, en vez de ponerse verde, **desaparecía** (`saldoPorCobrar` deja de devolverla
+en cuanto el saldo está cruzado, y no había fila que ocupara su lugar).
+
+Ahora `saldoPagadoEnDemo` deriva el monto con `saldoDelPedido` y **crea la fila del saldo si no
+existe**, que es justo lo que hace el webhook cuando le entra un cupón sin fila previa.
+
+### El saldo sin cupón, y el botón invisible · solo frontend (31-ago-2026)
+
+**Nada que desplegar.** Sale con el merge, como todo el frontend.
+
+Dos cosas que solo se veían mirando la pantalla:
+
+- **El texto del botón del comprobante no se veía.** `--ok-bg` y `--ok-fg` son **el mismo lima** en
+  tema oscuro; el color de texto válido sobre el lima es `--ok-on`, y así lo usa el resto del
+  panel. Le pasaba igual al "Pago recibido" del comprador.
+- **Un pedido con el adelanto cruzado y el saldo sin pedir no enseñaba nada del saldo.** El cupón
+  del saldo **no lo emite nadie del servidor**: se emite cuando el comprador toca pagar. Como el
+  panel pinta la lista de cobros y esa fila todavía no existe, no había ni monto pendiente ni
+  botón para mandarle la tarjeta — el vendedor esperando a que el cliente hiciera solo lo que él
+  tenía que pedirle. Ahora sale como tarjeta ámbar aunque no sea una fila (`saldoPorCobrar`), y
+  dice lo que es: *"todavía no se le ha pedido"*.
 
 ### El webhook avisa por el canal · `pay360-webhook` (31-ago-2026)
 
@@ -964,7 +1269,6 @@ Anotada donde vive, para que no haya que redescubrirla:
 | `manage-store` mantiene vivo el camino legacy `admin_auth_id` para branding. | `01-SALES-ENGINE.md` §3.3 · `manage-store/index.ts:82` | Doble superficie de auth. Los campos de cobro ya exigen JWT verificado; falta retirar el resto. |
 | Catálogo de distritos incompleto 🟡 | `02-SMART-LOGISTICS.md` § Deuda conocida | Afecta la cobertura de reparto. |
 | La key de prueba de Olva API Perú viajó por el chat al recibirse. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Rotarla al pasar a producción (se pide por el WhatsApp del proveedor) y recargar Vault/secret. Misma familia que el bloqueo #2. |
-| La **clave de retiro** que genera el envío (`shalom_pickup_code`) no tiene todavía quién se la entregue al comprador cuando paga el saldo. | `27.d` del esquema · `pay360-webhook` | El checkout la promete desde el día 1 ("apenas pagues te enviamos tu clave"). Hoy queda guardada en el pedido y la manda una persona; el paso natural es que el pago del saldo la suelte solo. **No puede ir por `visibility: 'sellers'`**: con el token del comprador se lee igual (`?viewer=seller`). |
 | Los mensajes automáticos salen como si los hubiera tecleado el vendedor asignado (`sender_role: 'seller'` + su nombre). | `register-buyer` (bienvenida) · algunos de `order-manage` · detalle en [`11-RELACIONES.md`](./11-RELACIONES.md) | Mientras siga así, un **% de involucramiento del equipo** contado desde el chat sale inflado: cada pedido nace con un mensaje "de" su vendedor que su vendedor no escribió. El arreglo es marcarlo en el origen —una columna `automatico` en `chat_messages`, o el rol `bot`— y redesplegar las funciones que escriben. |
 | Un **upsell después de haber cobrado el saldo** deja un saldo nuevo que la pasarela no cobra sola. | `src/lib/order-money.ts` · `puedePagarSaldo` | Las columnas guardan UNA operación de saldo, y el botón exige que no haya un saldo ya cruzado. Si al pedido se le agrega algo después, el anillo baja y el saldo aparece —eso sí funciona—, pero el cobro lo coordina el asesor por el chat. Arreglarlo pide un historial de cobros, no una columna más. |
 | `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. |

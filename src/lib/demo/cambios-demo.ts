@@ -2,11 +2,15 @@ import { useSyncExternalStore } from 'react'
 import { comisionDeKross, costoDePasarela, proveedorPara } from '../../../supabase/functions/_shared/comision.ts'
 import { siguientePaso } from '../order-tracking'
 import { resumenDelPedido } from '../../../supabase/functions/_shared/resumen-pedido.ts'
-import { cobradoDelPedido } from '../order-money'
+import { cobradoDelPedido, saldoDelPedido } from '../order-money'
 import type { OrderItem, Participant } from '../order-api'
+import type { RastroDeCobro } from '../rastro-de-pago'
 import type { StoreOrder } from '../store-orders'
 import type { FilaDeCobro } from '../../../supabase/functions/_shared/cobros.ts'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
+import { idsDeGuia, mensajeDeClave, mensajeDeGuia, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
+import { esPickupCodeValido } from '../../../supabase/functions/_shared/shalom-orders.ts'
 import { isPickupDispatch } from '../../../supabase/functions/_shared/despacho.ts'
 
 // ─── Un demo que se deja tocar ───────────────────────────────────────────────
@@ -70,8 +74,16 @@ export interface CambioDemo {
   nota?: string | null
   tracking_numero?: string | null
   tracking_courier?: string | null
+  tracking_codigo?: string | null
   tracking_phase?: string | null
   tracking_phase_at?: string | null
+  /** La clave de retiro que la guía del demo elige al registrarse — la misma
+   *  que el panel del vendedor enseña y que el chat entrega al pagar el saldo. */
+  shalom_pickup_code?: string | null
+  /** El expediente del generador de guías: reintentar por API lo cierra en
+   *  `CREATED`, igual que `shalom-order` en una tienda real. */
+  shalom_order_status?: string | null
+  shalom_order_reason?: string | null
   items?: ItemDemo[]
   product_price?: number
   answered_at?: string | null
@@ -91,6 +103,14 @@ export interface CambioDemo {
   /** El saldo pagado, enseñando. Mueve la misma fila que movería el webhook. */
   saldo_verification?: string | null
   saldo_matched_at?: string | null
+  /** El importe del cobro del saldo. En una tienda de verdad lo escribe la
+   *  emisión del cupón; acá, el pago — que es cuando el demo se entera de
+   *  cuánto era. */
+  saldo_amount?: number | null
+  /** El rastro del saldo (código de pago, operación, banco), en el MISMO sitio
+   *  donde lo pone el generador: la tarjeta del panel y el comprobante leen de
+   *  ahí para los saldos. */
+  saldo_trace?: RastroDeCobro | null
   /** La lista de cobros (bloque §36). Se pisa entera y no se funde: quitar un
    *  cobro es quitarlo, y un merge por índice dejaría el viejo debajo. */
   cobros?: FilaDeCobro[]
@@ -170,6 +190,42 @@ export function actualizarMensajeDemo(id: string, mensajeId: string, patch: Part
 //
 // Diez segundos: lo que dura contar qué acaba de pasar antes de que ocurra lo
 // siguiente. Menos, y se pisan; más, y hay que rellenar.
+/**
+ * La guía de MUESTRA del demo: un PDF real de Shalom (formato voucher), alojado
+ * en el Storage del proyecto Neural del propio dueño, que autorizó usarlo solo
+ * en la tienda de ejemplo. Es lo que abre "Ver mi guía de Shalom" en el demo —
+ * el mismo documento formal que en una tienda real sube `shalom-order` al
+ * bucket `shalom-guias` (§38). Para cambiarla, basta reemplazar esta URL.
+ */
+export const GUIA_DEMO_PDF =
+  'https://nqibrziksedspoctjhmc.supabase.co/storage/v1/object/public/shalom-guias/559a6002-cb37-47b6-b5d8-450fbe4c1da8/93076937-95c3c1cf503b48fdb2e1.pdf'
+
+/**
+ * El CÓDIGO y la CLAVE de una guía Shalom del demo, derivados del número.
+ *
+ * Del número y nunca de `r()` ni de `Math.random`: el número ya salió del
+ * generador (o del reloj, en `avanzarEnDemo`), y derivar de él no corre el azar
+ * de nada (aviso de CLAUDE.md). Mismo formato que los de verdad: el código son
+ * los 4 alfanuméricos del voucher (J3NT) y la clave pasa por el MISMO validador
+ * que usa `shalom-order` al emitir (`esPickupCodeValido`) — una clave de demo
+ * que Shalom rechazaría enseñaría un dato que no puede existir.
+ */
+export function codigoDemoDeGuia(numero: string): string {
+  return Number(numero).toString(36).toUpperCase().padStart(4, '0').slice(-4)
+}
+
+export function claveDemoDeRecojo(numero: string): string {
+  let n = 1000 + (Number(numero) % 9000)
+  // El validador rechaza repetidas y consecutivas; el vecino siguiente nunca
+  // está a más de un par de pasos.
+  for (let i = 0; i < 20; i++) {
+    const clave = String(n)
+    if (esPickupCodeValido(clave)) return clave
+    n = n >= 9999 ? 1000 : n + 1
+  }
+  return '2415'
+}
+
 export const ESPERA_CLIENTE_DEMO = 10_000
 
 /**
@@ -216,7 +272,7 @@ export function cobroEnviadoEnDemo(
 // ─── La comisión de un cobro, en el demo ─────────────────────────────────────
 //
 // En una tienda real estos dos números salen del EVENTO de la pasarela: es lo
-// que de verdad se descontó (bloque §38). Acá no hay pasarela, así que se
+// que de verdad se descontó (bloque §39). Acá no hay pasarela, así que se
 // derivan de la tarifa (`_shared/comision.ts`) sobre el monto — que es
 // exactamente lo que esa tarifa produciría, o sea que el demo enseña la cifra
 // correcta y no una inventada.
@@ -256,23 +312,80 @@ export function comisionDemo(monto: number | string, entro: boolean) {
  */
 export function saldoPagadoEnDemo(p: PedidoDemo): CambioDemo {
   const cuando = new Date().toISOString()
-  const cobros = (p.cobros ?? []).map(c =>
-    // La comisión va con el cobro, igual que la escribe el webhook: sin ella el
-    // que acabas de pagar sería el único sin la línea de "recibes".
-    c.tipo === 'saldo'
-      ? { ...c, estado: 'MATCHED', matched_at: cuando, ...comisionDemo(c.monto, true) }
-      : c)
+
+  // Cuánto es el saldo se DERIVA del pedido; no se lee de `saldo_amount`.
+  //
+  // Esa columna solo existe si alguien emitió un cupón, y desde que el panel
+  // puede mandar la tarjeta de un saldo que todavía no tiene cupón, puede no
+  // existir. Leyéndola, el demo anunciaba **"¡Recibimos tu saldo de S/0!"**.
+  // `saldoDelPedido` es la misma cuenta que pinta la tarjeta y que el botón le
+  // promete al comprador: tres restas iguales en tres sitios es como se llega a
+  // que el mensaje diga un monto y la caja cobre otro.
+  const monto = saldoDelPedido(p)
+
+  // Y si el saldo todavía no es una fila, se CREA — que es exactamente lo que
+  // hace el webhook cuando le entra un cupón sin fila previa. Sin esto la
+  // tarjeta del saldo no se ponía verde: desaparecía. `saldoPorCobrar` deja de
+  // devolverla en cuanto el saldo está cruzado, y no había ninguna fila que
+  // ocupara su lugar.
+  // Y la COMISIÓN va con la fila, igual que la escribe el webhook (bloque §39):
+  // sin ella, el cobro que el usuario acaba de pagar sería el único de la
+  // pantalla sin su línea de "recibes".
+  const previos = p.cobros ?? []
+  const suyo = previos.find(c => c.tipo === 'saldo')
+  const cobros = suyo
+    ? previos.map(c => c.tipo === 'saldo'
+        ? { ...c, monto, estado: 'MATCHED', matched_at: cuando, ...comisionDemo(monto, true) }
+        : c)
+    : [...previos, {
+        // El mismo formato que el generador (`demo-cob-<i>-s`), para que el
+        // comprobante lo encuentre por el camino corto.
+        id: `demo-cob-${/demo-ped-(\d+)/.exec(p.id)?.[1] ?? p.id}-s`,
+        tipo: 'saldo' as const, monto, estado: 'MATCHED',
+        matched_at: cuando, created_at: cuando, ...comisionDemo(monto, true),
+      }]
+
+  // El rastro del cobro, con la MISMA convención del generador: el saldo va en
+  // `saldo_trace` y su código es la serie KSH6xxx (`rastroDemo` con `i + 5000`).
+  // Sin esto la tarjeta verde salía sin "Código de pago" — que es justo el dato
+  // con el que se enseña a seguir una transacción. Del ÍNDICE, nunca de `r()`:
+  // una tirada acá le corre el azar a todos los pedidos (aviso de CLAUDE.md).
+  const i = Number(/demo-ped-(\d+)/.exec(p.id)?.[1] ?? 0)
+  const rastroSaldo = p.saldo_trace ?? {
+    payment_code: `KSH${String(6000 + i).slice(-4)}`,
+    coupon_id: null,
+    operation_number: String(10000000 + ((i * 7919 + 4242) % 89999999)),
+    bank: 'BCP',
+  }
+
   const patch: CambioDemo = {
+    // Las dos mitades, como escribe el servidor mientras dura la mudanza al
+    // bloque §36: la fila y la columna.
+    saldo_amount: monto,
     saldo_verification: 'MATCHED',
     saldo_matched_at: cuando,
+    saldo_trace: rastroSaldo,
     // Vacío no se manda: una lista `[]` no es "este pedido no cobró nada", es
     // "no me llegó lista", y pisar la del generador con una vacía haría que el
     // pedido se viera SIN COBRAR. Ver `order-money.ts`.
     ...(cobros.length ? { cobros } : {}),
   }
   guardarCambio(p.id, patch)
-  acusarPagoEnDemo(p, 'saldo', Number(p.saldo_amount ?? 0),
-    cobros.find(c => c.tipo === 'saldo')?.id ?? null)
+  acusarPagoEnDemo(p, 'saldo', monto, cobros.find(c => c.tipo === 'saldo')?.id ?? null)
+  // La CLAVE DE RECOJO, justo después del acuse — que acaba de prometer "Te
+  // enviamos tu clave de recojo por acá". Es lo que hace el webhook en una
+  // tienda real: el pago del saldo es EL momento en que la clave deja de estar
+  // retenida. Solo si el pedido la tiene (guía Shalom del generador o de
+  // `avanzarEnDemo`); un segundo después para que el hilo los cuente en orden.
+  if (isPickupDispatch(p.dispatch_type) && p.shalom_pickup_code) {
+    agregarMensajeDemo(p.id, {
+      id: `demo-clave-${Date.now()}`, session_id: p.id, sender_role: 'system',
+      sender_name: 'Kross', sender_role_label: null, read_at: null,
+      type: 'status_update', visibility: 'all',
+      body: mensajeDeClave(p.shalom_pickup_code),
+      created_at: new Date(Date.now() + 1000).toISOString(),
+    })
+  }
   return patch
 }
 
@@ -394,13 +507,23 @@ export function avanzarEnDemo(p: PedidoDemo): RespuestaDemo {
   if (!sig) return { ok: false }
   const ahora = new Date().toISOString()
 
+  // Seis dígitos como los del generador. Del reloj y no de `Math.random`: en el
+  // demo nada es al azar, ni siquiera una guía inventada de un clic. El código
+  // y la clave se DERIVAN del número, como todo lo demás.
+  const numeroNuevo = String(100000 + (Date.now() % 900000))
+  const courierNuevo = String(p.tracking_courier ?? p.agency_name ?? 'SHALOM').toUpperCase() === 'OLVA'
+    ? 'OLVA' as const : 'SHALOM' as const
+
   const patch: CambioDemo =
     sig.quien === 'guia'
       ? {
-        // Seis dígitos como los del generador. Del reloj y no de `Math.random`:
-        // en el demo nada es al azar, ni siquiera una guía inventada de un clic.
-        tracking_numero: String(100000 + (Date.now() % 900000)),
-        tracking_courier: p.tracking_courier ?? p.agency_name ?? 'SHALOM',
+        tracking_numero: numeroNuevo,
+        tracking_courier: courierNuevo,
+        // Los identificadores completos de una guía Shalom: el código que viaja
+        // por el chat y la clave que se queda en el panel hasta que el saldo se
+        // pague. Olva no lleva ninguno de los dos.
+        tracking_codigo: courierNuevo === 'SHALOM' ? codigoDemoDeGuia(numeroNuevo) : null,
+        shalom_pickup_code: courierNuevo === 'SHALOM' ? claveDemoDeRecojo(numeroNuevo) : null,
         stage: 'en_camino',
       }
       : sig.quien === 'courier'
@@ -408,7 +531,136 @@ export function avanzarEnDemo(p: PedidoDemo): RespuestaDemo {
         : { stage: sig.stage, ...(sig.fase ? { tracking_phase: sig.fase, tracking_phase_at: ahora } : {}) }
 
   guardarCambio(p.id, patch)
+
+  // La guía registrada también se ANUNCIA, con la misma copy que manda
+  // `registrarGuia` en una tienda de verdad (`_shared/mensaje-de-guia.ts`):
+  // la pre-guía, dónde seguirla y qué pasa con el saldo. Sin botón de PDF —el
+  // demo no tiene un PDF de Shalom que abrir, y un botón hacia una página
+  // vacía enseña un producto roto.
+  if (sig.quien === 'guia') {
+    anunciarGuiaEnDemo(p, courierNuevo,
+      { numero: numeroNuevo, codigo: patch.tracking_codigo ?? null, clave: patch.shalom_pickup_code ?? null },
+      // El avance imita la emisión por API: con el voucher de muestra.
+      true)
+  }
+
+  // Avanzar el reloj del courier también HABLA, como en la tienda real
+  // (`onTransition` de `_shared/tracking.ts`): sin esto, mover la fase
+  // enseñando dejaba el chat mudo mientras el hilo del generador sí lleva
+  // estos avisos — el mismo gesto contando dos historias.
+  // El sufijo distingue dos avisos del mismo milisegundo (aviso + tarjeta):
+  // con el reloj solo compartirían id, y un id repetido pisa al otro al pintar.
+  let nAviso = 0
+  const aviso = (tipo: string, cuerpo: string) => agregarMensajeDemo(p.id, {
+    id: `demo-fase-${Date.now()}-${nAviso++}`, session_id: p.id, sender_role: 'system',
+    sender_name: 'Kross', sender_role_label: null, read_at: null,
+    type: tipo, visibility: 'all', body: cuerpo, created_at: ahora,
+  })
+  if (sig.fase === 'EN_ORIGEN') {
+    aviso('status_update', mensajeDeOrigen(courierNuevo))
+    // Y LA COBRANZA EMPIEZA AQUÍ, igual que el tracking real: la tarjeta del
+    // saldo sale sola —misma copy que la del vendedor— si hay deuda de verdad
+    // y nadie la mandó ya. El que la acepta a los diez segundos es quien llamó
+    // (`VendedorPedidoPage`), como todas las tarjetas del demo.
+    const debe = saldoDelPedido(p)
+    if (debe > 0 && p.payment_provider === '360PAY'
+      && !(p.chat_messages ?? []).some(m => m.type === 'cobro' && !m.cobro_id)) {
+      aviso('cobro', textoDeCobro(soles(debe)))
+    }
+  }
+  if (sig.fase === 'EN_TRANSITO') aviso('status_update', '🚚 ¡Tu pedido va en camino a tu agencia!')
+  if (sig.fase === 'EN_DESTINO') aviso('status_update', '📍 ¡Tu pedido ya llegó a tu agencia!')
+
   return { ok: true, patch }
+}
+
+/**
+ * El anuncio de una guía NUEVA en el hilo del demo — el mensaje de
+ * `registrarGuia`, con su clave si el pedido ya no debe nada. Lo comparten los
+ * tres caminos por los que una guía entra enseñando (avanzar, registrar a
+ * mano, reintentar por API), que son los mismos tres de la tienda real.
+ *
+ * `pdf` solo en las emitidas por API: la guía manual no tiene documento del
+ * courier —se copió de un comprobante físico— y su botón cae a la hoja de
+ * guía de la app, igual que en la tienda real.
+ */
+function anunciarGuiaEnDemo(
+  p: PedidoDemo, courier: 'SHALOM' | 'OLVA',
+  ids: { numero: string; codigo: string | null; clave: string | null }, pdf: boolean,
+) {
+  const ahora = new Date().toISOString()
+  const saldo = saldoDelPedido(p)
+  agregarMensajeDemo(p.id, {
+    id: `demo-guia-${Date.now()}`, session_id: p.id, sender_role: 'system',
+    sender_name: 'Kross', sender_role_label: null, read_at: null,
+    type: 'guia', visibility: 'all',
+    // Los mismos ids que el mensaje real (`idsDeGuia`): en Shalom, el nro. de
+    // orden y el código del voucher — la clave NO va aquí.
+    body: mensajeDeGuia(courier, idsDeGuia(courier, ids), saldo),
+    media_url: pdf && courier === 'SHALOM' ? GUIA_DEMO_PDF : null,
+    created_at: ahora,
+  })
+  // La clave JUNTO con la guía solo si no queda nada por pagar — es lo que
+  // hace `registrarGuia`. Con saldo pendiente se queda guardada: la entrega
+  // el pago (`saldoPagadoEnDemo`, espejo del webhook).
+  if (saldo === 0 && ids.clave) {
+    agregarMensajeDemo(p.id, {
+      id: `demo-clave-${Date.now()}`, session_id: p.id, sender_role: 'system',
+      sender_name: 'Kross', sender_role_label: null, read_at: null,
+      type: 'status_update', visibility: 'all',
+      body: mensajeDeClave(ids.clave),
+      created_at: ahora,
+    })
+  }
+}
+
+/**
+ * La guía registrada A MANO, enseñando — espejo de `set_tracking`.
+ *
+ * Es el camino del pedido cuyo registro automático falló (`FAILED`): la guía
+ * se emitió por fuera, en el mostrador, y acá se copian sus tres datos del
+ * comprobante físico — nro. de orden, código y CLAVE. Con la clave guardada,
+ * la entrega automática funciona igual que con una guía de API: el chat la
+ * suelta cuando el saldo se pague.
+ */
+export function guiaManualEnDemo(
+  p: PedidoDemo, g: { numero: string; codigo: string; clave: string },
+): CambioDemo {
+  const courier = String(p.tracking_courier ?? p.agency_name ?? 'SHALOM').toUpperCase() === 'OLVA'
+    ? 'OLVA' as const : 'SHALOM' as const
+  const patch: CambioDemo = {
+    tracking_courier: courier,
+    tracking_numero: g.numero,
+    tracking_codigo: courier === 'SHALOM' ? g.codigo : null,
+    shalom_pickup_code: courier === 'SHALOM' && g.clave ? g.clave : null,
+  }
+  guardarCambio(p.id, patch)
+  anunciarGuiaEnDemo(p, courier, { numero: g.numero, codigo: patch.tracking_codigo ?? null, clave: patch.shalom_pickup_code ?? null }, false)
+  return patch
+}
+
+/**
+ * El REINTENTO por API de un registro que falló — espejo de `retry_shalom`.
+ *
+ * En una tienda real `shalom-order` vuelve a emitir y cierra el expediente en
+ * `CREATED`; acá la guía se inventa con el mismo formato (número del reloj,
+ * código y clave derivados) y sale con el voucher de muestra, porque ESTA sí
+ * la emitió "la API". El stage no se toca: la columna pasa a `registrado`
+ * porque existe la guía, igual que en la tienda real.
+ */
+export function reintentoShalomEnDemo(p: PedidoDemo): CambioDemo {
+  const numero = String(100000 + (Date.now() % 900000))
+  const patch: CambioDemo = {
+    tracking_courier: 'SHALOM',
+    tracking_numero: numero,
+    tracking_codigo: codigoDemoDeGuia(numero),
+    shalom_pickup_code: claveDemoDeRecojo(numero),
+    shalom_order_status: 'CREATED',
+    shalom_order_reason: null,
+  }
+  guardarCambio(p.id, patch)
+  anunciarGuiaEnDemo(p, 'SHALOM', { numero, codigo: patch.tracking_codigo ?? null, clave: patch.shalom_pickup_code ?? null }, true)
+  return patch
 }
 
 /** El resto de acciones, con la misma forma que las del servidor. */
@@ -683,7 +935,12 @@ export function cobroExtraEnDemo(p: PedidoDemo, monto: number, concepto: string)
 export function cobroExtraPagadoEnDemo(p: PedidoDemo, cobroId: string): CambioDemo {
   const cobros = (p.cobros ?? []).map(c =>
     c.id === cobroId
-      ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString(), ...comisionDemo(c.monto, true) }
+      ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString(),
+          ...comisionDemo(c.monto, true),
+          // El código de pago del COMPRADOR, que es el que usa un extra en la
+          // tienda real (`pay360-coupon` emite con `session.pay360_consumer_code`,
+          // estable por comprador). Sin él la tarjeta verde salía sin código.
+          pay360_consumer_code: p.payment_trace?.payment_code ?? null }
       : c)
   const patch = { cobros }
   guardarCambio(p.id, patch)

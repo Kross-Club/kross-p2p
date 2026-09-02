@@ -53,6 +53,12 @@ export type Proveedor = '360PAY' | 'FLOW'
  *  estos o NULL (sin cobro en línea: el adelanto lo coordina un asesor). */
 export const RIELES: readonly Proveedor[] = ['360PAY', 'FLOW'] as const
 
+/** Cómo se llama cada riel para el COMERCIO. Es con quién habla cuando un cobro
+ *  se discute, así que sí se nombra — al comprador no, a Ventas sí. Vive acá y
+ *  no en la tarjeta que lo pinta porque es un dato del dominio: el día que haya
+ *  un tercer riel, el nombre se agrega donde se agrega el riel. */
+export const NOMBRE_RIEL: Record<Proveedor, string> = { '360PAY': '360pay', FLOW: 'Flow' }
+
 /**
  * ¿Este pedido cobra en línea?
  *

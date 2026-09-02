@@ -28,6 +28,7 @@ import MarcaPage from './pages/vendedor/MarcaPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
 import ComprobantePage from './pages/comprobante/ComprobantePage'
+import GuiaPage from './pages/guia/GuiaPage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
 import BuyerPresenceTracker from './components/BuyerPresenceTracker'
 import BuyerCallListener from './components/BuyerCallListener'
@@ -118,6 +119,9 @@ export default function App() {
             del cobro, igual que el token del pedido, para que el comprador la
             enseñe y la reenvíe sin tener que iniciar sesión. */}
         <Route path="/comprobante/:cobroId" element={<ComprobantePage />} />
+        {/* La hoja de guía: lo que abre "Ver mi guía" cuando el courier no dio
+            un PDF. Misma llave que el chat — el token del pedido. */}
+        <Route path="/guia/:token" element={<GuiaPage />} />
         <Route path="/vendedor/pedido/:token" element={<VendedorPedidoPage />} />
         <Route path="/landing/:landingId" element={<LandingProductoPage />} />
 

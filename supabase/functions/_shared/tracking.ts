@@ -1,4 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { mensajeDeOrigen } from './mensaje-de-guia.ts'
+import { soles, textoDeCobro } from './cobro-por-chat.ts'
+import { esRielEnLinea } from './comision.ts'
 
 // ─── Reflejo de tracking en el pedido — lógica COMPARTIDA entre couriers ─────
 // La usan todas las entradas que deben comportarse idéntico:
@@ -36,10 +39,16 @@ export async function broadcast(sessionId: string, event: string, payload: unkno
   } catch { /* ignore */ }
 }
 
-export async function chatMessage(sessionId: string, body: string, visibility: 'all' | 'sellers') {
+export async function chatMessage(
+  sessionId: string, body: string, visibility: 'all' | 'sellers',
+  /** `type` para los mensajes que se pintan distinto (la guía, con su botón);
+   *  `media_url` para el adjunto que ese botón abre (el PDF de Shalom). */
+  extra: { type?: string; media_url?: string | null } = {},
+) {
   const { data: msg } = await supabase.from('chat_messages').insert({
     session_id: sessionId, sender_role: 'system', sender_name: 'Kross',
-    type: 'status_update', visibility, body,
+    type: extra.type ?? 'status_update', visibility, body,
+    media_url: extra.media_url ?? null,
   }).select().single()
   if (msg) await broadcast(sessionId, 'new_message', msg)
 }
@@ -50,6 +59,13 @@ export interface TrackedRow {
   product_price: number | null
   advance_amount: number | null
   payment_verification: string | null
+  /** El saldo ya cruzado cuenta como pagado: sin esto, un pedido con el saldo
+   *  pago recibía en EN_DESTINO un "paga tu saldo de S/X" por una deuda que no
+   *  existe — y en EN_ORIGEN, una tarjeta de cobro por lo mismo. */
+  saldo_verification: string | null
+  /** Con qué cobra la tienda: la tarjeta de pago solo existe donde `360PAY`
+   *  puede cobrarla (misma condición que `seCobraPorChat` en el panel). */
+  payment_provider: string | null
   agency_name: string | null
   tracking_numero: string | null
   tracking_codigo: string | null
@@ -62,7 +78,7 @@ export interface TrackedRow {
 
 /** Columnas que toda entrada lee del pedido para poder reflejar. */
 export const TRACKED_COLUMNS =
-  'id, store_id, product_price, advance_amount, payment_verification, agency_name, ' +
+  'id, store_id, product_price, advance_amount, payment_verification, saldo_verification, payment_provider, agency_name, ' +
   'tracking_numero, tracking_codigo, tracking_ose_id, tracking_year, tracking_phase, tracking_demora_at, tracking_checked_at'
 
 // Plantilla WA de recojo por tienda (stores.wa_recojo_template). Se resuelve
@@ -80,13 +96,45 @@ async function waRecojoTemplate(storeId: string | null): Promise<string | null> 
 }
 
 function saldoOf(row: TrackedRow): number {
+  // Un saldo YA cruzado es deuda que no existe (misma regla que `registrarGuia`).
+  if (row.saldo_verification === 'MATCHED') return 0
   const pagado = row.payment_verification === 'MATCHED' ? Number(row.advance_amount ?? 0) : 0
   return Math.max(0, Number(row.product_price ?? 0) - pagado)
+}
+
+/** ¿La tarjeta del saldo ya está en el hilo? El vendedor pudo mandarla a mano
+ *  antes de que el courier reporte — repetírsela cobra dos veces a la vista. */
+async function yaSeCobroElSaldoPorChat(sessionId: string): Promise<boolean> {
+  const { count } = await supabase.from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId).eq('type', 'cobro').is('cobro_id', null)
+  return (count ?? 0) > 0
 }
 
 // La acción de seguimiento de cada transición. Solo se llama hacia ADELANTE.
 async function onTransition(row: TrackedRow, phase: Phase) {
   const agencia = row.agency_name ?? 'la agencia'
+
+  if (phase === 'EN_ORIGEN') {
+    // El aviso que la tarjeta de la guía promete ("por acá te avisamos apenas
+    // pase"): en Shalom la pre-guía se vuelve oficial exactamente aquí.
+    const courier = String(row.agency_name ?? '').toUpperCase() === 'OLVA' ? 'OLVA' as const : 'SHALOM' as const
+    await chatMessage(row.id, mensajeDeOrigen(courier), 'all')
+
+    // Y LA COBRANZA EMPIEZA AQUÍ, no en destino: el envío ya es un hecho y el
+    // saldo se paga por la app mientras el paquete viaja — cobrar recién cuando
+    // llegó deja al comprador pagando con el paquete en el mostrador. La
+    // tarjeta es LA MISMA que manda el vendedor a mano (`type: 'cobro'`, copy
+    // de `_shared/cobro-por-chat.ts`): el comprador la paga de verdad, con su
+    // cupón emitido al tocar el botón. Solo si hay deuda de verdad (adelanto
+    // cruzado, saldo sin cruzar), la tienda cobra en línea, y nadie la mandó ya.
+    const saldo = saldoOf(row)
+    if (saldo > 0 && row.payment_verification === 'MATCHED' && esRielEnLinea(row.payment_provider)
+      && !(await yaSeCobroElSaldoPorChat(row.id))) {
+      await chatMessage(row.id, textoDeCobro(soles(saldo)), 'all', { type: 'cobro' })
+    }
+    return
+  }
 
   if (phase === 'EN_TRANSITO') {
     await chatMessage(row.id, `🚚 ¡Tu pedido va en camino a tu agencia ${agencia}! Por aquí te avisamos apenas llegue.`, 'all')
@@ -108,7 +156,9 @@ async function onTransition(row: TrackedRow, phase: Phase) {
       row.id,
       saldo > 0
         ? `📞 Pedido EN DESTINO (${agencia}). Cobrar el saldo de S/${saldo} por la app y coordinar el recojo — llamar al comprador si no responde.`
-        : `📞 Pedido EN DESTINO (${agencia}) con el total ya pagado. Enviar la clave de recojo y coordinar el retiro.`,
+        // La clave ya no se "envía" a mano: el chat la entrega solo contra el
+        // pago (o con la guía, si pagó el total). Confirmar es lo que queda.
+        : `📞 Pedido EN DESTINO (${agencia}) con todo pagado. Confirmar que tiene su clave de recojo y coordinar el retiro.`,
       'sellers'
     )
     // WhatsApp de recojo/cobro si la marca lo configuró. Reusa send-wa-template

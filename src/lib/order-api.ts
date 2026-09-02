@@ -4,6 +4,12 @@ const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 export interface OrderSession {
+  /** El token del pedido — la llave de su chat, su hoja de guía y su botón de
+   *  pagar. `get-session` NO lo devuelve (se entra CON él): lo pone la página
+   *  al cargar, desde su propia URL. Sin esto, el botón de pagar el saldo del
+   *  comprador era un no-op silencioso en la tienda real — `pedido.token`
+   *  llegaba undefined y `pagar()` retornaba sin hacer nada. */
+  token?: string | null
   id: string
   order_id: string
   store_id: string | null
@@ -46,6 +52,11 @@ export interface OrderSession {
   tracking_phase?: string | null
   tracking_phase_at?: string | null
   tracking_demora_at?: string | null
+  /** ⚠️ La clave de retiro de Shalom. `get-session` la manda SOLO al equipo
+   *  probado (mismo candado que los comentarios internos): quien la tiene se
+   *  lleva el paquete. Al comprador le llega como mensaje del chat recién
+   *  cuando paga su saldo — nunca por este campo. */
+  shalom_pickup_code?: string | null
   /** Estado del cobro del adelanto. */
   payment_verification?: string | null
   /** Motivo escrito por el cobro. Solo llega al vendedor. */
@@ -150,7 +161,7 @@ export interface OrderMessage {
   /** `cobro` = el vendedor volvió a pedir el saldo: el chat del comprador lo
    *  pinta con el botón de Yape debajo (ver lib/cobro-por-chat.ts). La columna
    *  es texto libre, así que no hizo falta tocar el esquema. */
-  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer' | 'cobro'
+  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer' | 'cobro' | 'guia'
   body: string | null
   media_url: string | null
   offer?: { product_id?: string; nombre: string; precio: number; image?: string | null; accepted?: boolean } | null

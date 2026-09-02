@@ -72,7 +72,7 @@ export interface Cobro {
   /** Solo en los `extra`: qué se está cobrando. */
   concepto?: string | null
   /** Lo que se le descontó al comercio por este cobro, y lo que le queda
-   *  después (bloque §38). `null` = el evento de la pasarela no trajo desglose,
+   *  después (bloque §39). `null` = el evento de la pasarela no trajo desglose,
    *  y entonces no se pinta nada: una comisión estimada al lado de un monto
    *  real se leería como medida. Solo viajan al VENDEDOR — lo que el comercio
    *  le paga a Kross no es asunto de quien compró. */
@@ -166,7 +166,7 @@ function deFila(f: FilaDeCobro, valor: number): Cobro {
   // del precio (un flete), así que recortarlo sería perderlo.
   const cobrado = f.tipo === 'adelanto' ? Math.min(monto, valor || monto) : monto
   // La comisión se lee, no se calcula: la aplica la pasarela y la guardó el
-  // webhook desde el evento (§38). Recalcularla acá daría un segundo número
+  // webhook desde el evento (§39). Recalcularla acá daría un segundo número
   // para lo mismo, y el que se vería no sería el que se descontó.
   const comision = f.comision_pen == null ? null : Math.max(0, num(f.comision_pen))
   return {
@@ -290,14 +290,11 @@ export function avanceDelPago(p: PedidoConPlata): AvancePago {
 }
 
 /**
- * Soles, como se escriben en Perú.
- *
- * Se redondea al sol: los céntimos no cambian ninguna decisión del panel y
- * hacen que una columna de totales deje de alinearse.
+ * Soles, como se escriben en Perú. La definición se mudó a
+ * `_shared/cobro-por-chat.ts` —el tracking escribe la tarjeta del saldo con el
+ * mismo formato— y acá queda el re-export para no tocar a quien ya lo usaba.
  */
-export function soles(n: number | string | null | undefined): string {
-  return `S/ ${Math.round(num(n)).toLocaleString('es-PE')}`
-}
+export { soles } from '../../supabase/functions/_shared/cobro-por-chat.ts'
 
 /**
  * Soles CON céntimos. La excepción a la regla de arriba, y tiene una razón
@@ -328,6 +325,29 @@ export function solesExactos(n: number | string | null | undefined): string {
  *     ponerlo: sin riel el saldo lo coordina el asesor por el chat. Cuál riel
  *     lo decide `esRielEnLinea` —la única definición—, no un literal acá.
  */
+/**
+ * El saldo que se puede cobrar y **todavía no es una fila**.
+ *
+ * Nadie del servidor emite el cupón del saldo: se emite cuando el COMPRADOR
+ * toca pagar. Así que entre que el adelanto cruza y el comprador entra por su
+ * cuenta, el saldo no existe como cobro — y el panel, que pinta la lista de
+ * cobros, no enseñaba nada. Ni el monto que falta ni el botón de mandarle la
+ * tarjeta, que es justo lo que hace falta ahí: el vendedor se quedaba esperando
+ * a que el cliente hiciera solo lo que él tenía que pedirle.
+ *
+ * No entra en la lista de `cobrosDelPedido` a propósito: eso es lo que HAY, y
+ * esto es lo que falta. Meterlo ahí le agregaría un cobro fantasma al tablero,
+ * al anillo y al filtro de pagos. Es una tarjeta de la pantalla, no una fila.
+ */
+export function saldoPorCobrar(p: PedidoConPlata & {
+  payment_provider?: string | null
+}): Cobro | null {
+  if (!puedePagarSaldo(p)) return null
+  // Si ya tiene su fila, esa manda: trae el cupón, el vencimiento y su rastro.
+  if (cobrosDelPedido(p).some(c => c.tipo === 'saldo')) return null
+  return { tipo: 'saldo', monto: saldoDelPedido(p), verificado: false }
+}
+
 export function puedePagarSaldo(p: PedidoConPlata & {
   payment_provider?: string | null
 }): boolean {

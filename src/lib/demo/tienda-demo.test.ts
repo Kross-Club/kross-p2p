@@ -5,6 +5,9 @@ import { columnaDelPedido, COLUMNAS } from '../order-tracking'
 import { avanceDelPago, cobrosDelPedido, saldoDelPedido } from '../order-money'
 import { conCambios, reiniciarDemo } from './cambios-demo'
 import { estaVivo } from '../store-orders'
+import { mensajeDeClave, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
+import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
+import { esPickupCodeValido } from '../../../supabase/functions/_shared/shalom-orders.ts'
 
 const t = await tiendaDemo()
 
@@ -408,5 +411,253 @@ describe('los cobros del demo', () => {
       const soloColumnas = { ...p, cobros: null }
       expect(cobradoDelPedido(p)).toBe(cobradoDelPedido(soloColumnas))
     }
+  })
+})
+
+
+// ─── La columna CONFIRMADO es la vitrina del cobro ───────────────────────────
+//
+// Ahí se enseñan el comprobante del adelanto y la pre-guía: el pedido recién
+// cobrado, listo para registrar su envío. Por eso todos sus pedidos adelantan
+// LA MITAD — un "pagó todo" en esa columna no deja saldo que cobrar ni flujo
+// que mostrar. (La tirada del azar se hace igual, se use o no: quitarla
+// correría el azar de todos los pedidos siguientes.)
+
+describe('en confirmado todos adelantaron la mitad', () => {
+  it('ninguno pagó el total: siempre queda saldo que enseñar', () => {
+    const confirmados = t.pedidos.filter(p => p.stage === 'confirmado' && estaVivo(p))
+    expect(confirmados.length).toBeGreaterThan(0)
+    for (const p of confirmados) {
+      expect(saldoDelPedido(p)).toBeGreaterThan(0)
+      expect(cobrosDelPedido(p).map(c => c.tipo)).toContain('adelanto')
+    }
+  })
+})
+
+
+// ─── El hilo cuenta lo del envío ─────────────────────────────────────────────
+//
+// Un pedido con guía la ANUNCIÓ en su momento: el hilo lleva la tarjeta de la
+// guía —la misma copy que manda `registrarGuia`— antes de que el courier
+// reporte nada. Y los que no tienen guía, no: una guía anunciada que el panel
+// no conoce sería un hilo mintiendo.
+
+describe('la guía en los hilos del generador', () => {
+  // Y la de Shalom abre el PDF de muestra (el voucher real autorizado): el
+  // botón del demo enseña el documento formal, igual que la tienda real. Olva
+  // no tiene documento que enseñar, así que su tarjeta va sin PDF y el botón
+  // cae a la hoja de la app.
+  it('la guía de Shalom lleva el PDF de muestra; la de Olva no', () => {
+    const conGuia = t.pedidos.filter(p => (p.stage === 'en_camino' || p.stage === 'entregado') && p.tracking_numero)
+    const shalom = conGuia.find(p => String(p.tracking_courier).toUpperCase() === 'SHALOM')
+    expect(shalom).toBeTruthy()
+    const msg = (shalom?.chat_messages ?? []).find(m => m.type === 'guia')
+    expect(msg?.media_url).toContain('.pdf')
+    const olva = conGuia.find(p => String(p.tracking_courier).toUpperCase() === 'OLVA')
+    if (olva) {
+      expect((olva.chat_messages ?? []).find(m => m.type === 'guia')?.media_url ?? null).toBeNull()
+    }
+  })
+
+  // Con el vocabulario del voucher (`idsDeGuia`): en Shalom el número es el
+  // "Nro. de orden" y va con su código; en Olva la guía se llama guía.
+  it('los pedidos con guía llevan su tarjeta, con sus identificadores', () => {
+    const conGuia = t.pedidos.filter(p => (p.stage === 'en_camino' || p.stage === 'entregado') && p.tracking_numero)
+    expect(conGuia.length).toBeGreaterThan(0)
+    for (const p of conGuia.slice(0, 20)) {
+      const guia = (p.chat_messages ?? []).find(m => m.type === 'guia')
+      if (String(p.tracking_courier).toUpperCase() === 'OLVA') {
+        expect(guia?.body).toContain(`Guía ${p.tracking_numero}`)
+      } else {
+        expect(guia?.body).toContain(`Nro. de orden ${p.tracking_numero} · Código ${p.tracking_codigo}`)
+      }
+    }
+  })
+
+  it('los que no tienen guía, no la anuncian', () => {
+    const sinGuia = t.pedidos.filter(p => p.stage === 'confirmado')
+    expect(sinGuia.length).toBeGreaterThan(0)
+    for (const p of sinGuia.slice(0, 20)) {
+      expect((p.chat_messages ?? []).some(m => m.type === 'guia')).toBe(false)
+    }
+  })
+
+  // Los identificadores de la guía Shalom, completos y con el formato real: el
+  // código de 4 alfanuméricos del voucher y una clave que pasa por el MISMO
+  // validador que usa `shalom-order` al emitir. Olva no lleva ninguno.
+  it('toda guía Shalom trae código y una clave que Shalom aceptaría', () => {
+    const shalom = t.pedidos.filter(p => p.tracking_numero && String(p.tracking_courier).toUpperCase() === 'SHALOM')
+    expect(shalom.length).toBeGreaterThan(0)
+    for (const p of shalom) {
+      expect(p.tracking_codigo).toMatch(/^[A-Z0-9]{4}$/)
+      expect(esPickupCodeValido(String(p.shalom_pickup_code))).toBe(true)
+    }
+    for (const p of t.pedidos.filter(x => String(x.tracking_courier).toUpperCase() === 'OLVA')) {
+      expect(p.shalom_pickup_code ?? null).toBeNull()
+    }
+  })
+})
+
+// ─── La clave de recojo se entrega contra el saldo pagado — y solo entonces ──
+//
+// Es la regla de seguridad del recojo (quien tiene la clave se lleva el
+// paquete) y el demo la enseña igual que la vive la tienda real: el hilo que ya
+// pagó su saldo lleva el acuse con su comprobante y la clave; el que debe, Nada.
+
+describe('la clave de recojo en los hilos del generador', () => {
+  const shalomConGuia = () => t.pedidos.filter(p =>
+    p.tracking_numero && String(p.tracking_courier).toUpperCase() === 'SHALOM')
+
+  it('el hilo que pagó su saldo lleva el acuse —con comprobante— y la clave', () => {
+    const pagados = shalomConGuia().filter(p => p.saldo_verification === 'MATCHED')
+    expect(pagados.length).toBeGreaterThan(0)
+    for (const p of pagados) {
+      const msgs = p.chat_messages ?? []
+      const acuse = msgs.find(m => /¡Recibimos tu saldo de/.test(m.body ?? ''))
+      expect(acuse?.cobro_id).toBe(p.cobros?.find(c => c.tipo === 'saldo')?.id)
+      expect(msgs.some(m => m.body === mensajeDeClave(String(p.shalom_pickup_code)))).toBe(true)
+    }
+  })
+
+  it('el que pagó TODO por adelantado la recibe junto con la guía', () => {
+    const total = shalomConGuia().filter(p => saldoDelPedido(p) === 0 && !p.saldo_verification)
+    expect(total.length).toBeGreaterThan(0)
+    for (const p of total.slice(0, 10)) {
+      expect((p.chat_messages ?? []).some(m => m.body === mensajeDeClave(String(p.shalom_pickup_code)))).toBe(true)
+    }
+  })
+
+  // EL invariante entero, sin excepciones — el reporte fue una captura: un
+  // pedido con "Saldo sin pagar S/ 180" en el panel y la clave ya entregada en
+  // el chat. Era el upsell: el generador calculaba el saldo de la guía con el
+  // precio BASE, así que a quien pagó el total base le soltaba la clave aunque
+  // el upsell —que viaja EN el paquete, o sea que existía antes de registrar
+  // la guía— le dejara deuda. La clave entregada implica que hoy no se debe
+  // nada, o que el saldo cruzó.
+  it('ningún hilo con la clave entregada sigue debiendo', () => {
+    const conClave = t.pedidos.filter(p =>
+      (p.chat_messages ?? []).some(m => (m.body ?? '').includes('Tu clave de recojo es')))
+    expect(conClave.length).toBeGreaterThan(0)
+    for (const p of conClave) {
+      expect(saldoDelPedido(p) === 0 || p.saldo_verification === 'MATCHED').toBe(true)
+    }
+  })
+
+  // La mitad que importa: a quien la guía le dijo "apenas lo pagues te
+  // entregamos tu clave" y no pagó, la entrega NO está en el hilo. Se pregunta
+  // por lo que la guía DIJO —"Tu saldo de S/…"—, que con el upsell contado en
+  // la guía (arriba) es lo mismo que el saldo de hoy sin cruzar. No se barre
+  // por los 4 dígitos sueltos: aparecen por coincidencia en montos y
+  // operaciones — lo que revela la clave es el mensaje que la entrega.
+  it('el que todavía debe el saldo que la guía le cobró NO tiene la clave', () => {
+    const deben = shalomConGuia().filter(p =>
+      p.saldo_verification !== 'MATCHED'
+      && (p.chat_messages ?? []).some(m => m.type === 'guia' && (m.body ?? '').includes('Tu saldo de S/')))
+    expect(deben.length).toBeGreaterThan(0)
+    for (const p of deben) {
+      expect((p.chat_messages ?? []).some(m => (m.body ?? '').includes('Tu clave de recojo es'))).toBe(false)
+    }
+  })
+})
+
+// ─── La cobranza empieza en origen ───────────────────────────────────────────
+//
+// Cuando el paquete entra a la agencia de origen, el tracking real anuncia el
+// momento (la pre-guía se volvió oficial) y —si el pedido debe su saldo— manda
+// solo LA TARJETA DE PAGO, la misma que mandaría el vendedor. Los hilos del
+// generador cuentan esa misma historia.
+
+describe('la tarjeta del saldo que manda el tracking, en los hilos', () => {
+  const pasaronPorOrigen = () => t.pedidos.filter(p => p.tracking_numero && p.tracking_phase)
+
+  it('todo hilo que pasó por origen lleva el aviso, y la tarjeta si debía', () => {
+    const conFase = pasaronPorOrigen()
+    expect(conFase.length).toBeGreaterThan(0)
+    for (const p of conFase.slice(0, 20)) {
+      const msgs = p.chat_messages ?? []
+      const courier = String(p.tracking_courier).toUpperCase() === 'OLVA' ? 'OLVA' as const : 'SHALOM' as const
+      expect(msgs.some(m => m.body === mensajeDeOrigen(courier))).toBe(true)
+      // La guía dice si al registrarse había deuda; la tarjeta va solo entonces.
+      const debia = msgs.some(m => m.type === 'guia' && (m.body ?? '').includes('Tu saldo de S/'))
+      expect(msgs.some(m => m.type === 'cobro' && m.sender_role === 'system')).toBe(debia)
+    }
+  })
+
+  // Con la MISMA copy que la tarjeta del vendedor — dos cobros que no se
+  // parecen para la misma deuda es lo que la definición única evita.
+  it('la tarjeta dice la copy del vendedor, con el saldo de ese momento', () => {
+    const p = pasaronPorOrigen().find(x =>
+      (x.chat_messages ?? []).some(m => m.type === 'cobro' && m.sender_role === 'system'))
+    const tarjeta = (p?.chat_messages ?? []).find(m => m.type === 'cobro')
+    const guia = (p?.chat_messages ?? []).find(m => m.type === 'guia')
+    const saldo = Number(/Tu saldo de S\/(\d+)/.exec(guia?.body ?? '')?.[1])
+    expect(tarjeta?.body).toBe(textoDeCobro(soles(saldo)))
+  })
+
+  // El orden es el de la vida real: se cobra primero, la plata entra después.
+  it('en los hilos que pagaron, la tarjeta va antes del acuse', () => {
+    const pagados = pasaronPorOrigen().filter(p => p.saldo_verification === 'MATCHED')
+    expect(pagados.length).toBeGreaterThan(0)
+    for (const p of pagados) {
+      const msgs = p.chat_messages ?? []
+      const iTarjeta = msgs.findIndex(m => m.type === 'cobro')
+      const iAcuse = msgs.findIndex(m => /¡Recibimos tu saldo de/.test(m.body ?? ''))
+      expect(iTarjeta).toBeGreaterThanOrEqual(0)
+      expect(iAcuse).toBeGreaterThan(iTarjeta)
+    }
+  })
+
+  // Sin reporte del courier no hay cobranza automática: el paquete todavía no
+  // entró a origen, y una tarjeta del sistema ahí sería cobrar antes de tiempo.
+  it('el hilo sin fase reportada no lleva tarjeta del sistema', () => {
+    const sinFase = t.pedidos.filter(p => p.tracking_numero && !p.tracking_phase)
+    expect(sinFase.length).toBeGreaterThan(0)
+    for (const p of sinFase) {
+      expect((p.chat_messages ?? []).some(m => m.type === 'cobro')).toBe(false)
+    }
+  })
+})
+
+// Y la contradicción que se vio en producción no vuelve: NINGÚN pedido de
+// confirmado en adelante tiene el adelanto sin cruzar. "Está en Confirmado
+// PORQUE la plata entró" — el 8% que el sorteo dejaba en ámbar era un pedido
+// diciendo dos cosas a la vez.
+describe('de confirmado en adelante la plata entró', () => {
+  it('ni un solo adelanto sin pagar después de validando', () => {
+    const cobrados = t.pedidos.filter(p => !['nuevo', 'validando'].includes(String(p.stage)))
+    expect(cobrados.length).toBeGreaterThan(0)
+    for (const p of cobrados) expect(p.payment_verification).toBe('MATCHED')
+  })
+
+  // Y al revés TAMPOCO: el webhook escribe `stage: 'confirmado'` en el mismo
+  // acto de cruzar el adelanto, así que un pedido en `nuevo` o `validando` con
+  // la plata cruzada no puede existir. Era la captura de "Wilder Flores":
+  // Pedido creado con el adelanto pagado, cobrado hace días, y el anillo
+  // apagado — el pedido diciendo dos cosas a la vez.
+  it('ni un solo adelanto cruzado antes de confirmado', () => {
+    const tempranos = t.pedidos.filter(p => ['nuevo', 'validando'].includes(String(p.stage)))
+    expect(tempranos.length).toBeGreaterThan(0)
+    for (const p of tempranos) expect(p.payment_verification).not.toBe('MATCHED')
+  })
+
+  // `validando` es "hay un yapeo que todavía no cuadra": su hilo decía
+  // "Adelanto verificado" con el panel en ámbar.
+  it('el hilo de validando no anuncia un adelanto que no cruzó', () => {
+    const validando = t.pedidos.filter(p => p.stage === 'validando')
+    expect(validando.length).toBeGreaterThan(0)
+    for (const p of validando) {
+      expect((p.chat_messages ?? []).some(m => m.body === 'Adelanto verificado')).toBe(false)
+    }
+  })
+
+  // El expediente `shalom_order_status` lo escribe `shalom-order`, que descarta
+  // los pedidos de Olva antes de reclamar nada: un FAILED de Shalom en un
+  // pedido Olva es un estado que la tienda real no puede producir.
+  it('el expediente de la guía automática solo existe en pedidos Shalom', () => {
+    const olva = t.pedidos.filter(p => String(p.agency_name).toUpperCase() === 'OLVA')
+    expect(olva.length).toBeGreaterThan(0)
+    for (const p of olva) expect(p.shalom_order_status ?? null).toBeNull()
+    // Y los FAILED que se enseñan (la alerta "Guía manual") siguen existiendo.
+    expect(t.pedidos.some(p => p.shalom_order_status === 'FAILED')).toBe(true)
   })
 })

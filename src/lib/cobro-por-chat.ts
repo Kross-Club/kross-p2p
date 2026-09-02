@@ -30,17 +30,12 @@ export const TIPO_COBRO = 'cobro'
 export const MORADO_YAPE = '#742284'
 
 /**
- * Lo que dice el mensaje.
- *
- * **Tiene que bastarse solo**, y eso decide cómo está escrito: este mismo texto
- * es el que sale en la notificación push y en WhatsApp, donde no hay botón que
- * tocar ni tarjeta que mirar. Un "toca el botón de abajo" ahí no significa
- * nada. Por eso lleva el monto y el porqué, que es lo que hace que alguien
- * abra: no "tienes un pago pendiente", sino cuánto y a cambio de qué.
+ * Lo que dice el mensaje. La definición vive en `_shared/cobro-por-chat.ts`
+ * desde que el tracking también manda la tarjeta (el envío entra a origen y la
+ * cobranza empieza sola): si el mensaje automático dijera otra frase que el del
+ * vendedor, serían dos cobros que no se parecen para la misma deuda.
  */
-export function textoDeCobro(monto: string): string {
-  return `Te queda un saldo de ${monto}. Págalo desde tu Yape por acá y te enviamos tu clave de recojo.`
-}
+export { textoDeCobro } from '../../supabase/functions/_shared/cobro-por-chat.ts'
 
 /** Lo que dice el botón. También del lado del vendedor, en el aviso de que ya
  *  se envió, para que las dos pantallas nombren la misma acción. */

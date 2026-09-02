@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CreditCard, Check, Clock, Copy, Send, RefreshCw, Trash2 } from 'lucide-react'
-import { cobrosDelPedido, soles, solesExactos } from '../lib/order-money'
+import { cobrosDelPedido, saldoPorCobrar, soles, solesExactos } from '../lib/order-money'
 import type { Cobro, TipoDeCobro } from '../lib/order-money'
 import { datosDeRastro, textoParaSoporte } from '../lib/rastro-de-pago'
 import { puedePagarSaldo } from '../lib/order-money'
@@ -8,6 +8,7 @@ import { seCobraPorChat } from '../lib/cobro-por-chat'
 import { sePuedeBorrar } from '../../supabase/functions/_shared/cobros.ts'
 import { vigenciaDeCupon, sePuedeEnviarCobro, avisoDeVigencia } from '../lib/vigencia-de-cupon'
 import type { OrderSession, PagoTrazado } from '../lib/order-api'
+import { NOMBRE_RIEL } from '../../supabase/functions/_shared/comision.ts'
 import type { Proveedor } from '../../supabase/functions/_shared/comision.ts'
 
 // ─── La plata que entró, operación por operación ─────────────────────────────
@@ -41,10 +42,6 @@ import type { Proveedor } from '../../supabase/functions/_shared/comision.ts'
 // pagador —ni a 360pay ni al comercio—; lo que sí llega es el rastro bancario
 // (N° de operación + banco), y eso es lo que se muestra.
 
-/** El nombre del riel como lo conoce el comercio: es con quién habla cuando un
- *  cobro se discute, así que sí se nombra — al comprador no, a Ventas sí. */
-export const NOMBRE_RIEL: Record<Proveedor, string> = { '360PAY': '360pay', FLOW: 'Flow' }
-
 const TITULO_BASE: Record<TipoDeCobro, string> = {
   adelanto: 'Adelanto pagado con Yape',
   total: 'Pago completo con Yape',
@@ -58,6 +55,18 @@ const TITULO_BASE: Record<TipoDeCobro, string> = {
 /** El título con el riel de ESTE cobro. Sale del cobro y no del pedido: con
  *  dos rieles, el pedido no dice por dónde fue cada uno. */
 const titulo = (tipo: TipoDeCobro, riel: Proveedor) => `${TITULO_BASE[tipo]} (${NOMBRE_RIEL[riel]})`
+
+/**
+ * Lo que significa un cobro que no ha entrado. Son DOS estados y confundirlos
+ * manda a buscar un cupón que no existe: uno tiene código y espera al cliente;
+ * el otro ni siquiera se le ha pedido, porque el cupón del saldo lo emite el
+ * comprador al tocar pagar y nadie más.
+ */
+const SIN_PAGAR = (conCupon: boolean): string => conCupon
+  ? 'El cupón está emitido y todavía sin pagar. El cliente puede pagarlo desde su Yape'
+    + ' cuando quiera; si no lo hace, coordina por el chat.'
+  : 'Todavía no se le ha pedido: su código se genera cuando el cliente toque pagar.'
+    + ' Mándale la tarjeta de pago por el chat.'
 
 /** Lo que queda claro solo diciéndolo. "Adelanto" sin más deja al vendedor
  *  restando de cabeza para saber si todavía falta cobrar algo. */
@@ -94,7 +103,13 @@ export default function PagoTrace({ session, onCobrar, onReemitir, onQuitar }: {
   const [ahora] = useState(() => Date.now())
 
   const cobros = cobrosDelPedido(session)
-  if (cobros.length === 0) return null
+  // Y el saldo que se puede cobrar aunque todavía no sea una fila. Va al final
+  // porque es lo que falta, después de lo que hay. Sin esto el panel no enseñaba
+  // ni el monto pendiente ni el botón para pedirlo, justo en los pedidos donde
+  // el comprador todavía no ha entrado por su cuenta.
+  const porCobrar = saldoPorCobrar(session)
+  const lista = porCobrar ? [...cobros, porCobrar] : cobros
+  if (lista.length === 0) return null
 
   const valor = Math.max(0, Number(session.product_price ?? 0))
   const cobrado = cobros.filter(c => c.verificado).reduce((n, c) => n + c.monto, 0)
@@ -102,7 +117,7 @@ export default function PagoTrace({ session, onCobrar, onReemitir, onQuitar }: {
 
   return (
     <>
-      {cobros.map(cobro => (
+      {lista.map(cobro => (
         <TarjetaDeCobro
           // Por id cuando lo hay: con dos cobros extra, la clave por tipo se
           // repetiría y React pintaría uno solo.
@@ -229,7 +244,7 @@ function TarjetaDeCobro({ cobro, riel, orderId, trace, cobradoEn, falta, venceEl
             el monto grande es lo que pagó el cliente, no lo que entra a la
             cuenta, y esa diferencia se buscaba cuadrando a mano.
 
-            Solo cuando la pasarela mandó el desglose (§38). Con NULL no se
+            Solo cuando la pasarela mandó el desglose (§39). Con NULL no se
             pinta nada: estimar la comisión y ponerla al lado de un monto real
             la haría leerse como medida, y es justo el número que se discute
             cuando una liquidación no cuadra.
@@ -249,10 +264,7 @@ function TarjetaDeCobro({ cobro, riel, orderId, trace, cobradoEn, falta, venceEl
             leyendo el monto y dando por hecho que entró. Va ARRIBA de los datos
             porque cambia lo que significan: los mismos códigos, buscando por qué
             no entró en vez de comprobando que entró. */}
-        {!ok && (
-          <p className="mb-1">El cupón está emitido y todavía sin pagar. El cliente puede pagarlo
-            desde su Yape cuando quiera; si no lo hace, coordina por el chat.</p>
-        )}
+        {!ok && <p className="mb-1">{SIN_PAGAR(!!trace?.payment_code)}</p>}
 
         {/* Con qué se sigue esta transacción. La lista sale de `rastro-de-pago`
             y es la misma que copia el botón. También en el cupón sin pagar: es

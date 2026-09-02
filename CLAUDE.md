@@ -84,7 +84,10 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
   tipos de sesión —el store y el seed de maqueta se borraron (27-ago-2026)—; lo que queda ahí
   lo usa la capa de checkout.
 - **Modo demo** (`src/lib/demo/`): un interruptor en *Marca* llena todo el panel con una tienda
-  de ejemplo (~1.000 pedidos/día) para enseñar la herramienta. Vive en el dispositivo, no en
+  de ejemplo (~1.000 pedidos/día) para enseñar la herramienta. **La regla del demo es paridad**:
+  lo que el demo enseña es exactamente lo que la tienda real hace, y todo lo que se construye
+  para la tienda real se enseña en el demo — un demo que se comporte distinto vende un producto
+  que no existe. Vive en el dispositivo, no en
   `stores`, y el panel lo anuncia con una barra fija. Nunca toca la base.
   Y **se deja tocar** (29-ago-2026): avanzar de etapa, cambiar cantidades, agregar un producto,
   escribir en el chat, invitar y pasar el pedido funcionan enseñando. Los cambios se guardan
@@ -97,5 +100,7 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
   billetera crea un cobro de verdad —fila `extra` en la lista de cobros, con su concepto—, se
   manda por el chat y se acepta solo diez segundos después. Y al aceptarse sale el **comprobante**
   —la misma copy que manda el webhook—, que en el demo se arma en el dispositivo para que el
-  botón no abra una página vacía. ⚠️ Al tocar el generador, **nunca agregues una
+  botón no abra una página vacía. Y la **clave de recojo** (01-set-2026): pagar el saldo enseñando
+  la suelta por el chat, igual que el webhook — mientras se deba, solo la ve el vendedor en la
+  barra del envío. ⚠️ Al tocar el generador, **nunca agregues una
   tirada de `r()`**: corre el azar de todos los pedidos siguientes y rompe cosas sin relación.

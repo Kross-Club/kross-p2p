@@ -748,14 +748,24 @@ esa latencia y no obliga a custodiar un password de terceros.
    courier no encuentra (`not_found` real) avisa solo-vendedores en el primer
    chequeo. **La fase jamás mueve `stage`**: el pipeline lo avanza una persona
    (misma regla que `no_entregado`).
-4. **Cobrar** — al pasar a `EN_DESTINO`: mensaje al comprador con el saldo
-   derivado ("por esta misma app, nunca en la agencia; la clave de recojo
-   contra el saldo pagado"), aviso solo-vendedores para la llamada (la "cola de
-   llamadas" v1 🔮 es este aviso; la cola formal sigue pendiente) y **plantilla
-   WhatsApp automática** si la tienda configuró `stores.wa_recojo_template`
-   (usa `send-wa-template`; NULL = sin auto-envío). En `ENTREGADO`: cierre al
-   comprador + recordatorio de confirmar la entrega en el pipeline — de ahí
-   sale la tasa de recojo (`EN_DESTINO` vs `ENTREGADO`).
+4. **Cobrar** — y la cobranza empieza en `EN_ORIGEN` (01-set-2026): al entrar el
+   paquete a la agencia de origen sale el aviso del momento (`mensajeDeOrigen`
+   — la pre-guía de Shalom volviéndose oficial, con las palabras que la guía
+   prometió) y, si el pedido debe su saldo, **la tarjeta de pago sola**
+   (`type: 'cobro'`, la MISMA copy que la del vendedor —
+   `_shared/cobro-por-chat.ts`): el saldo se paga por la app mientras el
+   paquete viaja, no con el paquete en el mostrador. Condiciones: adelanto
+   cruzado, saldo sin cruzar (`saldoOf` cuenta el saldo MATCHED como pagado),
+   tienda en `360PAY`, y que nadie haya mandado ya una tarjeta del saldo (el
+   vendedor pudo adelantarse a mano). En `EN_DESTINO`: mensaje al comprador con
+   el saldo derivado ("por esta misma app, nunca en la agencia; la clave de
+   recojo contra el saldo pagado"), aviso solo-vendedores para la llamada (la
+   "cola de llamadas" v1 🔮 es este aviso; la cola formal sigue pendiente) y
+   **plantilla WhatsApp automática** si la tienda configuró
+   `stores.wa_recojo_template` (usa `send-wa-template`; NULL = sin auto-envío).
+   En `ENTREGADO`: cierre al comprador + recordatorio de confirmar la entrega
+   en el pipeline — de ahí sale la tasa de recojo (`EN_DESTINO` vs
+   `ENTREGADO`).
 
 Verificado contra el proveedor real: el batch responde por ítem (guía
 inexistente → `not_found` en ese ítem, el resto sigue) y el ciclo entero se
@@ -796,11 +806,14 @@ solo-vendedores: un envío tan viejo sin cerrar es para mirarlo).
   pisa**: avisa en logs y se rota a mano (`POST /v1/webhooks/rotate`).
 
 De la familia de **crear pedido** usamos `POST /v1/orders` (ver § *Generador de
-guías Shalom*). Siguen sin usar: `GET /v1/tracking/{ose_id}/events` (solo
-hitos, por `ose_id`), el comprobante por ose_id (⚠️ su doc lo declara **fuera
-de servicio**: responde 404 para toda orden — no depender de él), el GRT (exige
-credenciales Shalom Pro + `cap_id` del carguero) y la cotización de tarifas +
-rótulo PDF.
+guías Shalom*) y **`GET /v1/orders/{ose_id}/voucher`** (01-set-2026): la guía
+formal de Shalom en PDF binario, que `shalom-order` descarga al emitir y sube
+al bucket `shalom-guias` (§38 del esquema) para el botón *"Ver mi guía de
+Shalom"* del chat; si falla, intenta el rótulo (`/label`, mismo contrato).
+⚠️ No confundir con `GET /v1/tracking/{ose_id}/voucher`, que su doc declara
+**fuera de servicio** (404 para toda orden). Siguen sin usar:
+`GET /v1/tracking/{ose_id}/events`, el GRT (exige credenciales Shalom Pro +
+`cap_id` del carguero) y la cotización de tarifas.
 
 ### Cuenta Shalom Pro por marca + semáforo de la API ✅
 
@@ -941,15 +954,24 @@ abrir el código:
 
 La orden **la elige Kross**, y con ella el destinatario se lleva el paquete de la
 agencia: quien la tiene, tiene el pedido. Vive en
-`order_sessions.shalom_pickup_code` y **no sale de ahí**:
+`order_sessions.shalom_pickup_code` y sale de ahí por **exactamente dos puertas**
+(01-set-2026):
 
-- no se expone por `get-session`;
-- no viaja a ningún mensaje del chat — **tampoco a los de `visibility: 'sellers'`**,
-  porque el viewer de vendedor se resuelve con el token del comprador
-  (`?viewer=seller`, la deuda anotada en `ESTADO-OPERATIVO`): un mensaje "solo
-  vendedores" con la clave adentro se la estaría regalando;
-- en Kross la clave se entrega **contra el saldo pagado** (§ *El saldo de
-  agencia*), que es justo lo que el checkout viene prometiendo.
+- **Al equipo**, por `get-session`, detrás del candado FUERTE (`puedeLeerInterno`,
+  el mismo de los comentarios internos: JWT verificado contra `sellers`). Nunca
+  por el `viewer=seller` a secas —se escribe con el token del comprador— y
+  **nunca en un mensaje `visibility: 'sellers'`**, que con ese token se lee
+  igual. El panel la pinta en la barra del envío, con la advertencia de que al
+  cliente le llega sola.
+- **Al comprador**, como mensaje del chat (`mensajeDeClave`,
+  `_shared/mensaje-de-guia.ts`), **contra el saldo pagado** (§ *El saldo de
+  agencia*) — que es justo lo que el checkout viene prometiendo. La sueltan dos:
+  `pay360-webhook` cuando cruza el saldo, y `registrarGuia` junto con la guía
+  cuando el pedido ya no debía nada (pagó el total, o el saldo cruzó antes que
+  una guía manual). La guía registrada **a mano** también entra al circuito
+  (01-set-2026): el formulario del panel pide sus TRES datos del comprobante
+  físico —nro. de orden, código y clave— y `set_tracking` guarda la clave en el
+  pedido; sin ella no hay entrega automática y la manda una persona, como antes.
 
 Shalom rechaza claves repetidas (`1111`…`9999`) y consecutivas (`1234`…`6789`);
 el generador también descarta las descendentes — no están en la doc, cuestan 8
