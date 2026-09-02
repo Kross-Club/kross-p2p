@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 29-ago-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 02-sep-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -34,49 +34,19 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-### Flow Pagos, el segundo riel · SQL + 8 funciones (01-sep-2026)
+### Flow Pagos, el segundo riel · 4 funciones (02-sep-2026)
 
-**Qué se ve si no entra:** nada distinto — y esa es la gracia. Sin desplegar, ninguna tienda
-tiene `flow_enabled` y el ruteo devuelve `'360PAY'` para todo, así que el checkout cobra
-exactamente como hoy. Lo que NO entra hasta desplegar: la línea *"Comisión · recibes"* en la
-tarjeta de cada cobro (§39), y **un arreglo de `pay360-coupon`** que sí importa — ver abajo.
+**El grueso ya entró el 02-sep**: el SQL (§39 y §40) corrido, y desplegadas `pay360-coupon`
+—con el arreglo del `columnasDe` que reventaba cada emisión de cupón—, `pay360-webhook`,
+`flow-order`, `flow-confirm`, `flow-return`, `register-buyer`, `manage-store`, `get-session`
+y `get-store-sessions`. El panel ya muestra el bloque de Flow, apagado.
 
-**Primero el SQL** (bloques §39 y §40; idempotente):
-
-```sql
-alter table cobros add column if not exists comision_pen       numeric;
-alter table cobros add column if not exists costo_pasarela_pen numeric;
-alter table stores add column if not exists flow_enabled        boolean default false;
-alter table stores add column if not exists flow_merchant_id    text;
-alter table stores add column if not exists flow_payment_method integer;
-alter table stores add column if not exists flow_env            text default 'sandbox';
-alter table stores drop constraint if exists stores_flow_env_check;
-alter table stores add constraint stores_flow_env_check
-  check (flow_env is null or flow_env = any (array['sandbox'::text, 'live'::text]));
-alter table cobros add column if not exists flow_token   text;
-alter table cobros add column if not exists flow_pay_url text;
-create index if not exists idx_cobros_flow_token on cobros(flow_token) where flow_token is not null;
-```
-
-**Después las funciones:**
-
-```
-supabase functions deploy pay360-coupon      --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
-supabase functions deploy flow-order         --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy flow-confirm       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
-supabase functions deploy flow-return        --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
-supabase functions deploy register-buyer     --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy manage-store       --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy get-session        --project-ref ofdjghntvmrdfjhazfvz
-supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
-```
-
-**Y cuatro más, sin apuro, cuando la rama se junte con `main`.** El merge trajo el cobro
-automático en origen (`_shared/tracking.ts`) y ahí la condición pasó de
-`payment_provider === '360PAY'` a `esRielEnLinea(payment_provider)` —la misma que usa el
-panel—, así que las funciones que empaquetan ese módulo cargan una versión nueva. **No corre
-prisa:** sin desplegarlas rige la vieja, que con Flow apagado se comporta idéntico.
+**Falta esto, y no corre prisa.** El merge con `main` cambió `_shared/tracking.ts`: el cobro
+automático en origen pasó de `payment_provider === '360PAY'` a `esRielEnLinea(payment_provider)`
+—la misma condición que usa el panel—, así que las funciones que empaquetan ese módulo cargan
+una versión nueva. Sin desplegarlas rige la vieja, que **con Flow apagado se comporta idéntico**;
+lo que quedaría fuera es la tarjeta del saldo en origen para un pedido de Flow, y todavía no
+hay ninguno.
 
 ```
 supabase functions deploy shalom-webhook       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
@@ -84,13 +54,6 @@ supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfv
 supabase functions deploy olva-tracking        --project-ref ofdjghntvmrdfjhazfvz
 supabase functions deploy olva-tracking-sync   --project-ref ofdjghntvmrdfjhazfvz
 ```
-
-> ⚠️ **`pay360-coupon` en `main` llama a `columnasDe` sin importarlo** desde el commit
-> `be173da` (la mudanza al bloque §36). Si la función desplegada es la de ese commit o
-> posterior, **cada emisión de cupón de adelanto/saldo revienta** justo después de crear el
-> cupón en 360pay y de escribir la fila de `cobros`, y antes de espejar las columnas: el
-> comprador ve *"no pudimos generar tu pago"*, reintenta, y el segundo intento anula el primero
-> y emite otro. Se corrigió con una línea de import; **desplegarlo primero**.
 
 **Y los secretos de Flow, cuando lleguen** (Kross es el comercio integrador; son de plataforma,
 nada va a `store_secrets`):
@@ -100,9 +63,10 @@ supabase secrets set FLOW_API_KEY=… FLOW_SECRET_KEY=… --project-ref ofdjghnt
 supabase secrets set FLOW_API_KEY_LIVE=… FLOW_SECRET_KEY_LIVE=… --project-ref ofdjghntvmrdfjhazfvz
 ```
 
-Lo que falta para cobrar por Flow **no es código**: la cuenta de sandbox, conectar Kross Shop
-desde el panel y que Flow apruebe el comercio, y **resolver la unidad de `amount` para PEN** con
-una orden de S/10 mirando cuánto muestra su checkout. Ver `docs/12-FLOW.md` §7.
+Lo que falta para cobrar por Flow **no es código**: la cuenta de sandbox, que Flow apruebe el
+one-shot, conectar Kross Shop desde el panel —**eligiendo el ambiente antes**, que conectar es
+de un solo sentido— y **resolver la unidad de `amount` para PEN** con una orden de S/10 mirando
+cuánto muestra su checkout. Ver `docs/12-FLOW.md` §7.
 
 ### El vencimiento del cupón · SQL + `pay360-coupon` + `get-session` (31-ago-2026)
 

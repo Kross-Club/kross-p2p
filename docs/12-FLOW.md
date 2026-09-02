@@ -191,12 +191,27 @@ llaves son de plataforma — `FLOW_API_KEY`, `FLOW_SECRET_KEY`, `FLOW_API_KEY_LI
 | Paso | Estado |
 |---|---|
 | Cuenta de sandbox en `sandbox.flow.cl` y sus llaves → `supabase secrets set FLOW_API_KEY FLOW_SECRET_KEY` | ⏳ |
-| Correr §40 en el SQL Editor de `ofdjghntvmrdfjhazfvz` | ⏳ |
-| Desplegar `flow-order`, `flow-confirm --no-verify-jwt`, `flow-return --no-verify-jwt`, `register-buyer`, `manage-store`, `get-session`, `get-store-sessions` | ⏳ |
-| Conectar Kross Shop desde el panel y esperar la aprobación de Flow | ⏳ |
+| Correr §40 en el SQL Editor de `ofdjghntvmrdfjhazfvz` | ✅ 02-sep-2026 |
+| Desplegar `flow-order`, `flow-confirm --no-verify-jwt`, `flow-return --no-verify-jwt`, `register-buyer`, `manage-store`, `get-session`, `get-store-sessions` | ✅ 02-sep-2026 |
+| **Elegir el ambiente ANTES de conectar** (ver abajo) y conectar Kross Shop desde el panel; la aprobación la hace Flow | ⏳ |
 | **Resolver la unidad de `amount`**: crear una orden de S/10 y mirar cuánto muestra el checkout de Flow | ⏳ bloquea cobrar |
 | Pagar con la tarjeta de prueba de Perú y ver que `flow-confirm` cruza | ⏳ |
 | Pedir a Flow credenciales de prueba de Yape y el ID de Yape en *Medios de pago* | ⏳ |
 | Punta a punta desde la PWA instalada en Android: que el POST de vuelta llegue a la pestaña del pedido | ⏳ |
 | Encender el toggle en Kross Shop con un adelanto de S/5 | ⏳ |
 | Primera liquidación: `fixed` debe ser 0 | ⏳ |
+
+### Conectar es de un solo sentido
+
+`manage-store` da de alta el comercio **en el ambiente que esté elegido al momento del click**
+y guarda `flow_merchant_id`; un segundo intento rebota con `flow_ya_conectado` (409) porque dar
+de alta dos veces partiría la liquidación entre dos comercios. Por eso el selector de *Ambiente*
+se pinta **encima** del botón en el panel, y por eso conectar en pruebas y después querer
+producción **no se arregla desde la pantalla**. La salida es a mano, en el SQL Editor:
+
+```sql
+update stores set flow_merchant_id = null, flow_enabled = false where slug = '<marca>';
+```
+
+Y volver a conectar con *Producción* elegido. El comercio de sandbox queda huérfano en la cuenta
+de pruebas de Flow, que no molesta a nadie.
