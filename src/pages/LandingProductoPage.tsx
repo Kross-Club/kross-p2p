@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import CheckoutModal from '../components/checkout/CheckoutModal'
 import { COPY } from '../lib/checkout/checkout.config'
-import type { StorePay360 } from '../lib/checkout/types'
+import type { StoreFlow, StorePay360 } from '../lib/checkout/types'
 import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
@@ -46,6 +46,7 @@ export default function LandingProductoPage() {
   const [homeDelivery, setHomeDelivery] = useState(true)
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
   const [pay360, setPay360] = useState<StorePay360 | null>(null)
+  const [flow, setFlow] = useState<StoreFlow | null>(null)
   // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
   const [abMode, setAbMode] = useState<CheckoutAbMode>('SPLIT')
 
@@ -83,6 +84,16 @@ export default function LandingProductoPage() {
   useEffect(() => {
     const storeId = product?.store_id
     if (!storeId) return
+    // Flow va en su PROPIA consulta y no en la de abajo, a propósito: una
+    // columna que falta tumba el `select` entero, y con `pay360_enabled` adentro
+    // eso apagaría el cobro en línea de la única tienda que sí lo tiene — justo
+    // al mergear, que es cuando Vercel despliega el front y el SQL puede no
+    // haber corrido todavía. Best-effort: si falla, Flow queda apagado (el
+    // default seguro, igual que 360pay) y nada más cambia.
+    supabase.from('stores').select('flow_enabled').eq('id', storeId).maybeSingle()
+      .then(({ data }) => {
+        setFlow((data as { flow_enabled?: boolean | null } | null)?.flow_enabled ? { enabled: true } : null)
+      })
     supabase.from('stores')
       .select('home_delivery_enabled, pay360_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
       .eq('id', storeId).maybeSingle()
@@ -189,6 +200,7 @@ export default function LandingProductoPage() {
           onPartialLead={state => saveCheckoutDraft(state, product)}
           homeDeliveryEnabled={homeDelivery}
           pay360={pay360}
+          flow={flow}
           abMode={abMode}
           submitContext={{
             storeId: product.store_id ?? '',

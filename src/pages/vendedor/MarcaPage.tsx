@@ -36,6 +36,12 @@ interface StoreRow {
   /** Presencia = la marca ya es un negocio en 360pay. No es un secreto. */
   pay360_business_id?: string | null
   pay360_payment_prefix?: string | null
+  // Flow, el segundo riel (bloque §40). Presencia de `flow_merchant_id` = la
+  // marca ya es comercio asociado. Nada de esto es secreto.
+  flow_enabled?: boolean
+  flow_env?: string | null
+  flow_merchant_id?: string | null
+  flow_payment_method?: number | null
   // Envíos — cuenta Shalom Pro del cliente. El backend mezcla email y veredicto
   // desde `store_secrets`; el password jamás viaja al panel.
   shalom_pro_email?: string | null
@@ -65,6 +71,11 @@ const ERR: Record<string, string> = {
   pay360_alta_fallo: 'No pudimos crear la cuenta en 360pay. Revisa e inténtalo de nuevo.',
   pay360_sin_conectar: 'Conecta la marca con 360pay antes de encender el cobro.',
   pay360_nombre_invalido: 'Escribe el nombre del comercio para 360pay.',
+  flow_sin_llaves: 'Falta configurar las llaves de Flow en el servidor.',
+  flow_ya_conectado: 'Esta marca ya está conectada a Flow.',
+  flow_alta_fallo: 'No pudimos crear el comercio en Flow. Revisa e inténtalo de nuevo.',
+  flow_sin_conectar: 'Conecta la marca con Flow antes de encender el cobro.',
+  flow_nombre_invalido: 'Escribe el nombre del comercio para Flow.',
   shalom_credenciales_invalidas: 'Revisa el correo y la contraseña de Shalom Pro.',
   // Borrar. Cada uno nombra el seguro que saltó, no un "no se pudo": el que
   // borra tiene que saber cuál de las cinco condiciones no cumplió.
@@ -347,6 +358,14 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [pay360Name, setPay360Name] = useState(store.nombre ?? '')
   const [connecting, setConnecting] = useState(false)
   const pay360Connected = !!store.pay360_business_id
+  // Flow — mismo trato. El ID de Yape sale del portal de Flow (Medios de pago)
+  // y se teclea acá: con él el comprador cae directo en la pantalla de Yape.
+  const [flowOn, setFlowOn] = useState(!!store.flow_enabled)
+  const [flowEnv, setFlowEnv] = useState(store.flow_env === 'live' ? 'live' : 'sandbox')
+  const [flowMethod, setFlowMethod] = useState(store.flow_payment_method != null ? String(store.flow_payment_method) : '')
+  const [flowName, setFlowName] = useState(store.nombre ?? '')
+  const [connectingFlow, setConnectingFlow] = useState(false)
+  const flowConnected = !!store.flow_merchant_id
 
   // Envíos — la cuenta Shalom Pro del cliente (para crear guías y cotizar 🔮;
   // el rastreo de fases no la necesita). El password nunca vuelve del server.
@@ -432,6 +451,8 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
       // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
       // verificado para estos campos — redirigen dinero, no un logo).
       pay360_enabled: pay360On, pay360_env: pay360Env,
+      flow_enabled: flowOn, flow_env: flowEnv,
+      flow_payment_method: flowMethod.trim() ? Number(flowMethod.trim()) : null,
       // Pixel IDs (públicos): son la cuenta publicitaria de la marca. Vacío
       // pausa el pixel. Los tokens de CAPI van aparte (connectAdsCapi).
       meta_pixel_id: metaPixel.trim(), tiktok_pixel_id: tiktokPixel.trim(),
@@ -472,6 +493,24 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     // Se recarga en vez de mutar el estado local: el alta escribió el
     // business_id y el secreto del webhook del lado del servidor, y seguir con
     // una copia vieja en pantalla invitaría a darla de alta dos veces.
+    onSaved?.()
+  }
+
+  // Alta en Flow como comercio asociado. Aparte del guardado, por la misma
+  // razón que 360pay: crea un comercio REAL en un tercero y no se deshace.
+  const connectFlow = async () => {
+    if (connectingFlow || flowConnected) return
+    setConnectingFlow(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id,
+      flow_env: flowEnv,
+      flow_connect: { name: flowName.trim() },
+    })
+    setConnectingFlow(false)
+    if (!ok) {
+      setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No pudimos conectar con Flow.')
+      return
+    }
     onSaved?.()
   }
 
@@ -694,6 +733,79 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               onChange={e => setPay360Env(e.target.value === 'live' ? 'live' : 'sandbox')}
               disabled={pay360Connected}
               className="w-full bg-white border rounded-xl px-3 py-2 text-sm mb-3 disabled:opacity-50">
+              <option value="sandbox">Pruebas (sandbox)</option>
+              <option value="live">Producción</option>
+            </select>
+          </div>
+
+          {/* Flow: el segundo riel. Con los dos encendidos, el servidor manda
+              cada cobro por el que conviene (bajo S/90 Flow, desde S/90 360pay).
+              El comprador SALE a la página de Flow a pagar y vuelve solo. */}
+          <div className="mt-3 pt-3" style={{ borderTop: '0.5px solid var(--border)' }}>
+            <button onClick={() => flowConnected && setFlowOn(v => !v)}
+              className="w-full flex items-center justify-between mb-1"
+              style={{ opacity: flowConnected || flowOn ? 1 : 0.5 }}>
+              <span className="text-xs font-black" style={{ color: 'var(--violet-fg)' }}>
+                Cobrar con Yape por Flow
+              </span>
+              <span className="text-[10px] font-black px-2 py-1 rounded-full"
+                style={{ background: flowOn ? '#742284' : '#E5E7EB', color: flowOn ? '#fff' : '#6B7280' }}>
+                {flowOn ? 'ACTIVO' : 'APAGADO'}
+              </span>
+            </button>
+            <p className="text-[10px] text-gray-500 mb-2">
+              Conviene en cobros chicos (cobra un porcentaje, no un fijo). Con los dos encendidos,
+              cada cobro va por el riel que le sale más barato a la marca. El comprador paga en la
+              página de Flow con su código de aprobación de Yape y vuelve solo.
+            </p>
+
+            {flowConnected ? (
+              <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--violet-bg)' }}>
+                <p className="text-[10px] font-black" style={{ color: 'var(--violet-fg)' }}>
+                  ✓ Conectado · comercio {store.flow_merchant_id}
+                </p>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  Ambiente: <strong>{flowEnv === 'live' ? 'producción' : 'pruebas'}</strong>.
+                  La aprobación del comercio la hace Flow; hasta entonces las órdenes rebotan.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: 'var(--warn-bg-soft)' }}>
+                <label className="text-[10px] font-bold text-gray-600 mb-1 block">
+                  Nombre del comercio en Flow
+                </label>
+                <div className="flex gap-2">
+                  <input value={flowName} onChange={e => setFlowName(e.target.value)}
+                    placeholder="Kross Shop"
+                    className="flex-1 bg-white border rounded-xl px-3 py-2 text-sm outline-none" />
+                  <button onClick={connectFlow}
+                    disabled={connectingFlow || !flowName.trim()}
+                    className="rounded-xl px-3 py-2 text-xs font-black text-white disabled:opacity-40"
+                    style={{ background: '#742284' }}>
+                    {connectingFlow ? 'Conectando…' : 'Conectar con Flow'}
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1.5">
+                  Se crea el comercio asociado bajo la cuenta de Kross. <strong>Se hace una sola
+                  vez</strong> y no se puede deshacer desde aquí.
+                </p>
+              </div>
+            )}
+
+            <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+              ID de Yape en Flow (portal → Medios de pago)
+            </label>
+            <input value={flowMethod}
+              onChange={e => setFlowMethod(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+              placeholder="Vacío = el comprador elige el medio"
+              inputMode="numeric"
+              className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
+
+            <label className="text-[10px] font-bold text-gray-500 mb-1 block">Ambiente</label>
+            <select value={flowEnv}
+              onChange={e => setFlowEnv(e.target.value === 'live' ? 'live' : 'sandbox')}
+              disabled={flowConnected}
+              className="w-full bg-white border rounded-xl px-3 py-2 text-sm mb-1 disabled:opacity-50">
               <option value="sandbox">Pruebas (sandbox)</option>
               <option value="live">Producción</option>
             </select>

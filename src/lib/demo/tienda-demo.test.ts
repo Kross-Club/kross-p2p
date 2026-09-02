@@ -284,6 +284,28 @@ describe('el saldo en la tienda de ejemplo', () => {
     expect(dobles.every(p => p.buyers?.document_number)).toBe(true)
   })
 
+  // La comisión es lo que separa el monto que pagó el cliente del que entra a
+  // la cuenta, y es la línea nueva de la tarjeta. Sin esto el demo enseñaría el
+  // panel de antes.
+  it('los cobros que entraron llevan su comisión, y los pendientes no', () => {
+    const todos = t.pedidos.flatMap(p => cobrosDelPedido(p))
+    const entraron = todos.filter(c => c.verificado)
+    const pendientes = todos.filter(c => !c.verificado)
+
+    expect(entraron.length).toBeGreaterThan(10)
+    expect(entraron.every(c => c.comision != null && c.neto != null)).toBe(true)
+    // Un cupón emitido y sin pagar no tiene comisión: nadie descontó nada.
+    expect(pendientes.every(c => c.comision == null)).toBe(true)
+  })
+
+  it('y el neto es el monto menos la comisión, que es la resta que se ve', () => {
+    for (const c of t.pedidos.flatMap(p => cobrosDelPedido(p)).filter(c => c.verificado)) {
+      expect(c.neto).toBeCloseTo(c.monto - (c.comision ?? 0), 2)
+      // El piso de la tarifa: nunca deja al comercio con más de lo que pagó.
+      expect(c.comision).toBeGreaterThanOrEqual(1.20)
+    }
+  })
+
   // Los tres caminos, porque el desplegable de pagos ofrece solo los que existen:
   // sin uno de ellos, la opción no aparecería y el demo enseñaría de menos.
   it('enseña los tres cobros: adelanto, pago total y saldo', () => {

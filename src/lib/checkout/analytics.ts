@@ -59,6 +59,8 @@ export type CheckoutEvent =
   // puede no volver nunca a esta pantalla.
   | { name: 'pay360_coupon_issued'; orderId: string }
   | { name: 'pay360_issue_failed'; orderId: string; stage: string; code?: string }
+  | { name: 'flow_order_created'; orderId: string }
+  | { name: 'flow_issue_failed'; orderId: string; stage: string; code?: string }
   | { name: 'checkout_abandoned'; lastStep: CheckoutStepId }
 
 /** Destino de los eventos. Se reemplaza por el real sin tocar los call sites. */

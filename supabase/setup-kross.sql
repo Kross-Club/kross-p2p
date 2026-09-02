@@ -662,8 +662,12 @@ CREATE TRIGGER trg_complaints_codigo BEFORE INSERT ON complaints
 -- 16.a El cobro en línea entra a `payment_events` como un pago más: misma
 -- trazabilidad, misma tabla que audita cuánto cobró cada marca. `provider`
 -- distingue la fuente del dinero, `provider_charge_id` el identificador del
--- cobro en el proveedor, y `provider_fee_pen` la comisión en soles (para que la
--- marca vea lo que de verdad recibe). El anti-duplicado NO necesita índice
+-- cobro en el proveedor, y `provider_fee_pen` lo que se quedó LA PASARELA.
+--
+-- ⚠️ `provider_fee_pen` NO es lo que paga la marca, y decía que sí: guarda el
+-- `fee_platform` de 360pay (S/3.72), pero a la marca se le descuentan S/5.00 —
+-- la diferencia es el margen de Kross. Lo que paga la marca vive en
+-- `cobros.comision_pen` (§39). El anti-duplicado NO necesita índice
 -- nuevo: el `dedupe_key` prefijado por proveedor reutiliza el índice único
 -- (store_id, dedupe_key) del 13.c, así que un evento repetido choca en 23505 y
 -- es no-op.
@@ -1630,3 +1634,95 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_cobro ON chat_messages(cobro_id) WH
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('shalom-guias', 'shalom-guias', true)
 ON CONFLICT (id) DO NOTHING;
+
+
+-- §39 · LO QUE SE LE DESCONTÓ AL COMERCIO POR CADA COBRO  (01-sep-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Hasta acá el comercio no tenía dónde ver su comisión, y no por olvido: era
+-- SIEMPRE la misma —S/5.00 planos de 360pay— así que no había nada que mirar.
+-- Eso deja de ser cierto con la tarifa propia de Kross (5% + S/1.20, en
+-- `_shared/comision.ts`) y con una segunda pasarela cuyo costo es un
+-- PORCENTAJE: dos cobros del mismo pedido ya no pagan lo mismo.
+--
+--   comision_pen        lo que se le descontó al comercio
+--   costo_pasarela_pen  la parte que se quedó el riel; el resto es de Kross
+--
+-- ⚠️ **Salen del EVENTO, no del cálculo.** 360pay manda el desglose al pagarse
+-- (`fee_platform` + `fee_partner`, verificado contra el primer pago real:
+-- 3.72 + 1.28 = 5.00) y esa es la cifra que vale, porque es la que de verdad
+-- se descuenta de la liquidación. Lo que Kross calcula es la EXPECTATIVA, y
+-- sirve para otra cosa: si no coincide, el config del business quedó con la
+-- tarifa vieja. Eso hoy no lo avisaría nadie.
+--
+-- ⚠️ **NULL cuando el evento no trajo desglose, y no se rellena con el
+-- cálculo.** Confundir una comisión medida con una estimada es el mismo error
+-- que `order-money.ts` no se permite con el dinero —un adelanto declarado no es
+-- plata que entró—: con NULL la tarjeta no pinta la línea, con un número
+-- inventado pintaría una mentira que nadie podría distinguir.
+--
+-- Se CONGELAN al cobrarse. Cambiar la tarifa mañana no puede reescribir lo ya
+-- liquidado, igual que `saldo_amount` no se mueve al pagarse (§31).
+--
+-- Van en `cobros` y no en `order_sessions` porque un pedido tiene N cobros y
+-- cada uno paga su propia comisión: con tarifa `% + fijo`, partir un pedido en
+-- adelanto + saldo paga la parte fija DOS veces. Es correcto —son dos
+-- operaciones bancarias— pero solo se puede ver si cada fila lleva la suya.
+ALTER TABLE cobros ADD COLUMN IF NOT EXISTS comision_pen       numeric;
+ALTER TABLE cobros ADD COLUMN IF NOT EXISTS costo_pasarela_pen numeric;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §40 · FLOW PAGOS, EL SEGUNDO RIEL  (01-sep-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Hasta acá había UN riel de cobro en línea, 360pay, y por eso `payment_provider`
+-- solo valía '360PAY' o NULL. Flow es el segundo: cobra un porcentaje (3.5% +
+-- IGV) en vez de un fijo, así que conviene para los cobros chicos, y el corte
+-- entre los dos está en S/90 (`_shared/comision.ts`, `CRUCE_DE_RIELES`).
+--
+-- El modelo es distinto al de 360pay y hay que tenerlo en la cabeza al tocar
+-- cualquier cosa de acá: Flow es un CHECKOUT ALOJADO. `payment/create` devuelve
+-- un enlace, el comprador SALE de la PWA a la página de Flow, ahí teclea su
+-- celular y su código de aprobación de Yape, y Flow lo devuelve con un POST del
+-- navegador (`flow-return`) después de avisar por webhook (`flow-confirm`).
+-- No hay cupón, no hay deeplink, no hay "cupón más antiguo": cada orden es suya.
+--
+-- Kross es COMERCIO INTEGRADOR y cada marca un comercio asociado
+-- (`merchant/create`), igual que la llave de partner + business_id de 360pay.
+-- La API key y la secret key son de PLATAFORMA (FLOW_API_KEY / FLOW_SECRET_KEY
+-- y sus `_LIVE`, en los secretos de las Edge Functions): NADA va a
+-- `store_secrets`. La plata le llega a cada comercio y la comisión de Kross se
+-- consigna aparte, por contrato — no se modela acá.
+
+-- 39.a Identificadores del comercio en Flow. No son secretos: solo arman la
+-- orden, y viven en `stores` (SELECT público) como sus pares `pay360_*`.
+--   flow_merchant_id      el `id` que le dimos al comercio asociado
+--   flow_payment_method   el ID de Yape en el portal de Flow ("Medios de
+--                         pago"); con él el comprador cae DIRECTO en la
+--                         pantalla de Yape, sin el selector. NULL = selector.
+--   flow_env              por tienda, como pay360_env y por la misma razón.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS flow_enabled        boolean DEFAULT false;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS flow_merchant_id    text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS flow_payment_method integer;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS flow_env            text DEFAULT 'sandbox';
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_flow_env_check;
+ALTER TABLE stores ADD CONSTRAINT stores_flow_env_check
+  CHECK (flow_env IS NULL OR flow_env = ANY (ARRAY['sandbox'::text, 'live'::text]));
+
+-- 39.b La orden de Flow de cada cobro, en su fila (bloque §36). NO hay columnas
+-- espejo en `order_sessions`: Flow nace después de la mudanza, y la única
+-- razón de las columnas viejas era lo que las leía antes de la tabla.
+--   flow_token     el token de la orden — es lo ÚNICO que trae el webhook, y
+--                  por donde se vuelve a encontrar esta fila.
+--   flow_pay_url   el enlace del checkout. Se guarda para REUTILIZARLO mientras
+--                  la orden siga pendiente: emitir otra sobre un pago que el
+--                  comprador tiene abierto en otra pestaña deja una orden vieja
+--                  que, si se paga, ninguna fila conoce.
+ALTER TABLE cobros ADD COLUMN IF NOT EXISTS flow_token   text;
+ALTER TABLE cobros ADD COLUMN IF NOT EXISTS flow_pay_url text;
+CREATE INDEX IF NOT EXISTS idx_cobros_flow_token ON cobros(flow_token) WHERE flow_token IS NOT NULL;
+
+-- 39.c `payment_provider` gana el valor 'FLOW'. Sigue siendo texto libre por
+-- lista blanca en `register-buyer`; la lista vive en `_shared/comision.ts`
+-- (`RIELES`) y ES la única definición de "cobra en línea".

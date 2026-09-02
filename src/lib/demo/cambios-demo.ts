@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { comisionDeKross, costoDePasarela, proveedorPara } from '../../../supabase/functions/_shared/comision.ts'
 import { siguientePaso } from '../order-tracking'
 import { resumenDelPedido } from '../../../supabase/functions/_shared/resumen-pedido.ts'
 import { cobradoDelPedido, saldoDelPedido } from '../order-money'
@@ -268,6 +269,33 @@ export function cobroEnviadoEnDemo(
   return msg
 }
 
+// ─── La comisión de un cobro, en el demo ─────────────────────────────────────
+//
+// En una tienda real estos dos números salen del EVENTO de la pasarela: es lo
+// que de verdad se descontó (bloque §39). Acá no hay pasarela, así que se
+// derivan de la tarifa (`_shared/comision.ts`) sobre el monto — que es
+// exactamente lo que esa tarifa produciría, o sea que el demo enseña la cifra
+// correcta y no una inventada.
+//
+// Vive acá y no en el generador porque lo usan LOS DOS: el generador, para los
+// cobros que nacen pagados, y los cambios, para el que el usuario paga durante
+// la demo. Si cada uno lo calculara por su lado, el cobro que acabas de pagar
+// podría enseñar otra comisión que el de al lado.
+//
+// ⚠️ **Cero `r()`**: sale del monto y nada más. Una tirada dentro del generador
+// le correría el azar a todos los pedidos de abajo (el aviso de CLAUDE.md).
+//
+// Y **solo si el cobro entró**: un cupón emitido y sin pagar no tiene comisión
+// todavía, igual que en producción. Nadie descontó nada.
+export function comisionDemo(monto: number | string, entro: boolean) {
+  if (!entro) return { comision_pen: null, costo_pasarela_pen: null }
+  const m = Math.max(0, Number(monto) || 0)
+  return {
+    comision_pen: comisionDeKross(m),
+    costo_pasarela_pen: costoDePasarela(m, proveedorPara(m)),
+  }
+}
+
 /**
  * El comprador pagó el saldo — segundo tiempo del cobro.
  *
@@ -300,16 +328,21 @@ export function saldoPagadoEnDemo(p: PedidoDemo): CambioDemo {
   // tarjeta del saldo no se ponía verde: desaparecía. `saldoPorCobrar` deja de
   // devolverla en cuanto el saldo está cruzado, y no había ninguna fila que
   // ocupara su lugar.
+  // Y la COMISIÓN va con la fila, igual que la escribe el webhook (bloque §39):
+  // sin ella, el cobro que el usuario acaba de pagar sería el único de la
+  // pantalla sin su línea de "recibes".
   const previos = p.cobros ?? []
   const suyo = previos.find(c => c.tipo === 'saldo')
   const cobros = suyo
-    ? previos.map(c => c.tipo === 'saldo' ? { ...c, monto, estado: 'MATCHED', matched_at: cuando } : c)
+    ? previos.map(c => c.tipo === 'saldo'
+        ? { ...c, monto, estado: 'MATCHED', matched_at: cuando, ...comisionDemo(monto, true) }
+        : c)
     : [...previos, {
         // El mismo formato que el generador (`demo-cob-<i>-s`), para que el
         // comprobante lo encuentre por el camino corto.
         id: `demo-cob-${/demo-ped-(\d+)/.exec(p.id)?.[1] ?? p.id}-s`,
         tipo: 'saldo' as const, monto, estado: 'MATCHED',
-        matched_at: cuando, created_at: cuando,
+        matched_at: cuando, created_at: cuando, ...comisionDemo(monto, true),
       }]
 
   // El rastro del cobro, con la MISMA convención del generador: el saldo va en
@@ -903,6 +936,7 @@ export function cobroExtraPagadoEnDemo(p: PedidoDemo, cobroId: string): CambioDe
   const cobros = (p.cobros ?? []).map(c =>
     c.id === cobroId
       ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString(),
+          ...comisionDemo(c.monto, true),
           // El código de pago del COMPRADOR, que es el que usa un extra en la
           // tienda real (`pay360-coupon` emite con `session.pay360_consumer_code`,
           // estable por comprador). Sin él la tarjeta verde salía sin código.

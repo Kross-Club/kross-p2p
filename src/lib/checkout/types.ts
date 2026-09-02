@@ -58,6 +58,12 @@ export interface StorePay360 {
   enabled: boolean
 }
 
+/** Flow, el segundo riel (checkout alojado con redirect). Misma forma y mismo
+ *  trato que `StorePay360`: es config de la tienda, no del borrador. */
+export interface StoreFlow {
+  enabled: boolean
+}
+
 export interface CustomerInfo {
   dni: string
   whatsapp: string
@@ -178,6 +184,9 @@ export interface CheckoutState {
    * activo no pueda forzarlo en una tienda que lo apagó.
    */
   pay360: StorePay360 | null
+  /** Íd. para Flow. Qué riel cobra este pedido lo decide el SERVIDOR al
+   *  registrarlo (`register-buyer`, por monto); acá solo se sabe si hay alguno. */
+  flow: StoreFlow | null
   /**
    * Precio de LISTA del pack elegido, tal como vino del producto. Entra al
    * estado con `SET_PACK` porque el adelanto pasó a ser un porcentaje del

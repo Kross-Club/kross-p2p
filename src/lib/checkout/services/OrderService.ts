@@ -7,7 +7,7 @@
 // comprador toca dos veces con 4G lenta, el backend devuelve el pedido ya
 // creado en vez de crear otro. Ver docs/01-SALES-ENGINE.md §3.1.
 
-import { pay360ActiveFor } from '../checkout.config'
+import { preferredRailFor } from '../checkout.config'
 import type { CheckoutState, DispatchType } from '../types'
 import { captureAttribution, type Attribution } from '../../pixels/attribution'
 
@@ -35,6 +35,10 @@ export interface SubmitResult {
   session_id?: string
   /** El backend devolvió un pedido que ya existía: fue un doble envío. */
   idempotent?: boolean
+  /** Por qué riel se cobra este pedido — lo DECIDE el servidor, por monto.
+   *  Ausente en una función desplegada antes del ruteo: el modal cae a lo que
+   *  él mismo prefirió. `null` = sin cobro en línea. */
+  payment_provider?: string | null
 }
 
 /** Dirección legible del pedido, según la rama. Es lo que ve Logística. */
@@ -114,9 +118,10 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       // ella el pedido puede generar su guía solo (02 §Generador de envíos).
       agency_branch_id: usesAgency ? (s.pickup.branchId ?? undefined) : undefined,
       payment_method: s.advanceAmount > 0 ? 'YAPE_PLIN' : 'CONTRAENTREGA',
-      // El provider marca de dónde va a llegar el dinero. Para una tienda sin
-      // cobro en línea el campo ni viaja: el adelanto lo coordina un asesor.
-      payment_provider: pay360ActiveFor(s) ? '360PAY' : undefined,
+      // El riel que el front PREFIERE. Para una tienda sin cobro en línea el
+      // campo ni viaja: el adelanto lo coordina un asesor. Con los dos rieles
+      // encendidos el servidor rutea por monto y devuelve el que tocó.
+      payment_provider: preferredRailFor(s),
       closed_by: 'DIRECT_CHECKOUT',
       // Con cuál de las dos versiones se cerró. Sin esto el experimento no se
       // puede leer: se sabría cuánta gente vio cada una pero no cuál vendió.

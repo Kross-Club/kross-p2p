@@ -34,6 +34,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
+import { columnasDe } from '../_shared/cobros.ts'
 import {
   annulCoupon, consumerCodeFor, createCoupon, getCoupon, isPaid,
   couponExpiryFrom, createCustomer, pay360BaseUrl, paymentUrlOf, pickPartnerKey, yapeDeeplink,

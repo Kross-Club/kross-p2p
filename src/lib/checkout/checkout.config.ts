@@ -177,6 +177,36 @@ export function pay360ActiveFor(
   return !!s.pay360?.enabled && s.advanceAmount > 0 && !!s.locationType
 }
 
+/**
+ * ¿Este pedido se cobra en línea, por CUALQUIER riel?
+ *
+ * Es lo que decide la pantalla del paso 3 (con cobro en línea no se muestra la
+ * caja manual de Yape) y qué se manda a `register-buyer`. **Cuál** riel no se
+ * decide acá: lo decide el servidor por monto al registrar, y el modal sigue
+ * lo que el servidor le devuelva. Decidirlo en el front sería decidirlo dos
+ * veces, y el corte de S/90 vive en un solo sitio (`_shared/comision.ts`).
+ */
+export function onlinePayActiveFor(
+  s: Pick<CheckoutState, 'pay360' | 'flow' | 'locationType' | 'advanceAmount'>,
+): boolean {
+  return (!!s.pay360?.enabled || !!s.flow?.enabled) && s.advanceAmount > 0 && !!s.locationType
+}
+
+/**
+ * El riel que el front PREFIERE, para mandárselo a `register-buyer`.
+ *
+ * Es una preferencia, no una decisión: con los dos encendidos el servidor
+ * rutea por monto y puede devolver el otro. Existe para que una función
+ * desplegada antes del ruteo —que solo entiende `'360PAY'`— siga cobrando
+ * igual en una tienda que solo tiene 360pay.
+ */
+export function preferredRailFor(
+  s: Pick<CheckoutState, 'pay360' | 'flow' | 'locationType' | 'advanceAmount'>,
+): '360PAY' | 'FLOW' | undefined {
+  if (!onlinePayActiveFor(s)) return undefined
+  return s.pay360?.enabled ? '360PAY' : 'FLOW'
+}
+
 // ─── Verificación del adelanto ───────────────────────────────────────────────
 
 /**
@@ -309,6 +339,10 @@ export const COPY = {
   pay360Waiting: 'Esperando tu pago por Yape…',
   pay360WaitingHint: 'Apenas Yape confirme, esta pantalla cambia sola. Puedes cerrarla: tu pedido ya está registrado.',
   pay360IssueFailed: 'No pudimos generar tu pago. Vuelve a intentarlo.',
+  // Flow: el comprador SALE de la PWA a la página de pago. Se le dice antes de
+  // que la pantalla cambie sola, y sin nombrar el motor — para él es Yape.
+  flowRedirecting: 'Te llevamos a pagar con Yape…',
+  flowRedirectingHint: 'Se abre la página de pago. Ahí ingresas tu celular y tu código de aprobación de Yape, y vuelves solo a tu pedido.',
 
   submit: 'Terminar mi pedido',
   submitting: 'Registrando tu pedido…',

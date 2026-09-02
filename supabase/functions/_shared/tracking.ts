@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { mensajeDeOrigen } from './mensaje-de-guia.ts'
 import { soles, textoDeCobro } from './cobro-por-chat.ts'
+import { esRielEnLinea } from './comision.ts'
 
 // ─── Reflejo de tracking en el pedido — lógica COMPARTIDA entre couriers ─────
 // La usan todas las entradas que deben comportarse idéntico:
@@ -128,7 +129,7 @@ async function onTransition(row: TrackedRow, phase: Phase) {
     // cupón emitido al tocar el botón. Solo si hay deuda de verdad (adelanto
     // cruzado, saldo sin cruzar), la tienda cobra en línea, y nadie la mandó ya.
     const saldo = saldoOf(row)
-    if (saldo > 0 && row.payment_verification === 'MATCHED' && row.payment_provider === '360PAY'
+    if (saldo > 0 && row.payment_verification === 'MATCHED' && esRielEnLinea(row.payment_provider)
       && !(await yaSeCobroElSaldoPorChat(row.id))) {
       await chatMessage(row.id, textoDeCobro(soles(saldo)), 'all', { type: 'cobro' })
     }

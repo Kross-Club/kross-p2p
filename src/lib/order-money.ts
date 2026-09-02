@@ -16,6 +16,8 @@
 
 import { cobrosVivos, entro } from '../../supabase/functions/_shared/cobros.ts'
 import type { FilaDeCobro } from '../../supabase/functions/_shared/cobros.ts'
+import { esRielEnLinea } from '../../supabase/functions/_shared/comision.ts'
+import type { Proveedor } from '../../supabase/functions/_shared/comision.ts'
 
 export interface PedidoConPlata {
   /** La LISTA de cobros (bloque §36). Cuando viene, manda: es el modelo nuevo,
@@ -69,11 +71,23 @@ export interface Cobro {
   id?: string | null
   /** Solo en los `extra`: qué se está cobrando. */
   concepto?: string | null
+  /** Lo que se le descontó al comercio por este cobro, y lo que le queda
+   *  después (bloque §39). `null` = el evento de la pasarela no trajo desglose,
+   *  y entonces no se pinta nada: una comisión estimada al lado de un monto
+   *  real se leería como medida. Solo viajan al VENDEDOR — lo que el comercio
+   *  le paga a Kross no es asunto de quien compró. */
+  comision?: number | null
+  neto?: number | null
   /** Lo que hace falta para seguirlo y para saber si su cupón sirve. */
   matchedAt?: string | null
   venceEl?: string | null
   couponId?: string | null
   paymentCode?: string | null
+  /** Por qué riel se cobró (o se está cobrando) ESTE cobro. Sale de la fila
+   *  —un cobro tiene el cupón de 360pay o el token de Flow, nunca ambos— y no
+   *  del pedido: con dos rieles, el pedido no dice por dónde fue cada uno. `null`
+   *  en los cobros leídos de las columnas viejas, que son todos de 360pay. */
+  riel?: Proveedor | null
   /** La fila de `cobros` tal cual, cuando el cobro viene de la tabla (§36).
    *  Está para que quien necesite una regla del modelo —"¿esto se puede dar de
    *  baja?"— se la pregunte a `_shared/cobros.ts` en vez de volver a escribirla
@@ -148,11 +162,21 @@ const tipoDelPrimero = (monto: number, valor: number): TipoDeCobro =>
 /** Una fila de `cobros`, leída como lo que la pantalla necesita. */
 function deFila(f: FilaDeCobro, valor: number): Cobro {
   const monto = Math.max(0, num(f.monto))
+  // El tope contra el valor es solo del primero: un `extra` es plata ADEMÁS
+  // del precio (un flete), así que recortarlo sería perderlo.
+  const cobrado = f.tipo === 'adelanto' ? Math.min(monto, valor || monto) : monto
+  // La comisión se lee, no se calcula: la aplica la pasarela y la guardó el
+  // webhook desde el evento (§39). Recalcularla acá daría un segundo número
+  // para lo mismo, y el que se vería no sería el que se descontó.
+  const comision = f.comision_pen == null ? null : Math.max(0, num(f.comision_pen))
   return {
     tipo: f.tipo === 'adelanto' ? tipoDelPrimero(monto, valor) : f.tipo === 'saldo' ? 'saldo' : 'extra',
-    // El tope contra el valor es solo del primero: un `extra` es plata ADEMÁS
-    // del precio (un flete), así que recortarlo sería perderlo.
-    monto: f.tipo === 'adelanto' ? Math.min(monto, valor || monto) : monto,
+    monto: cobrado,
+    comision,
+    // Se resta contra el monto QUE SE MUESTRA, no contra el de la fila: si el
+    // tope de arriba recortó algo, un neto sacado del otro no cuadraría con la
+    // resta que cualquiera haría mirando la tarjeta.
+    neto: comision == null ? null : Math.max(0, Math.round((cobrado - comision) * 100) / 100),
     verificado: entro(f),
     id: f.id,
     concepto: f.concepto ?? null,
@@ -160,6 +184,7 @@ function deFila(f: FilaDeCobro, valor: number): Cobro {
     venceEl: f.coupon_expires_at ?? null,
     couponId: f.pay360_coupon_id ?? null,
     paymentCode: f.pay360_consumer_code ?? null,
+    riel: f.flow_token ? 'FLOW' : f.pay360_coupon_id ? '360PAY' : null,
     // La fila entera, para poder preguntarle a la REGLA —`sePuedeBorrar`— en
     // vez de reescribirla acá. Es lo único que no se puede reconstruir desde
     // los campos de arriba sin volver a decidir lo que ya decidió el modelo.
@@ -272,6 +297,20 @@ export function avanceDelPago(p: PedidoConPlata): AvancePago {
 export { soles } from '../../supabase/functions/_shared/cobro-por-chat.ts'
 
 /**
+ * Soles CON céntimos. La excepción a la regla de arriba, y tiene una razón
+ * estrecha: la comisión.
+ *
+ * Redondear al sol vale para los montos porque los céntimos no cambian ninguna
+ * decisión. En una comisión sí la cambian: S/1.45 pintado como "S/ 1" hace que
+ * el neto no cuadre con la resta que cualquiera haría mirando la tarjeta, y
+ * discutir un descuento de comisión con un número redondeado es discutir otro
+ * número. Se usa solo donde el céntimo es el dato, no en los montos.
+ */
+export function solesExactos(n: number | string | null | undefined): string {
+  return `S/ ${num(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/**
  * ¿Se le puede ofrecer al comprador pagar su saldo ahora mismo?
  *
  * Vive acá y no en el botón que lo pregunta porque es una regla de PLATA, y la
@@ -283,7 +322,8 @@ export { soles } from '../../supabase/functions/_shared/cobro-por-chat.ts'
  *     antiguo, así que con el adelanto sin pagar, quien viene a pagar el saldo
  *     terminaría pagando el adelanto — por otro monto;
  *   · la tienda cobra en línea. Prometer un botón que no cobra es peor que no
- *     ponerlo: sin `360PAY` el saldo lo coordina el asesor por el chat.
+ *     ponerlo: sin riel el saldo lo coordina el asesor por el chat. Cuál riel
+ *     lo decide `esRielEnLinea` —la única definición—, no un literal acá.
  */
 /**
  * El saldo que se puede cobrar y **todavía no es una fila**.
@@ -313,7 +353,7 @@ export function puedePagarSaldo(p: PedidoConPlata & {
 }): boolean {
   const falta = Math.max(0, valorDelPedido(p) - Math.max(0, num(p.advance_amount)))
   return falta > 0
-    && p.payment_provider === '360PAY'
+    && esRielEnLinea(p.payment_provider)
     && cruzado(p.payment_verification)
     && !cruzado(p.saldo_verification)
 }

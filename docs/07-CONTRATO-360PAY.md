@@ -48,6 +48,9 @@ fuerza mayor (§4.3).
 
 ## 3. Tarifario (Anexo III)
 
+> Esto es lo que **360pay** cobra. Lo que **Kross** le cobra al comercio dejó de ser
+> lo mismo el 01-sep-2026 — ver §9.
+
 | Concepto | Importe | Quién lo paga |
 |---|---|---|
 | **COMISIÓN DE EL CLIENTE** | 0.5% incl. IGV, **mínimo S/5.00 incl. IGV** por transacción | El comerciante referido, cobrada vía split |
@@ -114,6 +117,10 @@ gratis de ese riesgo: el ajuste recién aplica desde el tercero.
 
 ## 6. Cómo se cobra la comisión en Kross (decidido)
 
+> Lo de acá sigue vigente en la MECÁNICA —el cupón se emite por el adelanto y la
+> comisión la absorbe el comercio, no el comprador—. Lo que cambió es el IMPORTE:
+> ya no son S/5 planos, ver §9.
+
 El contrato (§4.2) describe un split donde el abonante paga *principal +
 comisión* y el comercio recibe el principal íntegro. **Kross no lo usa así.**
 
@@ -178,3 +185,104 @@ alcance— evitaría cobros que no le dejan nada al comercio.
 
 La liquidación entra a una cuenta corriente en soles del BCP a nombre del
 firmante. El número está en el PDF, no aquí.
+
+## 9. La tarifa de Kross (01-sep-2026)
+
+Hasta acá Kross no tenía precio propio: al comercio se le descontaba el tarifario de 360pay
+tal cual —S/5.00 planos— y el margen era el residuo del split (S/1.28). Con **Flow Pagos**
+entrando como segundo riel (3.5% + IGV) el costo deja de ser plano, así que la tarifa pasa
+a ser de Kross y la misma en los dos:
+
+> **5% del cobro + S/1.20**, IGV incluido.
+
+**Igual para todos los comercios, y no es una simplificación.** Quien cobra es la pasarela
+—descuenta vía split y consigna la parte de Kross directo—, así que un precio por tienda se
+negocia en el contrato de esa tienda con la pasarela, no en una columna de `stores`. Una
+columna por tienda daría a entender que el panel puede cambiar lo que la pasarela descuenta,
+y no puede.
+
+### Por qué S/1.20 y no S/1.00
+
+El 5% le gana al 4.13% de Flow por apenas 87 puntos básicos, así que **casi todo el piso lo
+pone la parte fija**. Y con IGV incluido esa parte se divide entre 1.18 antes de quedar:
+
+| Parte fija | Piso bruto | Piso **neto de IGV** |
+|---|---|---|
+| S/1.00 | 1.00 | 0.85 |
+| **S/1.20** | 1.20 | **1.017** ✅ |
+
+El objetivo era un sol de margen mínimo. S/1.00 no lo daba; S/1.20 sí.
+
+### El corte de riel: S/90.00 exactos
+
+| Riel | Costo por transacción |
+|---|---|
+| 360pay | **S/3.72** planos (S/3.15 + IGV) · **S/4.51** si el mes cierra bajo 3,000 tx |
+| Flow Pagos | **4.13%** del monto (3.5% + IGV) |
+
+Se cruzan en `3.15 / 0.035 = 90`, y el resultado **no depende del IGV**: multiplica a los dos
+lados y se cancela. Así que la regla es **`≥ S/90 → 360pay, menos → Flow`**, y parte justo en
+el empate: a S/90 los dos rieles dejan el mismo margen, o sea que el ruteo no crea ningún
+salto. (En un mes penalizado a S/4.51 el corte se movería a S/109.)
+
+### La tabla
+
+| Monto | Kross cobra | Riel | Costo | **Margen** | El comercio recibe | (antes, S/5) |
+|---|---|---|---|---|---|---|
+| S/5 | 1.45 | Flow | 0.21 | **1.24** | 3.55 | 0.00 |
+| S/10 | 1.70 | Flow | 0.41 | **1.29** | 8.30 | 5.00 |
+| S/25 | 2.45 | Flow | 1.03 | **1.42** | 22.55 | 20.00 |
+| S/50 | 3.70 | Flow | 2.07 | **1.63** | 46.30 | 45.00 |
+| S/89 | 5.65 | Flow | 3.68 | **1.97** | 83.35 | 84.00 |
+| **S/90** | 5.70 | **360pay** | 3.72 | **1.98** | 84.30 | 85.00 |
+| S/100 | 6.20 | 360pay | 3.72 | **2.48** | 93.80 | 95.00 |
+| S/180 | 10.20 | 360pay | 3.72 | **6.48** | 169.80 | 175.00 |
+| S/300 | 16.20 | 360pay | 3.72 | **12.48** | 283.80 | 295.00 |
+
+Para el comercio la tarifa nueva es **más barata que la vieja hasta S/76** y más cara arriba.
+Es el intercambio correcto, y **cierra la deuda abierta de §6**: con S/5 planos, un adelanto de
+S/5 le dejaba S/0 al comercio; ahora le deja S/3.55.
+
+### ⚠️ Tres cosas que NO están resueltas
+
+**1. La pasarela tiene que estar configurada con esta tarifa.** Como el que cobra es 360pay,
+aplicarla significa reconfigurar el `config` del business (`commission_fixed_amount` /
+`commission_tiers[]`, `06-360PAY.md` §6.d). Tres preguntas para Edgar que el OpenAPI no
+responde: ¿se puede **actualizar** el config de un business ya creado, o solo se fija al alta
+—Kross Shop ya existe con la tarifa vieja—? ¿`commission_tiers[]` soporta **porcentaje +
+fijo**? ¿El mínimo de S/5.00 se aplica del lado del servidor?
+
+**2. El mínimo de S/5.00 del Anexo III muerde bajo S/76.** `5% + S/1.20` iguala los S/5 justo
+en S/76, así que por debajo 360pay le seguiría descontando S/5.00 al comercio aunque la tarifa
+diga S/2.45. En la zona que el corte le deja a 360pay (≥S/90) la tarifa es siempre ≥S/5.70 y el
+mínimo nunca muerde: **la tarifa nueva es coherente con el contrato solo si los cobros chicos
+se van a Flow.** Mientras Flow no exista se calcula y se muestra, pero se sigue liquidando a
+S/5. Bajarlo antes exige adenda firmada (§4.6).
+
+**3. El escalón de las 3,000 se auto-inflige.** El corte manda casi todo a Flow —casi ningún
+adelanto llega a S/90—, así que 360pay cerraría todos los meses bajo 3,000 y desde el tercer
+mes cobraría los US$300 (§4). Perseguir las 3,000 es peor que pagarlos: mandar un cobro de S/10
+a 360pay en vez de Flow cuesta S/3.31 extra, y llegar a 3,000 así costaría ~S/9,000 para
+ahorrar ~S/1,100. **Hay que renegociarlo con Edgar antes de noviembre**, o preparar la
+no-renovación — el contrato no tiene lock-in (30 días, sin penalidad, §7).
+
+### Dónde vive en el código
+
+`supabase/functions/_shared/comision.ts` — la tarifa, el costo de cada riel y el corte, en un
+solo sitio y sin efectos de red. Fijado en `src/lib/comision.test.ts` (**36 tests**), incluida
+la tabla de arriba caso por caso.
+
+⚠️ **Ese archivo NO cobra.** Cobra la pasarela; acá vive *el que sabe cuánto debió cobrarse*, y
+sirve para dos cosas: enseñarle al comercio lo que recibe, y **detectar que la pasarela se
+desvió de la tarifa**. Si lo calculado no coincide con lo descontado, el config del business
+quedó con la tarifa vieja — y eso hoy no lo avisaría nadie.
+
+Lo que se le descontó a cada cobro se guarda en su fila (`cobros.comision_pen` /
+`costo_pasarela_pen`, bloque §39), **sacado del evento y no del cálculo**: `fee_platform +
+fee_partner` es lo que de verdad se descuenta de la liquidación. Si el evento no trae desglose
+quedan en NULL y la tarjeta no pinta la línea — una comisión estimada al lado de un monto real
+se leería como medida, y es justo el número que se discute cuando una liquidación no cuadra.
+
+Van por cobro y no por pedido porque **con tarifa `% + fijo` la parte fija se paga dos veces**
+en un pedido partido en adelanto + saldo. Es correcto —son dos operaciones bancarias— pero
+tiene que estar en el tarifario que se le enseña al comercio, o es el primer reclamo que llega.

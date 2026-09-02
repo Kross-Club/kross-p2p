@@ -39,9 +39,21 @@ export interface FilaDeCobro {
   payment_event_id?: string | null
   pay360_coupon_id?: string | null
   pay360_consumer_code?: string | null
+  /** El riel Flow (bloque §40): el token de la orden —por donde el webhook
+   *  vuelve a encontrar esta fila— y el enlace del checkout, que se reutiliza
+   *  mientras la orden siga pendiente en vez de emitir otra. Un cobro tiene
+   *  UNO de los dos juegos de campos, nunca ambos: cada fila cobra por un riel. */
+  flow_token?: string | null
+  flow_pay_url?: string | null
   coupon_expires_at?: string | null
   /** Para los `extra`: qué se está cobrando. Un monto sin razón no se paga. */
   concepto?: string | null
+  /** Lo que se le descontó al comercio por este cobro, y lo que de eso se quedó
+   *  el riel (bloque §39). Salen del EVENTO de la pasarela, no del cálculo:
+   *  `null` significa que no vino desglose, y no se rellena — una comisión
+   *  estimada no se distingue de una medida una vez guardada. */
+  comision_pen?: number | string | null
+  costo_pasarela_pen?: number | string | null
   /** `auth_user_id` de quien lo creó a mano. NULL = lo emitió el sistema. */
   created_by?: string | null
   created_at?: string | null

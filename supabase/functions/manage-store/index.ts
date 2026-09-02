@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
+import { crearComercio, flowBaseUrl, pickFlowKeys, type FlowEnv } from '../_shared/flow.ts'
 import { shalomApiKey } from '../_shared/shalom.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 
@@ -66,6 +67,13 @@ Deno.serve(async (req) => {
     pay360_env?: string                // 'sandbox' | 'live'
     /** Da de alta la marca como negocio en 360pay. Ver `connectPay360`. */
     pay360_connect?: { payment_prefix?: string; name?: string }
+    // Flow, el segundo riel (bloque §40). Mismo trato que 360pay: JWT verificado.
+    flow_enabled?: boolean
+    flow_env?: string                  // 'sandbox' | 'live'
+    /** El ID de Yape en el portal de Flow. `null` = selector de medios. */
+    flow_payment_method?: number | null
+    /** Da de alta la marca como comercio asociado en Flow. */
+    flow_connect?: { name?: string }
     // Envíos — la cuenta Shalom Pro del cliente. SOLO por JWT verificado
     // (mismo trato que los cobros). `null` = desconectar. El password se
     // guarda en `store_secrets` y jamás vuelve en ninguna respuesta.
@@ -129,7 +137,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_merchant_id, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -325,6 +333,8 @@ Deno.serve(async (req) => {
     // campos redirigen dinero.
     const touchesPayments = body.pay360_enabled !== undefined
       || body.pay360_env !== undefined || body.pay360_connect !== undefined
+      || body.flow_enabled !== undefined || body.flow_env !== undefined
+      || body.flow_payment_method !== undefined || body.flow_connect !== undefined
     if (touchesPayments && !trusted) return json({ error: 'auth_requerida' }, 403)
 
     // ─── Envíos: la cuenta Shalom Pro de la marca ────────────────────────────
@@ -523,6 +533,57 @@ Deno.serve(async (req) => {
         .select('pay360_business_id').eq('id', targetId).maybeSingle()
       const connected = patch.pay360_business_id ?? st?.pay360_business_id
       if (!connected) return json({ error: 'pay360_sin_conectar' }, 400)
+    }
+
+    // ─── Flow (bloque §40) ────────────────────────────────────────────────────
+    if (typeof body.flow_enabled === 'boolean') patch.flow_enabled = body.flow_enabled
+    if (body.flow_env === 'sandbox' || body.flow_env === 'live') patch.flow_env = body.flow_env
+    if (body.flow_payment_method !== undefined) {
+      // El ID de Yape del portal de Flow. Entero o nada: un texto acá no es un
+      // medio de pago, es un dedazo.
+      const n = body.flow_payment_method === null ? null : Number(body.flow_payment_method)
+      patch.flow_payment_method = n === null ? null : (Number.isInteger(n) && n > 0 ? n : null)
+    }
+
+    // Alta como comercio asociado. Se hace UNA vez: el `id` que le damos es por
+    // el que se referencia en cada orden (`merchantId`), y darlo de alta dos
+    // veces partiría la liquidación entre dos comercios.
+    if (body.flow_connect) {
+      const { data: existing } = await supabase.from('stores')
+        .select('nombre, slug, flow_merchant_id, flow_env').eq('id', targetId).maybeSingle()
+      if (existing?.flow_merchant_id) return json({ error: 'flow_ya_conectado' }, 409)
+
+      const env: FlowEnv = (patch.flow_env ?? existing?.flow_env) === 'live' ? 'live' : 'sandbox'
+      const keys = pickFlowKeys(env, {
+        sandboxKey: Deno.env.get('FLOW_API_KEY') ?? '',
+        sandboxSecret: Deno.env.get('FLOW_SECRET_KEY') ?? '',
+        liveKey: Deno.env.get('FLOW_API_KEY_LIVE') ?? '',
+        liveSecret: Deno.env.get('FLOW_SECRET_KEY_LIVE') ?? '',
+      })
+      if (!keys.apiKey || !keys.secretKey) return json({ error: 'flow_sin_llaves' }, 400)
+
+      const name = String(body.flow_connect.name ?? existing?.nombre ?? targetId).trim().slice(0, 80)
+      if (!name) return json({ error: 'flow_nombre_invalido' }, 400)
+      const url = existing?.slug ? `https://${existing.slug}.krossclub.app` : 'https://krossclub.app'
+
+      const created = await crearComercio(flowBaseUrl(env), keys, { id: String(targetId), name, url })
+      if (!created.ok) {
+        console.error('[manage-store] flow alta falló', JSON.stringify({
+          status: created.status, error: created.error ?? null, env, key_len: keys.apiKey.length,
+        }))
+        return json({ error: 'flow_alta_fallo', detalle: created.error ?? null }, 502)
+      }
+      patch.flow_merchant_id = String(created.data.id ?? targetId)
+      patch.flow_env = env
+    }
+
+    // Mismo gate que 360pay: encender sin comercio dado de alta es pintar un
+    // botón que rebota en cada intento.
+    if (patch.flow_enabled === true) {
+      const { data: st } = await supabase.from('stores')
+        .select('flow_merchant_id').eq('id', targetId).maybeSingle()
+      const connected = patch.flow_merchant_id ?? st?.flow_merchant_id
+      if (!connected) return json({ error: 'flow_sin_conectar' }, 400)
     }
 
     if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom && !wroteAdsCapi) return json({ error: 'nada_que_guardar' }, 400)

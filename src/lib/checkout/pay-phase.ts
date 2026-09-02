@@ -25,10 +25,17 @@
 //   · un cupón que llega fuera de ISSUING se descarta: es la respuesta atrasada
 //     de un intento anterior, y su enlace apunta a un cupón ya anulado.
 
+import type { Proveedor } from '../../../supabase/functions/_shared/comision.ts'
+
 interface OrderRef {
   token: string
   orderCode: string
   sessionId: string
+  /** Por qué riel se cobra. Lo dijo el SERVIDOR al registrar; el modal lo
+   *  sigue. `null` = sin cobro en línea. Viaja en la referencia porque el
+   *  retry, que ocurre varios renders después, tiene que saber a qué servicio
+   *  volver a llamar. */
+  rail: Proveedor | null
 }
 
 /** Lo que el comprador necesita para ir a pagar: el botón y el respaldo. */
@@ -52,7 +59,7 @@ export type PayPhase =
 
 export type PayPhaseEvent =
   | ({ type: 'REGISTERED_MANUAL' } & OrderRef)     // sin cobro en línea: a DONE
-  | ({ type: 'REGISTERED_PAY360' } & OrderRef)     // con 360pay: a emitir cupón
+  | ({ type: 'REGISTERED_ONLINE' } & OrderRef)     // con riel: a emitir (cupón u orden)
   | { type: 'COUPON_ISSUED'; coupon: CouponRef }
   | { type: 'ISSUE_FAILED' }
   | { type: 'PAID' }                               // el polling vio MATCHED
@@ -77,40 +84,40 @@ export function payPhaseReducer(phase: PayPhase, ev: PayPhaseEvent): PayPhase {
   switch (ev.type) {
     case 'REGISTERED_MANUAL':
       return phase.k === 'IDLE'
-        ? { k: 'DONE', paid: false, token: ev.token, orderCode: ev.orderCode, sessionId: ev.sessionId }
+        ? { k: 'DONE', paid: false, token: ev.token, orderCode: ev.orderCode, sessionId: ev.sessionId, rail: null }
         : phase
-    case 'REGISTERED_PAY360':
+    case 'REGISTERED_ONLINE':
       return phase.k === 'IDLE'
-        ? { k: 'ISSUING', token: ev.token, orderCode: ev.orderCode, sessionId: ev.sessionId }
+        ? { k: 'ISSUING', token: ev.token, orderCode: ev.orderCode, sessionId: ev.sessionId, rail: ev.rail }
         : phase
     case 'COUPON_ISSUED':
       // Solo desde ISSUING: un cupón que llega en cualquier otro estado es una
       // respuesta atrasada de un intento anterior, y pintar su enlace mandaría
       // al comprador a pagar un cupón que ya se anuló.
       return phase.k === 'ISSUING'
-        ? { k: 'AWAITING', coupon: ev.coupon, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+        ? { k: 'AWAITING', coupon: ev.coupon, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId, rail: phase.rail }
         : phase
     case 'ISSUE_FAILED':
       return phase.k === 'ISSUING'
-        ? { k: 'ISSUE_FAILED', token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+        ? { k: 'ISSUE_FAILED', token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId, rail: phase.rail }
         : phase
     case 'PAID':
       // Desde AWAITING (el camino normal) y también desde ISSUE_FAILED: el
       // cupón anterior pudo pagarse mientras se reintentaba, y decirle "falló"
       // a quien ya pagó es el peor final posible.
       return (phase.k === 'AWAITING' || phase.k === 'ISSUE_FAILED' || phase.k === 'ISSUING')
-        ? { k: 'DONE', paid: true, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+        ? { k: 'DONE', paid: true, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId, rail: phase.rail }
         : phase
     case 'RETRY':
       // SOLO desde el estado de fallo: desde ISSUING sería el doble tap, y
       // desde AWAITING sería emitir un cupón nuevo teniendo uno vivo esperando
       // pago — y el banco cobra siempre el más antiguo.
       return phase.k === 'ISSUE_FAILED'
-        ? { k: 'ISSUING', token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+        ? { k: 'ISSUING', token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId, rail: phase.rail }
         : phase
     case 'GIVE_UP':
       return (phase.k === 'ISSUE_FAILED' || phase.k === 'AWAITING')
-        ? { k: 'DONE', paid: false, unpaid: true, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId }
+        ? { k: 'DONE', paid: false, unpaid: true, token: phase.token, orderCode: phase.orderCode, sessionId: phase.sessionId, rail: phase.rail }
         : phase
     default:
       return phase

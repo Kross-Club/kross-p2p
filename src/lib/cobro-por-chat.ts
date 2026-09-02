@@ -14,6 +14,8 @@
 // notificación. El tipo `cobro` solo le dice al chat del comprador que pinte el
 // botón de pago debajo del texto.
 
+import { esRielEnLinea } from '../../supabase/functions/_shared/comision.ts'
+
 /** El tipo de mensaje. Vale para las dos puntas: la que lo manda y la que lo
  *  pinta. Vive acá para que no se escriba a mano en dos archivos. */
 export const TIPO_COBRO = 'cobro'
@@ -79,7 +81,7 @@ export function seCobraPorChat(
 ): boolean {
   if (cobro.verificado || !(cobro.monto > 0)) return false
   if (cobro.tipo === 'adelanto' || cobro.tipo === 'total') return false
-  return pedido.payment_provider === '360PAY'
+  return esRielEnLinea(pedido.payment_provider)
 }
 
 /** El texto del cobro extra: lleva el concepto, porque un monto sin razón no lo

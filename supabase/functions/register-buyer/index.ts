@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push'
+import { esRielEnLinea, rielPara, type Proveedor } from '../_shared/comision.ts'
 import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 
@@ -354,9 +355,29 @@ Deno.serve(async (req) => {
       body_advance: bodyAdvance, derived: advanceAmount, price: finalPrice, choice: advanceChoice,
     }))
   }
+  // ─── El riel ───────────────────────────────────────────────────────────────
+  // El front manda su PREFERENCIA (o nada, si la tienda no cobra en línea); el
+  // servidor DECIDE. Es el único sitio donde se elige el riel, y se elige por
+  // el monto del adelanto contra los que la tienda de ORIGEN tiene encendidos:
+  // con los dos, manda el corte de S/90 (`_shared/comision.ts`); con uno, ese;
+  // y nunca uno apagado — un `'FLOW'` sin comercio dado de alta deja al
+  // comprador con un pedido creado y sin forma de pagarlo.
+  //
   // Lista blanca, no passthrough: este campo decide de qué piscina de cruce
-  // sale el pedido, así que un valor inventado lo dejaría fuera de las dos.
-  const paymentProvider = body.payment_provider === '360PAY' ? '360PAY' : null
+  // sale el pedido, así que un valor inventado lo dejaría fuera de todas.
+  let paymentProvider: Proveedor | null = null
+  if (advanceAmount > 0 && esRielEnLinea(body.payment_provider)) {
+    const { data: rieles } = await supabase.from('stores')
+      .select('pay360_enabled, flow_enabled').eq('id', body.store_id).maybeSingle()
+    const habilitados: Proveedor[] = [
+      ...(rieles?.pay360_enabled ? ['360PAY' as const] : []),
+      ...(rieles?.flow_enabled ? ['FLOW' as const] : []),
+    ]
+    // Sin fila de tienda (una columna aún sin migrar) se respeta la preferencia
+    // del front: es lo que hacía esta función antes del ruteo, y apagar el
+    // cobro por una columna nueva perdería ventas en silencio.
+    paymentProvider = rieles ? rielPara(advanceAmount, habilitados) : body.payment_provider
+  }
   const paymentVerification = advanceAmount > 0 ? 'PENDING' : 'NOT_REQUIRED'
 
   const { data, error } = await supabase
@@ -497,6 +518,9 @@ Deno.serve(async (req) => {
 
   await supabase.from('chat_messages').insert({
     session_id: data.id,
+    // El riel que DECIDIÓ este servidor. El modal lo sigue: es lo que separa
+    // "emitir un cupón de 360pay" de "mandarlo a la página de Flow".
+    payment_provider: paymentProvider,
     sender_role: 'seller',
     sender_name: assignedSellerName ?? 'Kross',
     sender_role_label: assignedSellerRole ?? 'Equipo',
@@ -591,6 +615,9 @@ Deno.serve(async (req) => {
     JSON.stringify({
       token: data.token,
       session_id: data.id,
+    // El riel que DECIDIÓ este servidor. El modal lo sigue: es lo que separa
+    // "emitir un cupón de 360pay" de "mandarlo a la página de Flow".
+    payment_provider: paymentProvider,
       // La rama idempotente ya lo devolvía; esta no, y el front hace
       // `setOrderCode(res.order_id)` — el código del pedido llegaba undefined
       // en todo pedido NUEVO. El reintento del cobro también lo necesita.

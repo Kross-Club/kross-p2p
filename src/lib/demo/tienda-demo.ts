@@ -4,7 +4,7 @@ import type { StoreOrder } from '../store-orders'
 import type { Cliente, PedidoDeCliente } from '../store-clients'
 import type { Curioso } from '../store-drafts'
 import type { GrupoEntrega } from '../mapa-entregas'
-import { claveDemoDeRecojo, codigoDemoDeGuia, conCambios, guardarCambio, GUIA_DEMO_PDF } from './cambios-demo'
+import { claveDemoDeRecojo, codigoDemoDeGuia, comisionDemo, conCambios, guardarCambio, GUIA_DEMO_PDF } from './cambios-demo'
 import { idsDeGuia, mensajeDeClave, mensajeDeGuia, mensajeDeOrigen } from '../../../supabase/functions/_shared/mensaje-de-guia.ts'
 import { acuseDePago } from '../../../supabase/functions/_shared/acuse-de-pago.ts'
 import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-por-chat.ts'
@@ -612,10 +612,12 @@ async function construir(): Promise<TiendaDemo> {
       cobros: [
         { id: `demo-cob-${i}-a`, tipo: 'adelanto' as const, monto: adelanto,
           estado: cruzado ? 'MATCHED' : 'PENDING', matched_at: cobradoEl,
+          ...comisionDemo(adelanto, cruzado),
           created_at: new Date(ahora - 9 * DIA).toISOString() },
         ...(saldoPagado || saldoEmitido ? [{
           id: `demo-cob-${i}-s`, tipo: 'saldo' as const, monto: falta,
           estado: saldoPagado ? 'MATCHED' : 'PENDING', matched_at: saldoCobradoEl,
+          ...comisionDemo(falta, saldoPagado),
           created_at: new Date(ahora - 2 * DIA).toISOString(),
         }] : []),
         // Y uno de cada diecisiete lleva un cobro EXTRA sin pagar —un flete—,
