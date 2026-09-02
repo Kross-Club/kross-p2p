@@ -84,8 +84,18 @@ export default function LandingProductoPage() {
   useEffect(() => {
     const storeId = product?.store_id
     if (!storeId) return
+    // Flow va en su PROPIA consulta y no en la de abajo, a propósito: una
+    // columna que falta tumba el `select` entero, y con `pay360_enabled` adentro
+    // eso apagaría el cobro en línea de la única tienda que sí lo tiene — justo
+    // al mergear, que es cuando Vercel despliega el front y el SQL puede no
+    // haber corrido todavía. Best-effort: si falla, Flow queda apagado (el
+    // default seguro, igual que 360pay) y nada más cambia.
+    supabase.from('stores').select('flow_enabled').eq('id', storeId).maybeSingle()
+      .then(({ data }) => {
+        setFlow((data as { flow_enabled?: boolean | null } | null)?.flow_enabled ? { enabled: true } : null)
+      })
     supabase.from('stores')
-      .select('home_delivery_enabled, pay360_enabled, flow_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
+      .select('home_delivery_enabled, pay360_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         // Degradación POR CAMPO: si el select entero falla (p. ej. una columna
@@ -100,8 +110,6 @@ export default function LandingProductoPage() {
         // es apagado — encenderlo sin negocio dado de alta deja al comprador
         // con un pedido creado y sin forma de pagar.
         setPay360(data.pay360_enabled ? { enabled: true } : null)
-        // Mismo default seguro que 360pay: sin la columna, apagado.
-        setFlow((data as { flow_enabled?: boolean | null }).flow_enabled ? { enabled: true } : null)
         // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
         // reparto por defecto nunca puede depender de un dato mal escrito.
         setAbMode(abModeOf(data.checkout_ab_mode))
