@@ -508,7 +508,18 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     })
     setConnectingFlow(false)
     if (!ok) {
-      setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No pudimos conectar con Flow.')
+      // El motivo de Flow se PINTA, no se traga: "reintenta" es un consejo
+      // inútil cuando la causa es que la cuenta no puede crear comercios.
+      const d = data as { error?: string; detalle?: string | null; status_flow?: number; red?: boolean }
+      const base = ERR[d.error ?? ''] ?? 'No pudimos conectar con Flow.'
+      const dicho = d.red
+        ? 'No hubo respuesta de Flow (red o timeout).'
+        : d.detalle
+          ? `Flow respondió ${d.status_flow ?? ''}: ${d.detalle}`
+          : d.status_flow
+            ? `Flow respondió ${d.status_flow}, sin mensaje.`
+            : ''
+      setErr(dicho ? `${base} ${dicho}` : base)
       return
     }
     onSaved?.()

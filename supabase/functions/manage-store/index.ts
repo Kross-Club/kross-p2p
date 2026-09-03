@@ -571,7 +571,13 @@ Deno.serve(async (req) => {
         console.error('[manage-store] flow alta falló', JSON.stringify({
           status: created.status, error: created.error ?? null, env, key_len: keys.apiKey.length,
         }))
-        return json({ error: 'flow_alta_fallo', detalle: created.error ?? null }, 502)
+        // El `status` viaja con el motivo: distingue "llaves malas" (401) de
+        // "tu cuenta no puede crear comercios" (403) de "faltó un campo" (400),
+        // y sin él la pantalla solo puede decir "reintenta". No lleva secretos.
+        return json({
+          error: 'flow_alta_fallo', detalle: created.error ?? null,
+          status_flow: created.status, red: created.network ?? false,
+        }, 502)
       }
       patch.flow_merchant_id = String(created.data.id ?? targetId)
       patch.flow_env = env
