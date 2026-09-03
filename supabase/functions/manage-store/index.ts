@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
-import { shalomApiKey } from '../_shared/shalom.ts'
+import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
+import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 
 const supabase = createClient(
@@ -172,20 +173,37 @@ Deno.serve(async (req) => {
     return json({ stores, is_super: isSuper })
   }
 
-  // ─── SHALOM STATUS (semáforo verde/rojo de la API de tracking/envíos) ───────
-  // Salud del proveedor (healthz es público, sin auth). Cuando está en rojo, el
-  // panel muestra el plan de contingencia manual: la guía se registra igual (el
-  // barrido la vigila solo cuando vuelva) y el estado se consulta a mano.
+  // ─── SHALOM STATUS (semáforo de los DOS proveedores de envíos) ─────────────
+  // Shalom no tiene API oficial: usamos dos de terceros —Shalom PE (titular) y
+  // Shalom LAT (contingencia)— y el sistema pasa solo de uno al otro. El panel
+  // necesita saber los dos por separado: con el titular caído todo sigue
+  // funcionando por la contingencia, y eso NO es lo mismo que estar sin API.
+  // `operational` = hay al menos un proveedor vivo, que es lo que decide si hay
+  // que mostrar el plan de contingencia MANUAL (registrar la guía igual, el
+  // barrido la vigila cuando vuelva, y consultar el estado a mano).
   if (body.action === 'shalom_status') {
-    const ctrl = new AbortController()
-    const t = setTimeout(() => ctrl.abort(), 5000)
-    let operational = false
-    try {
-      const r = await fetch('https://api.shalom-api-peru.com/healthz', { signal: ctrl.signal })
-      operational = r.ok
-    } catch { /* caído o timeout: queda false */ }
-    clearTimeout(t)
-    return json({ operational, checked_at: new Date().toISOString() })
+    const ping = async (url: string, headers: Record<string, string> = {}): Promise<boolean> => {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 5000)
+      try {
+        const r = await fetch(url, { headers, signal: ctrl.signal })
+        return r.ok
+      } catch {
+        return false // caído o timeout
+      } finally {
+        clearTimeout(t)
+      }
+    }
+    // El titular publica un `/healthz` sin auth. La contingencia no tiene uno:
+    // su chequeo es `GET /validate`, que además confirma que la key sigue
+    // activa — y por eso `null` cuando ni siquiera hay key configurada, que es
+    // "no está montada", no "está caída".
+    const keyLat = await shalomLatApiKey()
+    const [pe, lat] = await Promise.all([
+      ping('https://api.shalom-api-peru.com/healthz'),
+      keyLat ? ping(`${SHALOM_LAT_BASE}/validate`, { 'x-api-key': keyLat }) : Promise.resolve(null),
+    ])
+    return json({ operational: pe || lat === true, pe, lat, checked_at: new Date().toISOString() })
   }
 
   // ─── OLVA STATUS (mismo semáforo, otro proveedor) ───────────────────────────

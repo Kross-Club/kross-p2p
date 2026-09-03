@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 02-sep-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 03-sep-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -33,6 +33,60 @@ fecha de arriba.
 
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
+
+### Shalom con dos proveedores: contingencia si uno cae · SQL + 5 funciones (03-sep-2026)
+
+**Qué pasó.** Shalom no tiene API oficial —la que usamos es de un tercero— y un proveedor
+caído era un día sin guías automáticas y sin fases de envío. Ahora hay **dos**: **Shalom PE**
+(`api.shalom-api-peru.com`, el titular de siempre) y **Shalom LAT**
+(`api.shalom-api.lat`, la contingencia). El sistema intenta el titular y, solo si no
+responde, pasa al otro — rastreo puntual, barrido, webhook, suscripción y emisión de guías.
+Detalle en `docs/02-SMART-LOGISTICS.md` § *Los dos proveedores de Shalom*.
+
+**Qué se ve si no entra:** nada, todo sigue exactamente como está. Y **si entra el código sin
+la key**, también: sin `SHALOM_LAT_API_KEY` la contingencia no existe y el comportamiento es
+el de siempre. La key es lo que la enciende.
+
+**Primero el SQL** (bloques §22.b, §24.b, §25.b y §27.c-bis; idempotente):
+
+```sql
+-- 22.b / 24.b: los RPC de la llave y del secret de webhook de Shalom LAT
+--   (correr el archivo supabase/setup-kross.sql, o esos bloques sueltos)
+alter table store_secrets  add column if not exists shalom_lat_instance_id text;
+alter table order_sessions add column if not exists shalom_order_provider  text;
+```
+
+**Después la key** (con la key real; NUNCA pegarla en un chat ni en el repo):
+
+```
+supabase secrets set SHALOM_LAT_API_KEY=<la-key> --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> O en Vault: `select vault.create_secret('<la-key>', 'SHALOM_LAT_API_KEY', 'Shalom LAT');`
+> El **secret del webhook** no se carga a mano: el barrido lo registra solo
+> (`ensureLatWebhook`) y lo guarda directo en Vault la primera vez que corre con la key.
+
+**Y las funciones:**
+
+```
+supabase functions deploy shalom-tracking       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-tracking-sync  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order          --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store          --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-webhook        --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+> ⚠️ **Lo que la contingencia no cubre**, y conviene saber antes de verlo en un pedido: la
+> guía emitida por Shalom LAT llega al chat **sin el botón "Ver mi guía de Shalom"** (ese PDF
+> lo sirve solo el titular) y las guías registradas solo con `ose_id` no son rastreables por
+> LAT — esas esperan a que el titular vuelva. El panel avisa en *Marca → Envíos* con el chip
+> ámbar **"API operativa (contingencia)"**.
+>
+> ⚠️ **La doc de Shalom LAT publica los requests pero no las respuestas.** Todo lo que el
+> código lee de ahí es búsqueda defensiva (claves a cualquier profundidad, hitos o textos) y
+> está cubierto por tests, pero **la primera guía real emitida por esa vía hay que mirarla**:
+> que la fase avance, que el número y el código sean los del comprobante, y que la clave de
+> retiro sea la que el pedido guardó.
 
 ### Flow: las llaves son de cada marca, no de Kross · SQL + 3 funciones (02-sep-2026)
 

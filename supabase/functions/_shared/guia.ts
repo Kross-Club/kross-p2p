@@ -11,7 +11,8 @@
 // noticia, la mitad de los envíos quedaría fuera de la cascada).
 
 import { broadcast, chatMessage, supabase } from './tracking.ts'
-import { shalomApiKey } from './shalom.ts'
+import { shalomApiKey, shalomLatApiKey } from './shalom.ts'
+import { SHALOM_LAT_BASE, trackBody } from './shalom-lat.ts'
 import { normalizeYear } from './olva.ts'
 import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from './mensaje-de-guia.ts'
 import type { Courier } from './mensaje-de-guia.ts'
@@ -156,20 +157,41 @@ export async function registrarGuia(
  * instante. Best-effort: si falla —webhook sin configurar, cupo lleno, red— el
  * barrido de pg_cron cubre igual. La suscripción exige numero+codigo; con solo
  * ose_id no hay qué suscribir. Solo Shalom: Olva API Perú no tiene webhook.
+ *
+ * Se intenta con el titular (Shalom PE) y, si no se pudo, con la contingencia
+ * (Shalom LAT): los dos empujan a la misma función `shalom-webhook` y los dos
+ * rastrean la misma guía. Suscribirla en el que esté vivo es lo que hace que un
+ * proveedor caído cueste 30 minutos de espera y no el aviso entero.
  */
 async function suscribirWebhook(g: Extract<GuiaNormalizada, { ok: true }>): Promise<void> {
   const { tracking_numero: numero, tracking_codigo: codigo } = g.tracking
   if (g.courier !== 'SHALOM' || !numero || !codigo) return
-  try {
-    const key = await shalomApiKey()
-    if (!key) return
-    const r = await fetch('https://api.shalom-api-peru.com/v1/tracking/subscriptions', {
-      method: 'POST',
-      headers: { 'X-API-Key': key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ numero, codigo }),
-    })
-    if (!r.ok) console.error('registrarGuia: suscripción webhook falló', r.status, await r.text().catch(() => ''))
-  } catch (e) {
-    console.error('registrarGuia: suscripción webhook falló', e)
+
+  const intento = async (
+    quien: string, url: string, headers: Record<string, string>, body: unknown,
+  ): Promise<boolean> => {
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (r.ok) return true
+      console.error(`registrarGuia: suscripción webhook ${quien} falló`, r.status, await r.text().catch(() => ''))
+    } catch (e) {
+      console.error(`registrarGuia: suscripción webhook ${quien} falló`, e)
+    }
+    return false
   }
+
+  const key = await shalomApiKey()
+  if (key && await intento('PE',
+    'https://api.shalom-api-peru.com/v1/tracking/subscriptions',
+    { 'X-API-Key': key }, { numero, codigo })) return
+
+  const keyLat = await shalomLatApiKey()
+  if (!keyLat) return
+  await intento('LAT',
+    `${SHALOM_LAT_BASE}/tracking/subscriptions`,
+    { 'x-api-key': keyLat }, trackBody({ numero, codigo }))
 }
