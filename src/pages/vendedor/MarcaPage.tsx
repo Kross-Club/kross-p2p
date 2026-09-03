@@ -513,7 +513,15 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     })
     setFlowKeysBusy(false)
     if (!ok) {
-      setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No pudimos guardar las llaves de Flow.')
+      // `nada_que_guardar` acá NO puede ser cierto: el botón no se habilita sin
+      // las dos llaves escritas. Significa que la función desplegada es ANTERIOR
+      // a `flow_keys` (bloque §41) y está ignorando el campo. Decirlo ahorra
+      // media hora de mirar el input: el error genérico manda a buscar donde no
+      // es. Pasa en cada despliegue donde el front y las funciones no van juntos.
+      const cod = (data as { error?: string }).error ?? ''
+      setErr(cod === 'nada_que_guardar'
+        ? 'La función manage-store desplegada es anterior a las llaves de Flow y está ignorándolas. Hay que desplegarla: supabase functions deploy manage-store'
+        : ERR[cod] ?? 'No pudimos guardar las llaves de Flow.')
       return
     }
     // Se limpian de la pantalla apenas se guardan: un secreto que sigue en un
