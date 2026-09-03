@@ -771,6 +771,19 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               </div>
             ) : (
               <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: 'var(--warn-bg-soft)' }}>
+                {/* El ambiente va ARRIBA del botón a propósito: el alta se hace en el que
+                    esté elegido acá y después no se puede cambiar —conectar en pruebas deja
+                    la marca atada a la cuenta de sandbox de Flow, y volver atrás es un
+                    `update stores set flow_merchant_id = null` a mano. Debajo del botón,
+                    este selector se lee cuando ya es tarde. */}
+                <label className="text-[10px] font-bold text-gray-600 mb-1 block">Ambiente</label>
+                <select value={flowEnv}
+                  onChange={e => setFlowEnv(e.target.value === 'live' ? 'live' : 'sandbox')}
+                  className="w-full bg-white border rounded-xl px-3 py-2 text-sm mb-2">
+                  <option value="sandbox">Pruebas (sandbox)</option>
+                  <option value="live">Producción</option>
+                </select>
+
                 <label className="text-[10px] font-bold text-gray-600 mb-1 block">
                   Nombre del comercio en Flow
                 </label>
@@ -786,8 +799,9 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
                   </button>
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1.5">
-                  Se crea el comercio asociado bajo la cuenta de Kross. <strong>Se hace una sola
-                  vez</strong> y no se puede deshacer desde aquí.
+                  Se crea el comercio asociado bajo la cuenta de Kross, <strong>en el ambiente
+                  elegido arriba</strong>. Se hace una sola vez: después no se puede cambiar
+                  de ambiente ni deshacer desde aquí.
                 </p>
               </div>
             )}
@@ -800,15 +814,6 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               placeholder="Vacío = el comprador elige el medio"
               inputMode="numeric"
               className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
-
-            <label className="text-[10px] font-bold text-gray-500 mb-1 block">Ambiente</label>
-            <select value={flowEnv}
-              onChange={e => setFlowEnv(e.target.value === 'live' ? 'live' : 'sandbox')}
-              disabled={flowConnected}
-              className="w-full bg-white border rounded-xl px-3 py-2 text-sm mb-1 disabled:opacity-50">
-              <option value="sandbox">Pruebas (sandbox)</option>
-              <option value="live">Producción</option>
-            </select>
           </div>
 
         </div>

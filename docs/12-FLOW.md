@@ -1,6 +1,6 @@
 # 12 · FLOW PAGOS, EL SEGUNDO RIEL
 
-> Estado: **🟡 construido, sin probar contra sandbox.** El código está entero —contrato,
+> Estado: **🟡 construido, sin una sola orden emitida contra Flow.** El código está entero —contrato,
 > emisión, webhook, vuelta, panel y ruteo— y la suite lo cubre; lo que falta no es técnico:
 > credenciales de Flow, el comercio aprobado y una prueba con S/5. Ver §7.
 > Leer junto con `07-CONTRATO-360PAY.md` §9 (la tarifa y el corte de S/90) y
@@ -17,11 +17,54 @@ margen negativo.
 Así que el ruteo es **`< S/90 → Flow · ≥ S/90 → 360pay`**, y vive en un solo sitio:
 `_shared/comision.ts` (`CRUCE_DE_RIELES`, `proveedorPara`, `rielPara`).
 
-⚠️ La tarifa pública de Flow Perú lleva además **S/0.80 por transacción**. El contrato de
-partner de Kross lo excluye para Yape one-shot. Si apareciera, el cruce se iría a S/67 y el
-piso de margen de S/1.20 a S/0.26: es la única variable que tumba la tarifa entera, y se
-verifica en la primera liquidación (`settlement/getByIdv2 → detail.payment[].fixed`, debe
-ser 0).
+### ⚠️ El S/0.80, y por qué el código NO lo cuenta (02-sep-2026)
+
+**El portal de Flow dice que sí lo cobra.** Mirando *Medios de pago* de la cuenta de Kross:
+
+| Id | Medio | Tipo | Comisión | Costo fijo | Estado |
+|---|---|---|---|---|---|
+| **152** | **Yape** | Billetera | 3.50% | **0.80 PEN** | Activo — **no es el one-shot** |
+| **169** | **QR Interoperable** | Billetera | **2.59%** | **0.00 PEN** | Activo |
+| 167 | Yape Pagos Recurrentes | Cargo automático | 3.50% | 0.00 PEN | Inactivo — se pide por correo a `operaciones@flow.cl` |
+| — | **Yape one-shot** | Billetera | por confirmar | por confirmar | ⏳ **en aprobación; Flow entrega su id cuando salga** |
+| 29 | PagoEfectivo | Efectivo | 3.90% | 0.80 PEN | Activo |
+| 11 | Tarjetas | Tarjetas | 3.50% | 0.80 PEN | Inactivo |
+
+El pie de esa tabla dice **"el valor de la tarifa está publicado sin impuesto incluido… en el
+caso de Perú es de 18.00%"**, lo que confirma cómo está escrito `COSTO_PASARELA`: los números
+se guardan netos y se multiplican por `IGV`. Si algún día aplicara el fijo, es `0.80 * IGV` =
+**S/0.944**, no S/0.80. Ahí mismo: **el reembolso cuesta S/14.00** — más que la comisión de
+casi cualquier adelanto, así que un reembolso por Flow se decide, no se despacha.
+
+**El contrato de partner de Kross excluye el fijo**, y esa es la versión que rige: `COSTO_PASARELA`
+deja `FLOW.fijo` en 0 y el cruce se queda en S/90. La tabla del portal es la tarifa de lista,
+no la de esta cuenta.
+
+**Es la única variable que tumba la tarifa entera**, así que se verifica y no se supone. En la
+primera liquidación: `settlement/getByIdv2 → detail.payment[].fixed` **debe venir en 0**. Si
+viene 0.80, hay que corregir `COSTO_PASARELA.FLOW.fijo` a `0.80 * IGV` y asumir lo que sigue:
+
+| | corte con 360pay | margen a S/20 | margen a S/50 | piso |
+|---|---|---|---|---|
+| Sin el fijo (lo que está en el código) | S/90 | S/1.37 | S/1.63 | **S/1.02 neto** |
+| Con el fijo | **S/67** | **S/0.43** | **S/0.69** | **S/0.22 neto** |
+
+El piso pasa de un sol a veinte céntimos: seguiría siendo positivo en todo monto, pero deja de
+cumplir el objetivo con el que se eligió el S/1.20 fijo, y tocaría subirlo.
+
+### 🔮 El QR Interoperable puede ser mejor que Yape
+
+`169 · QR Interoperable · 2.59% + 0.00`, activo, le gana a Yape (3.5% + 0.80 de lista) en
+**todos** los montos, y en Perú el QR interoperable incluye Yape y Plin:
+
+| | corte con 360pay | margen a S/20 | margen a S/50 | piso |
+|---|---|---|---|---|
+| QR Interoperable (169) | **S/122** | S/1.59 | S/2.17 | S/1.02 neto |
+
+Lo que no se sabe es la experiencia: un QR en una PWA que ya vive en el celular del comprador
+puede ser incómodo de escanear, y esa fricción se paga en conversión. Se mide en la primera
+prueba dejando **vacío** el *ID de Yape en Flow*: Flow muestra todos los medios activos y se ve
+cuál elige la gente.
 
 ## 2. El modelo, y en qué se diferencia de 360pay
 
@@ -175,6 +218,13 @@ prende sin comercio conectado, mismo gate que 360pay. Todo exige JWT verificado.
 - **Un adelanto rechazado deja al comprador sin botón** en `/p/<token>`: `PagarSaldo` solo
   cobra saldos. Hoy vuelve por el "retomar pedido" de la landing (`saveLastOrder`), igual que
   con 360pay. Deuda compartida por los dos rieles.
+- **El `email` del pagador es uno solo para todos** (`EMAIL_DEL_PAGADOR` en `_shared/flow.ts`).
+  El checkout de Kross no pide correo —DNI y celular— y Flow lo exige igual. Antes se
+  sintetizaba del celular contra un dominio sin buzón; ahora es una dirección real. El costo:
+  todos los avisos de Flow caen en ese buzón, y en el panel de Flow **todos los pedidos salen
+  con el mismo pagador**, así que una transacción se rastrea por `commerceOrder` —el id de la
+  fila de `cobros`— y nunca por el correo. **Provisional**: cuando deje de serlo, el sitio es
+  un secreto de plataforma o una columna de `stores`, no el repo.
 - `coupon_expires_at` de la fila de Flow se espeja en `pay360_coupon_expires_at` vía
   `columnasDe`: el nombre es de 360pay, el significado ("cuándo vence el enlace de pago") no, y
   `vigencia-de-cupon.ts` lo lee igual para los dos.
@@ -190,13 +240,37 @@ llaves son de plataforma — `FLOW_API_KEY`, `FLOW_SECRET_KEY`, `FLOW_API_KEY_LI
 
 | Paso | Estado |
 |---|---|
-| Cuenta de sandbox en `sandbox.flow.cl` y sus llaves → `supabase secrets set FLOW_API_KEY FLOW_SECRET_KEY` | ⏳ |
-| Correr §40 en el SQL Editor de `ofdjghntvmrdfjhazfvz` | ⏳ |
-| Desplegar `flow-order`, `flow-confirm --no-verify-jwt`, `flow-return --no-verify-jwt`, `register-buyer`, `manage-store`, `get-session`, `get-store-sessions` | ⏳ |
-| Conectar Kross Shop desde el panel y esperar la aprobación de Flow | ⏳ |
-| **Resolver la unidad de `amount`**: crear una orden de S/10 y mirar cuánto muestra el checkout de Flow | ⏳ bloquea cobrar |
-| Pagar con la tarjeta de prueba de Perú y ver que `flow-confirm` cruza | ⏳ |
-| Pedir a Flow credenciales de prueba de Yape y el ID de Yape en *Medios de pago* | ⏳ |
+| Llaves de la cuenta → `supabase secrets set` **de plataforma**, nunca en el repo ni en `store_secrets`. De `www.flow.cl` van a `FLOW_API_KEY_LIVE` / `FLOW_SECRET_KEY_LIVE`; de `sandbox.flow.cl`, a `FLOW_API_KEY` / `FLOW_SECRET_KEY`. Cambiar un secreto **no** obliga a redesplegar: se lee en cada invocación | ⏳ producción |
+| Correr §40 en el SQL Editor de `ofdjghntvmrdfjhazfvz` | ✅ 02-sep-2026 |
+| Desplegar `flow-order`, `flow-confirm --no-verify-jwt`, `flow-return --no-verify-jwt`, `register-buyer`, `manage-store`, `get-session`, `get-store-sessions` | ✅ 02-sep-2026 |
+| **Elegir el ambiente ANTES de conectar** (ver abajo) y conectar Kross Shop desde el panel; la aprobación la hace Flow | ⏳ |
+| **Resolver la unidad de `amount`**: crear una orden de S/10 y mirar cuánto muestra el checkout de Flow **antes de confirmar el pago** | ⏳ bloquea cobrar |
+| Pagar de verdad ese S/10 —las llaves son de producción, no hay tarjeta de prueba— y ver que `flow-confirm` lo cruza a MATCHED | ⏳ |
+| **ID del medio** (portal → *Medios de pago*, columna `Id`). El del **one-shot llega cuando Flow lo apruebe** —el `152` activo no es ese—; entretanto, **vacío**: Flow muestra el selector con los medios activos y se ve qué elige la gente | ⏳ |
+| **Mirar si el checkout de Flow le enseña al comprador el `email` del pagador.** Es uno solo para todos (`EMAIL_DEL_PAGADOR`); si se ve en pantalla, hay que volver a sintetizarlo por comprador | ⏳ |
 | Punta a punta desde la PWA instalada en Android: que el POST de vuelta llegue a la pestaña del pedido | ⏳ |
 | Encender el toggle en Kross Shop con un adelanto de S/5 | ⏳ |
 | Primera liquidación: `fixed` debe ser 0 | ⏳ |
+
+### Probar el `amount` con llaves de producción
+
+Se puede, mirando el monto en la página de Flow **antes** de confirmar. `montoParaFlow()` manda
+soles con decimales (`10` para S/10), así que el error posible es que Flow lea eso como
+céntimos —cobraría de MENOS, S/0.10— o que rechace la orden. **No hay forma de que cobre de
+más**: no existe unidad mayor al sol. Es la trampa de 360pay al revés, donde `pen * 100` sí
+cobraba cien veces de más.
+
+### Conectar es de un solo sentido
+
+`manage-store` da de alta el comercio **en el ambiente que esté elegido al momento del click**
+y guarda `flow_merchant_id`; un segundo intento rebota con `flow_ya_conectado` (409) porque dar
+de alta dos veces partiría la liquidación entre dos comercios. Por eso el selector de *Ambiente*
+se pinta **encima** del botón en el panel, y por eso conectar en pruebas y después querer
+producción **no se arregla desde la pantalla**. La salida es a mano, en el SQL Editor:
+
+```sql
+update stores set flow_merchant_id = null, flow_enabled = false where slug = '<marca>';
+```
+
+Y volver a conectar con *Producción* elegido. El comercio de sandbox queda huérfano en la cuenta
+de pruebas de Flow, que no molesta a nadie.

@@ -230,17 +230,33 @@ export function montoParaFlow(pen: number): number {
 }
 
 /**
- * El email que exige `payment/create`.
+ * El email que exige `payment/create`, igual para todos los pagadores.
  *
- * El checkout no lo pide y meter un campo más en el paso del cobro cuesta
- * conversión: se sintetiza del celular, práctica normal en COD y la misma
- * decisión que ya tomó `culqi-charge`. El dominio es nuestro para que un
- * correo de Flow al "pagador" no rebote en un buzón ajeno.
+ * El checkout de Kross **no pide correo** —el comprador se identifica con DNI y
+ * celular— y meter un campo más en el paso del cobro cuesta conversión. Flow lo
+ * exige igual, así que hay que poner alguno.
+ *
+ * Hasta el 02-sep-2026 se sintetizaba del celular (`987654321@buyers.krossclub.app`).
+ * Se cambió a **un buzón real y único** por decisión de producto: un dominio
+ * sintético no recibe, y los avisos que Flow le manda al pagador no llegaban a
+ * ninguna parte.
+ *
+ * ⚠️ **Lo que cuesta, para que se sepa antes de que sorprenda:**
+ *
+ *   · **todos** los avisos de pago de Flow caen en ese único buzón — con volumen,
+ *     es una bandeja inservible;
+ *   · en el panel de Flow **todos los pedidos salen con el mismo pagador**, así que
+ *     rastrear una transacción es por `commerceOrder` —que es el id de la fila de
+ *     `cobros`, ver `crearOrden`— y nunca por el correo;
+ *   · si Flow llegara a mostrarle este correo al comprador en su checkout, le estaría
+ *     enseñando una dirección que no es suya. **Es lo primero que hay que mirar en la
+ *     primera orden de prueba.**
+ *
+ * Es temporal y se cambia acá, en una línea. Cuando deje de serlo, el sitio correcto
+ * es un secreto de plataforma o una columna de `stores` —no una dirección personal
+ * viviendo en el repo.
  */
-export function emailSintetico(phone: string | null | undefined, fallback: string): string {
-  const digits = String(phone ?? '').replace(/\D/g, '').slice(-9)
-  return `${digits || fallback}@buyers.krossclub.app`
-}
+export const EMAIL_DEL_PAGADOR = 'uxbriel@gmail.com'
 
 /**
  * Crea la orden. `commerceOrder` es NUESTRA llave: ahí va el id de la fila de

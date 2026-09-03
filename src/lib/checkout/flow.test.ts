@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   FLOW_STATUS, ORDER_TTL_S, cadenaAFirmar, checkoutUrl, comercioAprobado,
-  desgloseDeFlow, emailSintetico, esFinalSinPago, esPagada, firmar, flowBaseUrl,
+  desgloseDeFlow, EMAIL_DEL_PAGADOR, esFinalSinPago, esPagada, firmar, flowBaseUrl,
   hmacHex, montoParaFlow, normalizar, orderExpiryFrom, pickFlowKeys, tokenDelWebhook, unwrap,
 } from '../../../supabase/functions/_shared/flow.ts'
 import { esRielEnLinea, rielPara, RIELES } from '../../../supabase/functions/_shared/comision.ts'
@@ -90,8 +90,9 @@ describe('la orden', () => {
   })
 
   it('el email se sintetiza del celular, como hacía Culqi', () => {
-    expect(emailSintetico('+51 987 654 321', 'x')).toBe('987654321@buyers.krossclub.app')
-    expect(emailSintetico(null, 'ord-1')).toBe('ord-1@buyers.krossclub.app')
+    // Uno solo para todos: el checkout no pide correo y Flow lo exige.
+    expect(EMAIL_DEL_PAGADOR).toBe('uxbriel@gmail.com')
+    expect(EMAIL_DEL_PAGADOR).toMatch(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)
   })
 })
 
