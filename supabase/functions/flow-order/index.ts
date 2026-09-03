@@ -33,7 +33,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import { columnasDe } from '../_shared/cobros.ts'
 import {
-  checkoutUrl, crearOrden, emailSintetico, esFinalSinPago, esPagada, estadoPorToken,
+  checkoutUrl, crearOrden, EMAIL_DEL_PAGADOR, esFinalSinPago, esPagada, estadoPorToken,
   flowBaseUrl, montoParaFlow, orderExpiryFrom, ORDER_TTL_S, pickFlowKeys, type FlowEnv,
 } from '../_shared/flow.ts'
 
@@ -235,7 +235,7 @@ Deno.serve(async (req) => {
     amount: montoParaFlow(rowAmount),
     currency: 'PEN',
     payment_currency: 'PEN',
-    email: emailSintetico(session.buyer_phone, String(session.order_id ?? session.id).toLowerCase()),
+    email: EMAIL_DEL_PAGADOR,
     // Con el ID de Yape el comprador cae DIRECTO en su pantalla, sin selector.
     // Sin él, Flow le muestra el selector — funciona igual, con un paso más.
     paymentMethod: typeof store.flow_payment_method === 'number' ? store.flow_payment_method : undefined,

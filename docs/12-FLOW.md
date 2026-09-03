@@ -23,13 +23,20 @@ Así que el ruteo es **`< S/90 → Flow · ≥ S/90 → 360pay`**, y vive en un 
 
 | Id | Medio | Tipo | Comisión | Costo fijo | Estado |
 |---|---|---|---|---|---|
-| **152** | **Yape** | Billetera | 3.50% | **0.80 PEN** | Activo |
+| **152** | **Yape** | Billetera | 3.50% | **0.80 PEN** | Activo — **no es el one-shot** |
 | **169** | **QR Interoperable** | Billetera | **2.59%** | **0.00 PEN** | Activo |
 | 167 | Yape Pagos Recurrentes | Cargo automático | 3.50% | 0.00 PEN | Inactivo — se pide por correo a `operaciones@flow.cl` |
+| — | **Yape one-shot** | Billetera | por confirmar | por confirmar | ⏳ **en aprobación; Flow entrega su id cuando salga** |
 | 29 | PagoEfectivo | Efectivo | 3.90% | 0.80 PEN | Activo |
 | 11 | Tarjetas | Tarjetas | 3.50% | 0.80 PEN | Inactivo |
 
-**El contrato de partner de Kross lo excluye**, y esa es la versión que rige: `COSTO_PASARELA`
+El pie de esa tabla dice **"el valor de la tarifa está publicado sin impuesto incluido… en el
+caso de Perú es de 18.00%"**, lo que confirma cómo está escrito `COSTO_PASARELA`: los números
+se guardan netos y se multiplican por `IGV`. Si algún día aplicara el fijo, es `0.80 * IGV` =
+**S/0.944**, no S/0.80. Ahí mismo: **el reembolso cuesta S/14.00** — más que la comisión de
+casi cualquier adelanto, así que un reembolso por Flow se decide, no se despacha.
+
+**El contrato de partner de Kross excluye el fijo**, y esa es la versión que rige: `COSTO_PASARELA`
 deja `FLOW.fijo` en 0 y el cruce se queda en S/90. La tabla del portal es la tarifa de lista,
 no la de esta cuenta.
 
@@ -211,6 +218,13 @@ prende sin comercio conectado, mismo gate que 360pay. Todo exige JWT verificado.
 - **Un adelanto rechazado deja al comprador sin botón** en `/p/<token>`: `PagarSaldo` solo
   cobra saldos. Hoy vuelve por el "retomar pedido" de la landing (`saveLastOrder`), igual que
   con 360pay. Deuda compartida por los dos rieles.
+- **El `email` del pagador es uno solo para todos** (`EMAIL_DEL_PAGADOR` en `_shared/flow.ts`).
+  El checkout de Kross no pide correo —DNI y celular— y Flow lo exige igual. Antes se
+  sintetizaba del celular contra un dominio sin buzón; ahora es una dirección real. El costo:
+  todos los avisos de Flow caen en ese buzón, y en el panel de Flow **todos los pedidos salen
+  con el mismo pagador**, así que una transacción se rastrea por `commerceOrder` —el id de la
+  fila de `cobros`— y nunca por el correo. **Provisional**: cuando deje de serlo, el sitio es
+  un secreto de plataforma o una columna de `stores`, no el repo.
 - `coupon_expires_at` de la fila de Flow se espeja en `pay360_coupon_expires_at` vía
   `columnasDe`: el nombre es de 360pay, el significado ("cuándo vence el enlace de pago") no, y
   `vigencia-de-cupon.ts` lo lee igual para los dos.
@@ -232,7 +246,8 @@ llaves son de plataforma — `FLOW_API_KEY`, `FLOW_SECRET_KEY`, `FLOW_API_KEY_LI
 | **Elegir el ambiente ANTES de conectar** (ver abajo) y conectar Kross Shop desde el panel; la aprobación la hace Flow | ⏳ |
 | **Resolver la unidad de `amount`**: crear una orden de S/10 y mirar cuánto muestra el checkout de Flow **antes de confirmar el pago** | ⏳ bloquea cobrar |
 | Pagar de verdad ese S/10 —las llaves son de producción, no hay tarjeta de prueba— y ver que `flow-confirm` lo cruza a MATCHED | ⏳ |
-| **ID del medio** (portal → *Medios de pago*, columna `Id`): Yape es **152**, QR Interoperable **169**. Dejarlo **vacío** en la primera prueba para ver qué ofrece Flow y qué elige la gente | ⏳ |
+| **ID del medio** (portal → *Medios de pago*, columna `Id`). El del **one-shot llega cuando Flow lo apruebe** —el `152` activo no es ese—; entretanto, **vacío**: Flow muestra el selector con los medios activos y se ve qué elige la gente | ⏳ |
+| **Mirar si el checkout de Flow le enseña al comprador el `email` del pagador.** Es uno solo para todos (`EMAIL_DEL_PAGADOR`); si se ve en pantalla, hay que volver a sintetizarlo por comprador | ⏳ |
 | Punta a punta desde la PWA instalada en Android: que el POST de vuelta llegue a la pestaña del pedido | ⏳ |
 | Encender el toggle en Kross Shop con un adelanto de S/5 | ⏳ |
 | Primera liquidación: `fixed` debe ser 0 | ⏳ |
