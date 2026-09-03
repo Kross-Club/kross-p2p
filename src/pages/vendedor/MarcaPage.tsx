@@ -509,6 +509,14 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     setFlowKeysBusy(true); setErr('')
     const { ok, data } = await call({
       action: 'update', admin_auth_id: adminId, store_id: store.id,
+      // El ambiente VIAJA CON LAS LLAVES, no con el botón de guardar la marca.
+      // Son un par: las cuentas de Flow están separadas por ambiente, así que
+      // una llave de sandbox con `flow_env='live'` no falla acá, falla en Flow.
+      // Y el selector vive dentro de esta caja: si no lo mandara, elegir
+      // Producción y pulsar este botón guardaría las llaves y perdería el
+      // ambiente en silencio —el editor se cierra al guardar y al reabrirlo
+      // vuelve a decir "pruebas"—, que es exactamente lo que pasaba.
+      flow_env: flowEnv,
       flow_keys: { api_key: flowApiKey.trim(), secret_key: flowSecretKey },
     })
     setFlowKeysBusy(false)
