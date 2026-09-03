@@ -32,6 +32,12 @@ Deno.serve(async (req) => {
     shalom_origin_branch_id?: string | null
     package_size?: string | null
     declared_content?: string | null
+    // Envío por Olva (sección 37.c). `declared_content` se comparte con Shalom
+    // —es el mismo dato— pero el origen y el peso no: Olva identifica sus
+    // agencias con un código propio y su tarifa la decide el peso, no un tamaño
+    // de catálogo.
+    olva_origin_agency_code?: string | null
+    package_weight_kg?: number | string | null
     store_id?: string   // super admin: target store when managing a brand they entered
   }
 
@@ -61,6 +67,12 @@ Deno.serve(async (req) => {
   // guardan como NULL —el pedido no genera guía y Logística lo hace a mano— en
   // vez de viajar al proveedor y volver 400 con el paquete ya empacado.
   const origen = String(body.shalom_origin_branch_id ?? '').trim()
+  // El código de agencia de Olva LAT tiene forma de `LIM-MIR-01`: letras,
+  // dígitos y guiones. No se valida contra su catálogo acá —sería una llamada
+  // que consume cuota en cada guardado— sino al emitir, que es donde el
+  // rechazo se puede explicar con el pedido delante.
+  const origenOlva = String(body.olva_origin_agency_code ?? '').trim().toUpperCase()
+  const peso = Number(body.package_weight_kg)
   const row = {
     store_id: targetStore,
     nombre: body.nombre ?? 'Producto',
@@ -71,6 +83,8 @@ Deno.serve(async (req) => {
     shalom_origin_branch_id: /^\d+$/.test(origen) ? origen : null,
     package_size: isShalomSize(body.package_size) ? body.package_size : null,
     declared_content: isDeclaredContent(body.declared_content) ? body.declared_content : null,
+    olva_origin_agency_code: /^[A-Z0-9][A-Z0-9-]{2,29}$/.test(origenOlva) ? origenOlva : null,
+    package_weight_kg: Number.isFinite(peso) && peso > 0 && peso <= 100 ? Math.round(peso * 100) / 100 : null,
   }
 
   let result

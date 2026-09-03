@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
 import { shalomApiKey } from '../_shared/shalom.ts'
+import { olvaLatApiKey, validateAtLat } from '../_shared/olva-lat-api.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 
 const supabase = createClient(
@@ -36,7 +37,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status'
+    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status' | 'olva_lat_status'
     home_delivery_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
@@ -82,6 +83,10 @@ Deno.serve(async (req) => {
     // Interruptor de la guía automática (sección 27.d). Emite envíos REALES y
     // cobrables: mismo trato que los campos de cobro (JWT verificado).
     shalom_auto_guide_enabled?: boolean
+    olva_auto_guide_enabled?: boolean
+    olva_sender_name?: string | null
+    olva_sender_document?: string | null
+    olva_sender_phone?: string | null
     // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
     // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
     checkout_ab_mode?: string
@@ -138,7 +143,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -203,6 +208,34 @@ Deno.serve(async (req) => {
     } catch { /* caído o timeout: queda false */ }
     clearTimeout(t)
     return json({ operational, checked_at: new Date().toISOString() })
+  }
+
+  // Semáforo del SEGUNDO riel de Olva (Olva LAT). Chip aparte del de arriba
+  // porque son proveedores distintos: que uno esté vivo no dice nada del otro —
+  // y tenerlos separados es justamente el punto de la contingencia.
+  //
+  // Usa `GET /validate`, que es GRATIS y no consume cuota, y de paso devuelve
+  // cuánta queda: una cuota agotada se ve igual que una API caída desde el
+  // pedido, pero se arregla en un sitio completamente distinto (el plan del
+  // proveedor, no su servidor), así que el panel las distingue.
+  if (body.action === 'olva_lat_status') {
+    const r = await validateAtLat((await olvaLatApiKey()) ?? '')
+    if (!r.ok) {
+      return json({
+        operational: false,
+        // `quota` = plan vencido o cuota agotada; `auth` = key inválida. Las dos
+        // se arreglan con el proveedor, no esperando.
+        motivo: r.stage === 'quota' || r.stage === 'rate_limit' ? 'cuota'
+          : r.stage === 'auth' ? 'llave' : 'caida',
+        checked_at: new Date().toISOString(),
+      })
+    }
+    return json({
+      operational: r.data.valid !== false,
+      limit: r.data.limit ?? null,
+      remaining: r.data.remaining ?? null,
+      checked_at: new Date().toISOString(),
+    })
   }
 
   // ─── WHATSAPP USAGE (para el cobro 2x por plantilla) ─────────────────────────
@@ -354,6 +387,32 @@ Deno.serve(async (req) => {
       if (!trusted) return json({ error: 'auth_requerida' }, 403)
       patch.shalom_auto_guide_enabled = body.shalom_auto_guide_enabled === true
     }
+    // ─── Envíos Olva: el remitente de la marca y su interruptor ─────────────
+    // El remitente NO es un secreto (es quien figura impreso en la guía), pero
+    // registrar envíos de verdad cuesta plata igual que en Shalom: el
+    // interruptor exige el mismo JWT verificado que el dinero. Los datos del
+    // remitente se dejan editar sin ese gate —son de la ficha de la marca— pero
+    // se limpian acá: un RUC con espacios rompe el envío en el mostrador, no en
+    // el panel.
+    if (body.olva_auto_guide_enabled !== undefined) {
+      if (!trusted) return json({ error: 'auth_requerida' }, 403)
+      patch.olva_auto_guide_enabled = body.olva_auto_guide_enabled === true
+    }
+    if (body.olva_sender_name !== undefined) {
+      patch.olva_sender_name = String(body.olva_sender_name ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || null
+    }
+    if (body.olva_sender_document !== undefined) {
+      const doc = String(body.olva_sender_document ?? '').replace(/\D/g, '')
+      // DNI (8) o RUC (11). Cualquier otra cosa se guarda como vacío en vez de
+      // colarse hasta el proveedor: allá el rechazo llega con el paquete ya
+      // empacado.
+      patch.olva_sender_document = /^(\d{8}|\d{11})$/.test(doc) ? doc : null
+    }
+    if (body.olva_sender_phone !== undefined) {
+      const tel = String(body.olva_sender_phone ?? '').replace(/\D/g, '').slice(-9)
+      patch.olva_sender_phone = /^9\d{8}$/.test(tel) ? tel : null
+    }
+
     let wroteShalom = false
     if (body.shalom_pro === null) {
       const { error: clrErr } = await supabase.from('store_secrets').upsert({

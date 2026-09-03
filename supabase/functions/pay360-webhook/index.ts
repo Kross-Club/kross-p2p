@@ -495,17 +495,22 @@ Deno.serve(async (req) => {
   // ─── Despachar: el adelanto verificado es lo que autoriza a generar la guía ─
   // Fire-and-forget a propósito: cobrar no puede colgarse de despachar. Si el
   // generador tarda o falla, 360pay ya recibió su 200 y el pedido sigue su
-  // curso — Logística registra la guía a mano, como siempre. La función decide
-  // sola si el pedido le toca (Shalom + agencia) y trae su propio candado
+  // curso — Logística registra la guía a mano, como siempre. Cada función decide
+  // sola si el pedido le toca (su courier + agencia) y trae su propio candado
   // contra dobles emisiones, así que acá no se filtra nada.
-  runInBackground(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/shalom-order`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-    },
-    body: JSON.stringify({ session_id: session.id }),
-  }))
+  // Son dos, uno por courier: mandarle el pedido a los dos cuesta una request
+  // contra una rama muerta, y filtrar acá sería una segunda copia de la regla
+  // que se desincroniza.
+  for (const fn of ['shalom-order', 'olva-order']) {
+    runInBackground(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/${fn}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ session_id: session.id }),
+    }))
+  }
 
   return ok({ received: true, matched: true })
 })

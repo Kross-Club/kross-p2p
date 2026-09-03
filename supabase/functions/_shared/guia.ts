@@ -12,6 +12,7 @@
 
 import { broadcast, chatMessage, supabase } from './tracking.ts'
 import { shalomApiKey } from './shalom.ts'
+import { olvaLatApiKey, subscribeAtLat } from './olva-lat-api.ts'
 import { normalizeYear } from './olva.ts'
 import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from './mensaje-de-guia.ts'
 import type { Courier } from './mensaje-de-guia.ts'
@@ -112,9 +113,10 @@ export function normalizarGuia(t: GuiaInput, agencyName: string | null, now = Da
 export async function registrarGuia(
   session: GuiaSession,
   g: Extract<GuiaNormalizada, { ok: true }>,
-  /** `yaSuscrito`: la guía nació suscrita al webhook (el generador manda
-   *  `track: true` en la misma llamada que la emite). Suscribirla otra vez
-   *  gastaría una request del cupo para no cambiar nada. */
+  /** `yaSuscrito`: la guía nació suscrita al webhook (el generador de Shalom
+   *  manda `track: true` en la misma llamada que la emite). Suscribirla otra
+   *  vez gastaría una request del cupo para no cambiar nada. En Olva no
+   *  aplica: allá la suscripción es una llamada aparte —y gratis—. */
   opts: { yaSuscrito?: boolean; pdfUrl?: string | null } = {},
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { error } = await supabase.from('order_sessions').update(g.tracking).eq('id', session.id)
@@ -147,19 +149,46 @@ export async function registrarGuia(
     await chatMessage(session.id, mensajeDeClave(session.shalom_pickup_code), 'all')
   }
   await broadcast(session.id, 'tracking_update', g.tracking)
-  if (!opts.yaSuscrito) await suscribirWebhook(g)
+  if (!opts.yaSuscrito) await suscribirWebhook(session.id, g)
   return { ok: true }
 }
 
 /**
  * Suscribe el envío al webhook del proveedor para recibir cada transición al
  * instante. Best-effort: si falla —webhook sin configurar, cupo lleno, red— el
- * barrido de pg_cron cubre igual. La suscripción exige numero+codigo; con solo
- * ose_id no hay qué suscribir. Solo Shalom: Olva API Perú no tiene webhook.
+ * barrido de pg_cron cubre igual.
+ *
+ * Cada courier se suscribe donde puede:
+ *   · **Shalom** — `POST /v1/tracking/subscriptions` con numero+codigo juntos;
+ *     con solo ose_id no hay qué suscribir.
+ *   · **Olva** — por el SEGUNDO riel (Olva LAT). El primero, Olva API Perú, no
+ *     tiene webhook: durante todo el tracking de Olva la única entrada fue el
+ *     barrido de 30 min. La suscripción de Olva LAT es GRATIS (no consume su
+ *     cuota mensual), así que suscribir cada guía es puro upside: el pedido se
+ *     entera al instante y no se paga por ello.
  */
-async function suscribirWebhook(g: Extract<GuiaNormalizada, { ok: true }>): Promise<void> {
+async function suscribirWebhook(
+  sessionId: string,
+  g: Extract<GuiaNormalizada, { ok: true }>,
+): Promise<void> {
   const { tracking_numero: numero, tracking_codigo: codigo } = g.tracking
-  if (g.courier !== 'SHALOM' || !numero || !codigo) return
+  if (!numero) return
+
+  if (g.courier === 'OLVA') {
+    const key = await olvaLatApiKey()
+    if (!key) return
+    const r = await subscribeAtLat(key, numero)
+    if (r.ok) {
+      // Marca para que el barrido no vuelva a intentarlo guía por guía.
+      await supabase.from('order_sessions')
+        .update({ olva_lat_subscribed_at: new Date().toISOString() }).eq('id', sessionId)
+    } else {
+      console.error('registrarGuia: suscripción Olva LAT falló', r.stage, r.status ?? '')
+    }
+    return
+  }
+
+  if (!codigo) return
   try {
     const key = await shalomApiKey()
     if (!key) return

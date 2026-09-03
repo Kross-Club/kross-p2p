@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'retry_shalom' | 'mark_answered' | 'add_cobro' | 'remove_cobro'
+    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'retry_shalom' | 'retry_olva' | 'mark_answered' | 'add_cobro' | 'remove_cobro'
     /** add_cobro: cuánto y por qué. remove_cobro: cuál. */
     monto?: number
     concepto?: string
@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, shalom_order_status, tracking_phase')
+    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, shalom_order_status, olva_order_status, tracking_phase')
     .eq('id', body.session_id)
     .single()
 
@@ -319,6 +319,31 @@ Deno.serve(async (req) => {
     }
     // El detalle crudo se queda en los logs de `shalom-order`; al panel le
     // basta saber que no salió.
+    return new Response(JSON.stringify({ ok: false, error: cuerpo.error ?? cuerpo.skipped ?? 'reintento fallido' }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // El mismo botón para el otro courier. Con una advertencia que NO es la misma:
+  // Olva LAT no tiene cómo preguntar si un envío ya existe (no publica un GET de
+  // envíos), así que un FAILED por "el proveedor no respondió" puede tener una
+  // guía viva del otro lado. Por eso el aviso al chat de Logística pide
+  // verificar ANTES, y este botón se toca DESPUÉS de haber verificado — nunca
+  // como primer reflejo.
+  if (body.action === 'retry_olva') {
+    if (String(session.olva_order_status ?? '').toUpperCase() !== 'FAILED') {
+      return new Response(JSON.stringify({ error: 'no_aplica' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    const r = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/olva-order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ session_id: session.id, retry: true }),
+    })
+    const cuerpo = await r.json().catch(() => ({})) as { tracking?: unknown; error?: string; skipped?: string }
+    if (r.ok && cuerpo.tracking) {
+      return new Response(JSON.stringify({ ok: true, tracking: cuerpo.tracking }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
     return new Response(JSON.stringify({ ok: false, error: cuerpo.error ?? cuerpo.skipped ?? 'reintento fallido' }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 

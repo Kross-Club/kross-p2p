@@ -8,6 +8,7 @@
 // creado en vez de crear otro. Ver docs/01-SALES-ENGINE.md §3.1.
 
 import { preferredRailFor } from '../checkout.config'
+import { AgencyService } from './AgencyService'
 import type { CheckoutState, DispatchType } from '../types'
 import { captureAttribution, type Attribution } from '../../pixels/attribution'
 
@@ -89,6 +90,15 @@ export function dispatchTypeFor(s: CheckoutState): DispatchType {
 
 export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise<SubmitResult> {
   const usesAgency = s.deliveryMethod === 'AGENCIA'
+  // La sede elegida, también EN PALABRAS. El id solo vale dentro de nuestro
+  // catálogo: Olva LAT identifica sus agencias con un código propio y el
+  // servidor —que no tiene las 911 sedes, viven acá— necesita saber DÓNDE queda
+  // la sede para resolverlo al registrar el envío (sección 37.d). Se resuelve
+  // acá, donde el catálogo ya está cargado porque el comprador acaba de elegir;
+  // si por lo que sea no está, el pedido sale igual y la guía se hace a mano.
+  const sede = usesAgency && s.pickup.agency && s.pickup.branchId
+    ? await AgencyService.getBranch(s.pickup.agency, s.pickup.branchId).catch(() => null)
+    : null
   // Se captura AL enviar: para entonces el pixel ya plantó `_fbp`/`_fbc` y la
   // URL de la landing sigue con `fbclid`. El caller puede pasar una atribución
   // fija (tests); si no, se lee del navegador — nunca lanza.
@@ -117,6 +127,8 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       // La sede elegida, como id y no solo dentro de la referencia legible: con
       // ella el pedido puede generar su guía solo (02 §Generador de envíos).
       agency_branch_id: usesAgency ? (s.pickup.branchId ?? undefined) : undefined,
+      // "NOMBRE · DISTRITO, PROVINCIA, DEPARTAMENTO" — ver arriba.
+      agency_branch_label: sede ? AgencyService.branchLabel(sede) : undefined,
       payment_method: s.advanceAmount > 0 ? 'YAPE_PLIN' : 'CONTRAENTREGA',
       // El riel que el front PREFIERE. Para una tienda sin cobro en línea el
       // campo ni viaja: el adelanto lo coordina un asesor. Con los dos rieles
