@@ -26,7 +26,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { columnasDe } from '../_shared/cobros.ts'
 import { acuseDePago } from '../_shared/acuse-de-pago.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
-import { desgloseDeFlow, esPagada, esFinalSinPago, estadoPorToken, flowBaseUrl, pickFlowKeys, tokenDelWebhook, type FlowEnv } from '../_shared/flow.ts'
+import { desgloseDeFlow, esPagada, esFinalSinPago, estadoPorToken, flowBaseUrl, llavesDeTienda, tokenDelWebhook, type FlowEnv } from '../_shared/flow.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 
 const supabase = createClient(
@@ -111,16 +111,25 @@ Deno.serve(async (req) => {
     return await ignore(storeId, dedupeKey, 'actualización de un cobro ya verificado')
   }
 
-  // 4 · la VERDAD la da Flow, con nuestra secret key
+  // 4 · la VERDAD la da Flow, firmada con la secret key DE LA MARCA que emitió
+  // la orden (bloque §41). Se resuelve por `origin_store_id`, la misma tienda
+  // que la emitió en `flow-order`: con otra llave, `getStatus` no reconoce el
+  // token y el cobro no cruzaría nunca.
   const { data: store } = await supabase.from('stores')
     .select('flow_env, meta_pixel_id, tiktok_pixel_id').eq('id', originStoreId).maybeSingle()
   const env = (store?.flow_env === 'live' ? 'live' : 'sandbox') as FlowEnv
-  const keys = pickFlowKeys(env, {
-    sandboxKey: Deno.env.get('FLOW_API_KEY') ?? '',
-    sandboxSecret: Deno.env.get('FLOW_SECRET_KEY') ?? '',
-    liveKey: Deno.env.get('FLOW_API_KEY_LIVE') ?? '',
-    liveSecret: Deno.env.get('FLOW_SECRET_KEY_LIVE') ?? '',
-  })
+  const { data: secretos } = await supabase.from('store_secrets')
+    .select('flow_api_key, flow_secret_key').eq('store_id', originStoreId).maybeSingle()
+  const keys = llavesDeTienda(secretos)
+  if (!keys) {
+    // Sin llaves no hay forma de verificar, y sin verificar NO se cruza: un
+    // webhook que se cree a sí mismo es una puerta para marcar pedidos como
+    // pagados desde fuera. Se suelta el dedupe y se pide reintento — si a la
+    // marca le borraron las llaves por error, al reponerlas el reintento cruza.
+    await supabase.from('payment_events').delete().eq('store_id', storeId).eq('dedupe_key', dedupeKey)
+    console.error('[flow-confirm] la marca no tiene llaves de Flow', JSON.stringify({ store: originStoreId }))
+    return ok({ error: 'store_without_keys' }, 503)
+  }
 
   const estado = await estadoPorToken(flowBaseUrl(env), keys, token)
   if (!estado.ok) {

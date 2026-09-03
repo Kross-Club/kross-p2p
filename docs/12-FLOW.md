@@ -2,7 +2,7 @@
 
 > Estado: **🟡 construido, sin una sola orden emitida contra Flow.** El código está entero —contrato,
 > emisión, webhook, vuelta, panel y ruteo— y la suite lo cubre; lo que falta no es técnico:
-> credenciales de Flow, el comercio aprobado y una prueba con S/5. Ver §7.
+> que cada marca pegue sus llaves de Flow y una prueba con S/5. Ver §7.
 > Leer junto con `07-CONTRATO-360PAY.md` §9 (la tarifa y el corte de S/90) y
 > `06-360PAY.md` (el otro riel, con el que este comparte casi todo).
 
@@ -79,8 +79,42 @@ código de aprobación de Yape: eso se teclea **en la página de Flow**.
 | Cómo vuelve | no vuelve solo (§17.d de 06) | **POST del navegador** a `urlReturn` → `flow-return` → 302 a `/p/<token>` |
 | "Cupón más antiguo" | sí, y obliga a UN cupón vivo por comprador | **no existe**: cada orden es suya |
 | Reemisión | anular y emitir otra | **reutilizar** la pendiente; otra solo si está rechazada/anulada |
-| Quién es Kross | partner, con un `business_id` por marca | **comercio integrador**, con un `merchantId` por marca |
-| Llaves | una de partner (plataforma) | `apiKey` + `secretKey` de **plataforma** — nada en `store_secrets` |
+| Quién es Kross | partner, con un `business_id` por marca | **nadie**: no hay capa de plataforma (ver abajo) |
+| Llaves | una de partner (plataforma) | `apiKey` + `secretKey` **de cada marca**, en `store_secrets` (§41) |
+| Quién cobra la comisión de Kross | la pasarela, por split | **nadie todavía** — deuda comercial abierta |
+
+### Kross NO es integrador de Flow (02-sep-2026)
+
+Este riel se construyó asumiendo que Kross sería **comercio integrador** y cada marca un
+**comercio asociado** dado de alta con `merchant/create`, calcado del par llave-de-partner +
+`business_id` de 360pay. **Flow lo desmintió al primer intento**: el alta responde
+
+```
+Commerce is not integrator
+```
+
+Ser integrador no es una credencial que uno pida: es un **permiso que Flow habilita sobre una
+cuenta**, y la de Kross no lo tiene. El nombre, el ambiente y las llaves no tenían nada que ver
+—el error habla de quién llama, no de lo que manda.
+
+Así que el modelo es el de cualquier pasarela sin capa de plataforma: **cada marca abre su
+cuenta en Flow y trae sus dos llaves**, que se pegan en *Marca → Cobros* y viven en
+`store_secrets` (§41). Lo que eso arrastra:
+
+- **La plata cae en la cuenta de cada marca.** Es lo que ya se quería, pero ahora sin
+  intermediario.
+- **La comisión de Kross no tiene mecanismo en este riel.** Con 360pay la descuenta el split;
+  acá no hay split, así que `cobros.comision_pen` se queda en NULL para los cobros de Flow y se
+  cobra por fuera. **Es una decisión comercial abierta, no un pendiente de código**, y hay que
+  resolverla antes de encender el riel en una marca cliente.
+- **Desaparece el "conectar" de un solo sentido.** No hay nada que crear en Flow desde el panel:
+  o la marca pegó sus llaves, o no cobra. Cambiar de ambiente ya no es irreversible.
+- `stores.flow_merchant_id` **queda de aquel intento y ya no lo lee nadie.** No se borra —borrar
+  una columna es destructivo y una columna muerta no molesta— pero no significa nada.
+
+Si algún día Flow habilita integrador sobre la cuenta de Kross, volver es re-poner
+`merchant/create` y el `merchantId` de `payment/create`: está en el historial, commit `35c1e4a`
+hacia atrás.
 
 El recorrido del comprador es **más largo que el deeplink de 360pay** (sale a una web y de ahí
 a la app por el código) pero tiene una ventaja real: **la vuelta la hace Flow**, con un POST, y
@@ -100,9 +134,8 @@ Las diez páginas de `developers.flow.cl` pegadas al chat. Lo que no está en el
 | `commerceOrder` (req.) | **`cobros.id`**, no el id de sesión: un pedido tiene N cobros y cada uno es su orden |
 | `amount` (req.) | ⚠️ **unidad para PEN no documentada** (los ejemplos son CLP enteros). `montoParaFlow()` manda soles con decimales; es UNA línea si el sandbox dice otra cosa |
 | `currency` · `payment_currency` | `PEN` — no documentado, obvio |
-| `email` (req.) | sintetizado: `<celular>@buyers.krossclub.app`, como hacía Culqi |
+| `email` (req.) | uno solo para todos (`EMAIL_DEL_PAGADOR`): el checkout no pide correo. Ver §5 |
 | `paymentMethod` | el ID de Yape del portal (`stores.flow_payment_method`): *"el pagador será redireccionado directamente al medio de pago"*. Sin él, selector |
-| `merchantId` | `stores.flow_merchant_id` — la plata va al comercio, no al integrador |
 | `urlConfirmation` · `urlReturn` | `…/functions/v1/flow-confirm` y `…/flow-return` |
 | `timeout` | 30 días en segundos (`ORDER_TTL_S`), como `COUPON_TTL_DAYS` |
 | `optional` | `{ tipo }` |
@@ -201,9 +234,15 @@ lo devuelve, cae a su preferencia — una tienda solo con 360pay cobra igual.
 
 ### El panel — `MarcaPage` / `manage-store`
 
-Bloque de Flow debajo del de 360pay: **Conectar con Flow** (`merchant/create`, una sola vez,
-con el nombre del comercio), el **ID de Yape** del portal, el ambiente, y el toggle — que no
-prende sin comercio conectado, mismo gate que 360pay. Todo exige JWT verificado.
+Bloque de Flow debajo del de 360pay: el **ambiente**, las **dos llaves** de la cuenta de Flow
+de la marca, el **ID del medio** del portal, y el toggle — que no prende sin llaves cargadas,
+mismo espíritu que el gate de 360pay. Todo exige JWT verificado.
+
+Las llaves **no vuelven nunca** al panel: el GET solo trae `flow_keys_configured` y
+`flow_secrets_updated_at`, y los inputs nacen vacíos y se limpian apenas se guardan —un secreto
+que sigue en un input es un secreto en la memoria del navegador y en el autocompletado. Quitar
+las llaves apaga el riel en el mismo golpe, del lado del servidor: dejarlo encendido sin con qué
+cobrar deja al comprador con un pedido y sin forma de pagarlo.
 
 ## 5. Decisiones que conviene conocer antes de tocar esto
 
@@ -229,21 +268,28 @@ prende sin comercio conectado, mismo gate que 360pay. Todo exige JWT verificado.
   `columnasDe`: el nombre es de 360pay, el significado ("cuándo vence el enlace de pago") no, y
   `vigencia-de-cupon.ts` lo lee igual para los dos.
 
-## 6. Esquema (§40)
+## 6. Esquema (§40 y §41)
 
-`stores`: `flow_enabled`, `flow_merchant_id`, `flow_payment_method` (integer), `flow_env`.
-`cobros`: `flow_token` (índice parcial), `flow_pay_url`. **Nada en `store_secrets`**: las
-llaves son de plataforma — `FLOW_API_KEY`, `FLOW_SECRET_KEY`, `FLOW_API_KEY_LIVE`,
-`FLOW_SECRET_KEY_LIVE` en `supabase secrets set`.
+`stores`: `flow_enabled`, `flow_payment_method` (integer), `flow_env` — nada de esto es
+secreto y `stores` se lee en público. `cobros`: `flow_token` (índice parcial), `flow_pay_url`.
+
+**Las llaves van en `store_secrets` (§41)**: `flow_api_key`, `flow_secret_key`,
+`flow_secrets_updated_at`. Ahí y no en `stores` porque esa tabla tiene SELECT público y RLS es
+por fila, no por columna: una `secret_key` en `stores` sería legible con la anon key. Mismo
+criterio que `pay360_hook_secret` y `shalom_pro_password`. De ellas **solo vuelve la presencia
+y la fecha** al panel, nunca el valor.
+
+`stores.flow_merchant_id` sigue existiendo y **no la lee nadie**: es el resto del modelo de
+integrador.
 
 ## 7. Puesta en marcha
 
 | Paso | Estado |
 |---|---|
-| Llaves de la cuenta → `supabase secrets set` **de plataforma**, nunca en el repo ni en `store_secrets`. De `www.flow.cl` van a `FLOW_API_KEY_LIVE` / `FLOW_SECRET_KEY_LIVE`; de `sandbox.flow.cl`, a `FLOW_API_KEY` / `FLOW_SECRET_KEY`. Cambiar un secreto **no** obliga a redesplegar: se lee en cada invocación | ⏳ producción |
+| Correr **§41** y pegar las llaves de la marca en *Marca → Cobros* (salen de Flow → *Configuración → Datos de integración*). **No** van a `supabase secrets set`: son de la marca, no de la plataforma | ⏳ |
 | Correr §40 en el SQL Editor de `ofdjghntvmrdfjhazfvz` | ✅ 02-sep-2026 |
 | Desplegar `flow-order`, `flow-confirm --no-verify-jwt`, `flow-return --no-verify-jwt`, `register-buyer`, `manage-store`, `get-session`, `get-store-sessions` | ✅ 02-sep-2026 |
-| **Elegir el ambiente ANTES de conectar** (ver abajo) y conectar Kross Shop desde el panel; la aprobación la hace Flow | ⏳ |
+| ~~Conectar la marca como comercio asociado~~ — **no aplica**: la cuenta de Kross no es integrador (§2) | ✅ resuelto 02-sep-2026 |
 | **Resolver la unidad de `amount`**: crear una orden de S/10 y mirar cuánto muestra el checkout de Flow **antes de confirmar el pago** | ⏳ bloquea cobrar |
 | Pagar de verdad ese S/10 —las llaves son de producción, no hay tarjeta de prueba— y ver que `flow-confirm` lo cruza a MATCHED | ⏳ |
 | **ID del medio** (portal → *Medios de pago*, columna `Id`). El del **one-shot llega cuando Flow lo apruebe** —el `152` activo no es ese—; entretanto, **vacío**: Flow muestra el selector con los medios activos y se ve qué elige la gente | ⏳ |
@@ -260,17 +306,13 @@ céntimos —cobraría de MENOS, S/0.10— o que rechace la orden. **No hay form
 más**: no existe unidad mayor al sol. Es la trampa de 360pay al revés, donde `pen * 100` sí
 cobraba cien veces de más.
 
-### Conectar es de un solo sentido
+### La comisión de Kross, antes de encender esto en una marca cliente
 
-`manage-store` da de alta el comercio **en el ambiente que esté elegido al momento del click**
-y guarda `flow_merchant_id`; un segundo intento rebota con `flow_ya_conectado` (409) porque dar
-de alta dos veces partiría la liquidación entre dos comercios. Por eso el selector de *Ambiente*
-se pinta **encima** del botón en el panel, y por eso conectar en pruebas y después querer
-producción **no se arregla desde la pantalla**. La salida es a mano, en el SQL Editor:
+Sin split, Flow le liquida a la marca el monto menos su comisión y **Kross no cobra nada**. En
+Kross Shop da igual —la cuenta es de Kross—, pero en una marca cliente es regalar el riel. Hay
+que decidir cómo se cobra (facturar aparte es lo más probable) **antes** de encender
+`flow_enabled` fuera de casa. Hasta entonces, `comision_pen` en NULL para los cobros de Flow no
+es un bug: es el número honesto.
 
-```sql
-update stores set flow_merchant_id = null, flow_enabled = false where slug = '<marca>';
-```
-
-Y volver a conectar con *Producción* elegido. El comercio de sandbox queda huérfano en la cuenta
-de pruebas de Flow, que no molesta a nadie.
+Y ya no hay puerta de un solo sentido: guardar llaves no crea nada en Flow, se pueden cambiar,
+y quitarlas apaga el riel en el mismo golpe.

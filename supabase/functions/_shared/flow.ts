@@ -45,24 +45,29 @@ export interface FlowKeys {
 }
 
 /**
- * Las llaves del ambiente que toca.
+ * Las llaves de UNA marca, de su fila de `store_secrets` (bloque §41).
  *
- * Son DOS juegos —sandbox y producción— y usar uno solo los confundiría en
- * silencio: una tienda marcada `live` cobrando contra sandbox no falla de forma
- * visible, simplemente nunca recibe el dinero. Y Flow tiene cuentas SEPARADAS
- * por ambiente (`sandbox.flow.cl/app/web/register.php`), así que acá no hay
- * fallback de `live` a `sandbox` como en 360pay: la de sandbox no vale en
- * producción y hacerla valer sería justo ese silencio.
+ * No son de plataforma y no salen del entorno: Flow no tiene capa de
+ * integrador para esta cuenta —`merchant/create` responde `Commerce is not
+ * integrator`—, así que cada marca abre su cuenta en Flow y trae las suyas.
  *
- * `trim()`: un espacio al final de la secret key firma distinto y Flow responde
- * un rechazo idéntico al de "firma mal armada".
+ * Devuelve `null` cuando falta cualquiera de las dos: media llave no firma, y
+ * seguir con `apiKey` y sin `secretKey` produce un rechazo de Flow idéntico al
+ * de "firma mal armada", que es media hora perdida leyendo el algoritmo.
+ *
+ * El ambiente NO se cruza con esto: lo elige `flowBaseUrl(store.flow_env)`, y
+ * las cuentas de sandbox y producción son distintas en Flow, así que una llave
+ * de pruebas contra producción falla en Flow, no acá.
+ *
+ * `trim()`: un espacio al final de la secret key firma distinto, y el rechazo
+ * que devuelve Flow tampoco lo dice.
  */
-export function pickFlowKeys(env: FlowEnv, k: {
-  sandboxKey: string; sandboxSecret: string; liveKey: string; liveSecret: string
-}): FlowKeys {
-  return env === 'live'
-    ? { apiKey: k.liveKey.trim(), secretKey: k.liveSecret.trim() }
-    : { apiKey: k.sandboxKey.trim(), secretKey: k.sandboxSecret.trim() }
+export function llavesDeTienda(
+  row: { flow_api_key?: string | null; flow_secret_key?: string | null } | null | undefined,
+): FlowKeys | null {
+  const apiKey = String(row?.flow_api_key ?? '').trim()
+  const secretKey = String(row?.flow_secret_key ?? '').trim()
+  return apiKey && secretKey ? { apiKey, secretKey } : null
 }
 
 // ─── Firma ───────────────────────────────────────────────────────────────────
@@ -262,8 +267,11 @@ export const EMAIL_DEL_PAGADOR = 'uxbriel@gmail.com'
  * Crea la orden. `commerceOrder` es NUESTRA llave: ahí va el id de la fila de
  * `cobros`, y no el de la sesión — un pedido tiene N cobros y cada uno es su
  * propia orden en Flow. `paymentMethod` manda al comprador directo a la
- * pantalla de Yape, sin el selector; `merchantId` hace que la plata vaya al
- * comercio asociado y no al integrador.
+ * pantalla de Yape, sin el selector.
+ *
+ * No lleva `merchantId`: eso era del modelo de integrador, que Flow no habilita
+ * para esta cuenta. La plata cae donde apunten las llaves — la cuenta de la
+ * marca (bloque §41).
  */
 export function crearOrden(
   base: string, keys: FlowKeys,
@@ -277,7 +285,6 @@ export function crearOrden(
     currency?: string
     payment_currency?: string
     paymentMethod?: number
-    merchantId?: string
     optional?: Record<string, unknown>
     timeout?: number
   },
@@ -293,7 +300,6 @@ export function crearOrden(
     currency: input.currency,
     payment_currency: input.payment_currency,
     paymentMethod: input.paymentMethod,
-    merchantId: input.merchantId,
     optional: input.optional ? JSON.stringify(input.optional) : undefined,
     timeout: input.timeout,
   }, keys.secretKey).then(body => post<FlowOrderCreated>(`${base}/payment/create`, body))
@@ -375,36 +381,6 @@ export function desgloseDeFlow(
 ): { comision: number | null; costo: number | null } {
   const fee = pd && typeof pd.fee === 'number' && Number.isFinite(pd.fee) ? Math.round(pd.fee * 100) / 100 : null
   return { comision: null, costo: fee }
-}
-
-// ─── Comercios asociados (integrador) ────────────────────────────────────────
-
-export interface FlowMerchant {
-  id: string
-  name?: string
-  url?: string
-  createdate?: string
-  /** 0 pendiente de aprobación · 1 aprobado · 2 rechazado. La aprobación es
-   *  manual de Flow — es el `pending_activation` de 360pay. */
-  status?: number | string
-  verifydate?: string | null
-  [k: string]: unknown
-}
-
-export const FLOW_MERCHANT_STATUS = { PENDIENTE: 0, APROBADO: 1, RECHAZADO: 2 } as const
-
-export function comercioAprobado(m: Pick<FlowMerchant, 'status'>): boolean {
-  return Number(m.status) === FLOW_MERCHANT_STATUS.APROBADO
-}
-
-/** Da de alta la marca como comercio asociado bajo la cuenta de Kross. El
- *  `id` lo elegimos nosotros y es por el que se referencia después
- *  (`merchantId` en `payment/create`). */
-export function crearComercio(
-  base: string, keys: FlowKeys, input: { id: string; name: string; url: string },
-): Promise<FlowResult<FlowMerchant>> {
-  return firmar({ apiKey: keys.apiKey, id: input.id, name: input.name, url: input.url }, keys.secretKey)
-    .then(body => post<FlowMerchant>(`${base}/merchant/create`, body))
 }
 
 // ─── La confirmación (webhook) ───────────────────────────────────────────────

@@ -14,8 +14,9 @@
 //   · El MONTO jamás viene del cliente: se re-deriva (`_shared/advance.ts`) y
 //     se contrasta contra la fila.
 //   · La configuración se resuelve por la tienda de ORIGEN (`origin_store_id`),
-//     nunca por la del vendedor asignado — el `merchantId` equivocado manda el
-//     dinero a la cuenta de otra marca.
+//     nunca por la del vendedor asignado. Con llaves por marca (bloque §41) eso
+//     pesa MÁS que antes: las llaves equivocadas no fallan, cobran — y el dinero
+//     entra a la cuenta de Flow de otra marca.
 //   · Solo pedidos con `payment_provider='FLOW'`.
 //   · La fila de `cobros` se escribe ANTES de responder (la lección de PR #35).
 //
@@ -34,7 +35,7 @@ import { advanceForServer } from '../_shared/advance.ts'
 import { columnasDe } from '../_shared/cobros.ts'
 import {
   checkoutUrl, crearOrden, EMAIL_DEL_PAGADOR, esFinalSinPago, esPagada, estadoPorToken,
-  flowBaseUrl, montoParaFlow, orderExpiryFrom, ORDER_TTL_S, pickFlowKeys, type FlowEnv,
+  flowBaseUrl, llavesDeTienda, montoParaFlow, orderExpiryFrom, ORDER_TTL_S, type FlowEnv,
 } from '../_shared/flow.ts'
 
 const supabase = createClient(
@@ -163,21 +164,18 @@ Deno.serve(async (req) => {
   // ─── Config de la tienda de ORIGEN ─────────────────────────────────────────
   const originStoreId = String(session.origin_store_id ?? session.store_id)
   const { data: store } = await supabase.from('stores')
-    .select('flow_enabled, flow_merchant_id, flow_payment_method, flow_env')
+    .select('flow_enabled, flow_payment_method, flow_env')
     .eq('id', originStoreId).maybeSingle()
 
   const env = (store?.flow_env === 'live' ? 'live' : 'sandbox') as FlowEnv
-  // Las llaves son de PLATAFORMA —Kross es el comercio integrador—, pero SÍ
-  // dependen del ambiente de la tienda: la de sandbox no vale en producción.
-  const keys = pickFlowKeys(env, {
-    sandboxKey: Deno.env.get('FLOW_API_KEY') ?? '',
-    sandboxSecret: Deno.env.get('FLOW_SECRET_KEY') ?? '',
-    liveKey: Deno.env.get('FLOW_API_KEY_LIVE') ?? '',
-    liveSecret: Deno.env.get('FLOW_SECRET_KEY_LIVE') ?? '',
-  })
+  // Las llaves son de LA MARCA (bloque §41), no de plataforma: Flow no habilita
+  // integrador para esta cuenta, así que cada marca abre la suya. Viven en
+  // `store_secrets` porque `stores` se lee en público.
+  const { data: secretos } = await supabase.from('store_secrets')
+    .select('flow_api_key, flow_secret_key').eq('store_id', originStoreId).maybeSingle()
+  const keys = llavesDeTienda(secretos)
 
-  const ready = store?.flow_enabled && store.flow_merchant_id && keys.apiKey && keys.secretKey
-  if (!ready) {
+  if (!store?.flow_enabled || !keys) {
     await notePaymentFailure(session, 'Pago en línea no disponible: tienda sin configurar Flow')
     return json({ ok: false, stage: 'config', code: 'store_not_configured', user_message: NO_PUDIMOS }, 409)
   }
@@ -239,8 +237,6 @@ Deno.serve(async (req) => {
     // Con el ID de Yape el comprador cae DIRECTO en su pantalla, sin selector.
     // Sin él, Flow le muestra el selector — funciona igual, con un paso más.
     paymentMethod: typeof store.flow_payment_method === 'number' ? store.flow_payment_method : undefined,
-    // La plata va al comercio asociado, no al integrador.
-    merchantId: String(store.flow_merchant_id),
     urlConfirmation: `${fnBase}/flow-confirm`,
     urlReturn: `${fnBase}/flow-return`,
     optional: { tipo },
