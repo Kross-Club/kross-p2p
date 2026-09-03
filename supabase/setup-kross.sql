@@ -1688,12 +1688,15 @@ ALTER TABLE cobros ADD COLUMN IF NOT EXISTS costo_pasarela_pen numeric;
 -- navegador (`flow-return`) después de avisar por webhook (`flow-confirm`).
 -- No hay cupón, no hay deeplink, no hay "cupón más antiguo": cada orden es suya.
 --
--- Kross es COMERCIO INTEGRADOR y cada marca un comercio asociado
--- (`merchant/create`), igual que la llave de partner + business_id de 360pay.
--- La API key y la secret key son de PLATAFORMA (FLOW_API_KEY / FLOW_SECRET_KEY
--- y sus `_LIVE`, en los secretos de las Edge Functions): NADA va a
--- `store_secrets`. La plata le llega a cada comercio y la comisión de Kross se
--- consigna aparte, por contrato — no se modela acá.
+-- ⚠️ ESTE BLOQUE SE ESCRIBIÓ ASUMIENDO QUE KROSS ERA COMERCIO INTEGRADOR y
+-- cada marca un comercio asociado (`merchant/create`), como la llave de partner
+-- + business_id de 360pay. **Flow lo desmintió el 02-sep-2026**: el alta
+-- devuelve `Commerce is not integrator` — ser integrador es un permiso que Flow
+-- habilita sobre la cuenta, y la de Kross no lo tiene. El modelo real es **una
+-- cuenta de Flow por marca, con sus propias llaves**: ver §41.
+--
+-- `flow_merchant_id` queda de ese intento. No se borra —borrar una columna es
+-- destructivo y la fila vieja no molesta a nadie— pero **ya no la lee nadie**.
 
 -- 39.a Identificadores del comercio en Flow. No son secretos: solo arman la
 -- orden, y viven en `stores` (SELECT público) como sus pares `pay360_*`.
@@ -1726,3 +1729,39 @@ CREATE INDEX IF NOT EXISTS idx_cobros_flow_token ON cobros(flow_token) WHERE flo
 -- 39.c `payment_provider` gana el valor 'FLOW'. Sigue siendo texto libre por
 -- lista blanca en `register-buyer`; la lista vive en `_shared/comision.ts`
 -- (`RIELES`) y ES la única definición de "cobra en línea".
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §41 · LAS LLAVES DE FLOW SON DE CADA MARCA, NO DE LA PLATAFORMA  (02-sep-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- El §40 dio por hecho que Kross sería comercio integrador de Flow y que una
+-- sola llave de plataforma daría de alta a las marcas como comercios asociados.
+-- **No es así.** `merchant/create` con la cuenta de Kross responde
+-- `Commerce is not integrator`: en Flow, ser integrador es un permiso que ellos
+-- habilitan sobre una cuenta, no una credencial distinta que uno pida.
+--
+-- Así que el modelo es el de cualquier pasarela sin capa de plataforma: **cada
+-- marca abre su cuenta en Flow y trae SUS llaves**. Lo que eso cambia:
+--
+--   · la plata cae en la cuenta de cada marca, no en la de Kross;
+--   · **la comisión de Kross no tiene mecanismo en este riel** — con 360pay la
+--     descuenta el split; acá no hay split, así que `cobros.comision_pen` se
+--     queda en NULL para los cobros de Flow y se cobra por fuera. Deuda abierta
+--     y anotada: es una decisión comercial, no un pendiente de código;
+--   · no hay nada que "conectar": o la marca pegó sus llaves, o no cobra.
+--
+-- Las llaves son SECRETOS y por eso van acá y no a `stores`: esa tabla tiene
+-- SELECT público (política `stores_read`) y RLS es por fila, no por columna —
+-- una `secret_key` en `stores` sería legible con la anon key. Mismo criterio
+-- que `pay360_hook_secret` y `shalom_pro_password`.
+--
+--   flow_api_key            identificador de seguridad del comercio (viaja en
+--                           claro dentro de cada request; secreto igual, porque
+--                           identifica la cuenta)
+--   flow_secret_key         la que FIRMA. Jamás sale en una respuesta.
+--   flow_secrets_updated_at para que el panel pueda decir "cargadas el …" sin
+--                           enseñar el valor.
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS flow_api_key            text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS flow_secret_key         text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS flow_secrets_updated_at timestamptz;

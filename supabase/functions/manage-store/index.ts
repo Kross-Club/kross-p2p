@@ -1,6 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
-import { crearComercio, flowBaseUrl, pickFlowKeys, type FlowEnv } from '../_shared/flow.ts'
 import { shalomApiKey } from '../_shared/shalom.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 
@@ -72,8 +71,10 @@ Deno.serve(async (req) => {
     flow_env?: string                  // 'sandbox' | 'live'
     /** El ID de Yape en el portal de Flow. `null` = selector de medios. */
     flow_payment_method?: number | null
-    /** Da de alta la marca como comercio asociado en Flow. */
-    flow_connect?: { name?: string }
+    /** Las llaves de la cuenta de Flow de la marca (bloque §41). Las DOS o el
+     *  request se rechaza. `null` = quitarlas, y eso apaga el riel. Se guardan
+     *  en `store_secrets` y jamás vuelven en ninguna respuesta. */
+    flow_keys?: { api_key?: string; secret_key?: string } | null
     // Envíos — la cuenta Shalom Pro del cliente. SOLO por JWT verificado
     // (mismo trato que los cobros). `null` = desconectar. El password se
     // guarda en `store_secrets` y jamás vuelve en ninguna respuesta.
@@ -137,7 +138,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_merchant_id, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled')
+      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -149,7 +150,7 @@ Deno.serve(async (req) => {
     const stores = data ?? []
     if (stores.length > 0) {
       const { data: secs } = await supabase.from('store_secrets')
-        .select('store_id, shalom_pro_email, shalom_pro_status, shalom_pro_checked_at, meta_capi_token, tiktok_capi_token')
+        .select('store_id, shalom_pro_email, shalom_pro_status, shalom_pro_checked_at, meta_capi_token, tiktok_capi_token, flow_api_key, flow_secret_key, flow_secrets_updated_at')
         .in('store_id', stores.map((s: { id: string }) => s.id))
       const byId = new Map((secs ?? []).map((s: Record<string, unknown>) => [s.store_id, s]))
       for (const s of stores as Record<string, unknown>[]) {
@@ -161,6 +162,10 @@ Deno.serve(async (req) => {
         // de Shalom Pro, el secreto se escribe pero nunca vuelve al panel.
         s.meta_capi_configured = !!sec?.meta_capi_token
         s.tiktok_capi_configured = !!sec?.tiktok_capi_token
+        // Flow (bloque §41): mismo trato. Las llaves son de la marca y no
+        // vuelven nunca; el panel solo necesita saber SI están y de cuándo.
+        s.flow_keys_configured = !!sec?.flow_api_key && !!sec?.flow_secret_key
+        s.flow_secrets_updated_at = sec?.flow_secrets_updated_at ?? null
       }
     }
 
@@ -334,7 +339,7 @@ Deno.serve(async (req) => {
     const touchesPayments = body.pay360_enabled !== undefined
       || body.pay360_env !== undefined || body.pay360_connect !== undefined
       || body.flow_enabled !== undefined || body.flow_env !== undefined
-      || body.flow_payment_method !== undefined || body.flow_connect !== undefined
+      || body.flow_payment_method !== undefined || body.flow_keys !== undefined
     if (touchesPayments && !trusted) return json({ error: 'auth_requerida' }, 403)
 
     // ─── Envíos: la cuenta Shalom Pro de la marca ────────────────────────────
@@ -535,7 +540,7 @@ Deno.serve(async (req) => {
       if (!connected) return json({ error: 'pay360_sin_conectar' }, 400)
     }
 
-    // ─── Flow (bloque §40) ────────────────────────────────────────────────────
+    // ─── Flow (bloques §40 y §41) ─────────────────────────────────────────────
     if (typeof body.flow_enabled === 'boolean') patch.flow_enabled = body.flow_enabled
     if (body.flow_env === 'sandbox' || body.flow_env === 'live') patch.flow_env = body.flow_env
     if (body.flow_payment_method !== undefined) {
@@ -545,54 +550,50 @@ Deno.serve(async (req) => {
       patch.flow_payment_method = n === null ? null : (Number.isInteger(n) && n > 0 ? n : null)
     }
 
-    // Alta como comercio asociado. Se hace UNA vez: el `id` que le damos es por
-    // el que se referencia en cada orden (`merchantId`), y darlo de alta dos
-    // veces partiría la liquidación entre dos comercios.
-    if (body.flow_connect) {
-      const { data: existing } = await supabase.from('stores')
-        .select('nombre, slug, flow_merchant_id, flow_env').eq('id', targetId).maybeSingle()
-      if (existing?.flow_merchant_id) return json({ error: 'flow_ya_conectado' }, 409)
+    let wroteSecretsFlow = false
+    // Las llaves de Flow de la marca (bloque §41). Reemplazan al alta como
+    // comercio asociado: Flow respondió `Commerce is not integrator` — ser
+    // integrador es un permiso sobre la cuenta y la de Kross no lo tiene—, así
+    // que cada marca abre la suya y pega sus dos llaves. Van a `store_secrets`
+    // y NO vuelven en ninguna respuesta, igual que el password de Shalom Pro.
+    if (body.flow_keys !== undefined) {
+      const fk = (body.flow_keys ?? {}) as { api_key?: unknown; secret_key?: unknown }
+      const apiKey = typeof fk.api_key === 'string' ? fk.api_key.trim() : ''
+      const secretKey = typeof fk.secret_key === 'string' ? fk.secret_key.trim() : ''
 
-      const env: FlowEnv = (patch.flow_env ?? existing?.flow_env) === 'live' ? 'live' : 'sandbox'
-      const keys = pickFlowKeys(env, {
-        sandboxKey: Deno.env.get('FLOW_API_KEY') ?? '',
-        sandboxSecret: Deno.env.get('FLOW_SECRET_KEY') ?? '',
-        liveKey: Deno.env.get('FLOW_API_KEY_LIVE') ?? '',
-        liveSecret: Deno.env.get('FLOW_SECRET_KEY_LIVE') ?? '',
-      })
-      if (!keys.apiKey || !keys.secretKey) return json({ error: 'flow_sin_llaves' }, 400)
-
-      const name = String(body.flow_connect.name ?? existing?.nombre ?? targetId).trim().slice(0, 80)
-      if (!name) return json({ error: 'flow_nombre_invalido' }, 400)
-      const url = existing?.slug ? `https://${existing.slug}.krossclub.app` : 'https://krossclub.app'
-
-      const created = await crearComercio(flowBaseUrl(env), keys, { id: String(targetId), name, url })
-      if (!created.ok) {
-        console.error('[manage-store] flow alta falló', JSON.stringify({
-          status: created.status, error: created.error ?? null, env, key_len: keys.apiKey.length,
-        }))
-        // El `status` viaja con el motivo: distingue "llaves malas" (401) de
-        // "tu cuenta no puede crear comercios" (403) de "faltó un campo" (400),
-        // y sin él la pantalla solo puede decir "reintenta". No lleva secretos.
-        return json({
-          error: 'flow_alta_fallo', detalle: created.error ?? null,
-          status_flow: created.status, red: created.network ?? false,
-        }, 502)
+      if (body.flow_keys === null) {
+        // Quitar las llaves apaga el riel en el mismo golpe: dejarlo encendido
+        // sin con qué cobrar deja al comprador con un pedido y sin pagarlo.
+        const { error: clrErr } = await supabase.from('store_secrets').upsert({
+          store_id: targetId, flow_api_key: null, flow_secret_key: null,
+          flow_secrets_updated_at: null,
+        }, { onConflict: 'store_id' })
+        if (clrErr) return json({ error: clrErr.message }, 400)
+        patch.flow_enabled = false
+        wroteSecretsFlow = true
+      } else {
+        // Las dos o ninguna: media llave no firma, y guardarla a medias deja
+        // un riel que parece configurado y rebota en cada cobro.
+        if (!apiKey || !secretKey) return json({ error: 'flow_llaves_incompletas' }, 400)
+        const { error: upErr } = await supabase.from('store_secrets').upsert({
+          store_id: targetId, flow_api_key: apiKey, flow_secret_key: secretKey,
+          flow_secrets_updated_at: new Date().toISOString(),
+        }, { onConflict: 'store_id' })
+        if (upErr) return json({ error: upErr.message }, 400)
+        wroteSecretsFlow = true
       }
-      patch.flow_merchant_id = String(created.data.id ?? targetId)
-      patch.flow_env = env
     }
 
-    // Mismo gate que 360pay: encender sin comercio dado de alta es pintar un
-    // botón que rebota en cada intento.
+    // Mismo espíritu que el gate de 360pay: encender sin con qué cobrar es
+    // pintar un botón que rebota en cada intento. Acá lo que hace falta son las
+    // llaves de la marca, y valen las que acaban de guardarse en este request.
     if (patch.flow_enabled === true) {
-      const { data: st } = await supabase.from('stores')
-        .select('flow_merchant_id').eq('id', targetId).maybeSingle()
-      const connected = patch.flow_merchant_id ?? st?.flow_merchant_id
-      if (!connected) return json({ error: 'flow_sin_conectar' }, 400)
+      const { data: sec } = await supabase.from('store_secrets')
+        .select('flow_api_key, flow_secret_key').eq('store_id', targetId).maybeSingle()
+      if (!sec?.flow_api_key || !sec?.flow_secret_key) return json({ error: 'flow_sin_llaves_tienda' }, 400)
     }
 
-    if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom && !wroteAdsCapi) return json({ error: 'nada_que_guardar' }, 400)
+    if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom && !wroteAdsCapi && !wroteSecretsFlow) return json({ error: 'nada_que_guardar' }, 400)
     if (Object.keys(patch).length > 0) {
       const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
       if (error) return json({ error: error.message }, 400)

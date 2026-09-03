@@ -7,9 +7,9 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  FLOW_STATUS, ORDER_TTL_S, cadenaAFirmar, checkoutUrl, comercioAprobado,
-  desgloseDeFlow, EMAIL_DEL_PAGADOR, esFinalSinPago, esPagada, firmar, flowBaseUrl,
-  hmacHex, montoParaFlow, normalizar, orderExpiryFrom, pickFlowKeys, tokenDelWebhook, unwrap,
+  FLOW_STATUS, ORDER_TTL_S, cadenaAFirmar, checkoutUrl, desgloseDeFlow,
+  EMAIL_DEL_PAGADOR, esFinalSinPago, esPagada, firmar, flowBaseUrl, hmacHex,
+  llavesDeTienda, montoParaFlow, normalizar, orderExpiryFrom, tokenDelWebhook, unwrap,
 } from '../../../supabase/functions/_shared/flow.ts'
 import { esRielEnLinea, rielPara, RIELES } from '../../../supabase/functions/_shared/comision.ts'
 
@@ -19,11 +19,22 @@ describe('bases por ambiente', () => {
     expect(flowBaseUrl('sandbox')).toBe('https://sandbox.flow.cl/api')
   })
 
-  it('no cae de live a sandbox: son cuentas distintas', () => {
-    const k = { sandboxKey: ' sk ', sandboxSecret: 'ss', liveKey: '', liveSecret: '' }
-    expect(pickFlowKeys('sandbox', k)).toEqual({ apiKey: 'sk', secretKey: 'ss' })
-    // Sin llaves de producción, producción queda VACÍA — y el caller lo nota.
-    expect(pickFlowKeys('live', k)).toEqual({ apiKey: '', secretKey: '' })
+})
+
+describe('las llaves son de cada marca (§41)', () => {
+  it('exige las DOS: media llave no firma', () => {
+    expect(llavesDeTienda({ flow_api_key: 'k', flow_secret_key: 's' })).toEqual({ apiKey: 'k', secretKey: 's' })
+    expect(llavesDeTienda({ flow_api_key: 'k', flow_secret_key: '' })).toBeNull()
+    expect(llavesDeTienda({ flow_api_key: '', flow_secret_key: 's' })).toBeNull()
+    expect(llavesDeTienda({})).toBeNull()
+    expect(llavesDeTienda(null)).toBeNull()
+  })
+
+  it('recorta los espacios: uno al final firma distinto', () => {
+    expect(llavesDeTienda({ flow_api_key: ' k ', flow_secret_key: ' s\n' }))
+      .toEqual({ apiKey: 'k', secretKey: 's' })
+    // Y un valor que es SOLO espacios no es una llave.
+    expect(llavesDeTienda({ flow_api_key: '   ', flow_secret_key: 's' })).toBeNull()
   })
 })
 
@@ -137,13 +148,6 @@ describe('el estado', () => {
     expect(desgloseDeFlow({ fee: 551, balance: 11499 })).toEqual({ comision: null, costo: 551 })
     expect(desgloseDeFlow(null)).toEqual({ comision: null, costo: null })
     expect(desgloseDeFlow({})).toEqual({ comision: null, costo: null })
-  })
-
-  it('el comercio asociado solo cuenta aprobado', () => {
-    expect(comercioAprobado({ status: 1 })).toBe(true)
-    expect(comercioAprobado({ status: '1' })).toBe(true)
-    expect(comercioAprobado({ status: 0 })).toBe(false)
-    expect(comercioAprobado({ status: 2 })).toBe(false)
   })
 })
 

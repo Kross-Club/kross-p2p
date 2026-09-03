@@ -36,12 +36,14 @@ interface StoreRow {
   /** Presencia = la marca ya es un negocio en 360pay. No es un secreto. */
   pay360_business_id?: string | null
   pay360_payment_prefix?: string | null
-  // Flow, el segundo riel (bloque §40). Presencia de `flow_merchant_id` = la
-  // marca ya es comercio asociado. Nada de esto es secreto.
+  // Flow, el segundo riel (bloques §40 y §41). Las llaves son de la marca y
+  // viven en `store_secrets`: de ellas solo vuelve la PRESENCIA y la fecha,
+  // nunca el valor. Lo demás no es secreto.
   flow_enabled?: boolean
   flow_env?: string | null
-  flow_merchant_id?: string | null
   flow_payment_method?: number | null
+  flow_keys_configured?: boolean
+  flow_secrets_updated_at?: string | null
   // Envíos — cuenta Shalom Pro del cliente. El backend mezcla email y veredicto
   // desde `store_secrets`; el password jamás viaja al panel.
   shalom_pro_email?: string | null
@@ -71,11 +73,8 @@ const ERR: Record<string, string> = {
   pay360_alta_fallo: 'No pudimos crear la cuenta en 360pay. Revisa e inténtalo de nuevo.',
   pay360_sin_conectar: 'Conecta la marca con 360pay antes de encender el cobro.',
   pay360_nombre_invalido: 'Escribe el nombre del comercio para 360pay.',
-  flow_sin_llaves: 'Falta configurar las llaves de Flow en el servidor.',
-  flow_ya_conectado: 'Esta marca ya está conectada a Flow.',
-  flow_alta_fallo: 'No pudimos crear el comercio en Flow. Revisa e inténtalo de nuevo.',
-  flow_sin_conectar: 'Conecta la marca con Flow antes de encender el cobro.',
-  flow_nombre_invalido: 'Escribe el nombre del comercio para Flow.',
+  flow_llaves_incompletas: 'Pega las DOS llaves de Flow: la API Key y la Secret Key.',
+  flow_sin_llaves_tienda: 'Carga las llaves de Flow de esta marca antes de encender el cobro.',
   shalom_credenciales_invalidas: 'Revisa el correo y la contraseña de Shalom Pro.',
   // Borrar. Cada uno nombra el seguro que saltó, no un "no se pudo": el que
   // borra tiene que saber cuál de las cinco condiciones no cumplió.
@@ -363,9 +362,13 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [flowOn, setFlowOn] = useState(!!store.flow_enabled)
   const [flowEnv, setFlowEnv] = useState(store.flow_env === 'live' ? 'live' : 'sandbox')
   const [flowMethod, setFlowMethod] = useState(store.flow_payment_method != null ? String(store.flow_payment_method) : '')
-  const [flowName, setFlowName] = useState(store.nombre ?? '')
-  const [connectingFlow, setConnectingFlow] = useState(false)
-  const flowConnected = !!store.flow_merchant_id
+  // Las llaves de la cuenta de Flow de la marca. Nunca vuelven del servidor:
+  // los campos nacen vacíos y solo viajan cuando alguien los escribe.
+  const [flowApiKey, setFlowApiKey] = useState('')
+  const [flowSecretKey, setFlowSecretKey] = useState('')
+  const [flowKeysBusy, setFlowKeysBusy] = useState(false)
+  const [flowKeysEditing, setFlowKeysEditing] = useState(false)
+  const flowConnected = !!store.flow_keys_configured
 
   // Envíos — la cuenta Shalom Pro del cliente (para crear guías y cotizar 🔮;
   // el rastreo de fases no la necesita). El password nunca vuelve del server.
@@ -496,32 +499,44 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     onSaved?.()
   }
 
-  // Alta en Flow como comercio asociado. Aparte del guardado, por la misma
-  // razón que 360pay: crea un comercio REAL en un tercero y no se deshace.
-  const connectFlow = async () => {
-    if (connectingFlow || flowConnected) return
-    setConnectingFlow(true); setErr('')
+  // Las llaves de Flow de la marca. Van aparte del guardado por la misma razón
+  // que las de Shalom: son credenciales de un tercero y no pueden viajar de
+  // polizón en el botón que guarda un logo. A diferencia del alta de 360pay,
+  // esto NO crea nada en Flow y se puede deshacer: la marca abre su cuenta allá
+  // y pega sus dos llaves acá.
+  const guardarLlavesFlow = async () => {
+    if (flowKeysBusy) return
+    setFlowKeysBusy(true); setErr('')
     const { ok, data } = await call({
       action: 'update', admin_auth_id: adminId, store_id: store.id,
-      flow_env: flowEnv,
-      flow_connect: { name: flowName.trim() },
+      flow_keys: { api_key: flowApiKey.trim(), secret_key: flowSecretKey },
     })
-    setConnectingFlow(false)
+    setFlowKeysBusy(false)
     if (!ok) {
-      // El motivo de Flow se PINTA, no se traga: "reintenta" es un consejo
-      // inútil cuando la causa es que la cuenta no puede crear comercios.
-      const d = data as { error?: string; detalle?: string | null; status_flow?: number; red?: boolean }
-      const base = ERR[d.error ?? ''] ?? 'No pudimos conectar con Flow.'
-      const dicho = d.red
-        ? 'No hubo respuesta de Flow (red o timeout).'
-        : d.detalle
-          ? `Flow respondió ${d.status_flow ?? ''}: ${d.detalle}`
-          : d.status_flow
-            ? `Flow respondió ${d.status_flow}, sin mensaje.`
-            : ''
-      setErr(dicho ? `${base} ${dicho}` : base)
+      setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No pudimos guardar las llaves de Flow.')
       return
     }
+    // Se limpian de la pantalla apenas se guardan: un secreto que sigue en un
+    // input es un secreto en la memoria del navegador y en el autocompletado.
+    setFlowApiKey(''); setFlowSecretKey(''); setFlowKeysEditing(false)
+    onSaved?.()
+  }
+
+  // Quitar las llaves apaga el riel en el mismo golpe (lo hace el servidor):
+  // dejarlo encendido sin con qué cobrar deja al comprador con un pedido y sin
+  // forma de pagarlo.
+  const borrarLlavesFlow = async () => {
+    if (flowKeysBusy) return
+    setFlowKeysBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id, flow_keys: null,
+    })
+    setFlowKeysBusy(false)
+    if (!ok) {
+      setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No pudimos quitar las llaves de Flow.')
+      return
+    }
+    setFlowApiKey(''); setFlowSecretKey(''); setFlowKeysEditing(false)
     onSaved?.()
   }
 
@@ -770,23 +785,35 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               página de Flow con su código de aprobación de Yape y vuelve solo.
             </p>
 
-            {flowConnected ? (
+            {flowConnected && !flowKeysEditing ? (
               <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--violet-bg)' }}>
                 <p className="text-[10px] font-black" style={{ color: 'var(--violet-fg)' }}>
-                  ✓ Conectado · comercio {store.flow_merchant_id}
+                  ✓ Llaves cargadas
+                  {store.flow_secrets_updated_at
+                    ? ` · ${new Date(store.flow_secrets_updated_at).toLocaleDateString('es-PE')}`
+                    : ''}
                 </p>
                 <p className="text-[10px] text-gray-500 mt-0.5">
                   Ambiente: <strong>{flowEnv === 'live' ? 'producción' : 'pruebas'}</strong>.
-                  La aprobación del comercio la hace Flow; hasta entonces las órdenes rebotan.
+                  La plata de esta marca cae en <strong>su</strong> cuenta de Flow.
                 </p>
+                <div className="flex gap-2 mt-1.5">
+                  <button onClick={() => { setFlowKeysEditing(true); setFlowApiKey(''); setFlowSecretKey('') }}
+                    className="text-[10px] font-black underline" style={{ color: 'var(--violet-fg)' }}>
+                    Cambiar llaves
+                  </button>
+                  <button onClick={borrarLlavesFlow} disabled={flowKeysBusy}
+                    className="text-[10px] font-black underline text-gray-500 disabled:opacity-40">
+                    {flowKeysBusy ? 'Quitando…' : 'Quitar'}
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: 'var(--warn-bg-soft)' }}>
-                {/* El ambiente va ARRIBA del botón a propósito: el alta se hace en el que
-                    esté elegido acá y después no se puede cambiar —conectar en pruebas deja
-                    la marca atada a la cuenta de sandbox de Flow, y volver atrás es un
-                    `update stores set flow_merchant_id = null` a mano. Debajo del botón,
-                    este selector se lee cuando ya es tarde. */}
+                {/* El ambiente va ARRIBA de las llaves porque las cuentas de Flow son
+                    SEPARADAS por ambiente: una llave de sandbox contra producción no
+                    falla acá, falla en Flow, y el rechazo que devuelve se parece al de
+                    una firma mal armada. Elegir primero evita esa media hora. */}
                 <label className="text-[10px] font-bold text-gray-600 mb-1 block">Ambiente</label>
                 <select value={flowEnv}
                   onChange={e => setFlowEnv(e.target.value === 'live' ? 'live' : 'sandbox')}
@@ -795,24 +822,35 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
                   <option value="live">Producción</option>
                 </select>
 
-                <label className="text-[10px] font-bold text-gray-600 mb-1 block">
-                  Nombre del comercio en Flow
-                </label>
+                <label className="text-[10px] font-bold text-gray-600 mb-1 block">API Key</label>
+                <input value={flowApiKey} onChange={e => setFlowApiKey(e.target.value)}
+                  autoComplete="off" spellCheck={false}
+                  placeholder="Flow → Configuración → Datos de integración"
+                  className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
+
+                <label className="text-[10px] font-bold text-gray-600 mb-1 block">Secret Key</label>
+                <input value={flowSecretKey} onChange={e => setFlowSecretKey(e.target.value)}
+                  type="password" autoComplete="new-password" spellCheck={false}
+                  placeholder="No se vuelve a mostrar"
+                  className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
+
                 <div className="flex gap-2">
-                  <input value={flowName} onChange={e => setFlowName(e.target.value)}
-                    placeholder="Kross Shop"
-                    className="flex-1 bg-white border rounded-xl px-3 py-2 text-sm outline-none" />
-                  <button onClick={connectFlow}
-                    disabled={connectingFlow || !flowName.trim()}
+                  <button onClick={guardarLlavesFlow}
+                    disabled={flowKeysBusy || !flowApiKey.trim() || !flowSecretKey.trim()}
                     className="rounded-xl px-3 py-2 text-xs font-black text-white disabled:opacity-40"
                     style={{ background: '#742284' }}>
-                    {connectingFlow ? 'Conectando…' : 'Conectar con Flow'}
+                    {flowKeysBusy ? 'Guardando…' : 'Guardar llaves'}
                   </button>
+                  {flowKeysEditing && (
+                    <button onClick={() => { setFlowKeysEditing(false); setFlowApiKey(''); setFlowSecretKey('') }}
+                      className="rounded-xl px-3 py-2 text-xs font-black text-gray-500">
+                      Cancelar
+                    </button>
+                  )}
                 </div>
                 <p className="text-[10px] text-gray-500 mt-1.5">
-                  Se crea el comercio asociado bajo la cuenta de Kross, <strong>en el ambiente
-                  elegido arriba</strong>. Se hace una sola vez: después no se puede cambiar
-                  de ambiente ni deshacer desde aquí.
+                  Cada marca abre <strong>su propia cuenta</strong> en Flow y pega acá sus dos
+                  llaves. Kross no las ve después de guardarlas y no vuelven a esta pantalla.
                 </p>
               </div>
             )}

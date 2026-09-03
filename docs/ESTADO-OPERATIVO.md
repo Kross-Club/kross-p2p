@@ -34,6 +34,44 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Flow: las llaves son de cada marca, no de Kross · SQL + 3 funciones (02-sep-2026)
+
+**Qué pasó.** El riel se construyó asumiendo que Kross sería *comercio integrador* de Flow y
+que una llave de plataforma daría de alta a las marcas como comercios asociados. Al primer
+intento real, Flow respondió **`Commerce is not integrator`**: ser integrador es un permiso que
+ellos habilitan sobre una cuenta, y la de Kross no lo tiene. El modelo pasa a ser **una cuenta
+de Flow por marca, con sus propias llaves**, pegadas desde *Marca → Cobros*.
+
+**Qué se ve si no entra:** nada — Flow sigue apagado en todas las marcas y todo cobra por
+360pay. Lo que NO se puede hacer hasta desplegar es configurar Flow en ninguna marca.
+
+**Primero el SQL** (bloque §41; idempotente):
+
+```sql
+alter table store_secrets add column if not exists flow_api_key            text;
+alter table store_secrets add column if not exists flow_secret_key         text;
+alter table store_secrets add column if not exists flow_secrets_updated_at timestamptz;
+```
+
+**Después las funciones:**
+
+```
+supabase functions deploy manage-store  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy flow-order    --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy flow-confirm  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+> **Los secretos `FLOW_API_KEY*` de plataforma ya no los lee nadie.** Se pueden borrar cuando
+> se quiera (`supabase secrets unset FLOW_API_KEY FLOW_SECRET_KEY FLOW_API_KEY_LIVE
+> FLOW_SECRET_KEY_LIVE`), sin apuro: sobran, no estorban. Las llaves de Kross Shop se vuelven a
+> pegar en el panel, que es donde ahora viven.
+
+> ⚠️ **La comisión de Kross no tiene mecanismo en Flow.** Sin split, Flow le liquida a la marca
+> el monto menos su comisión y Kross no cobra nada. En Kross Shop da igual —la cuenta es de
+> Kross—, pero **antes de encender Flow en una marca cliente hay que decidir cómo se le cobra.**
+> Es una decisión comercial, no un pendiente de código.
+
+
 ### Flow Pagos, el segundo riel · 4 funciones (02-sep-2026)
 
 **El grueso ya entró el 02-sep**: el SQL (§39 y §40) corrido, y desplegadas `pay360-coupon`
