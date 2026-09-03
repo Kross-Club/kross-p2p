@@ -801,6 +801,21 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               página de Flow con su código de aprobación de Yape y vuelve solo.
             </p>
 
+            {/* El ambiente va SIEMPRE visible, como el de 360pay, y FUERA de la caja
+                de llaves. Adentro solo se veía mientras no hubiera llaves cargadas:
+                una vez guardadas, la tarjeta lo mostraba como texto y para cambiarlo
+                había que pulsar "Cambiar llaves" y volver a pegar las dos —el botón
+                de guardar no se habilita sin ellas—. O sea: no había forma de
+                corregir un ambiente equivocado sin tener las llaves a mano otra vez,
+                que es justo cuando uno no las tiene. */}
+            <label className="text-[10px] font-bold text-gray-500 mb-1 block">Ambiente</label>
+            <select value={flowEnv}
+              onChange={e => setFlowEnv(e.target.value === 'live' ? 'live' : 'sandbox')}
+              className="w-full bg-white border rounded-xl px-3 py-2 text-sm mb-2">
+              <option value="sandbox">Pruebas (sandbox)</option>
+              <option value="live">Producción</option>
+            </select>
+
             {flowConnected && !flowKeysEditing ? (
               <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--violet-bg)' }}>
                 <p className="text-[10px] font-black" style={{ color: 'var(--violet-fg)' }}>
@@ -810,7 +825,6 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
                     : ''}
                 </p>
                 <p className="text-[10px] text-gray-500 mt-0.5">
-                  Ambiente: <strong>{flowEnv === 'live' ? 'producción' : 'pruebas'}</strong>.
                   La plata de esta marca cae en <strong>su</strong> cuenta de Flow.
                 </p>
                 <div className="flex gap-2 mt-1.5">
@@ -826,18 +840,10 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               </div>
             ) : (
               <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background: 'var(--warn-bg-soft)' }}>
-                {/* El ambiente va ARRIBA de las llaves porque las cuentas de Flow son
-                    SEPARADAS por ambiente: una llave de sandbox contra producción no
-                    falla acá, falla en Flow, y el rechazo que devuelve se parece al de
-                    una firma mal armada. Elegir primero evita esa media hora. */}
-                <label className="text-[10px] font-bold text-gray-600 mb-1 block">Ambiente</label>
-                <select value={flowEnv}
-                  onChange={e => setFlowEnv(e.target.value === 'live' ? 'live' : 'sandbox')}
-                  className="w-full bg-white border rounded-xl px-3 py-2 text-sm mb-2">
-                  <option value="sandbox">Pruebas (sandbox)</option>
-                  <option value="live">Producción</option>
-                </select>
-
+                {/* El ambiente se elige ARRIBA, fuera de esta caja: las cuentas de
+                    Flow están separadas por ambiente y una llave de sandbox contra
+                    producción no falla acá, falla en Flow con un rechazo que se
+                    parece al de una firma mal armada. */}
                 <label className="text-[10px] font-bold text-gray-600 mb-1 block">API Key</label>
                 <input value={flowApiKey} onChange={e => setFlowApiKey(e.target.value)}
                   autoComplete="off" spellCheck={false}
