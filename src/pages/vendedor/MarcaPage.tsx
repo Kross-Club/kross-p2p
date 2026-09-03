@@ -397,10 +397,17 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   // Son chips separados a propósito: son proveedores distintos y uno puede
   // estar caído con el otro vivo.
   const [apiUp, setApiUp] = useState<boolean | null>(null)
+  // Shalom tiene DOS APIs de terceros (no hay oficial): el titular y la de
+  // contingencia. `apiUp` dice si queda alguna en pie —que es lo que decide si
+  // hay que operar a mano—, y esto dice si estamos corriendo sobre la de
+  // repuesto, que es una noticia distinta y hay que poder verla.
+  const [enContingencia, setEnContingencia] = useState(false)
   const [olvaUp, setOlvaUp] = useState<boolean | null>(null)
   useEffect(() => {
     call({ action: 'shalom_status', admin_auth_id: adminId }).then(({ ok, data }) => {
-      setApiUp(ok ? !!(data as { operational?: boolean }).operational : false)
+      const d = (data ?? {}) as { operational?: boolean; pe?: boolean; lat?: boolean | null }
+      setApiUp(ok ? !!d.operational : false)
+      setEnContingencia(ok && d.pe === false && d.lat === true)
     })
     call({ action: 'olva_status', admin_auth_id: adminId }).then(({ ok, data }) => {
       setOlvaUp(ok ? !!(data as { operational?: boolean }).operational : false)
@@ -886,19 +893,31 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
             </span>
             <span className="text-[10px] font-black px-2 py-1 rounded-full"
               style={{
-                background: apiUp === null ? '#F3F4F6' : apiUp ? '#DCFCE7' : '#FEE2E2',
-                color: apiUp === null ? '#6B7280' : apiUp ? '#16A34A' : '#DC2626',
+                background: apiUp === null ? '#F3F4F6' : enContingencia ? '#FEF3C7' : apiUp ? '#DCFCE7' : '#FEE2E2',
+                color: apiUp === null ? '#6B7280' : enContingencia ? '#B45309' : apiUp ? '#16A34A' : '#DC2626',
               }}>
-              ● {apiUp === null ? 'Verificando API…' : apiUp ? 'API operativa' : 'API caída'}
+              ● {apiUp === null ? 'Verificando API…'
+                : enContingencia ? 'API operativa (contingencia)'
+                : apiUp ? 'API operativa' : 'API caída'}
             </span>
           </div>
+
+          {enContingencia && (
+            <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--warn-bg)' }}>
+              <p className="text-[10px] font-bold" style={{ color: 'var(--warn-fg)' }}>
+                El proveedor de siempre está caído y todo sigue andando por el de repuesto:
+                las guías se emiten y el rastreo se actualiza igual. No tienes que hacer nada.
+              </p>
+            </div>
+          )}
 
           {apiUp === false && (
             <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--danger-bg)' }}>
               <p className="text-[10px] font-bold" style={{ color: 'var(--danger-fg)' }}>
-                Plan B mientras vuelve: registra la guía igual en el pedido (el sistema la
-                vigilará solo apenas la API regrese), consulta el estado a mano en
-                shalom.pe → Rastrea, y avísale al comprador por el chat del pedido.
+                Los dos proveedores están caídos. Plan B mientras vuelven: registra la guía
+                igual en el pedido (el sistema la vigilará solo apenas la API regrese),
+                consulta el estado a mano en shalom.pe → Rastrea, y avísale al comprador por
+                el chat del pedido.
               </p>
             </div>
           )}

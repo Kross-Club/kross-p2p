@@ -288,9 +288,12 @@ export function parseOrderResponse(json: unknown): GuideResult {
     return null
   }
 
-  const codigo = first(['codigo', 'clave', 'codigoguia'], GUIA_CODIGO)
+  // `ordernumber`/`ordercode` son los nombres de Shalom LAT (el proveedor de
+  // contingencia): la misma guía con otro rótulo. Leer los dos juegos de claves
+  // acá deja que las dos emisiones compartan lectura y no se dupliquen reglas.
+  const codigo = first(['codigo', 'clave', 'codigoguia', 'ordercode'], GUIA_CODIGO)
   return {
-    numero: first(['guia', 'numero', 'numeroguia', 'nroguia'], GUIA_NUMERO),
+    numero: first(['guia', 'numero', 'numeroguia', 'nroguia', 'ordernumber'], GUIA_NUMERO),
     codigo: codigo ? codigo.toUpperCase() : null,
     oseId: first(['oseid', 'ose'], /^\d+$/),
     serie: first(['serie']),

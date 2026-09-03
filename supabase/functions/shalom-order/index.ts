@@ -9,7 +9,7 @@
 //
 // ⚠️ CADA LLAMADA EXITOSA CUESTA PLATA. La doc del proveedor es explícita: no
 // hay sandbox ni clave de idempotencia, y un timeout NO significa que la orden
-// no se creó. De ahí las cuatro defensas, que son el diseño y no un adorno:
+// no se creó. De ahí las CINCO defensas, que son el diseño y no un adorno:
 //
 //   1. CANDADO. Se reclama el pedido con un UPDATE condicional
 //      (`shalom_order_status IS NULL`) ANTES de llamar a nadie. Dos webhooks
@@ -23,17 +23,26 @@
 //   4. NUNCA REINTENTAR A CIEGAS. Si ni siquiera eso se puede resolver, el
 //      pedido queda en un estado que este código no vuelve a tomar solo.
 //
+//   5. CONTINGENCIA. Shalom no tiene API oficial: las dos que usamos son de
+//      terceros. Si el titular (Shalom PE) no responde, se emite por Shalom LAT
+//      contra la MISMA cuenta Shalom Pro — y como es la misma cuenta, sus
+//      "envíos pendientes" ven lo que el titular haya alcanzado a crear, así
+//      que la contingencia mira ahí ANTES de emitir. Un proveedor caído deja de
+//      ser una guía menos. Ver `_shared/shalom-lat-emisor.ts`.
+//
 // El plan B nunca se va: Logística siempre puede registrar la guía a mano en
 // `TrackingBar` — el mismo camino de siempre, que ahora comparte código con
 // este (`_shared/guia.ts`).
 
 import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { chatMessage, supabase } from '../_shared/tracking.ts'
-import { shalomApiKey } from '../_shared/shalom.ts'
+import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import {
   buildOrderPayload, buscarOrdenPorDni, esRastreable, isShalomSize,
   nuevoPickupCode, parseOrderResponse, resolveProductId,
 } from '../_shared/shalom-orders.ts'
+import { buildLatRegisterPayload } from '../_shared/shalom-lat.ts'
+import { emitirGuiaLat } from '../_shared/shalom-lat-emisor.ts'
 
 const SHALOM_API_BASE = 'https://api.shalom-api-peru.com'
 // El primer login de una cuenta Shalom Pro tarda ~90 s (hasta 2 min, dice el
@@ -195,7 +204,8 @@ Deno.serve(async (req: Request) => {
     const [{ data: store }, { data: secrets }, { data: product }, { data: buyer }] = await Promise.all([
       supabase.from('stores').select('nombre, shalom_auto_guide_enabled').eq('id', storeId).maybeSingle(),
       supabase.from('store_secrets')
-        .select('shalom_pro_email, shalom_pro_password, shalom_pro_status').eq('store_id', storeId).maybeSingle(),
+        .select('shalom_pro_email, shalom_pro_password, shalom_pro_status, shalom_lat_instance_id')
+        .eq('store_id', storeId).maybeSingle(),
       session.product_id
         ? supabase.from('products')
             .select('shalom_origin_branch_id, package_size, declared_content').eq('id', session.product_id).maybeSingle()
@@ -213,18 +223,6 @@ Deno.serve(async (req: Request) => {
         '📦 Guía automática no generada — la marca no tiene conectada su cuenta Shalom Pro '
         + '(Panel → Mi marca → Envíos). Registra la guía a mano cuando despaches.')
       return json({ skipped: 'cuenta Shalom Pro no conectada' })
-    }
-
-    const key = await shalomApiKey()
-    if (!key) {
-      await cerrar(sessionId, 'FAILED', 'sin llave de la API de envíos')
-      await aLogistica(sessionId, '📦 Guía automática no generada — problema de configuración de Kross. Regístrala a mano y avisa al equipo.')
-      return json({ error: 'sin api key' }, 500)
-    }
-    const auth = {
-      'X-API-Key': key,
-      'X-Shalom-Email': email,
-      'X-Shalom-Password': password,
     }
 
     // Credenciales rechazadas: se refleja en la marca para que el panel lo diga
@@ -246,6 +244,135 @@ Deno.serve(async (req: Request) => {
     const destino = /^\d+$/.test(destinoRaw) ? destinoRaw : ''
     const dni = String(buyer?.document_number ?? '').replace(/\D/g, '')
     const size = isShalomSize(product?.package_size) ? product.package_size : null
+    // La clave de retiro se elige ACÁ y no junto al payload: el mismo código
+    // tiene que valer lo emita el titular o la contingencia. Si el titular
+    // alcanzó a crear la guía antes de callarse, la clave impresa es esta.
+    const pickupCode = nuevoPickupCode()
+
+    /**
+     * ─── La CONTINGENCIA: emitir por Shalom LAT ─────────────────────────────
+     * Se llama SOLO cuando el titular no responde (red caída, 5xx, catálogo
+     * mudo o llave sin configurar). Nunca cuando el titular RECHAZÓ el envío:
+     * un 4xx es una respuesta —el payload está mal, o las credenciales—, y
+     * repetirlo en el otro proveedor no lo arregla; solo gastaría plata.
+     *
+     * Devuelve `null` si la contingencia no está disponible (sin llave, sin
+     * tamaño configurado): entonces manda el cierre original del titular, que
+     * es el que sabe explicar lo que pasó.
+     *
+     * `reconciliar` es la decisión más delicada: cuando el titular pudo haber
+     * creado la orden antes de callarse, LAT mira primero los envíos pendientes
+     * de la MISMA cuenta y registra esa en vez de emitir otra. La búsqueda es
+     * por DNI —lo único que los dos proveedores nombran igual—, así que un
+     * comprador con otro envío pendiente en la cuenta puede confundirla: por eso
+     * el aviso a Logística lo dice y pide verificar en pro.shalom.pe. Cuando el
+     * titular ni llegó a llamar (sin llave, catálogo mudo) se pasa `false` y no
+     * hay ninguna ambigüedad que resolver.
+     */
+    async function contingencia(
+      motivo: string,
+      reniecPrevio: { name: string; lastName: string; surName: string } | null,
+      reconciliar: boolean,
+    ): Promise<Response | null> {
+      const keyLat = await shalomLatApiKey()
+      if (!keyLat) return null
+      // LAT cotiza por el TAMAÑO en texto (no por el id del catálogo, que es lo
+      // que el titular no pudo darnos): sin tamaño no hay envío que armar.
+      if (!size) return null
+
+      const reniec = reniecPrevio ?? (/^\d{8}$/.test(dni) ? await nombreReniec(dni) : null)
+      const datos = {
+        apiKey: keyLat,
+        storeId,
+        storeName: store?.nombre ?? null,
+        email,
+        password,
+        instanceId: secrets?.shalom_lat_instance_id ?? null,
+        originTerminalId: String(product?.shalom_origin_branch_id ?? ''),
+        destinyTerminalId: destino,
+        size,
+        dni,
+        phone: String(session.buyer_phone ?? buyer?.phone ?? ''),
+        reniec,
+        pickupCode,
+        reconciliarAntes: reconciliar,
+      }
+
+      // El interruptor manda igual: con la guía automática apagada no se emite
+      // por NINGÚN proveedor. El payload va al log (con la instancia rotulada,
+      // porque en el ensayo puede no existir todavía) y el ensayo al chat.
+      if (store?.shalom_auto_guide_enabled !== true) {
+        const ensayo = buildLatRegisterPayload({
+          instanceId: datos.instanceId ?? 'ENSAYO',
+          originTerminalId: datos.originTerminalId,
+          destinyTerminalId: datos.destinyTerminalId,
+          size,
+          pickupCode,
+          receiver: {
+            dni, phone: datos.phone,
+            name: reniec?.name ?? null, lastName: reniec?.lastName ?? null, surName: reniec?.surName ?? null,
+          },
+        })
+        console.log('[shalom-order] SIMULADO por contingencia', sessionId, JSON.stringify(ensayo))
+        await cerrar(sessionId, 'SIMULADO', `interruptor de guía automática apagado en la marca (${motivo})`,
+          { shalom_order_provider: 'LAT' })
+        await aLogistica(sessionId,
+          '🧪 Ensayo de guía automática por la vía de contingencia: el proveedor de siempre no respondió, '
+          + 'el envío se armó completo con el otro y NO se emitió (la marca tiene apagada la guía automática). '
+          + 'Registra la guía a mano cuando despaches.')
+        return json({ simulado: true, proveedor: 'LAT' })
+      }
+
+      console.warn('[shalom-order] va por contingencia LAT', sessionId, motivo)
+      const r = await emitirGuiaLat(datos)
+
+      if (r.ok) {
+        const aviso = r.yaExistia
+          ? '📦 Guía recuperada por la vía de contingencia: el proveedor de siempre no respondió y el envío YA existía '
+            + 'en la cuenta Shalom Pro de la marca, así que se registró ese en vez de emitir otro. '
+            + 'Verifica en pro.shalom.pe que la guía corresponda a este pedido.'
+          : '📦 Guía generada por la vía de contingencia (el proveedor de siempre no respondió). '
+            + 'El comprador ya la tiene en su chat.'
+        return await guardar(r.guia, pickupCode, null, 'LAT', aviso)
+      }
+
+      if (r.clase === 'config' && r.motivo.includes('credenciales')) {
+        await credencialesRechazadas()
+        return json({ error: 'credenciales rechazadas' }, 502)
+      }
+      if (r.clase === 'config') {
+        await cerrar(sessionId, 'SKIPPED', r.motivo, { shalom_order_provider: 'LAT' })
+        await aLogistica(sessionId,
+          `📦 Guía automática no generada — falta: ${(r.faltan ?? []).join(', ') || r.motivo}. `
+          + 'Registra la guía a mano cuando despaches (el envío del producto se completa en Productos → el producto → Envío).')
+        return json({ skipped: 'faltan datos', proveedor: 'LAT', faltan: r.faltan })
+      }
+
+      await cerrar(sessionId, 'FAILED', `${motivo}; ${r.motivo}`, { shalom_order_provider: 'LAT' })
+      await aLogistica(sessionId, r.incierto
+        ? '⚠️ Guía automática sin confirmar: ninguno de los dos proveedores de envío respondió y tampoco pudimos '
+          + 'verificar si el envío llegó a crearse. ANTES de emitir otra, revísalo en pro.shalom.pe — puede existir. '
+          + 'Si existe, regístrala acá con el botón de siempre.'
+        : '📦 Guía automática no generada — ninguno de los dos proveedores de envío pudo emitirla. '
+          + 'Regístrala a mano cuando despaches; el detalle quedó en los logs de Kross.')
+      return json({ error: 'contingencia falló', proveedor: 'LAT' }, 502)
+    }
+
+    const key = await shalomApiKey()
+    if (!key) {
+      // El titular no está configurado: la contingencia no necesita su llave.
+      console.error('[shalom-order] sin SHALOM_API_KEY', sessionId)
+      const porLat = await contingencia('el titular no tiene llave configurada', null, false)
+      if (porLat) return porLat
+      await cerrar(sessionId, 'FAILED', 'sin llave de la API de envíos')
+      await aLogistica(sessionId, '📦 Guía automática no generada — problema de configuración de Kross. Regístrala a mano y avisa al equipo.')
+      return json({ error: 'sin api key' }, 500)
+    }
+    const auth = {
+      'X-API-Key': key,
+      'X-Shalom-Email': email,
+      'X-Shalom-Password': password,
+    }
 
     // ─── Lo que hay que resolver contra el proveedor ─────────────────────────
     // El producto (su id es POR CUENTA) y la persona (para no chocar con el 409
@@ -286,6 +413,12 @@ Deno.serve(async (req: Request) => {
     // completar un campo que ya estaba lleno.
     if (size && !productId) {
       const sinRespuesta = !productos?.ok
+      // Que el titular no conteste su catálogo es exactamente el caso que la
+      // contingencia resuelve: LAT manda el tamaño como texto, sin catálogo.
+      if (sinRespuesta) {
+        const porLat = await contingencia('el catálogo del titular no respondió', null, false)
+        if (porLat) return porLat
+      }
       await cerrar(sessionId, 'SKIPPED', sinRespuesta
         ? 'el catálogo de Shalom no respondió'
         : `la cuenta Shalom Pro no ofrece el tamaño ${size}`)
@@ -303,7 +436,6 @@ Deno.serve(async (req: Request) => {
       : null
     const reniec = personId ? null : (/^\d{8}$/.test(dni) ? await nombreReniec(dni) : null)
 
-    const pickupCode = nuevoPickupCode()
     const armado = buildOrderPayload({
       originTerminalId: String(product?.shalom_origin_branch_id ?? ''),
       destinyTerminalId: destino,
@@ -401,6 +533,14 @@ Deno.serve(async (req: Request) => {
       // pay360: nada de terceros frente a la gente del chat).
       const detalle = await res.text().catch(() => '')
       console.error('[shalom-order] rechazo del proveedor', sessionId, res.status, detalle.slice(0, 500))
+      // Solo el 5xx pasa a la contingencia: el titular se cayó, no rechazó. Un
+      // 4xx es una respuesta —payload inválido— y repetirla en el otro
+      // proveedor gastaría plata sin arreglar nada. Va con `reconciliar: true`
+      // porque un 500 no promete que la orden no se haya creado.
+      if (res.status >= 500) {
+        const porLat = await contingencia(`el titular falló (${res.status}) tras ${intentos} intentos`, reniec, true)
+        if (porLat) return porLat
+      }
       await cerrar(sessionId, 'FAILED', res.status >= 500
         ? `el proveedor falló (${res.status}) tras ${intentos} intentos`
         : `el proveedor rechazó el envío (${res.status})`)
@@ -422,6 +562,11 @@ Deno.serve(async (req: Request) => {
         console.log('[shalom-order] reconciliada tras timeout', sessionId, encontrada.numero)
         return await guardar(encontrada, pickupCode, encontrada.orderId)
       }
+      // El titular no contestó y su propia reconciliación tampoco: la
+      // contingencia vuelve a preguntar por la MISMA cuenta (sus pendientes ven
+      // lo que el titular haya creado) y, si de verdad no hay nada, emite.
+      const porLat = await contingencia('el titular no respondió', reniec, true)
+      if (porLat) return porLat
       await cerrar(sessionId, 'FAILED', 'el proveedor no respondió')
       await aLogistica(sessionId,
         '⚠️ Guía automática sin confirmar: Shalom no respondió y tampoco pudimos verificar si el envío '
@@ -476,14 +621,21 @@ Deno.serve(async (req: Request) => {
       guia: ReturnType<typeof parseOrderResponse>,
       code: string,
       orderId: string | null = null,
+      /** Quién la emitió: el titular (Shalom PE) o la contingencia (Shalom LAT).
+       *  Queda en el expediente porque es lo primero que se pregunta cuando una
+       *  guía sale distinta a las demás. */
+      proveedor: 'PE' | 'LAT' = 'PE',
+      /** El aviso a Logística, si esta vía tiene el suyo. */
+      aviso: string | null = null,
     ): Promise<Response> {
-      const extra = { shalom_pickup_code: code, shalom_order_id: orderId }
+      const extra = { shalom_pickup_code: code, shalom_order_id: orderId, shalom_order_provider: proveedor }
+      const emisor = proveedor === 'PE' ? 'Shalom' : 'Shalom (vía de contingencia)'
 
       if (!esRastreable(guia)) {
         console.error('[shalom-order] respuesta sin guía rastreable', sessionId)
         await cerrar(sessionId, 'CREATED', 'guía emitida, sin datos rastreables en la respuesta', extra)
         await aLogistica(sessionId,
-          '⚠️ El envío se creó en Shalom pero la respuesta no trajo la guía. '
+          `⚠️ El envío se creó en ${emisor} pero la respuesta no trajo la guía. `
           + 'Búscala en pro.shalom.pe y regístrala acá con el botón de siempre — NO generes otra.')
         return json({ created: true, sinGuia: true })
       }
@@ -496,32 +648,35 @@ Deno.serve(async (req: Request) => {
         console.error('[shalom-order] guía con formato inesperado', sessionId, JSON.stringify(guia))
         await cerrar(sessionId, 'CREATED', 'guía emitida con formato inesperado', extra)
         await aLogistica(sessionId,
-          '⚠️ El envío se creó en Shalom pero su guía no tiene el formato esperado. '
+          `⚠️ El envío se creó en ${emisor} pero su guía no tiene el formato esperado. `
           + 'Regístrala a mano desde el comprobante — NO generes otra.')
         return json({ created: true, formatoRaro: true })
       }
 
-      // `yaSuscrito`: la orden se creó con `track: true`, así que el webhook ya
-      // la está mirando — no se gasta otra request en suscribirla. Y el PDF de
-      // la guía viaja con el mensaje: es el botón "Ver mi guía de Shalom" — la
+      // `yaSuscrito`: la orden del titular se creó con `track: true`, así que su
+      // webhook ya la está mirando — no se gasta otra request en suscribirla. La
+      // de la contingencia NO nace suscrita: `registrarGuia` la suscribe como a
+      // cualquier guía registrada a mano. Y el PDF de la guía viaja con el mensaje: es el botón "Ver mi guía de Shalom" — la
       // guía FORMAL de Shalom, descargada del voucher y guardada en Storage
       // (si la respuesta trajera una URL directa, esa gana: cero descargas).
       const pdfUrl = guia.pdfUrl ?? await guardarPdfDeGuia(guia.oseId, guia.numero)
       // La clave recién elegida viaja con la sesión: si el pedido ya quedó sin
       // saldo (pagó el total), `registrarGuia` la entrega junto con la guía —la
       // fila de la base todavía no la tiene, la escribe `cerrar` después.
-      const reg = await registrarGuia({ ...session, shalom_pickup_code: code }, g, { yaSuscrito: true, pdfUrl })
+      const reg = await registrarGuia({ ...session, shalom_pickup_code: code }, g, { yaSuscrito: proveedor === 'PE', pdfUrl })
       await cerrar(sessionId, 'CREATED', reg.ok ? null : 'guía emitida, no se pudo escribir en el pedido', extra)
       if (!reg.ok) {
         console.error('[shalom-order] no se pudo escribir la guía en el pedido', sessionId, reg.error)
-        await aLogistica(sessionId, '⚠️ El envío se creó en Shalom pero no se pudo escribir en el pedido. Regístralo a mano — NO generes otro.')
+        await aLogistica(sessionId, `⚠️ El envío se creó en ${emisor} pero no se pudo escribir en el pedido. Regístralo a mano — NO generes otro.`)
         return json({ created: true, guardado: false }, 500)
       }
 
+      const cabecera = aviso
+        ?? '📦 Guía generada automáticamente en Shalom. El comprador ya la tiene en su chat.'
       await aLogistica(sessionId,
-        `📦 Guía generada automáticamente en Shalom · ${g.ids}. El comprador ya la tiene en su chat. `
+        `${cabecera} Guía: ${g.ids}. `
         + 'Su clave de retiro quedó guardada en el pedido y el chat se la entrega solo contra el saldo pagado.')
-      return json({ created: true, tracking: g.tracking })
+      return json({ created: true, proveedor, tracking: g.tracking })
     }
   }
 })

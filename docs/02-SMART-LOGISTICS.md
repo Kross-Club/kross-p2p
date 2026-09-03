@@ -323,9 +323,10 @@ Corre **después** de los generadores de agencias, porque lee sus JSON ya constr
    proveedor y cada marca arranca en modo ensayo — ver § *Generador de guías
    Shalom*) · **Olva 🔮**.
 4. Tracking por API con disparo de cobranza al llegar a destino — **Shalom ✅**
-   (ciclo completo, ver § *Tracking de envíos Shalom*) · **Olva ✅** (mismo
-   ciclo, por barrido: su proveedor no tiene webhook — ver § *Tracking de guías
-   Olva*). Ver §3.
+   (ciclo completo, ver § *Tracking de envíos Shalom*; y con **dos proveedores
+   por si uno cae** desde set-2026 — § *Los dos proveedores de Shalom*) ·
+   **Olva ✅** (mismo ciclo, por barrido: su proveedor no tiene webhook — ver
+   § *Tracking de guías Olva*). Ver §3.
 5. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data
    con la que se negocia cobertura con Aliclic y se mide venta perdida por zona.
 
@@ -682,13 +683,157 @@ proveedor, en su web).
 - La **tasa de recojo nativa** (`EN_DESTINO` vs `ENTREGADO`) sale gratis del
   reflejo, para ambos couriers.
 
+## Los dos proveedores de Shalom ✅ · titular y contingencia (03-set-2026)
+
+**Shalom no tiene API oficial.** Nunca la tuvo: las dos que usamos son de
+terceros que leen el mismo Shalom —su web pública para rastrear, la cuenta
+Shalom Pro de la marca para emitir—. Eso significa que ninguna es "la
+verdadera" y que cualquiera puede caerse, cambiar un campo o quedarse sin cupo
+sin avisarle a nadie. Con una sola, un proveedor caído era un día sin guías
+automáticas y sin fases; con dos, es una línea en los logs.
+
+Desde el 03-set-2026 hay dos, y tienen nombre propio para no volver a
+confundirlas:
+
+| | Shalom **PE** — titular | Shalom **LAT** — contingencia |
+|---|---|---|
+| Base | `https://api.shalom-api-peru.com` | `https://api.shalom-api.lat` |
+| Auth | `X-API-Key` | `x-api-key` |
+| Rastrear | `GET /v1/tracking?numero=&codigo=` · lote `POST /v1/tracking/batch` con `custom_id` | `POST /track` · lote `POST /track/batch` (**sin** `custom_id`) |
+| Emitir | `POST /v1/orders` con las credenciales Shalom Pro en cada request | `POST /account/register` sobre una **instancia** con la sesión persistida |
+| Suscribir | `POST /v1/tracking/subscriptions` | `POST /tracking/subscriptions` |
+| Webhook | `PUT /v1/webhooks`, firma `t=…,v1=…` | `PUT /webhooks`, firma HMAC (formato **no publicado**) |
+| Salud | `GET /healthz`, público | `GET /validate`, con key |
+| Guía formal en PDF | ✅ `GET /v1/orders/{ose_id}/voucher` | ❌ no lo expone |
+| `ose_id` (id interno de Shalom) | ✅ lo conoce y rastrea con él solo | ❌ no lo maneja |
+
+> **El courier sigue siendo UNO.** `agency_name` y `tracking_courier` valen
+> `SHALOM` venga la lectura de donde venga. Qué proveedor contestó es plomería:
+> queda en los logs y —cuando emitió una guía— en
+> `order_sessions.shalom_order_provider`. El comprador y el vendedor nunca ven
+> la diferencia, que es exactamente el punto.
+
+### La regla: titular primero, contingencia si no responde
+
+Se intenta Shalom PE y, **solo si no responde**, Shalom LAT. Nunca al revés y
+nunca los dos por gusto: cada request gasta cupo de una key que se paga.
+
+- **No responde** = red caída, timeout, `5xx`, `429`, o llave sin configurar.
+- **Responde** = también un `404` (esa guía no existe) o un `4xx` (el payload
+  está mal). Ahí **no** se cae a la contingencia: preguntar lo mismo en el otro
+  proveedor no cambia la respuesta, solo gasta.
+
+Dónde vive cada pieza:
+
+| Pieza | Archivo |
+|---|---|
+| Lo específico de LAT, **puro y probado** (fase, payloads, firma, instancias) | `_shared/shalom-lat.ts` · tests en `src/lib/checkout/shalom-lat.test.ts` |
+| El router de rastreo (a quién se le pregunta, y el fallback a mitad de corrida) | `_shared/shalom-rastreo.ts` |
+| Emitir por la contingencia | `_shared/shalom-lat-emisor.ts` |
+| Llaves y bootstrap de webhook de LAT | `_shared/shalom.ts` |
+
+Y lo que **no** cambió, a propósito: el reflejo en el pedido sigue siendo el de
+`_shared/tracking.ts`, uno solo para todos los couriers y todos los
+proveedores. Si una transición se reflejara distinto según quién la trajo, el
+mismo pedido hablaría dos idiomas.
+
+### Qué cubre la contingencia y qué no
+
+- **Rastreo puntual** (el chat) ✅ — `shalom-tracking` prueba PE y cae a LAT.
+- **Barrido** (pg_cron, cada 30 min) ✅ — si PE se cae a mitad de la corrida, lo
+  que quedaba pendiente se lo lleva LAT. Una corrida puede terminar con lecturas
+  de los dos y el pedido no nota nada. Lo que ya leyó el titular **no** se
+  vuelve a preguntar.
+- **Webhook** ✅ — los dos empujan a la MISMA función `shalom-webhook`. Quién
+  firmó lo dice el **secret que valida**, no un campo del cuerpo (que cualquiera
+  podría escribir). Un evento sin firma válida rebota.
+- **Suscribir la guía** ✅ — `registrarGuia` intenta con PE y, si no pudo, con LAT.
+- **Emitir la guía** ✅ — ver abajo.
+- **Guías con solo `ose_id`** ❌ — LAT no conoce ese identificador: esas esperan
+  al titular. Por eso la emisión guarda siempre `numero`+`codigo` cuando los hay.
+- **El PDF de la guía formal** ❌ — lo sirve solo el titular (por `ose_id`). Una
+  guía emitida por la contingencia llega al chat **sin el botón** *"Ver mi guía
+  de Shalom"*; el mensaje sale igual y la hoja de guía de la app es el respaldo
+  de siempre.
+- **La fase, cuando LAT no da hitos** 🟡 — el titular marca hitos explícitos
+  (`origen/transito/destino/entregado/reparto`) y su mapeo es determinista. LAT
+  a veces solo da textos, y ahí se lee como en Olva: por palabras, quedándose
+  con la fase más avanzada. Dos reglas que **no** se relajan ni ahí: `registrado`
+  nunca es una fase (la guía existe, el paquete puede seguir en el almacén) y
+  solo se miran los **valores** de texto, nunca los nombres de campo —un
+  `{"entregado": null}` es un hito que NO ocurrió, y leer su clave cerraría el
+  pedido solo—. Por eso `shalom-tracking` ahora devuelve también `phase` ya
+  resuelta y el front la prefiere.
+
+### Emitir por la contingencia sin pagar dos veces
+
+Es la parte delicada: que el titular no responda **no significa** que no haya
+creado la orden (su propia doc lo dice, y no hay clave de idempotencia). La
+defensa es que **los dos proveedores operan la MISMA cuenta Shalom Pro**, así
+que los envíos pendientes de LAT (`POST /account/pending-shipments`) también ven
+lo que emitió PE. El orden de `emitirGuiaLat` sale de ahí:
+
+1. **instancia** — se crea una vez por marca (`POST /instances`) y su id queda
+   en `store_secrets.shalom_lat_instance_id`;
+2. **sesión** — `POST /instances/status`, y login solo si hace falta (ante la
+   duda, login: cuesta menos que una emisión rechazada);
+3. **¿ya existe?** — pendientes por DNI. Si está, se registra **esa** y no se
+   emite nada;
+4. recién ahí `POST /account/register`;
+5. si no responde, **se vuelve a mirar los pendientes** antes de dar nada por
+   perdido.
+
+> ⚠️ La búsqueda en pendientes es **por DNI** —lo único que los dos proveedores
+> nombran igual—, así que un comprador con otro envío pendiente en la cuenta
+> puede confundirla. Por eso el paso 3 solo corre cuando el titular pudo haber
+> emitido (timeout o `5xx`); cuando ni llegó a llamar (sin llave, catálogo mudo)
+> se salta. Y cuando encuentra una, el aviso a Logística lo dice con esas
+> palabras: *verifica en pro.shalom.pe que la guía corresponda a este pedido*.
+
+Diferencias del payload que importan al leer el código:
+
+- **El tamaño viaja como TEXTO** (`"PAQUETE XS"`), no como el `product_id` del
+  catálogo de la cuenta. Por eso la contingencia puede emitir **aunque
+  `GET /v1/products` del titular no responda** — que es uno de los casos de
+  caída que cubre.
+- **No hay `person_id`**: LAT siempre quiere nombres y apellidos, así que sin
+  RENIEC no emite. No se parte `buyer_name` por espacios: registrar mal a
+  alguien en la cuenta del cliente no se deshace desde acá.
+- **La clave de retiro (`clave`) es la misma** que elige el titular, y se elige
+  **antes** de saber quién va a emitir: si el titular alcanzó a crear la guía,
+  la clave impresa es esa.
+- El **interruptor** manda igual: con `shalom_auto_guide_enabled` apagado no se
+  emite por ningún proveedor (el ensayo sale al chat con `SIMULADO`).
+
+### Las llaves y el semáforo
+
+Misma plomería de siempre, duplicada: secret de entorno **`SHALOM_LAT_API_KEY`**
+y, si no está, el Vault por el RPC `shalom_lat_api_key()` (sección 22.b de
+`setup-kross.sql`, solo `service_role`). El webhook, igual:
+`SHALOM_LAT_WEBHOOK_SECRET` / `shalom_lat_webhook_secret()` (24.b), con el
+mismo bootstrap autónomo que el titular. **Sin la key, la contingencia
+simplemente no existe y todo se comporta como antes** — no hay ninguna ruta que
+la exija.
+
+El semáforo del panel (`manage-store` · `shalom_status`) ahora devuelve los dos
+por separado y *Marca → Envíos* tiene tres estados en vez de dos:
+
+| Chip | Qué pasó | Qué tiene que hacer el vendedor |
+|---|---|---|
+| 🟢 **API operativa** | el titular responde | nada |
+| 🟡 **API operativa (contingencia)** | el titular está caído, el de repuesto responde | **nada** — las guías se emiten y el rastreo avanza igual |
+| 🔴 **API caída** | los dos caídos | el plan B manual de siempre: registrar la guía igual (el barrido la vigila cuando vuelvan), consultar el estado en shalom.pe → Rastrea y avisar por el chat |
+
 ## Tracking de envíos Shalom ✅ · ciclo completo
 
 El pendiente #4 **construido entero para Shalom**: consulta, reflejo en el
-pedido y disparo de la cobranza. Contra **Shalom API Perú**
-(`https://shalom-api-peru.com/docs`) — misma familia de proveedor que Olva API
-Perú: **independiente, no la API oficial de Shalom**, con la misma fragilidad
-y el mismo aislamiento (si aparece API oficial, cambia el proxy y nada más).
+pedido y disparo de la cobranza. Contra **Shalom API Perú** —de acá en adelante
+**Shalom PE**, el titular— (`https://shalom-api-peru.com/docs`), misma familia
+de proveedor que Olva API Perú: **independiente, no la API oficial de Shalom**,
+con la misma fragilidad y el mismo aislamiento (si aparece API oficial, cambia
+el proxy y nada más). Desde set-2026 tiene un suplente: ver
+§ *Los dos proveedores de Shalom* — todo lo de esta sección sigue siendo cierto,
+y cuando el titular no contesta lo hace el otro con las mismas reglas.
 
 | | |
 |---|---|
@@ -878,6 +1023,15 @@ Un caso más, que no es defensa sino cortesía con el cliente: si el destinatari
 — se busca su `person_id` (`GET /v1/persons/search`) y se reintenta con él. Ese
 reintento sí es seguro: un 409 significa que la orden **no** se creó.
 
+**Y una quinta defensa desde el 03-set-2026: la contingencia.** Cuando el
+titular no responde —red caída, `5xx` tras los reintentos, catálogo mudo o
+llave sin configurar— la guía se emite por **Shalom LAT** contra la MISMA cuenta
+Shalom Pro, mirando primero sus envíos pendientes para no pagar dos veces lo que
+el titular quizá alcanzó a crear. Un rechazo `4xx` NO pasa a la contingencia: el
+titular respondió, y repetir lo inválido en el otro proveedor no lo vuelve
+válido. Detalle completo en § *Los dos proveedores de Shalom*; el expediente
+guarda quién emitió en `shalom_order_provider`.
+
 ### Lo que hace falta configurar
 
 | Dónde | Qué | Sin eso |
@@ -886,6 +1040,7 @@ reintento sí es seguro: un 409 significa que la orden **no** se creó.
 | Panel → Mi marca → Envíos | Interruptor de guía automática | `SIMULADO` (ensayo, no emite) |
 | Panel → Productos → el producto → Envío | **Agencia de origen**, **tamaño** (Sobre · Caja XXS…L · Otra medida) y **contenido declarado** (Artículos / Ropa / Documentos / Electrodomésticos) | `SKIPPED` diciendo qué falta |
 | Automático | Sede de recojo del pedido (`agency_branch_id`, §27.b) | `SKIPPED` |
+| Plataforma (opcional) | `SHALOM_LAT_API_KEY` — la llave del proveedor de **contingencia** | Nada raro: sin ella el titular caído vuelve a ser una guía a mano, como antes de set-2026 |
 
 La agencia de origen sale del **mismo listado** que ve el comprador
 (`src/data/agencies/shalom.json`): un solo catálogo para las dos puntas del
