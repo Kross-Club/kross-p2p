@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '../_shared/pay360.ts'
 import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
+import { asegurarSesionLat } from '../_shared/shalom-lat-emisor.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 
 const supabase = createClient(
@@ -400,6 +401,12 @@ Deno.serve(async (req) => {
       // puede colgarse del guardado del panel. El veredicto queda en
       // shalom_pro_status y el panel lo refresca. UNVERIFIED = proveedor caído
       // o timeout: ni sí ni no — se reintenta guardando de nuevo.
+      //
+      // Y también con contingencia: si el titular no responde, se verifica por
+      // Shalom LAT (`/instances/login`, la misma cuenta). Sin esto, conectar una
+      // marca durante una caída del titular la dejaba en UNVERIFIED —y con la
+      // guía automática apagada, porque `shalom-order` exige CONNECTED—, que es
+      // exactamente lo que la contingencia existe para evitar.
       const verify = (async () => {
         let status = 'UNVERIFIED'
         try {
@@ -420,6 +427,30 @@ Deno.serve(async (req) => {
           }
         } catch (e) {
           console.error('[manage-store] shalom pro verificación falló', targetId, e)
+        }
+
+        // El titular no dio veredicto (caído, timeout o sin llave): se lo
+        // preguntamos a la contingencia. Un FAILED del titular NO se reintenta
+        // acá: eso ya es una respuesta —las credenciales están mal— y el otro
+        // proveedor, que consulta la misma cuenta, diría lo mismo.
+        if (status === 'UNVERIFIED') {
+          const keyLat = await shalomLatApiKey()
+          if (keyLat) {
+            const { data: sec } = await supabase.from('store_secrets')
+              .select('shalom_lat_instance_id').eq('store_id', targetId).maybeSingle()
+            const { data: st } = await supabase.from('stores')
+              .select('nombre').eq('id', targetId).maybeSingle()
+            const sesion = await asegurarSesionLat({
+              apiKey: keyLat,
+              storeId: targetId,
+              storeName: st?.nombre ?? null,
+              email,
+              password,
+              instanceId: sec?.shalom_lat_instance_id ?? null,
+            })
+            status = sesion.ok ? 'CONNECTED' : sesion.clase === 'credenciales' ? 'FAILED' : 'UNVERIFIED'
+            console.log('[manage-store] shalom pro verificación por contingencia', targetId, '→', status)
+          }
         }
         await supabase.from('store_secrets').update({
           shalom_pro_status: status, shalom_pro_checked_at: new Date().toISOString(),

@@ -92,10 +92,39 @@ const leerJson = async (r: Response): Promise<unknown> => {
  *   5. si el register no responde, se vuelve a mirar los pendientes antes de
  *      dar nada por perdido.
  */
-export async function emitirGuiaLat(input: EmisionLatInput): Promise<EmisionLat> {
+/** Lo que hace falta para hablar con la cuenta Shalom Pro de una marca por LAT. */
+export interface SesionLatInput {
+  apiKey: string
+  storeId: string
+  storeName: string | null
+  email: string
+  password: string
+  /** La instancia ya conectada de esta marca, si existe. */
+  instanceId: string | null
+}
+
+export type SesionLat =
+  | { ok: true; instanceId: string }
+  /** Shalom Pro dijo que no: el usuario y la contraseña de la marca están mal. */
+  | { ok: false; clase: 'credenciales' }
+  /** No se pudo saber: la contingencia no respondió o falló por su cuenta. */
+  | { ok: false; clase: 'fallo'; motivo: string }
+
+/**
+ * Deja la instancia de la marca lista y con sesión en Shalom Pro.
+ *
+ * LAT no manda las credenciales en cada request como el titular: mantiene una
+ * instancia con la sesión persistida. Se crea una vez por marca y se loguea
+ * cuando hace falta. Vive aparte de `emitirGuiaLat` porque también lo usa el
+ * panel: cuando el titular está caído, ESTA es la forma de verificar que las
+ * credenciales de la marca sirven —si no, conectar una marca nueva durante una
+ * caída dejaría el estado en UNVERIFIED y la guía automática apagada, que es
+ * justo lo que la contingencia existe para evitar.
+ */
+export async function asegurarSesionLat(input: SesionLatInput): Promise<SesionLat> {
   const auth = { 'x-api-key': input.apiKey, 'Content-Type': 'application/json', Accept: 'application/json' }
 
-  // ─── 1. La instancia de la marca ──────────────────────────────────────────
+  // ─── La instancia de la marca ─────────────────────────────────────────────
   let instanceId = String(input.instanceId ?? '').trim()
   if (!instanceId) {
     const r = await llamar(`${SHALOM_LAT_BASE}/instances`, {
@@ -106,7 +135,7 @@ export async function emitirGuiaLat(input: EmisionLatInput): Promise<EmisionLat>
     instanceId = r?.ok ? instanceIdOf(await leerJson(r)) ?? '' : ''
     if (!instanceId) {
       console.error('[shalom-lat] no se pudo crear la instancia', input.storeId, r?.status ?? 'sin respuesta')
-      return { ok: false, clase: 'fallo', motivo: 'la contingencia no pudo abrir la instancia de la marca', incierto: false }
+      return { ok: false, clase: 'fallo', motivo: 'la contingencia no pudo abrir la instancia de la marca' }
     }
     // Se guarda al toque: crear instancias de más ensucia la cuenta del cliente.
     const { error } = await supabase.from('store_secrets')
@@ -114,25 +143,37 @@ export async function emitirGuiaLat(input: EmisionLatInput): Promise<EmisionLat>
     if (error) console.error('[shalom-lat] no se pudo guardar el instance_id', error.message)
   }
 
-  // ─── 2. La sesión en Shalom Pro ───────────────────────────────────────────
+  // ─── La sesión en Shalom Pro ──────────────────────────────────────────────
   const estado = await llamar(`${SHALOM_LAT_BASE}/instances/status`, {
     method: 'POST', headers: auth, body: JSON.stringify({ instanceId }),
   })
-  if (!estado || !estado.ok || !sesionActiva(await leerJson(estado))) {
-    const login = await llamar(`${SHALOM_LAT_BASE}/instances/login`, {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({ instanceId, username: input.email, password: input.password }),
-    })
-    if (!login) return { ok: false, clase: 'fallo', motivo: 'la contingencia no respondió al iniciar sesión', incierto: false }
-    if (login.status === 401 || login.status === 403) {
-      return { ok: false, clase: 'config', motivo: 'Shalom Pro rechazó las credenciales de la marca' }
-    }
-    if (!login.ok) {
-      console.error('[shalom-lat] login falló', input.storeId, login.status)
-      return { ok: false, clase: 'fallo', motivo: `la contingencia no pudo iniciar sesión (${login.status})`, incierto: false }
-    }
+  if (estado?.ok && sesionActiva(await leerJson(estado))) return { ok: true, instanceId }
+
+  const login = await llamar(`${SHALOM_LAT_BASE}/instances/login`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({ instanceId, username: input.email, password: input.password }),
+  })
+  if (!login) return { ok: false, clase: 'fallo', motivo: 'la contingencia no respondió al iniciar sesión' }
+  if (login.status === 401 || login.status === 403) return { ok: false, clase: 'credenciales' }
+  if (!login.ok) {
+    console.error('[shalom-lat] login falló', input.storeId, login.status)
+    return { ok: false, clase: 'fallo', motivo: `la contingencia no pudo iniciar sesión (${login.status})` }
   }
+  return { ok: true, instanceId }
+}
+
+export async function emitirGuiaLat(input: EmisionLatInput): Promise<EmisionLat> {
+  const auth = { 'x-api-key': input.apiKey, 'Content-Type': 'application/json', Accept: 'application/json' }
+
+  // ─── 1 y 2. La instancia de la marca, con su sesión en Shalom Pro ─────────
+  const sesion = await asegurarSesionLat(input)
+  if (!sesion.ok) {
+    return sesion.clase === 'credenciales'
+      ? { ok: false, clase: 'config', motivo: 'Shalom Pro rechazó las credenciales de la marca' }
+      : { ok: false, clase: 'fallo', motivo: sesion.motivo, incierto: false }
+  }
+  const instanceId = sesion.instanceId
 
   // ─── 3. ¿La guía ya existe? (la defensa contra la doble emisión) ──────────
   const pendientes = async (): Promise<{ numero: string | null; codigo: string | null } | null> => {
