@@ -18,6 +18,8 @@ import {
   SHALOM_LAT_BASE,
 } from './shalom-lat.ts'
 import { esRastreable, parseOrderResponse, type GuideResult, type ShalomSize } from './shalom-orders.ts'
+import { anotar, anotarSinRespuesta } from './api-eventos.ts'
+import { refDelProveedor } from './integraciones.ts'
 
 // El login de una cuenta Shalom Pro tarda de verdad (el titular declara ~90 s,
 // hasta 2 min): el timeout es de ese orden, no el de una API normal.
@@ -64,12 +66,28 @@ export type EmisionLat =
   | { ok: false; clase: 'fallo'; motivo: string; incierto: boolean }
 
 async function llamar(url: string, init: RequestInit): Promise<Response | null> {
+  // La operación sale del path: `/account/register` → `account.register`. Es
+  // suficiente para leer la lista y evita pasarle un rótulo a cada llamada.
+  const op = (url.split(SHALOM_LAT_BASE)[1] ?? url).replace(/^\/+/, '').split('?')[0].replace(/\//g, '.')
+  const ctx = { proveedor: 'SHALOM_LAT' as const, op }
+  const inicio = Date.now()
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal })
+    const res = await fetch(url, { ...init, signal: ctrl.signal })
+    // Sin consumir el cuerpo: quien llama lo lee después.
+    if (!res.ok) {
+      await anotar({
+        ...ctx,
+        outcome: res.status >= 500 ? 'FALLO' : 'RECHAZO',
+        httpStatus: res.status,
+        providerRef: refDelProveedor(h => res.headers.get(h)),
+        duracionMs: Date.now() - inicio,
+      })
+    }
+    return res
   } catch (e) {
-    console.error('[shalom-lat] sin respuesta de', url, e)
+    await anotarSinRespuesta(ctx, e, Date.now() - inicio)
     return null
   } finally {
     clearTimeout(t)

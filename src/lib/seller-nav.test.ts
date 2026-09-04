@@ -11,9 +11,9 @@ const perfil = (p: Partial<SellerProfile>): SellerProfile => ({
 const etiquetas = (p: SellerProfile | null) => sellerNavLinks(p).map(l => l.label)
 
 describe('el menú del panel', () => {
-  it('desde la plataforma: tiendas y equipo, que es lo que hay ahí', () => {
+  it('desde la plataforma: tiendas, conexiones y equipo, que es lo que hay ahí', () => {
     expect(etiquetas(perfil({ store_id: TIENDA_PLATAFORMA, is_admin: true, is_super_admin: true })))
-      .toEqual(['Tiendas', 'Equipo'])
+      .toEqual(['Tiendas', 'Conexiones', 'Equipo'])
   })
 
   // El caso que rompía: sin la bandera, un operador de Kross caía en el menú de
@@ -21,10 +21,13 @@ describe('el menú del panel', () => {
   // no vende, o sea cinco secciones vacías.
   it('el operador de Kross ve lo mismo que el dueño', () => {
     expect(etiquetas(perfil({ store_id: TIENDA_PLATAFORMA, is_admin: true, is_super_admin: false })))
-      .toEqual(['Tiendas', 'Equipo'])
+      .toEqual(['Tiendas', 'Conexiones', 'Equipo'])
   })
 
-  it('el admin de una marca tiene su herramienta entera', () => {
+  // Conexiones NO está acá: las APIs son de la plataforma y quien las destraba
+  // es Kross. El admin de una marca puede abrir la pantalla por URL —y ve sus
+  // propios eventos—, pero no la lleva en el menú (ver `seller-nav.ts`).
+  it('el admin de una marca tiene su herramienta entera, sin Conexiones', () => {
     expect(etiquetas(perfil({ is_admin: true })))
       .toEqual(['Pedidos', 'Clientes', 'Productos', 'Equipo', 'Marca'])
   })

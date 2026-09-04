@@ -43,6 +43,8 @@ import {
 } from '../_shared/shalom-orders.ts'
 import { buildLatRegisterPayload } from '../_shared/shalom-lat.ts'
 import { emitirGuiaLat } from '../_shared/shalom-lat-emisor.ts'
+import { anotar, anotarSinRespuesta } from '../_shared/api-eventos.ts'
+import { refDelProveedor } from '../_shared/integraciones.ts'
 
 const SHALOM_API_BASE = 'https://api.shalom-api-peru.com'
 // El primer login de una cuenta Shalom Pro tarda ~90 s (hasta 2 min, dice el
@@ -79,15 +81,31 @@ async function cerrar(sessionId: string, status: string, reason: string | null, 
  *  clave de retiro: `viewer=seller` se resuelve con el token del comprador. */
 const aLogistica = (sessionId: string, body: string) => chatMessage(sessionId, body, 'sellers')
 
-/** Una llamada al proveedor con timeout. Devuelve la respuesta o `null` si no
- *  hubo ninguna (timeout o red), que es un caso MUY distinto de un rechazo. */
-async function llamar(url: string, init: RequestInit): Promise<Response | null> {
+/** Una llamada al titular con timeout. Devuelve la respuesta o `null` si no
+ *  hubo ninguna (timeout o red), que es un caso MUY distinto de un rechazo.
+ *  Lo que no sirvió queda anotado en `api_events` con su referencia (§42): un
+ *  proveedor al que hay que reclamarle se le reclama con datos. */
+async function llamar(op: string, sessionId: string, url: string, init: RequestInit): Promise<Response | null> {
+  const ctx = { proveedor: 'SHALOM_PE' as const, op, sessionId }
+  const inicio = Date.now()
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal })
+    const res = await fetch(url, { ...init, signal: ctrl.signal })
+    // El cuerpo NO se consume acá: quien llama lo lee después. Solo se anota
+    // qué status devolvió, que es lo que arma la línea de tiempo.
+    if (!res.ok) {
+      await anotar({
+        ...ctx,
+        outcome: res.status >= 500 ? 'FALLO' : 'RECHAZO',
+        httpStatus: res.status,
+        providerRef: refDelProveedor(h => res.headers.get(h)),
+        duracionMs: Date.now() - inicio,
+      })
+    }
+    return res
   } catch (e) {
-    console.error('[shalom-order] sin respuesta de', url, e)
+    await anotarSinRespuesta(ctx, e, Date.now() - inicio)
     return null
   } finally {
     clearTimeout(t)
@@ -384,20 +402,20 @@ Deno.serve(async (req: Request) => {
     // la misma cuenta, y el proveedor no sirve a los dos. Pasó en producción: el
     // mismo pedido resolvió el catálogo en un intento y no en el siguiente.
     // La primera llamada paga el login; la segunda entra caliente.
-    let productos = size ? await llamar(`${SHALOM_API_BASE}/v1/products`, { headers: auth }) : null
+    let productos = size ? await llamar('catalogo.leer', sessionId, `${SHALOM_API_BASE}/v1/products`, { headers: auth }) : null
     // Leer el catálogo no cuesta ni cambia nada, así que un tropiezo no puede
     // costar una guía: se reintenta una vez, ya con la sesión establecida.
     if (size && productos && !productos.ok && productos.status !== 401) {
       console.error('[shalom-order] catálogo falló, reintentando', sessionId, productos.status)
-      productos = await llamar(`${SHALOM_API_BASE}/v1/products`, { headers: auth })
+      productos = await llamar('catalogo.leer', sessionId, `${SHALOM_API_BASE}/v1/products`, { headers: auth })
     }
     if (size && !productos) {
       console.error('[shalom-order] catálogo sin respuesta, reintentando', sessionId)
-      productos = await llamar(`${SHALOM_API_BASE}/v1/products`, { headers: auth })
+      productos = await llamar('catalogo.leer', sessionId, `${SHALOM_API_BASE}/v1/products`, { headers: auth })
     }
 
     const persona = /^\d{8}$/.test(dni)
-      ? await llamar(`${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth })
+      ? await llamar('persona.buscar', sessionId, `${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth })
       : null
 
     if (productos?.status === 401 || persona?.status === 401) {
@@ -474,7 +492,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ─── La llamada que cuesta plata ─────────────────────────────────────────
-    const post = () => llamar(`${SHALOM_API_BASE}/v1/orders`, {
+    const post = () => llamar('guia.emitir', sessionId, `${SHALOM_API_BASE}/v1/orders`, {
       method: 'POST',
       headers: { ...auth, 'Content-Type': 'application/json' },
       body: JSON.stringify(armado.body),
@@ -489,7 +507,7 @@ Deno.serve(async (req: Request) => {
     // 409 = ya hay una persona con ese documento. La orden NO se creó, así que
     // reintentar es seguro: se busca su id y se manda ese en vez de los nombres.
     if (res.status === 409 && !personId) {
-      const p = await llamar(`${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth })
+      const p = await llamar('persona.buscar', sessionId, `${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth })
       const id = p?.ok ? Number((await leerJson(p) as { id?: unknown })?.id) || null : null
       if (id) {
         const receiver = armado.body.receiver as Record<string, unknown>
@@ -510,7 +528,7 @@ Deno.serve(async (req: Request) => {
     let intentos = 1
     while (!res.ok && res.status >= 500 && intentos < 3) {
       console.warn('[shalom-order] error del proveedor', sessionId, res.status, `intento ${intentos}`)
-      const r = await llamar(`${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
+      const r = await llamar('guia.reconciliar', sessionId, `${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
       const encontrada = r?.ok ? buscarOrdenPorDni(await leerJson(r), dni) : null
       if (encontrada) {
         console.log('[shalom-order] la orden sí existía pese al error', sessionId, encontrada.numero)
@@ -556,7 +574,7 @@ Deno.serve(async (req: Request) => {
 
     /** Sin respuesta del proveedor: preguntar si la guía ya se creó. */
     async function reconciliar(): Promise<Response> {
-      const r = await llamar(`${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
+      const r = await llamar('guia.reconciliar', sessionId, `${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
       const encontrada = r?.ok ? buscarOrdenPorDni(await leerJson(r), dni) : null
       if (encontrada) {
         console.log('[shalom-order] reconciliada tras timeout', sessionId, encontrada.numero)
@@ -597,7 +615,17 @@ Deno.serve(async (req: Request) => {
           const r = await fetch(`${SHALOM_API_BASE}/v1/orders/${oseId}/${doc}`, { headers: auth, signal: ctrl.signal })
             .catch(() => null)
           clearTimeout(t)
-          if (!r?.ok || !(r.headers.get('content-type') ?? '').includes('pdf')) continue
+          if (!r?.ok || !(r.headers.get('content-type') ?? '').includes('pdf')) {
+            // Best-effort, pero anotado: un voucher que no baja es de las cosas
+            // que solo se notan cuando el comprador dice "no me abre el botón".
+            await anotar({
+              proveedor: 'SHALOM_PE', op: `guia.${doc}`, sessionId,
+              outcome: r ? (r.status >= 500 ? 'FALLO' : 'RECHAZO') : 'SIN_RESPUESTA',
+              httpStatus: r?.status ?? null,
+              detail: r ? `content-type ${r.headers.get('content-type') ?? '—'}` : 'sin respuesta',
+            })
+            continue
+          }
           const bytes = new Uint8Array(await r.arrayBuffer())
           if (bytes.length === 0) continue
           const path = `${sessionId}/${numero ?? oseId}.pdf`
@@ -673,6 +701,13 @@ Deno.serve(async (req: Request) => {
 
       const cabecera = aviso
         ?? '📦 Guía generada automáticamente en Shalom. El comprador ya la tiene en su chat.'
+      // Una guía emitida es plata gastada: se anota SIEMPRE, salga bien o mal, y
+      // por eso este `OK` no es ruido como el de una consulta cualquiera.
+      await anotar({
+        proveedor: proveedor === 'PE' ? 'SHALOM_PE' : 'SHALOM_LAT',
+        op: 'guia.emitir', outcome: 'OK', sessionId, storeId,
+        detail: `guía ${g.ids}`,
+      })
       await aLogistica(sessionId,
         `${cabecera} Guía: ${g.ids}. `
         + 'Su clave de retiro quedó guardada en el pedido y el chat se la entrega solo contra el saldo pagado.')

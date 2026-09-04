@@ -1,3 +1,4 @@
+import { anotarRespuesta } from '../_shared/api-eventos.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
@@ -19,11 +20,18 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ nombre: null, error: 'no_token' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
+  const ctx = { proveedor: 'DECOLECTA' as const, op: 'dni.consultar' }
+  const inicio = Date.now()
   try {
     const r = await fetch(`https://api.decolecta.com/v1/reniec/dni?numero=${dni}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     })
     if (!r.ok) {
+      // El comprador ve lo mismo de siempre (escribe su nombre a mano); lo que
+      // cambia es que ahora queda registrado que el DNI no se pudo consultar —
+      // es la diferencia entre "la gente no completa el checkout" y "RENIEC
+      // está caído desde las 3".
+      await anotarRespuesta(ctx, r, Date.now() - inicio)
       return new Response(JSON.stringify({ nombre: null }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
     const data = await r.json()

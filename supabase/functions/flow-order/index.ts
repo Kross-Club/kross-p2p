@@ -33,6 +33,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import { columnasDe } from '../_shared/cobros.ts'
+import { anotarResultado } from '../_shared/api-eventos.ts'
 import {
   checkoutUrl, crearOrden, EMAIL_DEL_PAGADOR, esFinalSinPago, esPagada, estadoPorToken,
   flowBaseUrl, llavesDeTienda, montoParaFlow, orderExpiryFrom, ORDER_TTL_S, type FlowEnv,
@@ -244,6 +245,7 @@ Deno.serve(async (req) => {
   })
 
   if (!orden.ok) {
+    await anotarResultado({ proveedor: 'FLOW', op: 'orden.crear', storeId: originStoreId, sessionId: session.id }, orden)
     if (orden.network) {
       // El POST salió y la respuesta se perdió: la orden PUDO crearse, con un
       // token que no conocemos. No se reintenta a ciegas: el siguiente intento
@@ -252,7 +254,6 @@ Deno.serve(async (req) => {
       return json({ ok: false, stage: 'network_after' }, 502)
     }
     await notePaymentFailure(session, `No se pudo generar la orden de pago${orden.error ? ` (${orden.error})` : ''}`)
-    console.error('[flow-order] create_failed', JSON.stringify({ status: orden.status, error: orden.error ?? null }))
     return json({ ok: false, stage: 'order', code: 'create_failed', user_message: NO_PUDIMOS }, 502)
   }
 

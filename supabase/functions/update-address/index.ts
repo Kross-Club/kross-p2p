@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -31,8 +32,12 @@ async function reverseGeocode(lat: number, lng: number, fallback: string): Promi
     if (r.ok) {
       const geo = await r.json()
       if (geo?.display_name) return geo.display_name
+    } else {
+      await anotarRespuesta({ proveedor: 'NOMINATIM', op: 'geocode.inverso' }, r)
     }
-  } catch { /* ignore */ }
+  } catch (e) {
+    await anotarSinRespuesta({ proveedor: 'NOMINATIM', op: 'geocode.inverso' }, e)
+  }
   return fallback
 }
 

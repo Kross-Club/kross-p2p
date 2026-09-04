@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 import { agregarPorComprador, segmentoDe, ventanasDe } from '../_shared/clientes.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
 
@@ -98,8 +99,17 @@ Deno.serve(async (req) => {
           template: { name: body.template, language: { code: lang }, components: parameters.length ? [{ type: 'body', parameters }] : [] },
         }),
       })
-      if (res.ok) sent++; else failed++
-    } catch { failed++ }
+      if (res.ok) sent++
+      else {
+        failed++
+        // Una sola anotación por corrida: una campaña con la plantilla mal
+        // aprobada falla en las 300 y llenaría el registro con el mismo error.
+        if (failed === 1) await anotarRespuesta({ proveedor: 'WHATSAPP', op: 'campana.enviar', storeId }, res)
+      }
+    } catch (e) {
+      failed++
+      if (failed === 1) await anotarSinRespuesta({ proveedor: 'WHATSAPP', op: 'campana.enviar', storeId }, e)
+    }
     await supabase.from('buyers').update({ last_campaign_at: new Date().toISOString() }).eq('id', b.id)
   }
 

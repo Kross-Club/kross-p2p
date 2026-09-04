@@ -3,6 +3,7 @@ import webpush from 'npm:web-push'
 import { esRielEnLinea, rielPara, type Proveedor } from '../_shared/comision.ts'
 import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
+import { anotarConversion } from '../_shared/api-eventos.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -592,7 +593,7 @@ Deno.serve(async (req) => {
       cfg.tiktokToken = adSec?.tiktok_capi_token ?? null
       cfg.tiktokTestCode = adSec?.tiktok_test_event_code ?? null
       if (hasAnyCapi(cfg)) {
-        runInBackground(dispatchConversion('LEAD', cfg, {
+        runInBackground(anotarConversion({ storeId: body.store_id, sessionId: data.id, evento: 'LEAD' }, dispatchConversion('LEAD', cfg, {
           eventId: checkoutId ?? data.id,          // = state.orderId en el navegador
           sourceUrl: body.ad_source_url ?? null,
           contentId: body.product_id ?? null,
@@ -604,7 +605,7 @@ Deno.serve(async (req) => {
             ttp: body.ad_ttp ?? null, ttclid: body.ad_ttclid ?? null,
             clientIp: adClientIp, clientUserAgent: adClientUa,
           },
-        }))
+        })))
       }
     }
   } catch (e) {

@@ -1,6 +1,8 @@
 import { applyTracking, isObj, supabase, TRACKED_COLUMNS } from '../_shared/tracking.ts'
 import type { TrackedRow } from '../_shared/tracking.ts'
 import { derivePhase, normalizeYear } from '../_shared/olva.ts'
+import { anotar, anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
+import { olvaApiKey } from '../_shared/olva-key.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,15 +24,6 @@ const corsHeaders = {
 const OLVA_API_BASE = 'https://api.olva-api-peru.com'
 const MAX_PER_RUN = 50
 
-let cachedKey: string | null = null
-async function olvaApiKey(): Promise<string | null> {
-  if (cachedKey) return cachedKey
-  const fromEnv = Deno.env.get('OLVA_API_KEY')
-  if (fromEnv) return (cachedKey = fromEnv)
-  const { data, error } = await supabase.rpc('olva_api_key')
-  if (error || typeof data !== 'string' || !data) return null
-  return (cachedKey = data)
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -59,24 +52,29 @@ Deno.serve(async (req) => {
 
   let checked = 0, transitions = 0, failed = 0
   const now = new Date().toISOString()
+  // Un latido por corrida, no por guía: la línea de tiempo del panel necesita
+  // saber que el proveedor contestó, no cuántas veces (§42 del esquema).
+  let latido = false
 
   for (const row of trackable as TrackedRow[]) {
     // El año de emisión quedó registrado con la guía; si faltara (pedido viejo),
     // el año actual de Lima es la única lectura razonable.
     const year = normalizeYear(row.tracking_year, Date.now())
 
+    const ctx = { proveedor: 'OLVA' as const, op: 'tracking.consulta', sessionId: row.id }
+    const inicio = Date.now()
     let r: Response
     try {
       r = await fetch(`${OLVA_API_BASE}/v1/tracking/${row.tracking_numero}/${year}`, {
         headers: { 'X-API-Key': key, Accept: 'application/json' },
       })
     } catch (e) {
-      console.error('olva-tracking-sync: red caída hacia el proveedor', e)
+      await anotarSinRespuesta(ctx, e, Date.now() - inicio)
       break
     }
 
     if (r.status === 429) {
-      console.error('olva-tracking-sync: rate limit del proveedor; corta la corrida')
+      await anotarRespuesta(ctx, r, Date.now() - inicio)
       break
     }
 
@@ -85,11 +83,15 @@ Deno.serve(async (req) => {
       // 502 del proveedor = guía inexistente O Olva caído, indistinguibles
       // (verificado contra la API real). Por eso aquí NO se acusa a la guía en
       // el chat como hace el sync de Shalom con su `not_found`: solo se audita
-      // el chequeo y el detalle crudo va a los logs.
+      // el chequeo, y el detalle crudo va al registro de la plataforma.
       failed++
-      console.error('olva-tracking-sync: item falló', row.id, r.status, await r.text().catch(() => ''))
+      await anotarRespuesta(ctx, r, Date.now() - inicio)
       await supabase.from('order_sessions').update({ tracking_checked_at: now }).eq('id', row.id)
       continue
+    }
+    if (!latido) {
+      latido = true
+      await anotar({ proveedor: 'OLVA', op: 'tracking.consulta', outcome: 'OK', duracionMs: Date.now() - inicio })
     }
 
     const data = await r.json().catch(() => null) as

@@ -10,6 +10,7 @@
 
 import webpush from 'npm:web-push'
 import { supabase } from './tracking.ts'
+import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
 
 // WhatsApp es no-op hasta que la tienda tenga wa_enabled + wa_phone_number_id
 // y exista el secret global WHATSAPP_TOKEN.
@@ -21,6 +22,18 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_
 async function trySendPush(sub: unknown, payload: object): Promise<boolean> {
   if (!VAPID_PUBLIC || !VAPID_PRIVATE) return false
   try { await webpush.sendNotification(sub as any, JSON.stringify(payload)); return true } catch { return false }
+}
+
+/** El push que falla se anota UNA vez por aviso, no una por suscripción: un
+ *  comprador con tres dispositivos daría tres renglones del mismo problema.
+ *  Y solo cuando fallaron TODAS — una suscripción muerta (el navegador que
+ *  desinstaló la app) es normal y no es una caída de nadie. */
+async function anotarPushCaido(n: { sessionId: string; storeId?: string | null }, intentos: number) {
+  await anotar({
+    proveedor: 'WEB_PUSH', op: 'aviso.enviar', outcome: 'FALLO',
+    storeId: n.storeId ?? null, sessionId: n.sessionId,
+    detail: `ninguna de las ${intentos} suscripciones aceptó el aviso`,
+  })
 }
 
 async function sendWhatsApp(storeId: string | null | undefined, to: string | null, template: string, var1: string, var2: string, var3: string): Promise<{ result: string; error?: string }> {
@@ -47,8 +60,12 @@ async function sendWhatsApp(storeId: string | null | undefined, to: string | nul
     })
     if (res.ok) return { result: 'sent' }
     const errTxt = await res.text().catch(() => '')
+    await anotarRespuesta({ proveedor: 'WHATSAPP', op: 'aviso.enviar', storeId }, res, undefined, errTxt)
     return { result: 'failed', error: `[${template}/${lang}→${num}] ${errTxt}`.slice(0, 280) }
-  } catch (e) { return { result: 'failed', error: String(e).slice(0, 200) } }
+  } catch (e) {
+    await anotarSinRespuesta({ proveedor: 'WHATSAPP', op: 'aviso.enviar', storeId }, e)
+    return { result: 'failed', error: String(e).slice(0, 200) }
+  }
 }
 
 export interface NotifyInput {
@@ -75,6 +92,7 @@ export async function notifyBuyer(n: NotifyInput): Promise<void> {
     const payload = { title: n.title, body: n.body, url: n.url, tag: n.tag, type: n.type, icon: n.icon ?? undefined, badge: n.badge ?? undefined }
     const results = await Promise.all(subs.map(s => trySendPush(s.subscription, payload)))
     pushOk = results.filter(Boolean).length
+    if (pushOk === 0) await anotarPushCaido(n, subs.length)
   }
 
   let whatsapp = 'not_needed'

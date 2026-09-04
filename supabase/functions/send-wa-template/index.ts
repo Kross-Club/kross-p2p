@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -85,8 +86,15 @@ Deno.serve(async (req) => {
       }),
     })
     if (res.ok) result = 'sent'
-    else error = (await res.text()).slice(0, 280)
-  } catch (e) { error = String(e).slice(0, 200) }
+    else {
+      const cuerpo = await res.text().catch(() => '')
+      error = cuerpo.slice(0, 280)
+      await anotarRespuesta({ proveedor: 'WHATSAPP', op: 'plantilla.enviar', storeId: session.store_id, sessionId: session_id }, res, undefined, cuerpo)
+    }
+  } catch (e) {
+    error = String(e).slice(0, 200)
+    await anotarSinRespuesta({ proveedor: 'WHATSAPP', op: 'plantilla.enviar', storeId: session.store_id, sessionId: session_id }, e)
+  }
 
   // Log + a seller-only note in the chat (broadcast so it shows live)
   try {

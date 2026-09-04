@@ -18,6 +18,7 @@
 // Deploy: supabase functions deploy libro-reclamaciones --project-ref ofdjghntvmrdfjhazfvz
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -170,8 +171,12 @@ async function enviarCopia(h: {
         html,
       }),
     })
+    // Un reclamo es una obligación legal con plazo (Ley 29571): que su correo
+    // no salga no puede quedar solo en un `false` que nadie mira.
+    if (!res.ok) await anotarRespuesta({ proveedor: 'RESEND', op: 'reclamo.enviar' }, res)
     return res.ok
-  } catch {
+  } catch (e) {
+    await anotarSinRespuesta({ proveedor: 'RESEND', op: 'reclamo.enviar' }, e)
     return false
   }
 }

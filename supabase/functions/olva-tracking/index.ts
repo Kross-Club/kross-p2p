@@ -1,6 +1,8 @@
 import { applyTracking, isObj, supabase, TRACKED_COLUMNS } from '../_shared/tracking.ts'
 import type { TrackedRow } from '../_shared/tracking.ts'
 import { derivePhase, normalizeYear } from '../_shared/olva.ts'
+import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
+import { olvaApiKey } from '../_shared/olva-key.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,15 +30,6 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
-let cachedKey: string | null = null
-async function olvaApiKey(): Promise<string | null> {
-  if (cachedKey) return cachedKey
-  const fromEnv = Deno.env.get('OLVA_API_KEY')
-  if (fromEnv) return (cachedKey = fromEnv)
-  const { data, error } = await supabase.rpc('olva_api_key')
-  if (error || typeof data !== 'string' || !data) return null
-  return (cachedKey = data)
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -55,20 +48,27 @@ Deno.serve(async (req) => {
     return json({ ok: false, stage: 'config' }, 500)
   }
 
+  const ctx = {
+    proveedor: 'OLVA' as const,
+    op: 'tracking.consulta',
+    sessionId: typeof body.session_id === 'string' && body.session_id ? body.session_id : null,
+  }
+  const inicio = Date.now()
   let r: Response
   try {
     r = await fetch(`${OLVA_API_BASE}/v1/tracking/${track}/${year}`, {
       headers: { 'X-API-Key': key, Accept: 'application/json' },
     })
   } catch (e) {
-    console.error('olva-tracking: red caída hacia el proveedor', e)
+    await anotarSinRespuesta(ctx, e, Date.now() - inicio)
     return json({ ok: false, stage: 'upstream' }, 502)
   }
 
   if (!r.ok) {
-    // El detalle crudo del proveedor va SOLO a los logs (regla del repo: ningún
-    // texto de terceros frente a compradores/vendedores).
-    console.error('olva-tracking: upstream', r.status, await r.text().catch(() => ''))
+    // El detalle crudo del proveedor NO va al chat (regla del repo: ningún
+    // texto de terceros frente a compradores/vendedores). Va al registro de la
+    // plataforma, que existe para poder reclamárselo con datos (§42).
+    await anotarRespuesta(ctx, r, Date.now() - inicio)
     if (r.status === 400) return json({ ok: false, stage: 'validation' }, 400)
     if (r.status === 404) return json({ ok: false, stage: 'not_found' }, 404)
     if (r.status === 429) return json({ ok: false, stage: 'rate_limit' }, 429)

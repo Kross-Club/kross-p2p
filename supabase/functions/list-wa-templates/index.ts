@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { anotarRespuesta } from '../_shared/api-eventos.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -29,7 +30,11 @@ Deno.serve(async (req) => {
       `https://graph.facebook.com/v21.0/${store.wa_business_account_id}/message_templates?fields=name,language,status,components&limit=200`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
-    if (!res.ok) return json({ templates: [], error: (await res.text()).slice(0, 200) })
+    if (!res.ok) {
+      const cuerpo = await res.text().catch(() => '')
+      await anotarRespuesta({ proveedor: 'WHATSAPP', op: 'plantillas.listar', storeId: store_id }, res, undefined, cuerpo)
+      return json({ templates: [], error: cuerpo.slice(0, 200) })
+    }
     const data = await res.json()
     const templates = (data.data ?? [])
       .filter((t: any) => t.status === 'APPROVED')

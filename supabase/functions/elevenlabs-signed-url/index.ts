@@ -1,3 +1,4 @@
+import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 // SALES ENGINE · Signed URL para el Voice Closer (ElevenLabs Conversational AI).
 // Mantiene ELEVENLABS_API_KEY en el backend: el frontend nunca la ve. Devuelve una
 // signed URL efímera para que el widget de voz se conecte al agente.
@@ -21,10 +22,14 @@ Deno.serve(async (req) => {
       `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${agentId}`,
       { headers: { 'xi-api-key': apiKey } },
     )
-    if (!r.ok) return json({ signed_url: null, error: `elevenlabs_${r.status}` }, 200)
+    if (!r.ok) {
+      await anotarRespuesta({ proveedor: 'ELEVENLABS', op: 'voz.url-firmada' }, r)
+      return json({ signed_url: null, error: `elevenlabs_${r.status}` }, 200)
+    }
     const data = await r.json()
     return json({ signed_url: data?.signed_url ?? null })
   } catch (e) {
+    await anotarSinRespuesta({ proveedor: 'ELEVENLABS', op: 'voz.url-firmada' }, e)
     return json({ signed_url: null, error: String(e) }, 200)
   }
 })
