@@ -637,8 +637,9 @@ Y el botón **Actualizar** de la `TrackingBar` recorre los dos en orden
 no podía, porque el `502` del riel 1 significa las dos cosas a la vez.
 
 Lo que **no** cambia: la guía sigue viviendo en el pedido como numero + año de
-emisión (YY, `tracking_year`, 23.a). El riel 2 no necesita el año, pero el 1 sí
-y es el que se consulta primero.
+emisión (YY, `tracking_year`, 23.a) — y **los dos rieles lo usan**. El 1 lo exige
+en la ruta; el 2 lo acepta como `orderCode` y, si no se lo mandas, asume el año
+en curso: una guía de diciembre consultada en enero volvería como inexistente.
 
 ### Quién es el proveedor (y quién no es)
 
@@ -695,7 +696,7 @@ La última palabra sobre eso la tiene el riel 2, que sí distingue.
 | Auth | header `x-api-key` (key `olva_…`) |
 | Límite | **cuota mensual** por plan (p. ej. 5.000 consultas) → `429` |
 | Gratis (no consumen cuota) | `GET /validate`, `PUT /webhooks`, `POST /tracking/subscriptions` |
-| Tracking | `POST /track` `{orderNumber}` · lote: `POST /track/batch` |
+| Tracking | `POST /track` `{orderNumber, orderCode}` — `orderCode` es el **año de emisión (YY)**, opcional pero necesario: sin él asume el año en curso · lote: `POST /track/batch`, hasta 50 guías |
 | Estados | enum: `REGISTERED · IN_TRANSIT · OUT_FOR_DELIVERY · READY_FOR_PICKUP · DELIVERED · RETURNED · REJECTED · UNKNOWN` |
 | Agencias | `GET /agencies` (`department`, `q`) — devuelve `code` PROPIO (`LIM-MIR-01`), horarios y coordenadas |
 | Ubicaciones | `GET /locations/departments(/…/provinces/…/districts)` |

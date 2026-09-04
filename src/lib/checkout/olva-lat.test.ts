@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   firmaVigente, isLatStatus, parseLatSignature, parseLatTracking,
-  readLatPayload, readLatTracking,
+  normalizeYear, readLatPayload, readLatTracking,
 } from '../../../supabase/functions/_shared/olva-lat.ts'
 import {
   buildLatShipment, esRastreable, esReconciliable, parseLatAgencies,
@@ -235,6 +235,28 @@ describe('lectura de la respuesta del registro', () => {
 
   it('en Olva basta el número para rastrear: no hay código como en Shalom', () => {
     expect(esRastreable({ numero: '17491234', orderId: null, pdfUrl: null })).toBe(true)
+  })
+})
+
+describe('el año de emisión (`orderCode`)', () => {
+  // Su doc: "orderCode — Año de emisión (2 dígitos). Opcional; por defecto el
+  // año en curso." Ese default es la trampa: una guía de diciembre consultada en
+  // enero se buscaría contra el año equivocado y volvería como inexistente. El
+  // pedido ya guarda ese año en `tracking_year` porque el primer riel lo exige,
+  // así que lo que se prueba acá es que las dos puntas hablan el mismo formato.
+  it('el año que guarda el pedido es el formato que el proveedor espera: YY', () => {
+    const dic2025 = Date.UTC(2025, 11, 20, 18, 0, 0)
+    expect(normalizeYear(null, dic2025)).toBe('25')
+    expect(normalizeYear('2025', dic2025)).toBe('25')
+    expect(normalizeYear('25', dic2025)).toBe('25')
+    expect(normalizeYear('veinticinco', dic2025)).toBeNull()
+  })
+
+  it('el corte de año se decide en hora de Lima, no en UTC', () => {
+    // 1-ene 03:00 UTC es todavía 31-dic en Lima (UTC-5): una guía registrada esa
+    // noche es del año viejo, y preguntar por el nuevo la deja sin rastrear.
+    expect(normalizeYear(null, Date.UTC(2026, 0, 1, 3, 0, 0))).toBe('25')
+    expect(normalizeYear(null, Date.UTC(2026, 0, 1, 6, 0, 0))).toBe('26')
   })
 })
 

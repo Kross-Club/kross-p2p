@@ -105,8 +105,10 @@ Deno.serve(async (req) => {
 
   for (const row of trackable) {
     // El año de emisión quedó registrado con la guía; si faltara (pedido viejo),
-    // el año actual de Lima es la única lectura razonable. Solo lo pide el
-    // riel 1 — Olva LAT rastrea por número a secas.
+    // el año actual de Lima es la única lectura razonable. Lo usan LOS DOS
+    // rieles: el 1 lo exige en la ruta y el 2 lo acepta como `orderCode` — y sin
+    // mandárselo asume el año en curso, que es un "no existe" en enero para una
+    // guía de diciembre.
     const year = normalizeYear(row.tracking_year, Date.now())
     let reflejado = false
 
@@ -153,7 +155,7 @@ Deno.serve(async (req) => {
 
     // ─── Rescate por el riel 2 ───────────────────────────────────────────────
     if (latKey && rescatados < MAX_LAT_PER_RUN) {
-      const r = await trackAtLat(latKey, row.tracking_numero!)
+      const r = await trackAtLat(latKey, row.tracking_numero!, year)
       rescatados++
       if (r.ok) {
         checked++

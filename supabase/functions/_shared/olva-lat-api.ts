@@ -104,14 +104,22 @@ export async function latFetch<T = unknown>(
 
 // ─── Tracking ────────────────────────────────────────────────────────────────
 
-/** `POST /track` — la consulta que SÍ consume cuota. Sin año: a diferencia del
- *  primer riel, acá basta el número de guía. */
-export const trackAtLat = (key: string, orderNumber: string) =>
+/**
+ * `POST /track` — la consulta que SÍ consume cuota.
+ *
+ * `orderCode` es el **año de emisión en 2 dígitos** (lo dice su doc: *"Opcional;
+ * por defecto el año en curso"*). Ese default es exactamente la trampa: una guía
+ * emitida en diciembre y consultada en enero se buscaría contra el año
+ * equivocado y volvería como inexistente. El pedido ya guarda el año en
+ * `tracking_year` —el primer riel lo exige— así que se manda siempre que se
+ * tenga, y solo se cae al default del proveedor cuando de verdad no hay.
+ */
+export const trackAtLat = (key: string, orderNumber: string, orderCode?: string | null) =>
   latFetch(`/track`, {
     key,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orderNumber }),
+    body: JSON.stringify(orderCode ? { orderNumber, orderCode } : { orderNumber }),
   })
 
 /** `POST /tracking/subscriptions` — GRATIS (no consume cuota): a partir de acá

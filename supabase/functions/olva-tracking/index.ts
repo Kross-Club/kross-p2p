@@ -125,7 +125,9 @@ Deno.serve(async (req) => {
 
   // ─── Riel 2: Olva LAT, solo si el primero no respondió ─────────────────────
   if (!lectura && latKey && stage !== 'validation') {
-    const r = await trackAtLat(latKey, track)
+    // El año va SIEMPRE que se tenga: sin él, el proveedor asume el año en
+    // curso y una guía de diciembre consultada en enero volvería "inexistente".
+    const r = await trackAtLat(latKey, track, year)
     if (r.ok) {
       const { phase, tracking } = readLatPayload(r.data)
       lectura = {
