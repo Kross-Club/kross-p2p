@@ -55,23 +55,28 @@ const buscar = re => archivos.flatMap(ruta => buscarEn(ruta, re))
 const cita = m => `${m.ruta}:${m.linea}`
 
 // ─── Endpoints del proveedor: qué familia es cada uno ────────────────────────
-// api.shalom-api-peru.com es el único host de Shalom que usa el repo. Lo que
-// importa no es que se le llame, sino A QUÉ familia pertenece cada llamada:
-// rastrear un envío que YA existe no es lo mismo que CREARLO.
+// Shalom NO tiene API oficial: el repo usa DOS de terceros —Shalom PE
+// (api.shalom-api-peru.com, titular) y Shalom LAT (api.shalom-api.lat,
+// contingencia)—. Lo que importa no es a cuál se le llame, sino A QUÉ familia
+// pertenece cada llamada: rastrear un envío que YA existe no es lo mismo que
+// CREARLO, y eso vale igual para los dos.
 
 // El repo escribe estas URLs de dos formas: el host literal, o un
 // `${SHALOM_API_BASE}` con el path pegado. Se reconocen las dos. Se ignoran
 // los comentarios (una URL citada en una nota no es una llamada) y las líneas
 // sin path (declarar la base no es llamar a nadie).
-const HOST = /(?:api\.shalom-api-peru\.com|\$\{[A-Z_]+BASE\})(\/[\w/{}$.?=&-]+)/
+const HOST = /(?:api\.shalom-api-peru\.com|api\.shalom-api\.lat|\$\{[A-Z_]+BASE\})(\/[\w/{}$.?=&-]+)/
 const esComentario = t => /^(\/\/|\*|\/\*)/.test(t)
 
+// Las dos columnas de cada familia: el path del titular y el de la
+// contingencia, que nombra lo mismo distinto (`/track` en vez de
+// `/v1/tracking`, `/account/register` en vez de `/v1/orders`).
 const FAMILIAS = [
-  { clave: 'CREAR',    re: /\/v1\/(orders|quotes|cotiza|shipments|rotulo)/i, rotulo: 'crear pedido / cotizar / rótulo — GENERA GUÍA' },
-  { clave: 'TRACKING', re: /\/v1\/tracking/i,                                 rotulo: 'rastrear un envío que ya existe' },
-  { clave: 'WEBHOOK',  re: /\/v1\/webhooks/i,                                 rotulo: 'suscripción a las transiciones' },
-  { clave: 'SESION',   re: /\/v1\/shalom\/sessions/i,                         rotulo: 'login de la cuenta Shalom Pro (solo verifica credenciales)' },
-  { clave: 'SALUD',    re: /\/healthz/i,                                      rotulo: 'semáforo verde/rojo de la API' },
+  { clave: 'CREAR',    re: /\/v1\/(orders|quotes|cotiza|shipments|rotulo)|\/account\/(register|quote)/i, rotulo: 'crear pedido / cotizar / rótulo — GENERA GUÍA' },
+  { clave: 'TRACKING', re: /\/v1\/tracking|\/track(\/|$|\?)|\/tracking\/subscriptions|\/account\/pending-shipments/i, rotulo: 'rastrear un envío que ya existe' },
+  { clave: 'WEBHOOK',  re: /\/webhooks/i,                                     rotulo: 'suscripción a las transiciones' },
+  { clave: 'SESION',   re: /\/v1\/shalom\/sessions|\/instances/i,             rotulo: 'login de la cuenta Shalom Pro (solo verifica credenciales)' },
+  { clave: 'SALUD',    re: /\/healthz|\/validate/i,                           rotulo: 'semáforo verde/rojo de la API' },
 ]
 
 const familiaDe = url => FAMILIAS.find(f => f.re.test(url))?.clave ?? 'OTRA'
@@ -80,6 +85,10 @@ const familiaDe = url => FAMILIAS.find(f => f.re.test(url))?.clave ?? 'OTRA'
 for (const [url, esperado] of [
   ['/v1/orders', 'CREAR'], ['/v1/tracking/batch', 'TRACKING'],
   ['/v1/webhooks', 'WEBHOOK'], ['/v1/shalom/sessions', 'SESION'], ['/healthz', 'SALUD'],
+  // La contingencia, con sus propios nombres para las mismas familias.
+  ['/account/register', 'CREAR'], ['/track/batch', 'TRACKING'], ['/webhooks', 'WEBHOOK'],
+  ['/account/pending-shipments', 'TRACKING'], ['/instances/login', 'SESION'],
+  ['/validate', 'SALUD'],
 ]) {
   if (familiaDe(url) !== esperado) throw new Error(`clasificador roto: ${url} → ${familiaDe(url)}`)
 }
@@ -111,6 +120,7 @@ const PASOS = [
     titulo: 'El generador pide la guía a Shalom',
     archivo: 'supabase/functions/shalom-order/index.ts',
     hace: 'reclama el pedido (candado), arma el envío con la config del producto y emite —o ensaya, si la marca tiene apagada la guía automática',
+    tambien: ['supabase/functions/_shared/shalom-lat-emisor.ts'],
   },
   {
     titulo: 'Plan B: alguien registra la guía a mano',
@@ -122,11 +132,13 @@ const PASOS = [
     titulo: 'El proveedor empuja cada transición del envío',
     archivo: 'supabase/functions/shalom-webhook/index.ts',
     hace: 'refleja la fase (solo hacia adelante), avisa al comprador y dispara la cobranza del saldo al llegar a destino',
+    tambien: ['supabase/functions/_shared/guia.ts', 'supabase/functions/_shared/shalom.ts'],
   },
   {
     titulo: 'El barrido cubre lo que el webhook no trajo',
     archivo: 'supabase/functions/shalom-tracking-sync/index.ts',
     hace: 'cada 30 min consulta las guías vivas y aplica el mismo reflejo',
+    tambien: ['supabase/functions/_shared/shalom-rastreo.ts'],
   },
 ]
 
@@ -147,9 +159,12 @@ let creaGuia = []
 
 PASOS.forEach((paso, i) => {
   console.log(`${i + 1}. ${paso.titulo}`)
-  console.log(T.gris(`   ${paso.archivo} — ${paso.hace}`))
+  console.log(T.gris(`   ${[paso.archivo, ...(paso.tambien ?? [])].join(' + ')} — ${paso.hace}`))
 
-  const llamadas = llamadasShalom(paso.archivo)
+  // El paso incluye los módulos compartidos donde vive parte de su trabajo: el
+  // router de proveedores y el emisor de contingencia no son archivos sueltos,
+  // son ese paso. Sin esto el recorrido diría "ninguna llamada" y mentiría.
+  const llamadas = [paso.archivo, ...(paso.tambien ?? [])].flatMap(llamadasShalom)
   if (!llamadas.length) {
     console.log(`   Llamadas a Shalom: ${T.gris('ninguna')}`)
   } else {
@@ -176,7 +191,9 @@ PASOS.forEach((paso, i) => {
 
 console.log(T.h('¿Alguien en el repo llama a la familia que CREA la guía?'))
 const todasCrear = archivos.flatMap(llamadasShalom).filter(m => m.familia === 'CREAR')
-creaGuia = [...creaGuia, ...todasCrear]
+// Sin repetir: el recorrido de los pasos ya vio varias de estas, y una lista
+// que cuenta dos veces la misma línea exagera cuántos sitios emiten guías.
+creaGuia = [...new Map([...creaGuia, ...todasCrear].map(m => [cita(m), m])).values()]
 if (creaGuia.length) {
   console.log(T.ok(`Sí — ${creaGuia.length} llamada(s):`))
   for (const m of creaGuia) console.log(`  ${m.url}  ${T.gris(cita(m))}`)
@@ -218,6 +235,9 @@ if (creaGuia.length) {
   console.log('  · Emite de verdad SOLO con stores.shalom_auto_guide_enabled = true; apagado')
   console.log('    arma el envío y lo deja como ensayo (status SIMULADO), sin gastar.')
   console.log('  · Nunca reintenta solo: cada llamada exitosa es una guía cobrada.')
+  console.log('  · Si el proveedor titular no responde, emite por el de contingencia (Shalom')
+  console.log('    LAT) contra la MISMA cuenta — mirando primero sus envíos pendientes, para')
+  console.log('    no pagar dos veces la guía que el titular quizá alcanzó a crear.')
   console.log('')
   console.log(T.gris('  Para ver el estado real de una marca:'))
   console.log(T.gris("    select id, slug, shalom_auto_guide_enabled from stores;"))

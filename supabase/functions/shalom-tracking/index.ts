@@ -1,25 +1,24 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { rastrearUno } from '../_shared/shalom-rastreo.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
 }
 
-// Proxy de tracking contra Shalom API Perú (https://shalom-api-peru.com/docs).
-// OJO: misma familia que Olva API Perú — proveedor INDEPENDIENTE, no la API
-// oficial de Shalom; puede cambiar o caerse sin aviso.
+// Proxy de tracking de Shalom, con sus DOS proveedores (02 §Los dos proveedores
+// de Shalom). El router (`_shared/shalom-rastreo.ts`) intenta el titular
+// —Shalom PE, `api.shalom-api-peru.com`— y, si no responde, la contingencia
+// —Shalom LAT, `api.shalom-api.lat`—. Ninguno es la API oficial de Shalom: no
+// existe. Por eso son dos.
 //
-// Solo se usa el "modo estado" (X-API-Key + numero/ose_id): devuelve la línea
-// de tiempo del envío, que es todo lo que la fase canónica necesita. El "modo
-// detallado" exige además credenciales de la cuenta Shalom Pro
-// (X-Shalom-Email/Password o sesión ssk_), que NO tenemos ni mandamos — y su
-// primera llamada hace un login real contra Shalom (~90 s). El modo estado no
-// paga esa latencia.
+// De Shalom PE se usa solo el "modo estado" (X-API-Key + numero/ose_id): la
+// línea de tiempo del envío es todo lo que la fase canónica necesita. El "modo
+// detallado" exige credenciales Shalom Pro y su primera llamada hace un login
+// real contra Shalom (~90 s); el modo estado no paga esa latencia.
 //
-// La key jamás toca el frontend ni el repo: se lee del secret SHALOM_API_KEY
-// y, si no está, del Vault del proyecto vía el RPC shalom_api_key() (service
-// role). Límite del proveedor: 60 requests/min por key → 429.
-const SHALOM_API_BASE = 'https://api.shalom-api-peru.com'
+// Las keys jamás tocan el frontend ni el repo: salen de los secrets
+// SHALOM_API_KEY / SHALOM_LAT_API_KEY y, si no están, del Vault del proyecto
+// (RPCs `shalom_api_key` y `shalom_lat_api_key`, service role).
 
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -27,32 +26,18 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
-let cachedKey: string | null = null
-async function shalomApiKey(): Promise<string | null> {
-  if (cachedKey) return cachedKey
-  const fromEnv = Deno.env.get('SHALOM_API_KEY')
-  if (fromEnv) return (cachedKey = fromEnv)
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  )
-  const { data, error } = await supabase.rpc('shalom_api_key')
-  if (error || typeof data !== 'string' || !data) return null
-  return (cachedKey = data)
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json().catch(() => ({})) as
     { numero?: unknown; codigo?: unknown; ose_id?: unknown }
 
-  // Identificadores del envío (comprobante físico / POST /v1/orders):
+  // Identificadores del envío (comprobante físico / la emisión de la guía):
   //   numero = la guía (8–10 dígitos) · codigo = 4 alfanuméricos ·
-  //   ose_id = id interno de Shalom.
+  //   ose_id = id interno de Shalom (solo lo conoce Shalom PE).
   // ⚠️ Verificado contra la API real: el rastreo por guía exige numero Y codigo
-  // juntos, o solo ose_id — la doc del proveedor dice que basta el numero, pero
-  // su 400 vivo pide ambos.
+  // juntos, o solo ose_id — la doc de Shalom PE dice que basta el numero, pero
+  // su 400 vivo pide ambos. Shalom LAT pide los dos siempre.
   const numero = String(body.numero ?? '').replace(/\D/g, '')
   const oseId = String(body.ose_id ?? '').replace(/\D/g, '')
   const codigo = String(body.codigo ?? '').trim().toUpperCase()
@@ -63,50 +48,31 @@ Deno.serve(async (req) => {
     return json({ ok: false, stage: 'validation' }, 400)
   }
 
-  const key = await shalomApiKey()
-  if (!key) {
-    console.error('shalom-tracking: sin SHALOM_API_KEY (ni secret ni Vault)')
-    return json({ ok: false, stage: 'config' }, 500)
-  }
+  const lectura = await rastrearUno({
+    numero: numeroOk ? numero : '',
+    codigo: codigoOk ? codigo : '',
+    oseId: oseOk ? oseId : '',
+  })
 
-  const params = new URLSearchParams()
-  if (numeroOk) params.set('numero', numero)
-  if (oseOk) params.set('ose_id', oseId)
-  if (codigo) params.set('codigo', codigo)
-
-  let r: Response
-  try {
-    r = await fetch(`${SHALOM_API_BASE}/v1/tracking?${params}`, {
-      headers: { 'X-API-Key': key, Accept: 'application/json' },
-    })
-  } catch (e) {
-    console.error('shalom-tracking: red caída hacia el proveedor', e)
-    return json({ ok: false, stage: 'upstream' }, 502)
-  }
-
-  if (!r.ok) {
-    // El detalle crudo del proveedor va SOLO a los logs (regla del repo: ningún
-    // texto de terceros frente a compradores/vendedores).
-    console.error('shalom-tracking: upstream', r.status, await r.text().catch(() => ''))
-    if (r.status === 400) return json({ ok: false, stage: 'validation' }, 400)
-    // A diferencia de Olva API Perú, aquí guía inexistente SÍ es 404.
-    if (r.status === 404) return json({ ok: false, stage: 'not_found' }, 404)
-    if (r.status === 429) return json({ ok: false, stage: 'rate_limit' }, 429)
-    return json({ ok: false, stage: 'upstream' }, 502)
-  }
-
-  const data = await r.json().catch(() => null) as
-    { detailed?: unknown; status?: unknown; order?: unknown } | null
-  if (!data || typeof data !== 'object' || !data.status || typeof data.status !== 'object') {
-    console.error('shalom-tracking: respuesta sin status del proveedor')
-    return json({ ok: false, stage: 'upstream' }, 502)
+  if (!lectura.ok) {
+    const status = lectura.stage === 'not_found' ? 404
+      : lectura.stage === 'rate_limit' ? 429
+      : lectura.stage === 'config' ? 500 : 502
+    return json({ ok: false, stage: lectura.stage }, status)
   }
 
   return json({
     ok: true,
-    detailed: data.detailed === true,
-    status: data.status,
+    // Qué proveedor contestó. Informativo (el chat no lo muestra): sirve para
+    // leer los logs cuando el titular esté caído y todo siga funcionando.
+    proveedor: lectura.proveedor,
+    // La fase ya resuelta en el servidor. El front la prefiere si viene, y si
+    // no la deriva de `status` como siempre: la contingencia no siempre da
+    // hitos, y ahí la única lectura buena es esta.
+    phase: lectura.phase,
+    detailed: lectura.order !== null,
+    status: lectura.status,
     // Solo llega con credenciales Shalom Pro (modo detallado); hoy es null.
-    order: data.order && typeof data.order === 'object' ? data.order : null,
+    order: lectura.order,
   })
 })

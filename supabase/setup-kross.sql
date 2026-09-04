@@ -869,6 +869,30 @@ $$;
 REVOKE ALL ON FUNCTION public.shalom_api_key() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.shalom_api_key() TO service_role;
 
+-- ─── 22.b SHALOM LAT — EL PROVEEDOR DE CONTINGENCIA (set-2026) ──────────────
+-- Shalom NO tiene API oficial. Las dos que usamos son de terceros que leen el
+-- mismo Shalom, así que ninguna es "la verdadera" y cualquiera puede caerse sin
+-- aviso. Desde set-2026 hay dos, con nombre propio para no confundirlas:
+--   · Shalom PE  (api.shalom-api-peru.com)  → titular      (sección 22)
+--   · Shalom LAT (api.shalom-api.lat)       → contingencia (esta sección)
+-- El courier sigue siendo UNO: `tracking_courier`/`agency_name` valen 'SHALOM'
+-- venga la lectura de donde venga. Cuál proveedor contestó es plomería.
+--
+-- Misma regla de siempre para la key: secret de entorno SHALOM_LAT_API_KEY y,
+-- si no está, el Vault por este RPC (solo service_role). Sin ella, la
+-- contingencia simplemente no existe y todo sigue como antes.
+--
+-- Alta de la key en Vault (correr aparte, con la key real, NUNCA pegarla aquí):
+--   SELECT vault.create_secret('<la-key>', 'SHALOM_LAT_API_KEY', 'Shalom LAT');
+CREATE OR REPLACE FUNCTION public.shalom_lat_api_key() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'SHALOM_LAT_API_KEY' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.shalom_lat_api_key() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.shalom_lat_api_key() TO service_role;
+
 -- ─── 23. TRACKING DE ENVÍOS EN EL PEDIDO (contrato `shipment`) ──────────────
 -- Bloque `shipment` de MerchantCustomerSession (00-CORE-ARCHITECTURE):
 -- Logistics registra los identificadores del comprobante (order-manage,
@@ -1018,6 +1042,48 @@ END $$;
 REVOKE ALL ON FUNCTION public.store_shalom_webhook_secret(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.store_shalom_webhook_secret(text) TO service_role;
 
+-- ─── 24.b WEBHOOK DE LA CONTINGENCIA (Shalom LAT) ───────────────────────────
+-- Los DOS proveedores empujan a la MISMA función `shalom-webhook`, que prueba
+-- las dos firmas y sabe de quién vino el evento por el secret que valida (no
+-- por un campo del cuerpo, que cualquiera podría escribir). Un endpoint menos
+-- que deployar y ninguna ambigüedad.
+--
+-- ⚠️ La doc de Shalom LAT no publica ni el header de firma ni el formato del
+-- digest, así que la función acepta los nombres usuales (x-shalom-signature,
+-- x-signature, x-hub-signature-256, x-webhook-signature) y las dos formas
+-- (`t=…,v1=…` sobre `t + "." + cuerpo`, o digest del cuerpo con/sin `sha256=`).
+-- Lo que NO acepta es un evento sin firma válida.
+--
+-- El registro es autónomo (`ensureLatWebhook` en `_shared/shalom.ts`): el
+-- barrido detecta que falta secret local, hace el PUT /webhooks con la URL de
+-- `shalom-webhook` y guarda el secreto DIRECTO en Vault por el RPC de abajo. Si
+-- el proveedor ya tiene un webhook de otra URL, NO se pisa: se rota a mano con
+-- PUT /webhooks {rotateSecret:true} y se guarda el nuevo.
+CREATE OR REPLACE FUNCTION public.shalom_lat_webhook_secret() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'SHALOM_LAT_WEBHOOK_SECRET' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.shalom_lat_webhook_secret() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.shalom_lat_webhook_secret() TO service_role;
+
+CREATE OR REPLACE FUNCTION public.store_shalom_lat_webhook_secret(secret text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE sid uuid;
+BEGIN
+  SELECT id INTO sid FROM vault.secrets WHERE name = 'SHALOM_LAT_WEBHOOK_SECRET' LIMIT 1;
+  IF sid IS NULL THEN
+    PERFORM vault.create_secret(secret, 'SHALOM_LAT_WEBHOOK_SECRET', 'Firma del webhook de Shalom LAT');
+  ELSE
+    PERFORM vault.update_secret(sid, secret);
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.store_shalom_lat_webhook_secret(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.store_shalom_lat_webhook_secret(text) TO service_role;
+
 -- ─── 25. CUENTA SHALOM PRO POR MARCA ────────────────────────────────────────
 -- Credenciales de la cuenta del cliente en pro.shalom.pe, para los endpoints
 -- que operan SU cuenta (crear guías, cotizar tarifas, tracking detallado 🔮).
@@ -1036,6 +1102,15 @@ ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_email      text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_password   text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_status     text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_pro_checked_at timestamptz;
+
+-- 25.b La INSTANCIA de la marca en Shalom LAT (contingencia, set-2026).
+-- LAT no manda las credenciales en cada request como el titular: mantiene una
+-- "instancia" con la sesión de Shalom Pro persistida. Se crea una vez por marca
+-- (POST /instances) y se loguea cuando caduca (POST /instances/login) con las
+-- MISMAS credenciales de arriba — acá solo vive su id, que no es un secreto:
+-- sin la API key de la plataforma no sirve para nada. Vive en `store_secrets`
+-- igual, porque es de la misma cuenta y se lee junto con ella.
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS shalom_lat_instance_id text;
 
 -- ─── 26. PIXEL DE META + TIKTOK Y CAPI (por marca) ──────────────────────────
 -- Cada marca corre sus propios anuncios con su propio pixel y su propia cuenta.
@@ -1132,6 +1207,12 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_status text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_id     text;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_at     timestamptz;
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_reason text;
+-- 27.c-bis Cuál de los dos proveedores emitió (o intentó emitir): 'PE' el
+-- titular, 'LAT' la contingencia. NULL en las guías anteriores a set-2026 y en
+-- las registradas a mano. Es lo primero que se pregunta cuando una guía sale
+-- distinta a las demás (sin PDF de voucher, por ejemplo: ese lo sirve solo el
+-- titular, por `ose_id`, que LAT no maneja).
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS shalom_order_provider text;
 
 -- 27.d ⚠️ LA CLAVE DE RETIRO. La elige Kross al crear la orden (`pickup_code`)
 -- y con ella el destinatario se lleva el paquete de la agencia. O sea: quien la

@@ -1,16 +1,19 @@
 // ─── SMART LOGISTICS · Tracking de envíos Shalom ─────────────────────────────
 // Consulta el estado de un envío de Shalom vía la Edge Function
-// `shalom-tracking` (proxy de Shalom API Perú — proveedor independiente, NO la
-// API oficial del courier). La key vive en el servidor; el front solo manda los
-// identificadores del comprobante (numero / codigo / ose_id).
+// `shalom-tracking`. Shalom no tiene API oficial: detrás de esa función hay DOS
+// proveedores independientes —Shalom PE (titular) y Shalom LAT (contingencia)—
+// y el servidor pasa de uno al otro solo. El front no elige ni se entera: manda
+// los identificadores del comprobante (numero / codigo / ose_id) y recibe
+// siempre lo mismo. Las keys viven en el servidor.
 //
 // Nunca lanza: cada fallo dice en qué etapa ocurrió (mismo contrato que
 // OlvaTrackingService y Pay360Service).
 //
-// A diferencia de Olva, la fase NO se deduce con heurística de textos: el
-// proveedor devuelve hitos explícitos (registrado/origen/transito/destino/
-// entregado/reparto) y el mapeo a la fase canónica del módulo (02-SMART-
-// LOGISTICS §3) es determinista.
+// La fase preferida es la que resuelve el SERVIDOR (`phase` en la respuesta):
+// el titular devuelve hitos explícitos y su mapeo es determinista, pero la
+// contingencia a veces solo da textos, y ahí el único que puede leerlos bien es
+// quien conoce ese proveedor. Si la respuesta no la trae, se deriva de `status`
+// como siempre — que es lo que hacía esta función desde el principio.
 
 import type { TrackingPhase } from './OlvaTrackingService'
 export type { TrackingPhase }
@@ -25,6 +28,9 @@ export interface ShalomTrackingOk {
   ok: true
   /** Mejor lectura del estado; `null` = ningún hito marcado todavía. */
   phase: TrackingPhase | null
+  /** Qué proveedor contestó. Informativo (la UI no lo muestra): en soporte, es
+   *  la diferencia entre "el titular está caído" y "la guía está rara". */
+  proveedor: 'PE' | 'LAT'
   /** Fecha del hito `demora` si el courier lo marcó. NO es una fase: es una
    *  alerta que convive con cualquiera (un envío demorado sigue en tránsito). */
   demora: string | null
@@ -131,9 +137,13 @@ export async function trackShipment(input: {
   }
 
   const demoraFecha = status.demora?.fecha
+  const FASES: TrackingPhase[] = ['EN_ORIGEN', 'EN_TRANSITO', 'EN_DESTINO', 'ENTREGADO']
+  const delServidor = FASES.includes(body.phase as TrackingPhase) ? body.phase as TrackingPhase : null
   return {
     ok: true,
-    phase: derivePhase(status),
+    // La del servidor manda; sin ella, la de siempre (los hitos).
+    phase: delServidor ?? derivePhase(status),
+    proveedor: body.proveedor === 'LAT' ? 'LAT' : 'PE',
     demora: typeof demoraFecha === 'string' && demoraFecha ? demoraFecha : null,
     status,
     order: milestone(body.order),
