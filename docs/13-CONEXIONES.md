@@ -111,6 +111,39 @@ Arriba de todo, el **buscador de referencia**: alguien reporta `KX-7QK4M2` y se
 abre ese evento con su hora, su operación, su status, el id de request del
 proveedor y su respuesta. Es el caso de uso de soporte y por eso está primero.
 
+### Cuando el servidor no contesta
+
+**Los nombres no dependen del servidor.** El catálogo es estático y vive en el
+módulo compartido, así que la lista de las quince se pinta siempre — aunque la
+Edge Function no esté desplegada o rechace la sesión. Lo que falta en ese caso
+es el estado EN VIVO y el historial, y se dice con todas sus letras arriba, con
+el motivo concreto (`404` → la función no está desplegada; `401`/`403` → la
+sesión no es de un admin).
+
+Y **nunca** sale el cartel verde de "ninguna integración está caída": la
+primera versión de esta pantalla lo mostraba sobre una lista vacía, y eso no
+era un veredicto tranquilizador — era una mentira, porque no había preguntado
+nada. Por la misma razón, sin datos del servidor las tarjetas no afirman si la
+integración está configurada: dicen cuál es el secret que la enciende y nada
+más.
+
+### Cómo comprobar que quedó bien
+
+En orden, porque cada paso depende del anterior:
+
+1. **La pantalla carga y lista las quince** — si aparece el aviso ámbar *"No se
+   pudo consultar el estado en vivo"*, el motivo está ahí escrito.
+2. **El SQL entró:** `select count(*) from api_events;` responde `0` en vez de
+   *relation does not exist*.
+3. **La función responde:** con la pantalla abierta, la pestaña *Network* del
+   navegador muestra `POST /functions/v1/integraciones` en `200`. Un `404` es
+   que falta desplegarla; un `403`, que la sesión no es admin.
+4. **Se están anotando eventos:** los barridos corren cada 30 min, así que a la
+   media hora de desplegar debería haber latidos —
+   `select provider, outcome, count(*) from api_events group by 1, 2;`.
+5. **La referencia funciona:** copia un `ref` de esa consulta, pégalo en el
+   buscador de la pantalla y tiene que abrir ese evento.
+
 ### Quién puede verla
 
 **Solo por JWT verificado**, y solo un admin. A diferencia de `manage-store`,

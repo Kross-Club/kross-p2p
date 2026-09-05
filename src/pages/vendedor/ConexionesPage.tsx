@@ -3,7 +3,7 @@ import { Plug, RefreshCw, Search, ChevronDown, ChevronRight } from 'lucide-react
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 import {
-  ROTULO_RESULTADO, ROTULO_SALUD,
+  INTEGRACIONES, ROTULO_RESULTADO, ROTULO_SALUD,
   type EventoApi, type Integracion, type Salud,
 } from '../../../supabase/functions/_shared/integraciones.ts'
 
@@ -21,6 +21,14 @@ import {
 //
 // Quien administra la plataforma la ve entera. El admin de una marca ve el
 // mismo tablero, pero los eventos son los de SU tienda.
+//
+// ⚠️ **Los NOMBRES no dependen del servidor.** El catálogo de integraciones es
+// estático y vive en el módulo compartido, así que la lista se pinta siempre —
+// aunque la Edge Function no esté desplegada o rechace la sesión. Lo único que
+// falta en ese caso es el estado EN VIVO, y se dice con todas sus letras. La
+// primera versión de esta pantalla se quedaba en blanco y encima mostraba
+// "ninguna integración está caída": no había preguntado nada, así que eso no
+// era un veredicto tranquilizador — era una mentira.
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -59,12 +67,37 @@ async function llamar(payload: Record<string, unknown>) {
       headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    return { ok: res.ok, data: await res.json().catch(() => ({})) as Record<string, unknown> }
+    return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) as Record<string, unknown> }
   } catch (e) {
     console.error('[ConexionesPage] integraciones no respondió', e)
-    return { ok: false, data: {} as Record<string, unknown> }
+    return { ok: false, status: 0, data: {} as Record<string, unknown> }
   }
 }
+
+/** Por qué no se pudo consultar el estado, dicho para que se pueda accionar. */
+function porQueNoSePudo(status: number): string {
+  if (status === 404) {
+    return 'La función `integraciones` todavía no está desplegada en Supabase '
+      + '(`supabase functions deploy integraciones`). Hasta entonces se ven los nombres, no el estado.'
+  }
+  if (status === 401 || status === 403) {
+    return 'Tu sesión no tiene permiso para consultar el estado. Hay que entrar como admin '
+      + '(y si acabas de iniciar sesión, recargar la página).'
+  }
+  if (status === 0) return 'No hubo respuesta del servidor: revisa la conexión y vuelve a intentar.'
+  return `El servidor respondió ${status} al consultar el estado.`
+}
+
+/** El catálogo sin estado en vivo: los nombres siempre se pueden mostrar. */
+const SIN_ESTADO: EstadoIntegracion[] = INTEGRACIONES.map(i => ({
+  ...i,
+  configurado: false,
+  ping: null,
+  salud: 'DESCONOCIDA' as Salud,
+  fallos_24h: 0,
+  ultimo_fallo: null,
+  marcas_configuradas: null,
+}))
 
 const hace = (iso: string | undefined): string => {
   if (!iso) return ''
@@ -90,16 +123,27 @@ export default function ConexionesPage() {
   const [eventos, setEventos] = useState<Record<string, EventoApi[]>>({})
   const [buscada, setBuscada] = useState('')
   const [encontrada, setEncontrada] = useState<EventoApi | null | 'no'>(null)
+  /** Por qué no se pudo consultar el estado. `null` = se pudo. */
+  const [problema, setProblema] = useState<string | null>(null)
+
+  /** Una sola forma de aplicar la respuesta, la use el efecto o el botón. */
+  const aplicar = (r: { ok: boolean; status: number; data: Record<string, unknown> }) => {
+    if (r.ok && Array.isArray(r.data.integraciones)) {
+      setLista(r.data.integraciones as EstadoIntegracion[])
+      setTotalMarcas(typeof r.data.total_marcas === 'number' ? r.data.total_marcas : null)
+      setProblema(null)
+      return
+    }
+    // No se pudo preguntar. Los nombres se muestran igual —son del catálogo, no
+    // del servidor— y arriba se explica qué falta para ver el estado.
+    setLista(SIN_ESTADO)
+    setTotalMarcas(null)
+    setProblema(porQueNoSePudo(r.status))
+  }
 
   const cargar = useCallback(async () => {
     setCargando(true)
-    const { ok, data } = await llamar({ action: 'estado' })
-    if (ok && Array.isArray(data.integraciones)) {
-      setLista(data.integraciones as EstadoIntegracion[])
-      setTotalMarcas(typeof data.total_marcas === 'number' ? data.total_marcas : null)
-    } else {
-      setLista([])
-    }
+    aplicar(await llamar({ action: 'estado' }))
     setCargando(false)
   }, [])
 
@@ -109,11 +153,7 @@ export default function ConexionesPage() {
   useEffect(() => {
     if (!quien?.is_admin) return
     let vivo = true
-    llamar({ action: 'estado' }).then(({ ok, data }) => {
-      if (!vivo) return
-      setLista(ok && Array.isArray(data.integraciones) ? data.integraciones as EstadoIntegracion[] : [])
-      setTotalMarcas(typeof data.total_marcas === 'number' ? data.total_marcas : null)
-    })
+    llamar({ action: 'estado' }).then(r => { if (vivo) aplicar(r) })
     return () => { vivo = false }
   }, [quien?.is_admin])
 
@@ -128,8 +168,10 @@ export default function ConexionesPage() {
   const buscar = async () => {
     const ref = buscada.trim().toUpperCase()
     if (!ref) return
-    const { data } = await llamar({ action: 'evento', ref })
-    setEncontrada((data.evento as EventoApi | null) ?? 'no')
+    const r = await llamar({ action: 'evento', ref })
+    // Si ni siquiera se pudo preguntar, no se dice "no existe": se dice por qué.
+    if (!r.ok) { setProblema(porQueNoSePudo(r.status)); setEncontrada(null); return }
+    setEncontrada((r.data.evento as EventoApi | null) ?? 'no')
   }
 
   if (!quien?.is_admin) {
@@ -186,7 +228,21 @@ export default function ConexionesPage() {
 
       {lista === null && <p className="text-xs text-gray-400">Preguntándole a cada proveedor…</p>}
 
-      {lista !== null && enProblemas.length === 0 && (
+      {/* No se pudo preguntar: se dice qué falta. Nunca el cartel verde — no
+          haber preguntado no es lo mismo que estar todo bien. */}
+      {problema && (
+        <div className="rounded-xl px-3 py-2 mb-3" style={{ background: 'var(--warn-bg)' }}>
+          <p className="text-[11px] font-black mb-0.5" style={{ color: 'var(--warn-fg)' }}>
+            No se pudo consultar el estado en vivo
+          </p>
+          <p className="text-[10px] leading-snug" style={{ color: 'var(--warn-fg)' }}>
+            {problema} Abajo están las {SIN_ESTADO.length} integraciones que Kross usa, sin su
+            estado ni su historial.
+          </p>
+        </div>
+      )}
+
+      {lista !== null && !problema && enProblemas.length === 0 && (
         <div className="rounded-xl px-3 py-2 mb-3" style={{ background: 'var(--ok-bg)' }}>
           <p className="text-[11px] font-bold" style={{ color: 'var(--ok-fg)' }}>
             Ninguna integración está caída ni acumula fallos en las últimas 24 horas.
@@ -214,19 +270,29 @@ export default function ConexionesPage() {
                 {i.que} · <span className="text-gray-400">{i.dueno}</span>
               </p>
               <p className="text-[10px] text-gray-400 leading-snug pl-[18px] mt-0.5">
-                {i.alcance === 'marca'
-                  ? `Configurada en ${i.marcas_configuradas ?? 0}${totalMarcas ? ` de ${totalMarcas}` : ''} marcas`
-                  : i.configurado ? 'Llave de la plataforma cargada' : `Falta el secret ${i.secreto ?? '—'}`}
-                {i.fallos_24h > 0 && ` · ${i.fallos_24h} fallo${i.fallos_24h === 1 ? '' : 's'} en 24 h`}
-                {i.ultimo_fallo?.created_at && ` · el último ${hace(i.ultimo_fallo.created_at)}`}
+                {/* Sin datos del servidor NO se afirma si está configurada: decir
+                    "falta el secret" sin haber preguntado es inventar un
+                    diagnóstico. Se dice cuál es el secret y ya. */}
+                {problema
+                  ? (i.alcance === 'marca'
+                      ? 'Se configura en cada marca'
+                      : `La enciende el secret ${i.secreto ?? '—'}`)
+                  : i.alcance === 'marca'
+                    ? `Configurada en ${i.marcas_configuradas ?? 0}${totalMarcas ? ` de ${totalMarcas}` : ''} marcas`
+                    : i.configurado ? 'Llave de la plataforma cargada' : `Falta el secret ${i.secreto ?? '—'}`}
+                {!problema && i.fallos_24h > 0 && ` · ${i.fallos_24h} fallo${i.fallos_24h === 1 ? '' : 's'} en 24 h`}
+                {!problema && i.ultimo_fallo?.created_at && ` · el último ${hace(i.ultimo_fallo.created_at)}`}
                 {i.suplente && ' · tiene suplente'}
               </p>
             </button>
 
             {abierta === i.id && (
               <div className="px-3 pb-3">
-                {!eventos[i.id] && <p className="text-[10px] text-gray-400">Cargando…</p>}
-                {eventos[i.id]?.length === 0 && (
+                {problema && <p className="text-[10px] text-gray-400">
+                  El historial tampoco se puede leer hasta que el estado en vivo funcione.
+                </p>}
+                {!problema && !eventos[i.id] && <p className="text-[10px] text-gray-400">Cargando…</p>}
+                {!problema && eventos[i.id]?.length === 0 && (
                   <p className="text-[10px] text-gray-400">Sin eventos en los últimos 30 días.</p>
                 )}
                 <div className="space-y-1.5">
