@@ -34,6 +34,19 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La pantalla de gracias es un ticket para capturar · solo frontend (05-sep-2026)
+
+**Nada que desplegar.** Después del yape confirmado, la pantalla final ya no es solo
+"pedido confirmado, entra al chat": es un **ticket** con cómo se pagó, la sede de recojo
+con su dirección, cuánto falta y cómo se paga, qué llevar (DNI y clave), qué sigue y el
+teléfono de la marca para llamar. Pensada para el comprador de provincia que no instala
+la app ni vuelve al chat: **guarda capturas**, y la pantalla se lo pide. Detalle y reglas
+en `01-SALES-ENGINE.md` § *La pantalla final es un ticket para capturar*.
+
+**Qué mirar la primera vez:** que la sede salga con nombre y dirección (la resuelve el
+front desde el catálogo); si aparece solo el distrito, el catálogo no cargó. Y el teléfono
+sale solo si la marca tiene `wa_display_phone` en *Marca*.
+
 ### Conexiones: ver qué API está fallando · SQL + 1 función nueva + 15 desplegadas (03-sep-2026)
 
 > **Va DESPUÉS del bloque de Shalom LAT de abajo** — lo necesita: la consola muestra los dos

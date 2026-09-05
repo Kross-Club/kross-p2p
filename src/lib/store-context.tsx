@@ -8,6 +8,10 @@ export interface Store {
   logo_url: string | null
   color_primary: string
   color_dark: string
+  /** Número visible de la marca (`stores.wa_display_phone`). La pantalla final
+   *  del checkout lo ofrece como "llama a" — un teléfono es el respaldo de quien
+   *  no va a volver a la app. Opcional: la caché por slug de antes no lo trae. */
+  wa_display_phone?: string | null
 }
 
 const DEFAULT_STORE: Store = {
@@ -64,7 +68,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyBranding(initial)
     if (!slug) { setLoading(false); return }
-    supabase.from('stores').select('id, slug, nombre, logo_url, color_primary, color_dark').eq('slug', slug).eq('active', true).maybeSingle()
+    supabase.from('stores').select('id, slug, nombre, logo_url, color_primary, color_dark, wa_display_phone').eq('slug', slug).eq('active', true).maybeSingle()
       .then(({ data }) => {
         const s = (data as Store) ?? DEFAULT_STORE
         setStore(s); applyBranding(s)

@@ -350,12 +350,24 @@ export const COPY = {
 
   // Confirmación
   doneTitle: '¡Pedido confirmado! 🎉',
+  // ── El ticket (05-set-2026) ──
+  // La pantalla final se diseña para CAPTURARSE: el comprador de provincia con
+  // poca costumbre digital no instala la app ni vuelve al chat, guarda capturas.
+  // Todo lo que va a necesitar el día del recojo tiene que caber en una
+  // pantalla, en su idioma. El contenido lo arma `lib/checkout/ticket.ts`; aquí
+  // solo van los rótulos fijos.
+  doneScreenshotHint: 'Toma una captura de esta pantalla para tenerla a la mano.',
+  doneBringTitle: 'El día del recojo lleva',
+  doneNextTitle: 'Qué sigue',
+  // El teléfono de la tienda es el respaldo de quien no va a volver a esta
+  // app: para una persona mayor, un número al que llamar cierra lo que ningún
+  // mensaje cierra. Solo se muestra si la marca lo configuró.
+  doneCallStore: 'Si necesitas ayuda, llama a',
   // El canal es el CHAT del pedido, no WhatsApp. WhatsApp es solo el fallback
   // cuando el comprador no entra al chat, así que prometerlo aquí manda a
   // esperar por donde no vamos a escribir primero — y deja el chat, que es lo
   // que sostiene la tasa de entrega, sonando a algo secundario.
   doneCod: 'Pagas al recibir. Coordinamos la entrega por el chat de tu pedido.',
-  doneAdvance: 'Ya registramos tu adelanto. Coordinamos el envío por el chat de tu pedido.',
   // Nombra el BENEFICIO, no la mecánica: "abrir el chat" describe un botón,
   // "rastrear la entrega" describe lo que el comprador gana entrando — y es
   // literal, no una promesa: `/p/:token` monta el `OrderTracker` con las etapas

@@ -423,6 +423,8 @@ agrega `payment_provider` y `origin_store_id` (§16) y los campos de 360pay en `
 - `src/lib/checkout-flow.ts` — state machine del quiz de checkout.
 - `src/lib/useVoiceCloser.ts` — hook del Voice Closer (dormido sin agente).
 - `src/lib/session.ts` — contrato `MerchantCustomerSession` (ver 00-CORE).
+- `src/lib/checkout/ticket.ts` — el ticket de la pantalla final (qué pagó, dónde recoge,
+  qué llevar, qué sigue), puro y con tests. `OrderDone.tsx` solo lo pinta.
 
 ## Secrets / env pendientes de configurar
 Backend: `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID`. Frontend: `VITE_ELEVENLABS_AGENT_ID`
@@ -470,6 +472,43 @@ regatea, y llena el canal de gente pidiendo rebaja en vez de coordinando.
 
 **El KPI es % de pedidos entregados al primer intento**, no clics al chat. El
 clic es un proxy: si sube el clic y no sube la entrega, el cambio no sirvió.
+
+#### La pantalla final es un ticket para capturar ✅ (05-set-2026)
+
+Lo de arriba sigue vigente. Lo que cambió es **quién sostiene al comprador que no
+entra al chat**. La estrategia de canales se movió (ver `14-EVALUACION-KROSS-CLUB.md`
+y la discusión que llevó a SMS como riel de avisos): el comprador que más importa
+—provincia, poca costumbre digital— **no instala la app ni vuelve al chat; guarda
+capturas**. Así que la pantalla de gracias deja de ser un "listo, entra al chat" y
+pasa a ser **un ticket diseñado para ser capturado**, con todo lo que va a necesitar
+el día que le avisen que su paquete llegó:
+
+| Bloque | Qué dice | De dónde sale |
+|---|---|---|
+| Cómo se pagó | «Pago recibido por Yape: S/ 95 de S/ 189.» | `paid` del webhook; nunca «tu pago no existe» |
+| Tu pedido · Lo recoges en · A nombre de | Pack, **sede con dirección** (no un id), quien recibe | `AgencyService.getBranch` en el cliente; si no cargó, cae al distrito |
+| Te falta pagar | Monto y CÓMO: por la app en agencia (suelta la clave), al recibir en domicilio | `price - advanceAmount` |
+| El día del recojo lleva | Tu DNI · tu clave de recojo (y cuándo llega) | Solo en agencia |
+| Qué sigue | «Te avisaremos a tu celular cuando llegue a la agencia. Suele tardar 2 días.» | `provinciaConfig.eta` traducido; **sin nombrar canal** |
+| Llama a | Teléfono de la marca con `tel:` | `stores.wa_display_phone`, solo si está configurado |
+
+El contenido lo arma `src/lib/checkout/ticket.ts` (puro, con tests en
+`ticket.test.ts`); `OrderDone.tsx` solo lo pinta. Reglas que salen de ahí:
+
+- **«Qué sigue» no nombra canal.** Hoy avisa push, WhatsApp o SMS según lo que
+  tenga el comprador; prometer uno es mentirle a los que no lo tienen. Cuando el
+  SMS esté construido (`08-RECORDATORIOS-RECOJO.md`) la frase puede decir «por
+  mensaje de texto».
+- **La captura es la persistencia.** Se le dice con todas sus letras («Toma una
+  captura de esta pantalla»): no es obvio para quien no vive en apps.
+- **El chat sigue siendo la única acción**, por las razones de arriba. Pero ya no
+  es la única forma de no perderse.
+- **El teléfono es el `wa_display_phone`** porque es el único número de la marca
+  en la base. Se ofrece como *llamar*, con `tel:`, no como WhatsApp: nadie lee las
+  respuestas de WhatsApp (no hay webhook entrante). Si eso confunde, la salida es
+  una columna `support_phone` propia, no quitar el teléfono.
+- Deuda anotada: `Store` del `store-context` ahora trae `wa_display_phone`; la
+  caché por slug de antes no lo tiene hasta la siguiente carga.
 
 ## El checkout multi-paso es el default
 
