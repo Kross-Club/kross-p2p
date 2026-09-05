@@ -53,7 +53,16 @@ export interface Integracion {
   alcance: 'plataforma' | 'marca'
   /** El secret que la enciende. Se muestra el NOMBRE, jamás el valor. */
   secreto: string | null
-  /** Si se cae, ¿se frena vender o despachar? Ordena la lista por urgencia. */
+  /**
+   * Si se cae, ¿se frena vender o despachar? Ordena la lista por urgencia y es
+   * lo que la pantalla rotula "crítica". Es una propiedad ESTÁTICA —el papel
+   * que cumple esa API en Kross—, no una medición: una integración crítica
+   * puede estar perfectamente sana.
+   *
+   * Las contingencias lo llevan en `true` porque cuando entran a trabajar son
+   * tan críticas como el titular; que se muestre o no como "crítica" lo decide
+   * la pantalla con `suplenteDe`, que sabe si hoy está de repuesto.
+   */
   critico: boolean
   /** Si tiene un suplente que la cubre, cuál. */
   suplente?: Proveedor
@@ -132,6 +141,19 @@ export const INTEGRACIONES: Integracion[] = [
 
 export const integracionDe = (id: string): Integracion | undefined =>
   INTEGRACIONES.find(i => i.id === id)
+
+/**
+ * ¿De quién es suplente esta integración? `null` si no respalda a nadie.
+ *
+ * El catálogo guarda la relación en una sola dirección —el titular apunta a su
+ * suplente— y esto la lee al revés, que es como la necesita la pantalla: una
+ * contingencia **no es crítica por sí sola**. Si Olva LAT no está montada no se
+ * frena nada, porque Olva PE está trabajando; lo crítico es el PAR. Rotularla
+ * "crítica" al lado de "Sin configurar" se lee como una alarma cuando en
+ * realidad es un repuesto que nadie compró todavía.
+ */
+export const suplenteDe = (id: string): Integracion | null =>
+  INTEGRACIONES.find(i => i.suplente === id) ?? null
 
 // ─── La referencia que se le enseña al proveedor ─────────────────────────────
 // Un fallo sin identificador no se puede reclamar: "ayer nos falló" no es un

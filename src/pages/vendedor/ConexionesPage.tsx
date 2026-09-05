@@ -3,7 +3,7 @@ import { Plug, RefreshCw, Search, ChevronDown, ChevronRight } from 'lucide-react
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 import {
-  INTEGRACIONES, ROTULO_RESULTADO, ROTULO_SALUD,
+  INTEGRACIONES, ROTULO_RESULTADO, ROTULO_SALUD, suplenteDe,
   type EventoApi, type Integracion, type Salud,
 } from '../../../supabase/functions/_shared/integraciones.ts'
 
@@ -258,8 +258,21 @@ export default function ConexionesPage() {
                 <span className="text-xs font-black flex items-center gap-1.5">
                   {abierta === i.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   {i.nombre}
-                  {i.critico && <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
-                    style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>crítica</span>}
+                  {/* Una contingencia NO se rotula "crítica": si no está montada
+                      no se frena nada, porque su titular está trabajando. Lo
+                      crítico es el par, y decir "suplente de Olva PE" explica
+                      qué es sin sonar a alarma. Los dos llevan `title` porque
+                      una etiqueta que hay que preguntar qué significa no está
+                      haciendo su trabajo. */}
+                  {suplenteDe(i.id)
+                    ? <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                        title={`Es el repuesto de ${suplenteDe(i.id)!.nombre}: entra a trabajar solo cuando ese no responde.`}
+                        style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
+                        suplente de {suplenteDe(i.id)!.nombre}
+                      </span>
+                    : i.critico && <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
+                        title="Si esta API se cae, se frena vender o despachar. Es el papel que cumple, no un problema: una integración crítica puede estar perfectamente sana."
+                        style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>crítica</span>}
                 </span>
                 <span className="text-[10px] font-black px-2 py-1 rounded-full flex-shrink-0"
                   style={{ background: COLOR[i.salud].fondo, color: COLOR[i.salud].texto }}>
@@ -283,6 +296,11 @@ export default function ConexionesPage() {
                 {!problema && i.fallos_24h > 0 && ` · ${i.fallos_24h} fallo${i.fallos_24h === 1 ? '' : 's'} en 24 h`}
                 {!problema && i.ultimo_fallo?.created_at && ` · el último ${hace(i.ultimo_fallo.created_at)}`}
                 {i.suplente && ' · tiene suplente'}
+                {!problema && i.salud === 'SIN_CONFIGURAR' && suplenteDe(i.id) && (
+                  <span style={{ color: 'var(--warn-fg)' }}>
+                    {` · hoy ${suplenteDe(i.id)!.nombre} no tiene repuesto si se cae`}
+                  </span>
+                )}
               </p>
             </button>
 

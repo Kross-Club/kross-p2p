@@ -111,6 +111,28 @@ Arriba de todo, el **buscador de referencia**: alguien reporta `KX-7QK4M2` y se
 abre ese evento con su hora, su operación, su status, el id de request del
 proveedor y su respuesta. Es el caso de uso de soporte y por eso está primero.
 
+### Las dos etiquetas de cada tarjeta
+
+Al lado del nombre puede haber una de dos, y ninguna es un diagnóstico — son el
+**papel** que cumple esa API, no su estado:
+
+- **crítica** — si se cae, se frena vender o despachar. Son siete de quince: los
+  dos rieles de cobro, los cuatro couriers y RENIEC. Una integración crítica
+  puede estar perfectamente sana; lo que dice la etiqueta es cuánto duele que no
+  lo esté.
+- **suplente de X** — es la contingencia de otra. Entra a trabajar sola cuando
+  su titular no responde.
+
+⚠️ **Una contingencia no se rotula "crítica"**, aunque en el catálogo lo lleve en
+`true`. Si Olva LAT no está montada no se frena nada, porque Olva PE está
+trabajando: lo crítico es el **par**, no cada mitad. Rotularla "crítica" al lado
+de "Sin configurar" se leía como una alarma cuando en realidad era un repuesto
+que nadie había comprado todavía — y eso es exactamente lo que hay que decir en
+su lugar: *"hoy Olva PE no tiene repuesto si se cae"*.
+
+Las dos etiquetas llevan `title`: una etiqueta que hay que preguntar qué
+significa no está haciendo su trabajo.
+
 ### Cuando el servidor no contesta
 
 **Los nombres no dependen del servidor.** El catálogo es estático y vive en el
