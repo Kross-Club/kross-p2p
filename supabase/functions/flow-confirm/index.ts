@@ -275,14 +275,19 @@ Deno.serve(async (req) => {
     console.error('[flow-confirm] CAPI Purchase falló:', String(e))
   }
 
-  runInBackground(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/shalom-order`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-    },
-    body: JSON.stringify({ session_id: session.id }),
-  }))
+  // Despachar: el adelanto verificado autoriza la guía. Uno por courier — cada
+  // generador descarta solo los pedidos que no le tocan y trae su propio
+  // candado, así que acá no se filtra (mismo bloque que en `pay360-webhook`).
+  for (const fn of ['shalom-order', 'olva-order']) {
+    runInBackground(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/${fn}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({ session_id: session.id }),
+    }))
+  }
 
   return ok({ received: true, matched: true })
 })

@@ -1848,6 +1848,136 @@ ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS flow_secret_key         text;
 ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS flow_secrets_updated_at timestamptz;
 
 
+-- ─── 37. OLVA LAT: EL SEGUNDO RIEL DE OLVA ──────────────────────────────────
+--
+-- Olva ya tenía proveedor de tracking: **Olva API Perú** (sección 21). Este es
+-- otro, también independiente y no oficial — **Olva LAT** (`api.olva-api.lat`)
+-- — y entra como CONTINGENCIA, no como reemplazo. Tres cosas que el primero no
+-- puede dar y que cambian cómo se comporta el pedido:
+--
+--   · **404 de verdad.** El primero devuelve `502` tanto para una guía
+--     inexistente como para Olva caído y no los distingue (verificado contra la
+--     API real), y por eso el proxy nunca podía decir "esa guía no existe".
+--   · **Webhook.** El primero no tiene ninguno: el barrido de 30 min ERA la
+--     entrada del reflejo. Acá el push llega al instante y —lo que decide—
+--     webhooks y suscripciones NO consumen cuota.
+--   · **Registro de envíos.** `POST /account/register` crea la guía, que es lo
+--     que `shalom-order` hace para el otro courier. Ver 37.c.
+--
+-- ⚠️ El costo es MENSUAL (cuota por plan), no por minuto como el primero. Por
+-- eso el diseño gasta en el orden correcto: webhook (gratis) → riel 1 (60
+-- req/min) → riel 2 solo de rescate y con tope (`olva-tracking-sync`).
+
+-- 37.a Las llaves. Ninguna va en el repo ni al frontend: las Edge Functions las
+-- leen de los secrets de entorno OLVA_LAT_API_KEY / OLVA_LAT_WEBHOOK_SECRET y,
+-- si no están, del Vault del proyecto por estos RPC. Solo service_role los
+-- puede ejecutar — misma escalera que las secciones 21, 22 y 24.
+--
+-- Alta en Vault (correr aparte, con la key real, NUNCA pegarla aquí):
+--   SELECT vault.create_secret('<la-key>', 'OLVA_LAT_API_KEY', 'Olva LAT');
+CREATE OR REPLACE FUNCTION public.olva_lat_api_key() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'OLVA_LAT_API_KEY' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.olva_lat_api_key() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.olva_lat_api_key() TO service_role;
+
+-- El secret del webhook lo emite `PUT /webhooks` UNA vez y lo guarda el
+-- bootstrap autónomo de `_shared/olva-lat-api.ts` (ensureLatWebhook) DIRECTO en
+-- Vault por el RPC de escritura de abajo: nunca se imprime ni pasa por chats.
+CREATE OR REPLACE FUNCTION public.olva_lat_webhook_secret() RETURNS text
+LANGUAGE sql SECURITY DEFINER SET search_path = ''
+AS $$
+  SELECT decrypted_secret FROM vault.decrypted_secrets
+  WHERE name = 'OLVA_LAT_WEBHOOK_SECRET' LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.olva_lat_webhook_secret() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.olva_lat_webhook_secret() TO service_role;
+
+CREATE OR REPLACE FUNCTION public.store_olva_lat_webhook_secret(secret text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE existing uuid;
+BEGIN
+  SELECT id INTO existing FROM vault.secrets WHERE name = 'OLVA_LAT_WEBHOOK_SECRET' LIMIT 1;
+  IF existing IS NULL THEN
+    PERFORM vault.create_secret(secret, 'OLVA_LAT_WEBHOOK_SECRET', 'Olva LAT · webhook');
+  ELSE
+    PERFORM vault.update_secret(existing, secret);
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.store_olva_lat_webhook_secret(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.store_olva_lat_webhook_secret(text) TO service_role;
+
+-- 37.b La suscripción al push, por pedido. Marca cuándo se suscribió la guía al
+-- webhook de Olva LAT para que el barrido no lo reintente cada media hora para
+-- siempre. NULL = todavía no suscrita (o guía anterior a este riel: el barrido
+-- las va tomando, hasta 25 por corrida, porque suscribir es gratis).
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_lat_subscribed_at timestamptz;
+
+-- 37.c EL REGISTRO DE ENVÍOS OLVA (`olva-order`). El equivalente del generador
+-- de guías Shalom (sección 27) para el otro courier. Mismo candado, mismo
+-- interruptor apagado por defecto, mismo plan B manual — y tres diferencias que
+-- impone el proveedor y que están escritas en la cabecera de la función:
+--
+--   1. La guía nace en la cuenta Olva del PROVEEDOR (su OAuth2 global), no en
+--      una cuenta de la marca: no hay credenciales por cliente como el Shalom
+--      Pro de la sección 25. El remitente es un dato que mandamos.
+--   2. NO hay endpoint para listar envíos → no se puede reconciliar tras un
+--      timeout → **no se reintenta nunca**, ni un 5xx. Sin respuesta cierra en
+--      FAILED y una persona verifica antes de emitir otro.
+--   3. No hay `pickup_code`: Olva no emite la clave de retiro por API.
+
+-- Config de envío Olva POR PRODUCTO, al lado de la de Shalom (27.a).
+--   olva_origin_agency_code: el código de agencia de ORIGEN en el catálogo de
+--     Olva LAT (`LIM-MIR-01`), no nuestro id de sede. Son llaves distintas del
+--     mismo mundo: `src/data/agencies/olva.json` guarda el id interno del
+--     buscador de Olva ("579"). Se configura una vez por producto.
+--   package_weight_kg: el peso decide la tarifa. Un envío sin peso no es un
+--     envío barato: es uno que el mostrador vuelve a pesar y a cobrar.
+-- `declared_content` se REUSA de Shalom (27.a): es el mismo dato —qué va dentro
+-- del paquete— y pedirlo dos veces sería pedir que se contradigan.
+ALTER TABLE products ADD COLUMN IF NOT EXISTS olva_origin_agency_code text;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS package_weight_kg       numeric;
+
+-- El REMITENTE de la marca. Va en `stores` y no en `store_secrets` porque no es
+-- un secreto: es quien figura como remitente impreso en la guía. Sin estos tres
+-- campos el envío no se arma y el pedido cae en SKIPPED con el motivo.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS olva_sender_name     text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS olva_sender_document text;  -- RUC (11) o DNI (8)
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS olva_sender_phone    text;
+
+-- El interruptor por marca, APAGADO por defecto — misma razón que 27.e y una
+-- más: hasta que se cierre quién factura el flete (ver 37.c.1), registrar
+-- envíos de verdad es una decisión comercial, no un despliegue.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS olva_auto_guide_enabled boolean DEFAULT false;
+
+-- El expediente del pedido contra el proveedor, y el CANDADO de idempotencia:
+-- se reclama con un UPDATE condicional (… WHERE olva_order_status IS NULL)
+-- antes de llamar a nadie. Mismos estados que 27.c.
+--   PENDING   reclamado, llamada en curso
+--   CREATED   envío registrado (el número ya vive en tracking_numero)
+--   SIMULADO  se armó el payload y NO se llamó al proveedor
+--   SKIPPED   no aplica o falta config (motivo en olva_order_reason)
+--   FAILED    rechazado o sin respuesta — Logística lo registra a mano
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_order_status text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_order_id     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_order_at     timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_order_reason text;
+
+-- 37.d El rótulo de la SEDE elegida, en palabras: "NOMBRE · DISTRITO,
+-- PROVINCIA, DEPARTAMENTO". No duplica a `agency_branch_id` (27.b): ese id es
+-- del catálogo de cada courier, y para Olva LAT hace falta un código SUYO
+-- (`LIM-MIR-01`) que solo se puede resolver contra su `GET /agencies` — y para
+-- resolverlo hay que saber DÓNDE queda la sede, que es justo lo que el servidor
+-- no tenía (el catálogo de 911 sedes vive en el front, ver `delivery-map`).
+-- Lo escribe el checkout al registrar el pedido. Los pedidos anteriores no lo
+-- tienen: esos se despachan a mano y el aviso lo dice.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS agency_branch_label text;
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- §42 · EVENTOS DE LAS APIS DE TERCEROS  (03-set-2026)
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -1906,3 +2036,4 @@ SELECT cron.schedule(
   '20 4 * * *',
   $$ DELETE FROM api_events WHERE created_at < now() - interval '30 days' $$
 );
+

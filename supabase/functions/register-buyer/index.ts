@@ -55,6 +55,7 @@ Deno.serve(async (req) => {
     dispatch_type?: string        // MOTORIZADO_LIMA | MOTORIZADO_PROVINCIA | AGENCIA_PROVINCIA | AGENCIA_LIMA
     agency_name?: string          // SHALOM | OLVA | OTRO (solo provincia)
     agency_branch_id?: string     // id de la sede de recojo dentro de ese courier
+    agency_branch_label?: string  // la misma sede EN PALABRAS (sección 37.d)
     delivery_reference?: string   // referencia de la dirección / agencia destino
     address_lat?: number          // pin GPS fijado en el checkout
     address_lng?: number
@@ -185,6 +186,12 @@ Deno.serve(async (req) => {
   // generador de guías necesita el id, no una frase. Se sigue guardando en los
   // dos lados: la referencia es lo que Logística ve en el chat.
   const agencyBranchId = /^\d+$/.test(String(body.agency_branch_id ?? '')) ? String(body.agency_branch_id) : null
+  // Y la misma sede EN PALABRAS ("NOMBRE · DISTRITO, PROVINCIA, DEPARTAMENTO").
+  // No es un duplicado del id: el id solo vale dentro de NUESTRO catálogo, y el
+  // registro automático de envíos Olva necesita resolver el código de agencia
+  // del proveedor, que se busca por dónde queda la sede (sección 37.d). Se
+  // recorta por si acaso — es texto que viene del navegador.
+  const agencyBranchLabel = String(body.agency_branch_label ?? '').replace(/\s+/g, ' ').trim().slice(0, 200) || null
   const deliveryReference = body.delivery_reference?.trim() || null
   const pinLat = typeof body.address_lat === 'number' ? body.address_lat : null
   const pinLng = typeof body.address_lng === 'number' ? body.address_lng : null
@@ -425,6 +432,7 @@ Deno.serve(async (req) => {
       dispatch_type: dispatchType,
       agency_name: agencyName,
       agency_branch_id: agencyBranchId,
+      agency_branch_label: agencyBranchLabel,
       delivery_reference: deliveryReference,
       assigned_seller_id: assignedSellerId,
       involved_seller_ids: assignedSellerId ? [assignedSellerId] : [],

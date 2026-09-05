@@ -106,6 +106,10 @@ git si hace falta recuperar la proyección.
   Ver §4 y §5.
 - **Falta 🔮:** generación de **etiquetas/datos formateados para agencias** (Shalom / Olva
   Courier): nombre, DNI, teléfono, destino, contenido.
+- **🟡 Generación de guías por API — Shalom y Olva construidos, en ensayo**
+  (`shalom-order` · `olva-order`; los dos arrancan apagados por marca, ver sus
+  secciones). Reemplaza al pendiente de "etiquetas formateadas" de arriba: la
+  guía formal la emite el courier, no la imprimimos nosotros.
 - **✅ Tracking por API + cobranza del saldo — Shalom y Olva enteros** (consulta,
   reflejo y disparo de cobranza, con el reflejo compartido en
   `_shared/tracking.ts`; ver § *Tracking de envíos Shalom* y § *Tracking de
@@ -321,12 +325,14 @@ Corre **después** de los generadores de agencias, porque lee sus JSON ya constr
 2. 🔮 Route-sheet del motorizado (Lima) con cobranza por parada.
 3. Generador de envíos — **Shalom 🟡** (construido; el payload espera la doc del
    proveedor y cada marca arranca en modo ensayo — ver § *Generador de guías
-   Shalom*) · **Olva 🔮**.
+   Shalom*) · **Olva 🟡** (construido sobre Olva LAT y apagado por decisión:
+   la guía nacería en la cuenta del proveedor, no en una de la marca — ver
+   § *Registro de envíos Olva*).
 4. Tracking por API con disparo de cobranza al llegar a destino — **Shalom ✅**
    (ciclo completo, ver § *Tracking de envíos Shalom*; y con **dos proveedores
    por si uno cae** desde set-2026 — § *Los dos proveedores de Shalom*) ·
-   **Olva ✅** (mismo ciclo, por barrido: su proveedor no tiene webhook — ver
-   § *Tracking de guías Olva*). Ver §3.
+   **Olva ✅** (mismo ciclo, también con **dos proveedores** y —a diferencia de
+   antes— con webhook, ver § *Tracking de guías Olva*). Ver §3.
 5. 🔮 Persistir `courier_surcharge` y `coverage_result` en `order_sessions` — es la data
    con la que se negocia cobertura con Aliclic y se mide venta perdida por zona.
 
@@ -588,31 +594,83 @@ cruzarlo contra la cobertura del courier, igual que hoy hace
 como "sin cobertura a domicilio" — que ya es un camino válido: se entrega por
 agencia.
 
-## Tracking de guías Olva ✅ · ciclo completo, por barrido
+## Tracking de guías Olva ✅ · ciclo completo, con DOS rieles (3-set-2026)
 
 El pendiente #4 (§3) para Olva: registrar la guía, consultarla contra la API,
 reflejar la fase en el pedido y disparar la cobranza al llegar a destino. Es el
 **mismo ciclo de Shalom** — el reflejo compartido vive en `_shared/tracking.ts`
-y ambos couriers lo atraviesan idéntico — con dos diferencias que impone el
-proveedor:
+y ambos couriers lo atraviesan idéntico.
 
-- **No hay webhook ni batch**: el barrido `olva-tracking-sync` (pg_cron a los
-  `:15/:45`, intercalado con el de Shalom) ES la entrada del reflejo — consulta
-  guía por guía, hasta 50 por corrida, los menos chequeados primero. Para no
-  esperar media hora, la `TrackingBar` del chat trae botón **Actualizar** en
-  Olva: consulta al toque y el servidor persiste por el mismo camino
-  (`olva-tracking` con `session_id` → `applyTracking`).
-- **La guía se rastrea por numero + año de emisión (YY)** — sin código. El año
-  lo pone el servidor al registrarla (`set_tracking`): la guía se registra al
-  despachar, así que es el año actual de Lima. Vive en `tracking_year` (23.a).
+Desde el 3-set-2026 Olva tiene **dos proveedores**, no uno. Ninguno es oficial:
+son dos terceros que leen el mismo courier, y por eso fallan en momentos
+distintos. Esa es toda la tesis de la contingencia.
+
+| | Riel 1 · Olva API Perú | Riel 2 · **Olva LAT** |
+|---|---|---|
+| Base | `api.olva-api-peru.com` | `api.olva-api.lat` |
+| Auth | `X-API-Key` (`sk_…`) | `x-api-key` (`olva_…`) |
+| Costo | 60 req/**min** | cuota **mensual** por plan |
+| Tracking | `GET /v1/tracking/{guía}/{año}` | `POST /track` (número a secas) |
+| Guía inexistente | `502`, **indistinguible** de Olva caído | **`404` de verdad** |
+| Webhook | ❌ no existe | ✅ HMAC, y **suscribirse es gratis** |
+| Estado | TEXTOS → heurística provisional | **enum cerrado** de 8 estados |
+| Registrar envíos | ❌ | ✅ `POST /account/register` (ver § siguiente) |
+
+**Cómo se reparten el trabajo**, que es lo que decide el costo:
+
+1. **El webhook manda** (`olva-lat-webhook`). Es lo más rápido *y* lo más
+   barato: el push llega al instante y ni el webhook ni las suscripciones
+   consumen cuota. Cada guía Olva se suscribe al registrarse (`_shared/guia.ts`)
+   y el barrido va suscribiendo las que quedaron de antes, 25 por corrida.
+   Antes de esto, Olva era el único courier sin push.
+2. **El barrido consulta el riel 1** (`olva-tracking-sync`, pg_cron `:15/:45`),
+   guía por guía, hasta 50 por corrida, los menos chequeados primero. Su límite
+   es por minuto: se pasa solo.
+3. **El riel 2 rescata solo lo que el 1 no pudo**, y con tope de 10 por corrida.
+   Su cuota es mensual: barrer con él a lo ancho quema el plan en días. Si el
+   riel 1 se cae de verdad, lo que sostiene el tracking es el webhook, no la
+   consulta.
+
+Y el botón **Actualizar** de la `TrackingBar` recorre los dos en orden
+(`olva-tracking`): el riel 1 primero y, si no contesta, el 2. Con eso el chat
+**por fin puede decir "esa guía no existe"** cuando de verdad no existe — antes
+no podía, porque el `502` del riel 1 significa las dos cosas a la vez.
+
+Lo que **no** cambia: la guía sigue viviendo en el pedido como numero + año de
+emisión (YY, `tracking_year`, 23.a). El riel 2 no necesita el año, pero el 1 sí
+y es el que se consulta primero.
 
 ### Quién es el proveedor (y quién no es)
 
-**Olva API Perú** (`https://olva-api-peru.com/docs/`) — un proveedor
-**independiente**, no la API oficial de Olva Courier; su propio pie de página lo
-declara. Misma fragilidad que ya asumimos con `olva.json` (§5, sale de su
-buscador público): puede cambiar o morir sin aviso. La capa está aislada
-justamente para eso — si mañana hay API oficial, cambia el proxy y nada más.
+**Ninguno de los dos es Olva.** El riel 1 es **Olva API Perú**
+(`https://olva-api-peru.com/docs/`) y el riel 2 es **Olva LAT**
+(`https://olva-api.lat`, de Wazend): los dos son proveedores **independientes**,
+no la API oficial de Olva Courier, y los dos lo declaran en su propio pie de
+página. Misma fragilidad que ya asumimos con `olva.json` (§5, sale de su
+buscador público): cualquiera puede cambiar o morir sin aviso.
+
+Eso no es un defecto del diseño: es el diseño. Tener dos terceros leyendo el
+mismo courier es lo más parecido a un acuerdo oficial que hay hoy, y la capa
+sigue aislada — si mañana existe API oficial de Olva, se enchufa como riel y el
+resto del sistema no se entera.
+
+> ⚠️ **Olva LAT y Shalom LAT son del MISMO proveedor** (Wazend): misma forma de
+> auth (`x-api-key`), mismos endpoints (`/track`, `/validate`, `/webhooks`,
+> `/tracking/subscriptions`, `/account/register`) y dominios hermanos
+> (`olva-api.lat` · `shalom-api.lat`). Dos consecuencias que hay que tener
+> presentes y que **nadie ha verificado todavía**:
+>
+> 1. **La cuota podría ser una sola.** Si las dos keys cuelgan de la misma
+>    cuenta, el presupuesto de rescate de Olva (10 consultas/corrida) y el de
+>    Shalom se comen el mismo plan. Los topes de este repo se calcularon
+>    asumiendo cuotas separadas — confirmarlo con el proveedor antes de subir
+>    ninguno.
+> 2. **La contingencia de los dos couriers cae junta.** Si Wazend se cae, Olva
+>    pierde su webhook y su riel 2, y Shalom su contingencia, a la vez. Sigue
+>    siendo mejor que antes —los titulares son proveedores distintos y aguantan—
+>    pero no son cuatro fallos independientes: son tres.
+
+**Riel 1 · Olva API Perú**
 
 | | |
 |---|---|
@@ -625,8 +683,44 @@ justamente para eso — si mañana hay API oficial, cambia el proxy y nada más.
 
 ⚠️ **Una guía inexistente NO devuelve 404: devuelve `502` "Error consultando
 Olva"**, indistinguible de Olva caído (verificado contra la API real). Por eso
-el fallo se reporta como `upstream`, nunca como "guía no existe" — decirle al
+su fallo se reporta como `upstream`, nunca como "guía no existe" — decirle al
 vendedor que la guía no existe cuando lo caído es Olva arma un reclamo falso.
+La última palabra sobre eso la tiene el riel 2, que sí distingue.
+
+**Riel 2 · Olva LAT**
+
+| | |
+|---|---|
+| Base | `https://api.olva-api.lat` |
+| Auth | header `x-api-key` (key `olva_…`) |
+| Límite | **cuota mensual** por plan (p. ej. 5.000 consultas) → `429` |
+| Gratis (no consumen cuota) | `GET /validate`, `PUT /webhooks`, `POST /tracking/subscriptions` |
+| Tracking | `POST /track` `{orderNumber}` · lote: `POST /track/batch` |
+| Estados | enum: `REGISTERED · IN_TRANSIT · OUT_FOR_DELIVERY · READY_FOR_PICKUP · DELIVERED · RETURNED · REJECTED · UNKNOWN` |
+| Agencias | `GET /agencies` (`department`, `q`) — devuelve `code` PROPIO (`LIM-MIR-01`), horarios y coordenadas |
+| Ubicaciones | `GET /locations/departments(/…/provinces/…/districts)` |
+| Cuenta | `POST /account/quote` (cotizar) · `GET /account/dni/:dni` · `POST /account/register(-bulk)` |
+| Webhook | `X-Olva-Signature: t=…,v1=HMAC-SHA256("<t>.<body>")`, evento `shipment.updated` |
+
+**Cómo se traduce su enum a nuestra fase** (`_shared/olva-lat.ts`), que es lo
+que decide cuándo se cobra el saldo:
+
+| Estado | Fase | Por qué |
+|---|---|---|
+| `REGISTERED` | — | Emitir la guía no es haberla dejado en la agencia. Misma regla que Shalom y que el riel 1: ese hueco es donde se pierde la plata en contraentrega |
+| `IN_TRANSIT` | `EN_TRANSITO` | |
+| `OUT_FOR_DELIVERY` · `READY_FOR_PICKUP` | `EN_DESTINO` | El paquete ya está en la ciudad destino. Dispara la cobranza |
+| `DELIVERED` | `ENTREGADO` | |
+| `RETURNED` · `REJECTED` | — | Son finales **malos**, no fases. La fase solo avanza; meterlos ahí sería contar un envío devuelto con el vocabulario de uno que va bien. Salen aparte, como aviso al equipo (una sola vez por pedido) |
+
+`EN_ORIGEN` es el único que **no sale del enum**: el proveedor no tiene un
+estado para "el paquete ya está en la agencia de origen" —salta de `REGISTERED`
+a `IN_TRANSIT`—, pero sus `detail` en español sí lo dicen. Se lee con la
+heurística de textos del riel 1, y **solo para esa fase**: del texto no se
+acepta nada más alto, porque para eso ya habló el enum. Una frase como *"en
+tránsito hacia la agencia de destino"* no puede poder más que el `IN_TRANSIT`
+que el propio proveedor puso — si pudiera, cobraría el saldo con el paquete
+todavía viajando.
 
 ### Las piezas
 
@@ -651,11 +745,26 @@ vendedor que la guía no existe cuando lo caído es Olva arma un reclamo falso.
 - **`src/lib/checkout/services/OlvaTrackingService.ts`** — cliente que nunca
   lanza (mismo contrato que `Pay360Service`): cada fallo dice su etapa
   (`validation` / `config` / `rate_limit` / `upstream` / `network`).
-- **Semáforo en el panel** (`manage-store` · `olva_status` → tarjeta *Rastreo
-  de guías (Olva)* en Marca) — mismo healthz que el de Shalom, chip separado
-  porque son proveedores distintos. A diferencia de Shalom Pro, la tarjeta
-  **no pide credenciales**: la key es de la plataforma (Vault, §21) y no
-  existe cuenta del cliente en Olva. En rojo muestra el plan B manual.
+- **`supabase/functions/_shared/olva-lat.ts`** — el riel 2, PURO: su enum de
+  estados, la traducción a fase, el parseo del payload y la firma del webhook.
+  Lo importan las Edge Functions y `npm test`.
+- **`supabase/functions/_shared/olva-lat-api.ts`** — lo que toca red y llaves
+  del riel 2: key, `fetch` con etapas, suscripción, `/validate` y el bootstrap
+  autónomo del webhook (`ensureLatWebhook`, gemelo del de Shalom).
+- **`supabase/functions/olva-lat-webhook`** — el push firmado, con ventana
+  anti-replay de 5 min. Deploy con `--no-verify-jwt`. No necesita tabla de
+  dedupe: el reflejo es solo-hacia-adelante, así que el mismo evento aplicado
+  dos veces no re-avisa ni retrocede (misma razón que `shalom-webhook`).
+- **Semáforo en el panel** (`manage-store` · `olva_status` y `olva_lat_status`
+  → tarjeta *Rastreo de guías (Olva)* en Marca) — **dos chips, uno por riel**:
+  que uno esté vivo no dice nada del otro, y tenerlos separados es el punto de
+  la contingencia. El plan B manual solo aparece cuando caen **los dos**. El
+  chip del riel 2 sale de `GET /validate`, que es gratis, y por eso el panel
+  puede además avisar cuando queda poca cuota — una cuota agotada se ve igual
+  que una API caída desde el pedido, pero se arregla en otro sitio. A
+  diferencia de Shalom Pro, la tarjeta **no pide credenciales** para rastrear:
+  las keys son de la plataforma (Vault, §21 y §37) y no existe cuenta del
+  cliente en Olva.
 - **`derivePhase()`** — mapea los TEXTOS de los eventos a la fase canónica
   (`EN_ORIGEN → EN_TRANSITO → EN_DESTINO → ENTREGADO`); gana la más avanzada,
   sin asumir orden ni forma. Un texto que solo diga `REGISTRAD` **no** cuenta
@@ -666,22 +775,115 @@ vendedor que la guía no existe cuando lo caído es Olva arma un reclamo falso.
   está VIVA sobre ella — vigilar las primeras guías Olva de cerca y calibrar
   contra sus textos reales (deuda anotada en ESTADO-OPERATIVO).
 
-### La key
+### Las keys
 
-1. La Edge Function lee el secret **`OLVA_API_KEY`** (`supabase secrets set`);
-2. si no está, cae al **Vault** del proyecto vía el RPC `olva_api_key()`
-   (sección 21 de `setup-kross.sql`, ejecutable solo por `service_role`). La key
-   de prueba ya está cargada ahí: la función anda sin pasos manuales.
+Misma escalera para los dos rieles, y para el secret del webhook:
 
-La key **jamás** va en el repo ni al frontend. La de prueba viajó por chat al
-recibirse → rotarla al pasar a producción (se pide por el WhatsApp del
-proveedor, en su web).
+1. la Edge Function lee el secret de entorno (`OLVA_API_KEY`,
+   **`OLVA_LAT_API_KEY`**, `OLVA_LAT_WEBHOOK_SECRET`) — `supabase secrets set`;
+2. si no está, cae al **Vault** del proyecto por su RPC (`olva_api_key()`,
+   `olva_lat_api_key()`, `olva_lat_webhook_secret()` — secciones 21 y 37 de
+   `setup-kross.sql`, ejecutables solo por `service_role`).
+
+Ninguna va en el repo ni al frontend. El secret del webhook del riel 2 **nunca
+lo escribe una persona**: lo emite `PUT /webhooks` una sola vez y el bootstrap
+lo guarda directo en Vault (`store_olva_lat_webhook_secret`), sin pasar por
+ningún chat.
+
+⚠️ La key de prueba del riel 2 **viajó por chat al recibirse** → rotarla antes
+de producción y recargar Vault, igual que pasó con la del riel 1. Deuda anotada
+en `ESTADO-OPERATIVO.md`.
 
 ### Lo que queda
 
-- **Calibrar `derivePhase`** con las primeras guías vivas (la deuda de arriba).
+- **Calibrar `derivePhase` del riel 1** con las primeras guías vivas (la deuda
+  de arriba). El riel 2 la alivia pero no la cierra: mientras el riel 1 sea el
+  que se consulta primero, su heurística sigue decidiendo.
 - La **tasa de recojo nativa** (`EN_DESTINO` vs `ENTREGADO`) sale gratis del
   reflejo, para ambos couriers.
+- 🔮 **Cotizar el envío** (`POST /account/quote` del riel 2, por ubigeo y peso).
+  Es el costo real del flete por pedido, que hoy la marca estima. No se
+  construyó todavía porque el costo del envío no entra en ninguna pantalla:
+  cuando entre, el endpoint ya está identificado.
+- 🔮 **Reemplazar el scraping de `build-olva.mjs`** con `GET /agencies` del riel
+  2, que trae código, coordenadas y horario por sede. Misma candidata que ya
+  anotaba §5 para el riel 1, ahora con dos fuentes para cotejarla.
+
+## Registro de envíos Olva 🟡 · construido, apagado por decisión (3-set-2026)
+
+**Sí: Olva LAT puede registrar guías, igual que Shalom.** `POST /account/register`
+crea el envío y devuelve su número; existe también `register-bulk` para lotes.
+El generador está construido entero —`supabase/functions/olva-order`, gemelo de
+`shalom-order`— y arranca **apagado por marca**, no por precaución genérica sino
+por una razón concreta que se explica abajo.
+
+### Lo que es igual que en Shalom
+
+Lo llama `pay360-webhook` (y `flow-confirm`) apenas el adelanto cuadra,
+fire-and-forget: cobrar nunca se cuelga de despachar. Descarta solo los pedidos
+que no le tocan, **reclama el pedido con un UPDATE condicional** antes de llamar
+a nadie —dos webhooks del mismo pago no registran dos envíos para un paquete— y
+al terminar pasa por `_shared/guia.ts`, el mismo camino que la guía escrita a
+mano: mensaje al comprador, broadcast, suscripción al webhook. El expediente
+vive en `olva_order_status` (`PENDING · CREATED · SIMULADO · SKIPPED · FAILED`),
+y `order-manage · retry_olva` reabre un FAILED desde el panel.
+
+### Las tres diferencias, que no son de estilo
+
+**1. La guía nace en la cuenta del PROVEEDOR, no en una de la marca.**
+En Shalom cada marca conecta su propio Shalom Pro (§25) y la guía sale a su
+nombre. Acá los endpoints de «cuenta» corren sobre el **OAuth2 global de Olva
+LAT**: no hay credenciales por cliente, y el remitente es un dato que Kross
+manda (`sender`), no una identidad verificada. Quién factura el flete es una
+**conversación comercial abierta**, no un campo del payload — y hasta que se
+cierre, encender esto para una marca sería tomar esa decisión por ella. Por eso
+`stores.olva_auto_guide_enabled` arranca en `false`: con el interruptor apagado
+la función corre entera, arma el payload completo y lo deja en el chat de
+vendedores **sin registrar nada** (`SIMULADO`). Es el ensayo con un pedido real,
+gratis.
+
+**2. No se puede reconciliar, así que NO se reintenta nunca.**
+La defensa central de `shalom-order` es preguntar `GET /v1/orders` cuando la
+llamada no responde: un timeout no significa que la orden no se creó. Olva LAT
+**no publica un endpoint para listar envíos** y tampoco tiene clave de
+idempotencia (`esReconciliable === false`, con su test). Sin esa pregunta, un
+reintento —incluso de un `5xx`— es una apuesta a pagar dos veces el mismo flete
+o a mandar dos paquetes. Así que acá **una llamada y punto**: sin respuesta, el
+expediente cierra en `FAILED` y el aviso a Logística pide **verificar en Olva
+antes** de registrar otro. Es peor servicio y es a propósito.
+
+**3. No hay clave de retiro.**
+Shalom deja elegir el `pickup_code`; en Olva ese campo no existe. El pedido
+queda como una guía Olva registrada a mano: el chat entrega la guía y la clave
+la coordina una persona.
+
+### El código de agencia: por qué hizo falta una columna nueva
+
+`POST /account/register` pide `agencyCode` de **su** catálogo (`LIM-MIR-01`).
+Nuestro `olva.json` guarda el id interno del buscador de Olva (`"579"`): son
+llaves distintas del mismo mundo, y no hay forma de convertir una en la otra.
+
+Resolverlo exige saber **dónde queda** la sede — y eso el servidor no lo tenía:
+las 911 sedes viven en el front, cargadas diferidas (por eso `delivery-map`
+agrupa por id crudo y deja que el panel lo convierta en distrito). Así que el
+pedido ahora se lleva la sede **en palabras**: `agency_branch_label` (37.d),
+`"NOMBRE · DISTRITO, PROVINCIA, DEPARTAMENTO"`, escrita por el checkout al
+registrar. Con eso `olva-order` resuelve el código contra `GET /agencies` — y
+**ante duda devuelve `null`**: dos sedes en el mismo distrito sin nombre que las
+separe no se adivinan, porque mandar un paquete a la agencia equivocada de la
+ciudad correcta es un pedido perdido con tracking normal, que es la peor forma
+de perderlo.
+
+Los pedidos anteriores a esa columna no la tienen: esos caen en `SKIPPED` con el
+motivo y se despachan a mano, igual que antes.
+
+### Lo que la marca configura
+
+| Dónde | Qué | Por qué |
+|---|---|---|
+| Productos → el producto → *Envío por agencia (Olva)* | `olva_origin_agency_code` (código de Olva) y `package_weight_kg` | Lo decide la mercadería, no la marca. En Olva la tarifa sale del **peso**, no de un tamaño de catálogo como en Shalom |
+| Productos → *Envío por agencia (Shalom)* | `declared_content` | **Se comparte** entre los dos couriers: es el mismo dato, y pedirlo dos veces sería pedir que se contradigan |
+| Mi marca → *Rastreo de guías (Olva)* | remitente (nombre, RUC/DNI, celular) e interruptor | El remitente es quien figura impreso en la guía; el interruptor exige JWT verificado, como todo lo que cuesta plata |
 
 ## Los dos proveedores de Shalom ✅ · titular y contingencia (03-set-2026)
 

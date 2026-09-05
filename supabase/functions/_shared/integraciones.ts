@@ -14,7 +14,7 @@
 
 /** Cada API de terceros de la que Kross depende. El id es el que se guarda. */
 export const PROVEEDORES = [
-  'SHALOM_PE', 'SHALOM_LAT', 'OLVA',
+  'SHALOM_PE', 'SHALOM_LAT', 'OLVA', 'OLVA_LAT',
   'PAY360', 'FLOW',
   'WHATSAPP', 'META_CAPI', 'TIKTOK_CAPI',
   'LIVEKIT', 'ELEVENLABS', 'DECOLECTA', 'RESEND', 'WEB_PUSH', 'NOMINATIM',
@@ -80,9 +80,15 @@ export const INTEGRACIONES: Integracion[] = [
     alcance: 'plataforma', secreto: 'SHALOM_LAT_API_KEY', critico: true,
   },
   {
-    id: 'OLVA', nombre: 'Olva', que: 'Rastreo de guías Olva (sin webhook: solo barrido)',
+    id: 'OLVA', nombre: 'Olva PE', que: 'Rastreo de guías Olva — el primer riel (sin webhook: solo barrido)',
     dueno: 'Olva API Perú (tercero, no es Olva)', host: 'api.olva-api-peru.com',
-    alcance: 'plataforma', secreto: 'OLVA_API_KEY', critico: true,
+    alcance: 'plataforma', secreto: 'OLVA_API_KEY', critico: true, suplente: 'OLVA_LAT',
+  },
+  {
+    id: 'OLVA_LAT', nombre: 'Olva LAT',
+    que: 'El segundo riel de Olva: rastreo con webhook, 404 de verdad y emisión de guías',
+    dueno: 'Olva API LAT (tercero, no es Olva)', host: 'api.olva-api.lat',
+    alcance: 'plataforma', secreto: 'OLVA_LAT_API_KEY', critico: true,
   },
   {
     id: 'WHATSAPP', nombre: 'WhatsApp Cloud API', que: 'Plantillas de recojo, campañas e invitaciones',

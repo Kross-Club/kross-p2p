@@ -194,9 +194,17 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
       else setRefreshNote('Sin avances nuevos por ahora.')
     } else if (r.stage === 'rate_limit') {
       setRefreshNote('Demasiadas consultas seguidas: espera un minuto.')
+    } else if (r.stage === 'not_found') {
+      // Desde el segundo riel (3-set-2026) esto SÍ llega y SÍ significa lo que
+      // dice: Olva LAT devuelve un 404 de verdad. Antes era inalcanzable —el
+      // único proveedor respondía 502 tanto para una guía inexistente como para
+      // Olva caído—, y por eso el mensaje de abajo cubría los dos casos. Ahora
+      // que se distinguen, callarlo sería dejar al vendedor esperando un
+      // tracking que nunca va a moverse porque el número está mal copiado.
+      setRefreshNote('Olva no encuentra esta guía. Revisa el número en el comprobante y corrígelo aquí.')
     } else {
-      // `upstream` incluye guía inexistente: el proveedor no lo distingue de
-      // Olva caído, así que aquí tampoco se acusa a la guía.
+      // `upstream` sigue incluyendo guía inexistente cuando contesta el primer
+      // riel, que no la distingue de Olva caído: ahí no se acusa a la guía.
       setRefreshNote('No se pudo consultar Olva en este momento.')
     }
     setRefreshing(false)

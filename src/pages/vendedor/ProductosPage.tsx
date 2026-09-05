@@ -42,6 +42,8 @@ interface Product {
    *  de qué tamaño es su paquete y qué contenido declara. Sin los tres, su
    *  pedido no genera guía solo. */
   shalom_origin_branch_id?: string | null
+  olva_origin_agency_code?: string | null
+  package_weight_kg?: number | null
   package_size?: string | null
   declared_content?: string | null
 }
@@ -200,6 +202,11 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
   const [size, setSize] = useState<string | null>(product.package_size ?? null)
   const [contenido, setContenido] = useState<string | null>(product.declared_content ?? null)
   const [origen, setOrigen] = useState<string | null>(product.shalom_origin_branch_id ?? null)
+  // Olva va por su propio camino: su código de agencia es del PROVEEDOR
+  // (`LIM-MIR-01`), no el id de nuestro catálogo, y su tarifa la decide el peso
+  // y no un tamaño de catálogo. Por eso no se pueden reusar los de arriba.
+  const [origenOlva, setOrigenOlva] = useState<string>(product.olva_origin_agency_code ?? '')
+  const [peso, setPeso] = useState<string>(product.package_weight_kg != null ? String(product.package_weight_kg) : '')
   const [origenBranch, setOrigenBranch] = useState<AgencyBranch | null>(null)
   const [buscarSede, setBuscarSede] = useState('')
   const [sedes, setSedes] = useState<AgencyBranch[]>([])
@@ -309,6 +316,8 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
           nombre: nombre.trim(), precio: Number(precio) || 0, images,
           packs: packs.filter(p => p.nombre.trim()).map(p => ({ ...p, precio: Number(p.precio) || 0 })),
           shalom_origin_branch_id: origen, package_size: size, declared_content: contenido,
+          olva_origin_agency_code: origenOlva.trim() || null,
+          package_weight_kg: peso.trim() ? Number(peso) : null,
         }),
       })
       if (!res.ok) {
@@ -502,6 +511,38 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
               </div>
             </>
           )}
+        </div>
+
+        {/* ── Envío por Olva. Bloque aparte y no dos campos más arriba: el
+              contenido declarado SÍ se comparte (es el mismo dato), pero el
+              origen y el peso no tienen equivalente — Olva identifica sus
+              agencias con un código suyo y cobra por peso, no por tamaño de
+              catálogo. Juntarlos haría creer que configurar uno configura el
+              otro. ── */}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)' }}>
+          <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
+            <Truck size={14} /> Envío por agencia (Olva)
+          </span>
+          <p className="text-[10px] text-gray-500 mt-1 mb-2 leading-snug">
+            Lo mismo para Olva: con el <b>código de su agencia de origen</b> y el <b>peso</b>,
+            un pedido de recojo en Olva con su adelanto pagado registra su envío solo.
+            El contenido declarado es el de arriba — es el mismo dato. Sin esto el pedido
+            se cierra igual y Logística registra la guía a mano.
+          </p>
+
+          <label className="text-[11px] font-bold text-gray-500 mb-1 block">
+            Código de agencia de origen <span className="font-bold text-gray-400">(el de Olva, ej: LIM-MIR-01)</span>
+          </label>
+          <input value={origenOlva} onChange={e => setOrigenOlva(e.target.value.toUpperCase())}
+            placeholder="LIM-MIR-01"
+            className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-3" style={{ borderColor: 'var(--warn-border)' }} />
+
+          <label className="text-[11px] font-bold text-gray-500 mb-1 block">
+            Peso del paquete <span className="font-bold text-gray-400">(kg — decide la tarifa)</span>
+          </label>
+          <input value={peso} onChange={e => setPeso(e.target.value.replace(/[^\d.]/g, ''))}
+            inputMode="decimal" placeholder="2.5"
+            className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--warn-border)' }} />
         </div>
 
         <div className="flex gap-2">

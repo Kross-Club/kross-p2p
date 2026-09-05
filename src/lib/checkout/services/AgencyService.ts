@@ -95,8 +95,25 @@ export function hasBranchList(agency: AgencyName): boolean {
   return LOADERS[agency] !== null
 }
 
+/**
+ * El rótulo de una sede en palabras: `"NOMBRE · DISTRITO, PROVINCIA, DEPARTAMENTO"`.
+ *
+ * Es la foto que el pedido se lleva de la sede elegida (`agency_branch_label`,
+ * sección 37.d). Existe porque el id NO viaja bien entre catálogos: el nuestro
+ * guarda el id del buscador de Olva ("579") y Olva LAT identifica sus agencias
+ * con un código propio ("LIM-MIR-01"). El servidor no tiene las 911 sedes —viven
+ * en el front, cargadas diferidas—, así que la única forma de que pueda resolver
+ * el código del proveedor al emitir la guía es que el pedido se lleve DÓNDE
+ * queda la sede, no solo cuál es.
+ */
+export function branchLabel(b: Pick<AgencyBranch, 'name' | 'district' | 'province' | 'department'>): string {
+  const donde = [b.district, b.province, b.department].filter(Boolean).join(', ')
+  return donde ? `${b.name} · ${donde}` : b.name
+}
+
 export const AgencyService = {
   hasBranchList,
+  branchLabel,
 
   /**
    * Los `n` puntos de recojo más cercanos, **de todas las agencias juntas**.

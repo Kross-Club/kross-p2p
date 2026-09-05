@@ -19,6 +19,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
 import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import { olvaApiKey } from '../_shared/olva-key.ts'
+import { olvaLatApiKey, OLVA_LAT_BASE } from '../_shared/olva-lat-api.ts'
 import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
 import {
   esProveedor, INTEGRACIONES, saludDe, type Proveedor, type Salud,
@@ -68,6 +69,11 @@ async function pingDe(id: Proveedor, llaves: Record<string, string | null>): Pro
     // de las veces que una integración "se cae".
     return llaves.SHALOM_LAT ? ping(`${SHALOM_LAT_BASE}/validate`, { 'x-api-key': llaves.SHALOM_LAT }) : null
   }
+  if (id === 'OLVA_LAT') {
+    // Su `/validate` es gratis (no consume cuota) y además dice si la llave
+    // vive — que es la mitad de las veces que una integración "se cae".
+    return llaves.OLVA_LAT ? ping(`${OLVA_LAT_BASE}/validate`, { 'x-api-key': llaves.OLVA_LAT }) : null
+  }
   return null
 }
 
@@ -103,10 +109,12 @@ Deno.serve(async (req) => {
   if (!body.action || body.action === 'estado') {
     const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-    const [keyPE, keyLAT, keyOlva] = await Promise.all([
-      shalomApiKey(), shalomLatApiKey(), olvaApiKey(),
+    const [keyPE, keyLAT, keyOlva, keyOlvaLat] = await Promise.all([
+      shalomApiKey(), shalomLatApiKey(), olvaApiKey(), olvaLatApiKey(),
     ])
-    const llaves: Record<string, string | null> = { SHALOM_PE: keyPE, SHALOM_LAT: keyLAT, OLVA: keyOlva }
+    const llaves: Record<string, string | null> = {
+      SHALOM_PE: keyPE, SHALOM_LAT: keyLAT, OLVA: keyOlva, OLVA_LAT: keyOlvaLat,
+    }
 
     // Los fallos de las últimas 24 h, de una sola consulta: una por proveedor
     // serían catorce viajes para pintar una pantalla.

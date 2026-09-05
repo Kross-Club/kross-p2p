@@ -39,7 +39,7 @@ madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entr�
 > **Va DESPUÉS del bloque de Shalom LAT de abajo** — lo necesita: la consola muestra los dos
 > proveedores de Shalom por separado.
 
-**Qué pasó.** Kross depende de 14 APIs de terceros y, cuando una fallaba, el error moría en un
+**Qué pasó.** Kross depende de 15 APIs de terceros y, cuando una fallaba, el error moría en un
 `console.error`: no había dónde ver cuál, desde cuándo ni con qué error, y —lo más caro— no
 quedaba **ningún identificador que enseñarle al dueño de esa API**. Ahora cada fallo se anota en
 `api_events` con una referencia corta (`KX-7QK4M2`), el id de request del proveedor y su
@@ -71,8 +71,8 @@ supabase functions deploy pay360-coupon pay360-webhook flow-order flow-confirm \
   --project-ref ofdjghntvmrdfjhazfvz
 ```
 
-> ⚠️ `pay360-webhook`, `flow-confirm` y `shalom-webhook` van con `--no-verify-jwt`, como
-> siempre.
+> ⚠️ `pay360-webhook`, `flow-confirm`, `shalom-webhook` y `olva-lat-webhook` van con
+> `--no-verify-jwt`, como siempre.
 >
 > ⚠️ **La purga borra a los 30 días.** Si algún día hace falta guardar más para un reclamo
 > largo, es el `cron.unschedule('api-events-purge')` del §42 y volver a agendarlo con otro
@@ -131,6 +131,62 @@ supabase functions deploy shalom-webhook        --project-ref ofdjghntvmrdfjhazf
 > está cubierto por tests, pero **la primera guía real emitida por esa vía hay que mirarla**:
 > que la fase avance, que el número y el código sean los del comprobante, y que la clave de
 > retiro sea la que el pedido guardó.
+
+### Olva LAT: el segundo riel de Olva · SQL + 9 funciones (03-sep-2026)
+
+**Qué entró.** Olva pasa de tener un proveedor a tener **dos**, y de no tener push a tenerlo.
+Detalle completo en `02-SMART-LOGISTICS.md` § *Tracking de guías Olva* y § *Registro de
+envíos Olva*; lo corto:
+
+- **`olva-lat-webhook`** (nueva, `--no-verify-jwt`) — el push firmado con HMAC. Es lo más
+  rápido **y** lo más barato: ni el webhook ni las suscripciones consumen la cuota mensual del
+  proveedor. Se registra solo (`ensureLatWebhook`) y guarda su secret directo en Vault.
+- **`olva-tracking` / `olva-tracking-sync`** — ahora recorren los dos rieles. El barrido además
+  suscribe al push las guías vivas que no lo estén (25/corrida, gratis) y solo cae al riel 2
+  para rescatar lo que el 1 no pudo (10/corrida: su cuota es MENSUAL, no por minuto).
+- **El chat por fin puede decir "esa guía no existe"**: el riel 2 devuelve `404` de verdad,
+  mientras que el `502` del riel 1 no distingue guía inexistente de Olva caído.
+- **`olva-order`** (nueva) — registra la guía contra `POST /account/register`, gemela de
+  `shalom-order`. **Arranca apagada para todas las marcas** y no por precaución genérica: la
+  guía nacería en la cuenta Olva del proveedor, no en una de la marca (ver la deuda comercial
+  abierta más abajo). Con el interruptor apagado arma el payload completo y lo deja en el chat
+  de vendedores sin registrar nada.
+- **El pedido se lleva la sede en palabras** (`agency_branch_label`): sin eso el servidor no
+  puede resolver el código de agencia del proveedor, porque las 911 sedes viven en el front.
+
+**Primero el SQL** (sección 37 de `setup-kross.sql`, idempotente), **y las llaves**:
+
+```
+supabase secrets set OLVA_LAT_API_KEY=… --project-ref ofdjghntvmrdfjhazfvz
+# o, si va por Vault:
+#   SELECT vault.create_secret('<la-key>', 'OLVA_LAT_API_KEY', 'Olva LAT');
+```
+
+```
+supabase functions deploy olva-lat-webhook  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy olva-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-order         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-product     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy register-buyer     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy flow-confirm       --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> **`olva-lat-webhook` va primero**: el bootstrap del webhook corre desde `olva-tracking-sync`
+> y registra su URL en el proveedor. Si la función no está desplegada, el registro apunta a
+> una URL que no responde y hay que rehacerlo.
+>
+> `shalom-order` y `manage-store` aparecen **también** en la entrada de Shalom LAT de arriba:
+> las dos ramas tocaron `_shared/guia.ts` (la suscripción al webhook ahora sabe de los dos
+> couriers, cada uno con su contingencia) y `manage-store`. Desplegarlas una vez cubre las dos
+> entradas — no hace falta hacerlo dos veces.
+
+**Qué se ve si no entra:** todo sigue exactamente como estaba — un solo riel, sin push, la
+guía Olva a mano. Nada se rompe; simplemente no se gana nada.
 
 ### Flow: las llaves son de cada marca, no de Kross · SQL + 3 funciones (02-sep-2026)
 
@@ -1371,7 +1427,11 @@ Anotada donde vive, para que no haya que redescubrirla:
 | La key de prueba de Olva API Perú viajó por el chat al recibirse. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Rotarla al pasar a producción (se pide por el WhatsApp del proveedor) y recargar Vault/secret. Misma familia que el bloqueo #2. |
 | Los mensajes automáticos salen como si los hubiera tecleado el vendedor asignado (`sender_role: 'seller'` + su nombre). | `register-buyer` (bienvenida) · algunos de `order-manage` · detalle en [`11-RELACIONES.md`](./11-RELACIONES.md) | Mientras siga así, un **% de involucramiento del equipo** contado desde el chat sale inflado: cada pedido nace con un mensaje "de" su vendedor que su vendedor no escribió. El arreglo es marcarlo en el origen —una columna `automatico` en `chat_messages`, o el rol `bot`— y redesplegar las funciones que escriben. |
 | Un **upsell después de haber cobrado el saldo** deja un saldo nuevo que la pasarela no cobra sola. | `src/lib/order-money.ts` · `puedePagarSaldo` | Las columnas guardan UNA operación de saldo, y el botón exige que no haya un saldo ya cruzado. Si al pedido se le agrega algo después, el anillo baja y el saldo aparece —eso sí funciona—, pero el cobro lo coordina el asesor por el chat. Arreglarlo pide un historial de cobros, no una columna más. |
-| `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. |
+| `derivePhase()` del tracking Olva está calibrada sin guías reales — **y la cascada ya corre sobre ella** (barrido `olva-tracking-sync` + avisos + cobranza). | `supabase/functions/_shared/olva.ts` | Un texto mal clasificado dispara (o calla) la cobranza en el momento equivocado. Vigilar de cerca las PRIMERAS guías Olva registradas y calibrar contra sus textos reales. **Aliviada, no cerrada** (3-set-2026): el riel 2 (Olva LAT) trae un enum cerrado de estados y su webhook llega antes que el barrido, así que cada vez más lecturas no pasan por la heurística. Pero el riel 1 se sigue consultando primero, así que su heurística sigue decidiendo cuando contesta. |
+| **Olva LAT y Shalom LAT son el mismo proveedor (Wazend)** y nadie ha confirmado si comparten cuota. | `02-SMART-LOGISTICS.md` § Tracking de guías Olva | Los topes de rescate de cada courier se calcularon asumiendo **cuotas separadas**. Si son la misma, el plan se agota al doble de velocidad y los dos couriers pierden su contingencia el mismo día. Preguntárselo al proveedor antes de subir ningún tope. |
+| **La key de prueba de Olva LAT viajó por el chat al recibirse** (3-set-2026). | `02-SMART-LOGISTICS.md` § Tracking de guías Olva · *Las keys* | Misma familia que la del riel 1: rotarla antes de producción y recargar `OLVA_LAT_API_KEY` en Vault/secret. Hasta entonces la cuota es de un plan de prueba: el semáforo del panel avisa cuando queda poca. |
+| **Quién factura el flete de un envío Olva registrado por API** — la guía nacería en la cuenta Olva del proveedor, no en una de la marca (no hay credenciales por cliente, como sí las hay en Shalom Pro). | `02-SMART-LOGISTICS.md` § Registro de envíos Olva · `olva-order/index.ts` | **Es lo único que bloquea encender el registro automático de Olva**, que ya está construido y probado. No es deuda de código: es una conversación comercial con el proveedor. Mientras siga abierta, `stores.olva_auto_guide_enabled` se queda en `false` para todas las marcas y cada pedido deja su payload armado en el chat de vendedores (`SIMULADO`). |
+| **Olva LAT no permite reconciliar un envío tras un timeout** (no publica un `GET` de envíos ni clave de idempotencia). | `_shared/olva-lat-orders.ts` · `esReconciliable` | Por eso `olva-order` **no reintenta nunca**, ni un 5xx: cierra en `FAILED` y pide verificación humana antes de registrar otro. Si el proveedor publica ese endpoint, la defensa se puede volver a encender — hay un test que lo vigila. |
 
 ## Limpieza pendiente
 

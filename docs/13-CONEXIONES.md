@@ -9,9 +9,10 @@
 
 ## El problema que resuelve (03-set-2026)
 
-Kross se apoya en **catorce APIs que no controla**: los dos rieles de cobro, los
-tres proveedores de tracking, WhatsApp, RENIEC, LiveKit, los CAPI de Meta y
-TikTok, la voz de IA, el correo de reclamaciones, el push y el geocoding.
+Kross se apoya en **quince APIs que no controla**: los dos rieles de cobro, los
+**cuatro** proveedores de tracking (Shalom y Olva tienen dos cada uno, ninguno
+oficial), WhatsApp, RENIEC, LiveKit, los CAPI de Meta y TikTok, la voz de IA, el
+correo de reclamaciones, el push y el geocoding.
 
 Hasta hoy, cuando una fallaba el error terminaba en un `console.error`. Eso
 significaba tres cosas, y las tres se pagaban en el peor momento:
@@ -86,10 +87,11 @@ Tres reglas del que escribe, y ninguna se negocia:
 | ⚪ **Sin configurar** | no hay llave | **no es lo mismo que caída**: no está montada |
 | ⚪ **Sin datos** | no expone un chequeo barato y no hay eventos | preguntarle a RENIEC cuesta; mandar un WhatsApp también |
 
-Solo tres proveedores exponen un chequeo gratis: **Shalom PE** (`/healthz`),
-**Olva** (`/healthz`) y **Shalom LAT** (`/validate`, que además confirma que la
-llave sigue activa — la mitad de las veces que una integración "se cae", lo que
-pasó es que venció su llave). Para el resto, el veredicto sale del historial.
+Solo cuatro proveedores exponen un chequeo gratis: **Shalom PE** y **Olva PE**
+(`/healthz`), y **Shalom LAT** y **Olva LAT** (`/validate`, que además confirma
+que la llave sigue activa — la mitad de las veces que una integración "se cae",
+lo que pasó es que venció su llave; el de Olva LAT tampoco consume su cuota
+mensual). Para el resto, el veredicto sale del historial.
 
 ## La pantalla · Panel → **Conexiones** ✅
 
@@ -129,7 +131,8 @@ Todo el stack, en el punto donde se sabe **de qué marca** era la llamada:
 | **Flow** | `flow-order` (crear la orden), `flow-confirm` (consultar su estado) |
 | **Shalom PE** | su helper `llamar()` en `shalom-order` cubre catálogo, persona, emisión, reconciliación y el PDF; más el barrido y la consulta puntual en `_shared/shalom-rastreo.ts` |
 | **Shalom LAT** | su propio `llamar()` en `shalom-lat-emisor` (instancia, sesión, pendientes, emisión) y el rastreo en el router |
-| **Olva** | `olva-tracking` y `olva-tracking-sync` |
+| **Olva PE** | `olva-tracking` y `olva-tracking-sync`, en sus dos rieles |
+| **Olva LAT** | su `latFetch()` cubre todo lo que pase por ahí (rastreo, suscripción, catálogo, registro); más la firma del webhook y la guía emitida en `olva-order` |
 | **WhatsApp** | `send-wa-template`, `run-campaign`, `invite-buyers`, `list-wa-templates`, `seller-call-token` y `_shared/notificar.ts` |
 | **Meta CAPI · TikTok** | los tres sitios que disparan conversiones, vía `anotarCapi` |
 | **RENIEC (Decolecta)** | `dni-lookup` |

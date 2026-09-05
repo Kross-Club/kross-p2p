@@ -51,6 +51,10 @@ interface StoreRow {
   shalom_pro_status?: string | null
   /** Guía automática (§27.d). Apagado = el generador ensaya sin emitir. */
   shalom_auto_guide_enabled?: boolean
+  olva_auto_guide_enabled?: boolean
+  olva_sender_name?: string | null
+  olva_sender_document?: string | null
+  olva_sender_phone?: string | null
   // Pixel y anuncios — los IDs son públicos; de los tokens de CAPI el backend
   // solo manda la PRESENCIA (nunca el token). Ver docs/09-PIXELS-CAPI.md.
   meta_pixel_id?: string | null
@@ -381,6 +385,16 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   // (no viaja de polizón en el botón que guarda un logo) y arranca apagada.
   const autoGuia = store.shalom_auto_guide_enabled === true
 
+  // Envíos Olva: el remitente de la marca (lo que sale impreso en la guía) y su
+  // propio interruptor. En Olva no hay cuenta del cliente que conectar —los
+  // envíos van por la conexión del proveedor—, así que lo único que la marca
+  // aporta es quién figura como remitente.
+  const [olvaSender, setOlvaSender] = useState(store.olva_sender_name ?? '')
+  const [olvaDoc, setOlvaDoc] = useState(store.olva_sender_document ?? '')
+  const [olvaTel, setOlvaTel] = useState(store.olva_sender_phone ?? '')
+  const [olvaBusy, setOlvaBusy] = useState(false)
+  const autoGuiaOlva = store.olva_auto_guide_enabled === true
+
   // Pixel y anuncios — los IDs son públicos (van en el `save`); los tokens de
   // CAPI son secretos y siguen el molde write-only de Shalom Pro: se escriben
   // pero nunca vuelven, solo su presencia (`*_configured`).
@@ -403,6 +417,12 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   // repuesto, que es una noticia distinta y hay que poder verla.
   const [enContingencia, setEnContingencia] = useState(false)
   const [olvaUp, setOlvaUp] = useState<boolean | null>(null)
+  // El SEGUNDO riel de Olva (Olva LAT), con chip propio: son proveedores
+  // distintos y que uno esté vivo no dice nada del otro — tenerlos separados es
+  // el punto de la contingencia. Trae además la cuota que le queda, porque una
+  // cuota agotada se ve igual que una API caída desde el pedido pero se arregla
+  // en otro sitio.
+  const [olvaLat, setOlvaLat] = useState<{ operational: boolean; remaining: number | null; motivo?: string } | null>(null)
   useEffect(() => {
     call({ action: 'shalom_status', admin_auth_id: adminId }).then(({ ok, data }) => {
       const d = (data ?? {}) as { operational?: boolean; pe?: boolean; lat?: boolean | null }
@@ -411,6 +431,12 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     })
     call({ action: 'olva_status', admin_auth_id: adminId }).then(({ ok, data }) => {
       setOlvaUp(ok ? !!(data as { operational?: boolean }).operational : false)
+    })
+    call({ action: 'olva_lat_status', admin_auth_id: adminId }).then(({ ok, data }) => {
+      const d = data as { operational?: boolean; remaining?: number | null; motivo?: string }
+      setOlvaLat(ok
+        ? { operational: !!d.operational, remaining: d.remaining ?? null, motivo: d.motivo }
+        : { operational: false, remaining: null, motivo: 'caida' })
     })
   }, [adminId])
 
@@ -579,6 +605,30 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     })
     setShalomBusy(false)
     if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? mensajePanel((data as { error?: string }).error, 'No se pudo cambiar la guía automática.')); return }
+    onSaved?.()
+  }
+
+  const guardarRemitenteOlva = async () => {
+    if (olvaBusy) return
+    setOlvaBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id,
+      olva_sender_name: olvaSender.trim(), olva_sender_document: olvaDoc.trim(), olva_sender_phone: olvaTel.trim(),
+    })
+    setOlvaBusy(false)
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? mensajePanel((data as { error?: string }).error, 'No se pudo guardar el remitente.')); return }
+    onSaved?.()
+  }
+
+  const toggleAutoGuiaOlva = async () => {
+    if (olvaBusy) return
+    setOlvaBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id,
+      olva_auto_guide_enabled: !autoGuiaOlva,
+    })
+    setOlvaBusy(false)
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? mensajePanel((data as { error?: string }).error, 'No se pudo cambiar el registro automático.')); return }
     onSaved?.()
   }
 
@@ -1028,31 +1078,99 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
             <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
               <Truck size={14} /> Rastreo de guías (Olva)
             </span>
-            <span className="text-[10px] font-black px-2 py-1 rounded-full"
-              style={{
-                background: olvaUp === null ? '#F3F4F6' : olvaUp ? '#DCFCE7' : '#FEE2E2',
-                color: olvaUp === null ? '#6B7280' : olvaUp ? '#16A34A' : '#DC2626',
-              }}>
-              ● {olvaUp === null ? 'Verificando API…' : olvaUp ? 'API operativa' : 'API caída'}
-            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-black px-2 py-1 rounded-full"
+                style={{
+                  background: olvaUp === null ? '#F3F4F6' : olvaUp ? '#DCFCE7' : '#FEE2E2',
+                  color: olvaUp === null ? '#6B7280' : olvaUp ? '#16A34A' : '#DC2626',
+                }}>
+                ● {olvaUp === null ? 'Verificando…' : olvaUp ? 'Riel 1 OK' : 'Riel 1 caído'}
+              </span>
+              {/* El segundo riel, con su propio chip. Dos proveedores
+                  independientes leyendo el mismo courier: si los dos caen a la
+                  vez es Olva, y si cae uno solo el rastreo sigue. */}
+              <span className="text-[10px] font-black px-2 py-1 rounded-full"
+                style={{
+                  background: olvaLat === null ? '#F3F4F6' : olvaLat.operational ? '#DCFCE7' : '#FEE2E2',
+                  color: olvaLat === null ? '#6B7280' : olvaLat.operational ? '#16A34A' : '#DC2626',
+                }}>
+                ● {olvaLat === null ? 'Verificando…'
+                  : olvaLat.operational ? 'Riel 2 OK'
+                  : olvaLat.motivo === 'cuota' ? 'Riel 2 sin cuota'
+                  : olvaLat.motivo === 'llave' ? 'Riel 2 sin llave'
+                  : 'Riel 2 caído'}
+              </span>
+            </div>
           </div>
 
-          {olvaUp === false && (
+          {/* El plan B solo cuando caen LOS DOS: mientras quede un riel el
+              rastreo sigue solo, y mandar a nadie a consultar a mano por un
+              proveedor caído sería trabajo inventado. */}
+          {olvaUp === false && olvaLat?.operational === false && (
             <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--danger-bg)' }}>
               <p className="text-[10px] font-bold" style={{ color: 'var(--danger-fg)' }}>
-                Plan B mientras vuelve: registra la guía igual en el pedido (el sistema la
-                vigilará solo apenas la API regrese), consulta el estado a mano en
-                olvacourier.com → Rastrea tu envío, y avísale al comprador por el chat del pedido.
+                Los dos rieles están caídos. Plan B mientras vuelven: registra la guía igual en
+                el pedido (el sistema la vigilará solo apenas alguno regrese), consulta el estado
+                a mano en olvacourier.com → Rastrea tu envío, y avísale al comprador por el chat.
               </p>
             </div>
           )}
+          {olvaLat?.remaining != null && olvaLat.remaining < 500 && (
+            <p className="text-[10px] font-bold mb-2" style={{ color: 'var(--warn-fg)' }}>
+              Al riel 2 le quedan {olvaLat.remaining} consultas este mes. Avisa al equipo:
+              cuando se agote, el rastreo se queda con un solo proveedor.
+            </p>
+          )}
 
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] text-gray-500 mb-3">
             Aquí no hay nada que conectar: el rastreo de Olva funciona para todas las marcas
             con la conexión de la plataforma (no existe una cuenta del cliente, como sí pasa
             con Shalom Pro). La guía se registra en el chat del pedido y las fases se
             reflejan solas.
           </p>
+
+          {/* ── Registrar envíos Olva solo. Es lo mismo que la guía automática de
+                Shalom, con una diferencia que hay que decir en voz alta: el envío
+                nace en la cuenta Olva del proveedor, no en una de la marca. Por
+                eso arranca apagado y por eso lo único que pide es el remitente. ── */}
+          <div className="border-t pt-3" style={{ borderColor: 'var(--warn-border)' }}>
+            <span className="text-[11px] font-black block mb-1" style={{ color: 'var(--warn-fg)' }}>
+              Registrar el envío solo
+            </span>
+            <p className="text-[10px] text-gray-500 mb-2 leading-snug">
+              Con esto encendido, un pedido de recojo en Olva que ya pagó su adelanto
+              <b> registra su envío solo</b> y el comprador recibe su guía en el chat. Apagado,
+              el sistema arma el envío completo y lo deja en el chat de vendedores sin
+              registrarlo: es el ensayo con un pedido real, sin gastar.
+            </p>
+
+            <div className="grid grid-cols-2 gap-1.5 mb-2">
+              <input value={olvaSender} onChange={e => setOlvaSender(e.target.value)}
+                placeholder="Remitente (nombre)"
+                className="col-span-2 bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--warn-border)' }} />
+              <input value={olvaDoc} onChange={e => setOlvaDoc(e.target.value.replace(/\D/g, ''))}
+                inputMode="numeric" placeholder="RUC o DNI"
+                className="bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--warn-border)' }} />
+              <input value={olvaTel} onChange={e => setOlvaTel(e.target.value.replace(/\D/g, ''))}
+                inputMode="numeric" placeholder="Celular"
+                className="bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--warn-border)' }} />
+            </div>
+
+            <div className="flex gap-1.5">
+              <button onClick={guardarRemitenteOlva} disabled={olvaBusy}
+                className="flex-1 py-2 rounded-xl font-black text-[11px] disabled:opacity-50"
+                style={{ background: 'var(--surface)', color: 'var(--warn-fg)', border: '0.5px solid var(--warn-border)' }}>
+                {olvaBusy ? 'Guardando…' : 'Guardar remitente'}
+              </button>
+              <button onClick={toggleAutoGuiaOlva} disabled={olvaBusy}
+                className="flex-1 py-2 rounded-xl font-black text-[11px] disabled:opacity-50"
+                style={autoGuiaOlva
+                  ? { background: 'var(--invert)', color: 'var(--invert-fg)' }
+                  : { background: 'var(--surface)', color: 'var(--warn-fg)', border: '0.5px solid var(--warn-border)' }}>
+                {autoGuiaOlva ? 'Registro automático: ON' : 'Registro automático: OFF'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ── Pixel y anuncios (Meta / TikTok). Sin gate isSuper, como Cobros y
