@@ -46,6 +46,7 @@ La doc está organizada en dos capas complementarias:
 | Archivo | Cubre |
 |---|---|
 | [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md) | Qué marca está viva, qué la bloquea y qué deuda hay abierta. **Empieza aquí** si vuelves después de un tiempo |
+| [`14-EVALUACION-KROSS-CLUB.md`](./14-EVALUACION-KROSS-CLUB.md) | Evaluación crítica del concepto de marca Kross Club / «Vuelve a jugar» (sep-2026): qué eliminar, qué conservar y en qué orden construirlo |
 | [`GIT-FLOW.md`](./GIT-FLOW.md) | Nomenclatura de ramas y commits, flujo de PR |
 
 ## Regla de ejecución (para Claude Code / devs)
