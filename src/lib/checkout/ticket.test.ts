@@ -54,10 +54,17 @@ describe('ticket · agencia con adelanto pagado', () => {
     expect(recojo.detail).toBe('Jr. San Martín 456, Juliaca')
     expect(JSON.stringify(t)).not.toContain('"77"')
   })
-  it('el saldo se paga por la app y suelta la clave', () => {
+  it('el saldo se paga con Yape desde el enlace, nunca en la agencia, y suelta la clave', () => {
     expect(t.balance?.value).toBe('S/ 94')
-    expect(t.balance?.detail).toMatch(/por la app/)
+    expect(t.balance?.detail).toMatch(/con Yape desde el enlace de tu pedido/)
+    expect(t.balance?.detail).toMatch(/Nunca en la agencia/)
     expect(t.balance?.detail).toMatch(/clave de recojo/)
+  })
+  it('ninguna frase del ticket dice "app": quien no sabe qué es una app no la entiende', () => {
+    expect(JSON.stringify(t)).not.toMatch(/\bapp\b/i)
+  })
+  it('sin guía todavía, el ticket no la promete', () => {
+    expect(t.guide).toBeNull()
   })
   it('qué llevar: DNI y la clave', () => {
     expect(t.bring[0]).toBe('Tu DNI')
@@ -70,6 +77,49 @@ describe('ticket · agencia con adelanto pagado', () => {
   })
   it('a nombre de quien recibe', () => {
     expect(t.lines.find(l => l.label === 'A nombre de')?.value).toBe('Rosa Quispe')
+  })
+})
+
+describe('ticket · la guía ya salió', () => {
+  it('Shalom: el número como lo nombra su voucher, y el botón con su nombre', () => {
+    const t = buildTicket({
+      state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE,
+      guide: { courier: 'SHALOM', numero: '80574902', codigo: 'CJTW', oseId: null, href: '/guia/tok' },
+    })
+    expect(t.guide?.line).toEqual({ label: 'Guía Shalom', value: 'Nro. de orden 80574902 · Código CJTW' })
+    expect(t.guide?.button).toBe('Shalom')
+    expect(t.guide?.href).toBe('/guia/tok')
+  })
+  it('Shalom solo con orden de servicio (registrada a mano)', () => {
+    const t = buildTicket({
+      state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE,
+      guide: { courier: 'SHALOM', numero: null, codigo: null, oseId: '5566', href: '/guia/tok' },
+    })
+    expect(t.guide?.line.value).toBe('Orden de servicio 5566')
+  })
+  it('Olva: número de guía y el PDF del courier si lo trajo', () => {
+    const s = agencia({ pickup: { agency: 'OLVA', branchId: '9', freeText: null } })
+    const t = buildTicket({
+      state: s, price: 189, packName: null, paid: true, unpaid: false, branch: null,
+      guide: { courier: 'OLVA', numero: '123456', codigo: null, oseId: null, href: 'https://olva.example/g.pdf' },
+    })
+    expect(t.guide?.line).toEqual({ label: 'Guía Olva', value: 'N.º 123456' })
+    expect(t.guide?.button).toBe('Olva')
+    expect(t.guide?.href).toBe('https://olva.example/g.pdf')
+  })
+  it('la clave de recojo nunca aparece, aunque la guía ya exista', () => {
+    const t = buildTicket({
+      state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE,
+      guide: { courier: 'SHALOM', numero: '80574902', codigo: 'CJTW', oseId: null, href: '/guia/tok' },
+    })
+    expect(JSON.stringify(t)).not.toMatch(/clave de recojo es/)
+  })
+  it('a domicilio no hay guía que mostrar aunque llegue una', () => {
+    const t = buildTicket({
+      state: domicilioLima(), price: 140, packName: null, paid: true, unpaid: false, branch: null,
+      guide: { courier: 'OLVA', numero: '1', codigo: null, oseId: null, href: '/guia/tok' },
+    })
+    expect(t.guide).toBeNull()
   })
 })
 

@@ -282,7 +282,8 @@ describe('mensajeDeGuia', () => {
     expect(m).toContain('Nro. de orden 80574902 · Código CJTW')
     expect(m).toContain('pre-guía')
     expect(m).toContain('agencia de origen')
-    expect(m).toContain('sincronizada con tu guía')
+    expect(m).toContain('sincronizado con tu guía')
+    expect(m).not.toMatch(/\bapp\b/)
     expect(m).toContain('Tu saldo de S/75')
   })
 
@@ -298,8 +299,8 @@ describe('mensajeDeGuia', () => {
   it('olva conserva su copy de siempre', () => {
     expect(mensajeDeGuia('OLVA', 'Guía 123456', 75)).toBe(
       '📦 ¡Tu envío ya está registrado en OLVA! Guía 123456. Guárdala para el recojo. '
-      + 'Tu saldo de S/75 lo pagas cuando quieras por esta misma app —nunca en la agencia— '
-      + 'y apenas lo pagues te entregamos tu clave de recojo.'
+      + 'Tu saldo de S/75 lo pagas con Yape desde este mismo enlace de tu pedido, cuando quieras y nunca en la agencia. '
+      + 'Apenas lo pagues te entregamos tu clave de recojo.'
       + ' Por aquí te avisamos cuando tu pedido llegue a tu agencia.',
     )
   })

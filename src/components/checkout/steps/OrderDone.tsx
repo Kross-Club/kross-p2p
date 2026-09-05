@@ -10,19 +10,24 @@
 // provincia, con poca costumbre digital— no instala la app ni vuelve al chat;
 // guarda capturas. Así que todo lo que va a necesitar el día que le avisen que
 // su paquete llegó cabe aquí, en su idioma: qué pidió, dónde lo recoge y con
-// qué dirección, cuánto pagó y cuánto falta, qué llevar, qué sigue y a quién
-// llamar. Nada que lo obligue a volver.
+// qué dirección, cuánto pagó y cuánto falta, su guía si ya salió, qué llevar,
+// qué sigue y a quién llamar. Nada que lo obligue a volver.
 //
 // Aquí vivía un polling de 22 consultas que esperaba a que el cruce manual
 // encontrara su yape. Murió con el flujo manual: hoy esta pantalla solo se
 // alcanza con el pago YA confirmado por el webhook (`paid`), o sin nada que
 // esperar —la tienda no cobra en línea, o el comprador pidió que lo llamen—.
+// Lo que sí se espera, y poco, es LA GUÍA: el webhook del pago la dispara en
+// segundo plano, así que puede nacer mientras el comprador mira esta pantalla.
 
 import { useEffect, useState } from 'react'
-import { Camera, Check, MessageCircle, Phone } from 'lucide-react'
+import { Camera, Check, ExternalLink, MessageCircle, Phone } from 'lucide-react'
 import { COPY } from '../../../lib/checkout/checkout.config'
 import { buildTicket } from '../../../lib/checkout/ticket'
+import type { TicketGuide } from '../../../lib/checkout/ticket'
 import { AgencyService } from '../../../lib/checkout/services/AgencyService'
+import { getSession } from '../../../lib/order-api'
+import { enlaceDeGuia } from '../../../lib/hoja-de-guia'
 import { useStore } from '../../../lib/store-context'
 import type { AgencyBranch, CheckoutState, PaymentVerification } from '../../../lib/checkout/types'
 
@@ -40,26 +45,65 @@ interface OrderDoneProps {
   unpaid?: boolean
 }
 
+/** Cuánto se espera la guía: cada 4 s durante un minuto. Más que eso y el
+ *  comprador ya se fue; la guía le llega igual por el chat y el aviso. */
+const GUIDE_POLL_MS = 4_000
+const GUIDE_POLL_MAX = 15
+
 export default function OrderDone({ orderCode, state, price, packName, verification, token, unpaid }: OrderDoneProps) {
   const { store } = useStore()
   const paid = verification === 'MATCHED'
+  const isAgency = state.deliveryMethod === 'AGENCIA'
 
   // La sede en palabras y con dirección. El catálogo ya está cargado porque el
   // comprador acaba de elegirla; si por lo que sea no está, el ticket cae al
   // distrito y no promete una dirección que no tiene.
   const [branch, setBranch] = useState<AgencyBranch | null>(null)
   const { agency, branchId } = state.pickup
-  const wantsBranch = state.deliveryMethod === 'AGENCIA' && !!agency && !!branchId
   useEffect(() => {
-    if (!wantsBranch || !agency || !branchId) return
+    if (!isAgency || !agency || !branchId) return
     let alive = true
     AgencyService.getBranch(agency, branchId)
       .then(b => { if (alive) setBranch(b) })
-      .catch(() => { if (alive) setBranch(null) })
+      .catch(() => { /* el ticket cae al distrito */ })
     return () => { alive = false }
-  }, [wantsBranch, agency, branchId])
+  }, [isAgency, agency, branchId])
 
-  const ticket = buildTicket({ state, price, packName, paid, unpaid: !!unpaid, branch: wantsBranch ? branch : null })
+  // La guía, si nace mientras mira. Solo con el adelanto confirmado —es lo que
+  // autoriza a emitirla— y solo en agencia. El botón abre el mejor documento
+  // disponible, con la misma regla que la tarjeta del chat: el PDF del courier
+  // si la API lo trajo, y si no la hoja de guía de la app.
+  const [guide, setGuide] = useState<TicketGuide | null>(null)
+  useEffect(() => {
+    if (!paid || !isAgency || !token) return
+    let alive = true
+    let tries = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const tick = async () => {
+      tries += 1
+      try {
+        const d = await getSession(token)
+        const s = d.session
+        if (!alive) return
+        if (s.tracking_numero || s.tracking_ose_id) {
+          const pdf = d.messages.find(m => m.type === 'guia' && m.media_url)?.media_url ?? null
+          setGuide({
+            courier: s.tracking_courier ?? null,
+            numero: s.tracking_numero ?? null,
+            codigo: s.tracking_codigo ?? null,
+            oseId: s.tracking_ose_id ?? null,
+            href: pdf ?? enlaceDeGuia(token),
+          })
+          return
+        }
+      } catch { /* sin red o sin pedido: se reintenta hasta el tope */ }
+      if (alive && tries < GUIDE_POLL_MAX) timer = setTimeout(tick, GUIDE_POLL_MS)
+    }
+    timer = setTimeout(tick, GUIDE_POLL_MS)
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [paid, isAgency, token])
+
+  const ticket = buildTicket({ state, price, packName, paid, unpaid: !!unpaid, branch, guide })
   const phone = store.wa_display_phone?.trim() || null
 
   return (
@@ -96,6 +140,26 @@ export default function OrderDone({ orderCode, state, price, packName, verificat
               {l.detail && <dd className="text-sm text-gray-600 leading-snug mt-0.5">{l.detail}</dd>}
             </div>
           ))}
+
+          {/* La guía: el NÚMERO como línea, porque es lo que la agencia
+              pregunta y una captura no tiene botones; el botón debajo. */}
+          {ticket.guide && (
+            <div className="px-4 py-3">
+              <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{ticket.guide.line.label}</dt>
+              <dd className="text-[15px] font-bold text-gray-900 leading-snug tabular-nums">{ticket.guide.line.value}</dd>
+              <dd className="mt-2">
+                <a
+                  href={ticket.guide.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-black
+                    bg-gray-900 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+                >
+                  {COPY.doneSeeGuide} {ticket.guide.button} <ExternalLink size={13} />
+                </a>
+              </dd>
+            </div>
+          )}
 
           {ticket.balance && (
             <div className="px-4 py-3" style={{ background: '#FFFBEB' }}>
@@ -157,10 +221,9 @@ export default function OrderDone({ orderCode, state, price, packName, verificat
         {COPY.doneScreenshotHint}
       </p>
 
-      {/* El chat sigue siendo la ÚNICA acción: ahí vive el rastreo y por ahí
-          se paga el saldo. Pero ya no es la única forma de no perderse: el
-          ticket de arriba y el aviso al celular sostienen al que no entra.
-          Salir sigue siendo la X de la cabecera (ver `requestClose`). */}
+      {/* El chat es soporte y seguimiento, ya no "el canal": el ticket, la
+          guía y el teléfono sostienen al que no entra. Sigue siendo la ÚNICA
+          acción, y salir sigue siendo la X de la cabecera (`requestClose`). */}
       {token && (
         <>
           <a

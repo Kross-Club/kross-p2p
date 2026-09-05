@@ -26,6 +26,19 @@ export interface TicketInput {
   /** La sede de recojo resuelta del catálogo, si el pedido es en agencia y ya
    *  cargó. `null` mientras carga o si es una agencia sin listado (`OTRO`). */
   branch: AgencyBranch | null
+  /** La guía del courier, si la API ya la emitió mientras el comprador miraba
+   *  esta pantalla (el webhook del pago la dispara en segundo plano). `null`
+   *  mientras no exista: el ticket no la promete, "Qué sigue" ya avisa. */
+  guide?: TicketGuide | null
+}
+
+export interface TicketGuide {
+  courier: string | null
+  numero: string | null
+  codigo: string | null
+  oseId: string | null
+  /** El PDF del courier si la API lo trajo; si no, la hoja de guía de la app. */
+  href: string
 }
 
 export interface TicketLine {
@@ -42,6 +55,10 @@ export interface Ticket {
   balance: TicketLine | null
   /** Producto, entrega y a nombre de quién. */
   lines: TicketLine[]
+  /** La guía en el ticket: el NÚMERO es lo que la agencia pregunta, así que va
+   *  como línea (una captura no tiene botones) y el botón va aparte. `null`
+   *  hasta que exista. */
+  guide: { line: TicketLine; button: string; href: string } | null
   /** Qué llevar el día de la entrega. Vacío en domicilio. */
   bring: string[]
   /** Qué va a pasar ahora, en una frase. Sin nombrar canal: hoy avisa push,
@@ -120,8 +137,13 @@ export function buildTicket(i: TicketInput): Ticket {
       balance = {
         label: 'Te falta pagar',
         value: soles(rest),
+        // Sin la palabra "app": quien no sabe qué es una app sí sabe qué es
+        // Yape, un enlace y su celular. "Nunca en la agencia" evita que llegue
+        // al mostrador con el saldo en efectivo y sin clave. La misma frase,
+        // adaptada, vive en los mensajes del servidor (`_shared/mensaje-de-guia`,
+        // `acuse-de-pago`, `tracking`).
         detail: isAgency
-          ? 'Lo pagas por la app cuando tu pedido llegue a la agencia. Con ese pago te llega tu clave de recojo.'
+          ? 'Lo pagas con Yape desde el enlace de tu pedido, que te llega a tu celular cuando el paquete ya esté en camino. Nunca en la agencia. Al pagarlo te llega tu clave de recojo.'
           : 'Lo pagas al recibir tu pedido.',
       }
     }
@@ -147,7 +169,29 @@ export function buildTicket(i: TicketInput): Ticket {
     ? `Te avisaremos a tu celular cuando tu pedido llegue a la agencia.${tarda}`
     : `Te avisaremos a tu celular cuando tu pedido salga a tu dirección.${tarda}`
 
-  return { payment, balance, lines, bring, next }
+  // ── La guía, si ya salió ──
+  const guide = isAgency && i.guide && (i.guide.numero || i.guide.oseId)
+    ? {
+        line: { label: `Guía ${nombreAgencia(i.guide.courier ?? s.pickup.agency ?? '')}`, value: idsDeGuia(i.guide) },
+        button: `${nombreGuia(i.guide.courier ?? s.pickup.agency ?? '')}`,
+        href: i.guide.href,
+      }
+    : null
+
+  return { payment, balance, lines, guide, bring, next }
+}
+
+/** Los ids como los nombra el voucher del courier — el mismo vocabulario que
+ *  `_shared/mensaje-de-guia.ts` usa en el chat, para que la captura y el chat
+ *  digan lo mismo. Sin la clave: la clave se entrega contra el saldo. */
+function idsDeGuia(g: TicketGuide): string {
+  if (String(g.courier).toUpperCase() === 'OLVA') return `N.º ${g.numero ?? g.oseId}`
+  if (!g.numero) return `Orden de servicio ${g.oseId}`
+  return `Nro. de orden ${g.numero}${g.codigo ? ` · Código ${g.codigo}` : ''}`
+}
+
+function nombreGuia(a: string): string {
+  return String(a).toUpperCase() === 'OLVA' ? 'Olva' : 'Shalom'
 }
 
 function nombreAgencia(a: string): string {

@@ -10,10 +10,10 @@ import { acuseDePago } from '../../supabase/functions/_shared/acuse-de-pago.ts'
 describe('acuseDePago', () => {
   // Quien adelantó la mitad y recoge en agencia: lo que necesita saber a
   // continuación es DÓNDE paga el saldo, porque el counter no cobra.
-  it('adelanto con saldo, en agencia: el saldo se paga por la app', () => {
+  it('adelanto con saldo, en agencia: el saldo se paga con Yape desde el enlace del pedido', () => {
     expect(acuseDePago({ tipo: 'adelanto', pagado: 75, total: 150, esRecojo: true })).toBe(
       '✅ ¡Recibimos tu adelanto de S/75! Te queda un saldo de S/75'
-      + ' que nos pagas por esta misma app —no en la agencia— cuando te enviemos la guía'
+      + ' que nos pagas con Yape desde este mismo enlace de tu pedido —no en la agencia— cuando te enviemos la guía'
       + ' de tu envío. Apenas lo pagues te entregamos tu clave de recojo.'
       + ' Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.',
     )

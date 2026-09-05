@@ -363,24 +363,25 @@ export const COPY = {
   // app: para una persona mayor, un número al que llamar cierra lo que ningún
   // mensaje cierra. Solo se muestra si la marca lo configuró.
   doneCallStore: 'Si necesitas ayuda, llama a',
+  /** El botón de la guía, cuando la API ya la emitió mientras el comprador
+   *  miraba esta pantalla. `{courier}` es Shalom u Olva. */
+  doneSeeGuide: 'Ver mi guía de',
   // El canal es el CHAT del pedido, no WhatsApp. WhatsApp es solo el fallback
   // cuando el comprador no entra al chat, así que prometerlo aquí manda a
   // esperar por donde no vamos a escribir primero — y deja el chat, que es lo
   // que sostiene la tasa de entrega, sonando a algo secundario.
   doneCod: 'Pagas al recibir. Coordinamos la entrega por el chat de tu pedido.',
-  // Nombra el BENEFICIO, no la mecánica: "abrir el chat" describe un botón,
-  // "rastrear la entrega" describe lo que el comprador gana entrando — y es
-  // literal, no una promesa: `/p/:token` monta el `OrderTracker` con las etapas
-  // del pedido en vivo. Es la única acción de la pantalla final: no compite con
-  // ningún "Listo", porque el que se va sin pasar por el chat es el que después
-  // no reconoce quién le escribe.
-  doneOpenChat: 'Ver mi pedido y rastrear la entrega',
-  // La frase que hace el trabajo de verdad. Lo que se juega en esta pantalla no
-  // es conversión —la venta ya está cerrada— sino la TASA DE ENTREGA: en COD el
-  // motivo número uno de que un pedido no se recoja es que el cliente no
-  // reconoce quién le escribe. Avisarle aquí de dónde vendrá el mensaje es la
-  // vacuna, y este es el único momento de atención garantizada que queda.
-  doneChatHint: 'Por aquí te escribiremos para coordinar tu entrega.',
+  // Con el ticket (05-set-2026) el chat deja de ser "el canal" y pasa a ser
+  // soporte y seguimiento: el comprador ya tiene en la pantalla qué pagó,
+  // dónde recoge, su guía si salió y a quién llamar. El botón nombra el
+  // MOTIVO por el que entraría —tiene dudas—, no la mecánica ("abrir el
+  // chat") ni palabras que no le dicen nada ("app", "rastrear"). Sigue siendo
+  // la única acción de la pantalla: un segundo botón repartía el toque.
+  doneOpenChat: '¿Tienes dudas? Escríbenos aquí',
+  // Lo que además encuentra ahí. El saldo también se paga en esa página, pero
+  // eso lo lleva el aviso al celular cuando el paquete esté en camino, no este
+  // botón.
+  doneChatHint: 'Ahí también ves cómo va tu envío.',
 
   advancePendingByChat: 'Un asesor te escribe por el chat para coordinar tu adelanto.',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',

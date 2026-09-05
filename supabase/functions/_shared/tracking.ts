@@ -148,7 +148,7 @@ async function onTransition(row: TrackedRow, phase: Phase) {
     // la app; la clave de recojo se entrega contra el saldo pagado.
     const saldo = saldoOf(row)
     const cobro = saldo > 0
-      ? `Paga tu saldo de S/${saldo} por esta misma app —nunca en la agencia— y te entregamos tu clave de recojo para retirarlo con tu DNI.`
+      ? `Paga tu saldo de S/${saldo} con Yape desde este mismo enlace de tu pedido —nunca en la agencia— y te entregamos tu clave de recojo para retirarlo con tu DNI.`
       : 'Como ya pagaste el total, tu clave de recojo va por este chat: retíralo con tu DNI cuando quieras.'
     await chatMessage(row.id, `📍 ¡Tu pedido ya llegó a tu agencia ${agencia}! ${cobro}`, 'all')
     // El vendedor entra a cobrar: su aviso es la "cola de llamadas" v1.

@@ -487,7 +487,8 @@ el día que le avisen que su paquete llegó:
 |---|---|---|
 | Cómo se pagó | «Pago recibido por Yape: S/ 95 de S/ 189.» | `paid` del webhook; nunca «tu pago no existe» |
 | Tu pedido · Lo recoges en · A nombre de | Pack, **sede con dirección** (no un id), quien recibe | `AgencyService.getBranch` en el cliente; si no cargó, cae al distrito |
-| Te falta pagar | Monto y CÓMO: por la app en agencia (suelta la clave), al recibir en domicilio | `price - advanceAmount` |
+| Te falta pagar | Monto y CÓMO: «con Yape desde el enlace de tu pedido, que te llega a tu celular cuando el paquete ya esté en camino. Nunca en la agencia.» A domicilio, al recibir | `price - advanceAmount` |
+| Guía Shalom / Olva | **El número** como lo nombra el voucher («Nro. de orden … · Código …», «N.º …») y debajo el botón *Ver mi guía de Shalom/Olva* | La pantalla consulta el pedido cada 4 s durante un minuto: el webhook del pago dispara la guía en segundo plano y puede nacer mientras mira. Botón al PDF del courier si lo trajo, si no a `/guia/<token>` |
 | El día del recojo lleva | Tu DNI · tu clave de recojo (y cuándo llega) | Solo en agencia |
 | Qué sigue | «Te avisaremos a tu celular cuando llegue a la agencia. Suele tardar 2 días.» | `provinciaConfig.eta` traducido; **sin nombrar canal** |
 | Llama a | Teléfono de la marca con `tel:` | `stores.wa_display_phone`, solo si está configurado |
@@ -501,8 +502,17 @@ El contenido lo arma `src/lib/checkout/ticket.ts` (puro, con tests en
   mensaje de texto».
 - **La captura es la persistencia.** Se le dice con todas sus letras («Toma una
   captura de esta pantalla»): no es obvio para quien no vive en apps.
-- **El chat sigue siendo la única acción**, por las razones de arriba. Pero ya no
-  es la única forma de no perderse.
+- **La palabra "app" no existe en el ticket** (ni en los mensajes del servidor que
+  hablan del saldo: `_shared/mensaje-de-guia.ts`, `acuse-de-pago.ts`, `tracking.ts`).
+  Quien no sabe qué es una app sí sabe qué es Yape, un enlace y su celular. Hay un
+  test que lo vigila en el ticket.
+- **La guía va como número, no solo como botón.** Una captura no tiene botones, y lo
+  que la agencia pregunta es el número. El botón existe además, para quien sí entra.
+- **El chat sigue siendo la única acción, pero ya no es "el canal": es soporte y
+  seguimiento.** El botón dice *«¿Tienes dudas? Escríbenos aquí»* y debajo *«Ahí
+  también ves cómo va tu envío.»*. Nombra el motivo por el que entraría, no la
+  mecánica. El saldo también se paga en esa página, pero eso lo lleva el aviso al
+  celular cuando el paquete esté en camino, no este botón.
 - **El teléfono es el `wa_display_phone`** porque es el único número de la marca
   en la base. Se ofrece como *llamar*, con `tel:`, no como WhatsApp: nadie lee las
   respuestas de WhatsApp (no hay webhook entrante). Si eso confunde, la salida es
