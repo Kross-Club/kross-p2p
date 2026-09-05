@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { AccessToken } from 'npm:livekit-server-sdk@2'
 import webpush from 'npm:web-push'
+import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -49,8 +50,12 @@ async function sendWhatsApp(storeId: string | null | undefined, to: string | nul
     })
     if (res.ok) return { result: 'sent' }
     const errTxt = await res.text().catch(() => '')
+    await anotarRespuesta({ proveedor: 'WHATSAPP', op: 'llamada.aviso', storeId }, res, undefined, errTxt)
     return { result: 'failed', error: `[${template}/${lang}→${num}] ${errTxt}`.slice(0, 280) }
-  } catch (e) { return { result: 'failed', error: String(e).slice(0, 200) } }
+  } catch (e) {
+    await anotarSinRespuesta({ proveedor: 'WHATSAPP', op: 'llamada.aviso', storeId }, e)
+    return { result: 'failed', error: String(e).slice(0, 200) }
+  }
 }
 
 interface NotifyInput {

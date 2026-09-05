@@ -4,6 +4,8 @@ import { derivePhase, normalizeYear } from '../_shared/olva.ts'
 import type { TrackingPhase } from '../_shared/olva.ts'
 import { readLatPayload } from '../_shared/olva-lat.ts'
 import { olvaLatApiKey, trackAtLat } from '../_shared/olva-lat-api.ts'
+import { olvaApiKey } from '../_shared/olva-key.ts'
+import { anotar, anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -47,16 +49,6 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
-let cachedKey: string | null = null
-async function olvaApiKey(): Promise<string | null> {
-  if (cachedKey) return cachedKey
-  const fromEnv = Deno.env.get('OLVA_API_KEY')
-  if (fromEnv) return (cachedKey = fromEnv)
-  const { data, error } = await supabase.rpc('olva_api_key')
-  if (error || typeof data !== 'string' || !data) return null
-  return (cachedKey = data)
-}
-
 /** Lo que este proxy devuelve, venga del riel que venga. */
 interface Lectura {
   phase: TrackingPhase | null
@@ -88,6 +80,10 @@ Deno.serve(async (req) => {
   let lectura: Lectura | null = null
   let stage: 'not_found' | 'rate_limit' | 'upstream' | 'validation' = 'upstream'
 
+  const sessionId = typeof body.session_id === 'string' && body.session_id ? body.session_id : null
+  const ctxPeru = { proveedor: 'OLVA' as const, op: 'tracking.consulta', sessionId }
+  const inicio = Date.now()
+
   if (key) {
     let r: Response | null = null
     try {
@@ -95,7 +91,7 @@ Deno.serve(async (req) => {
         headers: { 'X-API-Key': key, Accept: 'application/json' },
       })
     } catch (e) {
-      console.error('olva-tracking: red caída hacia el riel 1', e)
+      await anotarSinRespuesta(ctxPeru, e, Date.now() - inicio)
     }
 
     if (r?.ok) {
@@ -109,12 +105,13 @@ Deno.serve(async (req) => {
           general: data.general ?? null, details, realtime, via: 'PERU',
         }
       } else {
-        console.error('olva-tracking: respuesta no-JSON del riel 1')
+        await anotar({ ...ctxPeru, outcome: 'FALLO', detail: 'respuesta no-JSON', httpStatus: r.status })
       }
     } else if (r) {
-      // El detalle crudo del proveedor va SOLO a los logs (regla del repo:
-      // ningún texto de terceros frente a compradores/vendedores).
-      console.error('olva-tracking: riel 1', r.status, await r.text().catch(() => ''))
+      // El detalle crudo del proveedor NO va al chat (regla del repo: ningún
+      // texto de terceros frente a compradores/vendedores). Va al registro de
+      // la plataforma, que existe para poder reclamárselo (§42).
+      await anotarRespuesta(ctxPeru, r, Date.now() - inicio)
       if (r.status === 400) stage = 'validation'
       else if (r.status === 429) stage = 'rate_limit'
       // 404/502 del riel 1 NO se traducen a `not_found`: su 502 significa "guía
@@ -125,7 +122,15 @@ Deno.serve(async (req) => {
 
   // ─── Riel 2: Olva LAT, solo si el primero no respondió ─────────────────────
   if (!lectura && latKey && stage !== 'validation') {
+    const inicioLat = Date.now()
     const r = await trackAtLat(latKey, track)
+    if (!r.ok) {
+      await anotar({
+        proveedor: 'OLVA_LAT', op: 'tracking.consulta', sessionId,
+        outcome: r.stage === 'not_found' ? 'RECHAZO' : r.status && r.status >= 500 ? 'FALLO' : r.status ? 'RECHAZO' : 'SIN_RESPUESTA',
+        httpStatus: r.status ?? null, errorCode: r.stage, duracionMs: Date.now() - inicioLat,
+      })
+    }
     if (r.ok) {
       const { phase, tracking } = readLatPayload(r.data)
       lectura = {
@@ -156,11 +161,11 @@ Deno.serve(async (req) => {
 
   if (!lectura) return json({ ok: false, stage }, stage === 'not_found' ? 404 : stage === 'rate_limit' ? 429 : 502)
 
-  if (typeof body.session_id === 'string' && body.session_id) {
+  if (sessionId) {
     const { data: row } = await supabase
       .from('order_sessions')
       .select(TRACKED_COLUMNS)
-      .eq('id', body.session_id)
+      .eq('id', sessionId)
       .eq('tracking_courier', 'OLVA')
       .eq('tracking_numero', track)
       .maybeSingle()

@@ -3,6 +3,8 @@ import type { TrackedRow } from '../_shared/tracking.ts'
 import { derivePhase, normalizeYear } from '../_shared/olva.ts'
 import { readLatPayload } from '../_shared/olva-lat.ts'
 import { ensureLatWebhook, olvaLatApiKey, subscribeAtLat, trackAtLat } from '../_shared/olva-lat-api.ts'
+import { olvaApiKey } from '../_shared/olva-key.ts'
+import { anotar, anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,16 +42,6 @@ const MAX_SUBS_PER_RUN = 25
 
 const json = (b: Record<string, unknown>, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-
-let cachedKey: string | null = null
-async function olvaApiKey(): Promise<string | null> {
-  if (cachedKey) return cachedKey
-  const fromEnv = Deno.env.get('OLVA_API_KEY')
-  if (fromEnv) return (cachedKey = fromEnv)
-  const { data, error } = await supabase.rpc('olva_api_key')
-  if (error || typeof data !== 'string' || !data) return null
-  return (cachedKey = data)
-}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -102,6 +94,9 @@ Deno.serve(async (req) => {
   // ─── 2 y 3. Consultar, con el riel 2 de rescate ────────────────────────────
   let checked = 0, transitions = 0, failed = 0, rescatados = 0
   const now = new Date().toISOString()
+  // Un latido por corrida y por riel, no uno por guía: la línea de tiempo del
+  // panel necesita saber que el proveedor contestó, no cuántas veces (§42).
+  const latido = { OLVA: false, OLVA_LAT: false }
 
   for (const row of trackable) {
     // El año de emisión quedó registrado con la guía; si faltara (pedido viejo),
@@ -117,19 +112,23 @@ Deno.serve(async (req) => {
           headers: { 'X-API-Key': key, Accept: 'application/json' },
         })
       } catch (e) {
-        console.error('olva-tracking-sync: red caída hacia el riel 1', e)
+        await anotarSinRespuesta({ proveedor: 'OLVA', op: 'tracking.consulta', sessionId: row.id }, e)
       }
 
       if (r?.status === 429) {
         // Rate limit del riel 1: cortar la corrida entera. Seguir con el riel 2
         // sería cambiar un límite por minuto —que se pasa solo— por cuota
         // mensual, que no vuelve.
-        console.error('olva-tracking-sync: rate limit del riel 1; corta la corrida')
+        await anotarRespuesta({ proveedor: 'OLVA', op: 'tracking.consulta', sessionId: row.id }, r)
         break
       }
 
       if (r?.ok) {
         checked++
+        if (!latido.OLVA) {
+          latido.OLVA = true
+          await anotar({ proveedor: 'OLVA', op: 'tracking.consulta', outcome: 'OK' })
+        }
         const data = await r.json().catch(() => null) as
           { details?: unknown; realtime?: unknown } | null
         const details = data && Array.isArray(data.details) ? data.details.filter(isObj) : []
@@ -144,8 +143,9 @@ Deno.serve(async (req) => {
         // 502 del riel 1 = guía inexistente O Olva caído, indistinguibles
         // (verificado contra la API real). Por eso aquí NO se acusa a la guía en
         // el chat como hace el sync de Shalom con su `not_found`: el detalle
-        // crudo va a los logs y la última palabra la tiene el riel 2.
-        console.error('olva-tracking-sync: riel 1 falló', row.id, r.status, await r.text().catch(() => ''))
+        // crudo va al registro de la plataforma y la última palabra la tiene el
+        // riel 2.
+        await anotarRespuesta({ proveedor: 'OLVA', op: 'tracking.consulta', sessionId: row.id }, r)
       }
     }
 
@@ -155,8 +155,19 @@ Deno.serve(async (req) => {
     if (latKey && rescatados < MAX_LAT_PER_RUN) {
       const r = await trackAtLat(latKey, row.tracking_numero!)
       rescatados++
+      if (!r.ok) {
+        await anotar({
+          proveedor: 'OLVA_LAT', op: 'tracking.consulta', sessionId: row.id,
+          outcome: r.stage === 'not_found' ? 'RECHAZO' : r.status && r.status >= 500 ? 'FALLO' : r.status ? 'RECHAZO' : 'SIN_RESPUESTA',
+          httpStatus: r.status ?? null, errorCode: r.stage,
+        })
+      }
       if (r.ok) {
         checked++
+        if (!latido.OLVA_LAT) {
+          latido.OLVA_LAT = true
+          await anotar({ proveedor: 'OLVA_LAT', op: 'tracking.consulta', outcome: 'OK' })
+        }
         const { phase } = readLatPayload(r.data)
         const { transitioned } = await applyTracking(row, { phase, demoraIso: null })
         if (transitioned) transitions++
@@ -164,7 +175,6 @@ Deno.serve(async (req) => {
       }
       if (r.stage === 'quota' || r.stage === 'rate_limit') {
         // Cuota agotada: no tiene sentido pedir 9 veces más lo mismo.
-        console.error('olva-tracking-sync: riel 2 sin cuota; se apaga el rescate en esta corrida')
         rescatados = MAX_LAT_PER_RUN
       }
       // `not_found` del riel 2 SÍ significa que la guía no existe, pero no se

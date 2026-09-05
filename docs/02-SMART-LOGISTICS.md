@@ -1007,6 +1007,24 @@ Diferencias del payload que importan al leer el código:
 - El **interruptor** manda igual: con `shalom_auto_guide_enabled` apagado no se
   emite por ningún proveedor (el ensayo sale al chat con `SIMULADO`).
 
+### Conectar la cuenta también tiene contingencia
+
+Las credenciales de `pro.shalom.pe` **se piden una sola vez**: son de la cuenta
+Shalom Pro de la marca y los dos proveedores trabajan sobre ESA cuenta. El
+titular las manda en los headers de cada request; la contingencia abre una
+*instancia* y hace login con las mismas. En `store_secrets` solo se suma
+`shalom_lat_instance_id` — el id de la instancia, que no es un secreto: sin la
+API key de la plataforma no sirve para nada.
+
+Y la **verificación** al guardarlas (`manage-store`) también cae al suplente: si
+el titular no da veredicto —caído, timeout o sin llave—, se verifica con
+`POST /instances/login` de LAT. Sin eso, conectar una marca justo durante una
+caída la dejaba en `UNVERIFIED`, y como `shalom-order` exige `CONNECTED` para
+emitir, la marca se quedaba sin guía automática **por los dos** proveedores —
+justo lo que la contingencia existe para evitar. Un `FAILED` del titular, en
+cambio, no se reintenta: eso ya es una respuesta (las credenciales están mal) y
+el otro consulta la misma cuenta, así que diría lo mismo.
+
 ### Las llaves y el semáforo
 
 Misma plomería de siempre, duplicada: secret de entorno **`SHALOM_LAT_API_KEY`**

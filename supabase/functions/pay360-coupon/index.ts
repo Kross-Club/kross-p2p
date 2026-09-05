@@ -35,6 +35,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import { columnasDe } from '../_shared/cobros.ts'
+import { anotarResultado } from '../_shared/api-eventos.ts'
 import {
   annulCoupon, consumerCodeFor, createCoupon, getCoupon, isPaid,
   couponExpiryFrom, createCustomer, pay360BaseUrl, paymentUrlOf, pickPartnerKey, yapeDeeplink,
@@ -293,9 +294,10 @@ Deno.serve(async (req) => {
     })
     // Se anota, no se corta: el cupón de abajo no depende de esto.
     if (!cliente.ok) {
-      console.warn('[pay360-coupon] cliente no creado, sigue con el genérico', JSON.stringify({
-        status: cliente.status, error: cliente.error ?? null,
-      }))
+      await anotarResultado(
+        { proveedor: 'PAY360', op: 'cliente.crear', storeId: originStoreId, sessionId: session.id },
+        cliente,
+      )
     }
   }
 
@@ -327,6 +329,10 @@ Deno.serve(async (req) => {
   })
 
   if (!coupon.ok) {
+    await anotarResultado(
+      { proveedor: 'PAY360', op: 'cupon.crear', storeId: originStoreId, sessionId: session.id },
+      coupon,
+    )
     if (coupon.network) {
       // El POST salió y la respuesta se perdió: el cupón PUDO crearse. NO se
       // reintenta a ciegas — el siguiente intento consulta por `external_ref`
@@ -335,12 +341,6 @@ Deno.serve(async (req) => {
       return json({ ok: false, stage: 'network_after' }, 502)
     }
     await notePaymentFailure(session, `No se pudo generar el cupón de pago${coupon.error ? ` (${coupon.error})` : ''}`)
-    // El texto del error va también al log: `payment_reason` lo guarda, pero
-    // esto deja el rastro en el sitio donde se mira primero cuando algo falla.
-    console.error('[pay360-coupon] create_failed', JSON.stringify({
-      status: coupon.status, error: coupon.error ?? null,
-      scopes: coupon.requiredScopes ?? null,
-    }))
     return json({ ok: false, stage: 'coupon', code: 'create_failed', user_message: 'No pudimos generar tu pago. Un asesor te escribirá para coordinarlo.' }, 502)
   }
 

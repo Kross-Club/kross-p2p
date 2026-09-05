@@ -25,6 +25,7 @@ import PedidosPage from './pages/vendedor/PedidosPage'
 import ProductosPage from './pages/vendedor/ProductosPage'
 import EquipoPage from './pages/vendedor/EquipoPage'
 import MarcaPage from './pages/vendedor/MarcaPage'
+import ConexionesPage from './pages/vendedor/ConexionesPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
 import ComprobantePage from './pages/comprobante/ComprobantePage'
@@ -161,6 +162,7 @@ export default function App() {
           <Route path="/vendedor/productos" element={<ProductosPage />} />
           <Route path="/vendedor/equipo" element={<EquipoPage />} />
           <Route path="/vendedor/marca" element={<MarcaPage />} />
+          <Route path="/vendedor/conexiones" element={<ConexionesPage />} />
           {/* Las llamadas dejaron de ser una sección: cada grabación vive en el
               hilo del pedido donde ocurrió (11-RELACIONES). La ruta redirige
               porque estaba en el menú y puede haber enlaces guardados. */}

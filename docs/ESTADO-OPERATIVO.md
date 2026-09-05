@@ -34,6 +34,50 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Conexiones: ver qué API está fallando · SQL + 1 función nueva + 15 desplegadas (03-sep-2026)
+
+> **Va DESPUÉS del bloque de Shalom LAT de abajo** — lo necesita: la consola muestra los dos
+> proveedores de Shalom por separado.
+
+**Qué pasó.** Kross depende de 15 APIs de terceros y, cuando una fallaba, el error moría en un
+`console.error`: no había dónde ver cuál, desde cuándo ni con qué error, y —lo más caro— no
+quedaba **ningún identificador que enseñarle al dueño de esa API**. Ahora cada fallo se anota en
+`api_events` con una referencia corta (`KX-7QK4M2`), el id de request del proveedor y su
+respuesta cruda **saneada**, y se ven en **Panel → Conexiones** (menú de la plataforma).
+Detalle completo en `docs/13-CONEXIONES.md`.
+
+**Qué se ve si no entra:** nada cambia. Todo el registro es best-effort y envuelto en
+`try/catch`: si la tabla no existe, las funciones siguen corriendo igual (solo que sin anotar).
+
+**Primero el SQL** (bloque §42; idempotente — crea la tabla, sus índices y la purga diaria):
+
+```sql
+-- correr supabase/setup-kross.sql, o el bloque §42 suelto
+```
+
+**Después las funciones.** La nueva:
+
+```
+supabase functions deploy integraciones --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Y las que ahora anotan (se pueden desplegar en tandas; cada una es independiente):
+
+```
+supabase functions deploy pay360-coupon pay360-webhook flow-order flow-confirm \
+  shalom-order shalom-tracking shalom-tracking-sync olva-tracking olva-tracking-sync \
+  send-wa-template run-campaign invite-buyers list-wa-templates seller-call-token \
+  register-buyer dni-lookup elevenlabs-signed-url libro-reclamaciones update-address \
+  --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> ⚠️ `pay360-webhook`, `flow-confirm`, `shalom-webhook` y `olva-lat-webhook` van con
+> `--no-verify-jwt`, como siempre.
+>
+> ⚠️ **La purga borra a los 30 días.** Si algún día hace falta guardar más para un reclamo
+> largo, es el `cron.unschedule('api-events-purge')` del §42 y volver a agendarlo con otro
+> plazo — no una columna nueva.
+
 ### Shalom con dos proveedores: contingencia si uno cae · SQL + 5 funciones (03-sep-2026)
 
 **Qué pasó.** Shalom no tiene API oficial —la que usamos es de un tercero— y un proveedor

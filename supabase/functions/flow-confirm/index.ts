@@ -24,6 +24,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { columnasDe } from '../_shared/cobros.ts'
+import { anotarConversion, anotarResultado } from '../_shared/api-eventos.ts'
 import { acuseDePago } from '../_shared/acuse-de-pago.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
 import { desgloseDeFlow, esPagada, esFinalSinPago, estadoPorToken, flowBaseUrl, llavesDeTienda, tokenDelWebhook, type FlowEnv } from '../_shared/flow.ts'
@@ -136,7 +137,7 @@ Deno.serve(async (req) => {
     // No se pudo confirmar: se suelta el dedupe para que un reintento pueda
     // volver a intentarlo, y se pide el reintento con un 5xx.
     await supabase.from('payment_events').delete().eq('store_id', storeId).eq('dedupe_key', dedupeKey)
-    console.error('[flow-confirm] getStatus falló', JSON.stringify({ status: estado.status, error: estado.error ?? null }))
+    await anotarResultado({ proveedor: 'FLOW', op: 'orden.estado', storeId }, estado)
     return ok({ error: 'status_unverified' }, 503)
   }
   if (!esPagada(estado.data)) {
@@ -253,7 +254,7 @@ Deno.serve(async (req) => {
       cfg.tiktokTestCode = adSec?.tiktok_test_event_code ?? null
       if (hasAnyCapi(cfg)) {
         const orderValue = Number(session.product_price ?? 0)
-        runInBackground(dispatchConversion('PURCHASE', cfg, {
+        runInBackground(anotarConversion({ storeId: originStoreId, sessionId: String(session.id), evento: 'PURCHASE' }, dispatchConversion('PURCHASE', cfg, {
           eventId: String(session.id),
           sourceUrl: session.ad_source_url ?? null,
           value: paid,
@@ -267,7 +268,7 @@ Deno.serve(async (req) => {
             ttp: session.ad_ttp ?? null, ttclid: session.ad_ttclid ?? null,
             clientIp: session.ad_client_ip ?? null, clientUserAgent: session.ad_client_ua ?? null,
           },
-        }))
+        })))
       }
     }
   } catch (e) {

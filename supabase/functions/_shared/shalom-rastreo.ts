@@ -24,6 +24,7 @@
 
 import { derivePhase as phasePE, limaDate, shalomApiKey, shalomLatApiKey } from './shalom.ts'
 import { isObj, type Phase } from './tracking.ts'
+import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
 import {
   derivePhase as phaseLAT, demoraOf, esNoEncontrado, esRastreablePorLat,
   milestonesOf, numeroDeResultado, SHALOM_LAT_BASE, trackBody,
@@ -90,31 +91,37 @@ export async function rastrearLote(rows: Rastreable[], now = new Date().toISOStr
         ? { custom_id: r.id, ose_id: r.tracking_ose_id }
         : { custom_id: r.id, numero: r.tracking_numero, codigo: r.tracking_codigo })
 
+      const ctx = { proveedor: 'SHALOM_PE' as const, op: 'tracking.lote' }
       let payload: { results?: unknown[] } | null = null
       let fallo: LoteResult['corte'] = null
+      const inicio = Date.now()
       try {
         const r = await fetch(`${SHALOM_PE_BASE}/v1/tracking/batch`, {
           method: 'POST',
           headers: { 'X-API-Key': keyPE, 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({ items }),
         })
-        if (r.status === 429) fallo = 'rate_limit'
-        else if (!r.ok) {
-          console.error('shalom rastreo: PE upstream', r.status, await r.text().catch(() => ''))
-          fallo = 'upstream'
+        if (!r.ok) {
+          await anotarRespuesta(ctx, r, Date.now() - inicio)
+          fallo = r.status === 429 ? 'rate_limit' : 'upstream'
         } else payload = await r.json().catch(() => null)
       } catch (e) {
-        console.error('shalom rastreo: PE red caída', e)
+        await anotarSinRespuesta(ctx, e, Date.now() - inicio)
         fallo = 'upstream'
       }
       if (!fallo && (!payload || !Array.isArray(payload.results))) {
-        console.error('shalom rastreo: PE respuesta sin results')
+        await anotar({ ...ctx, outcome: 'FALLO', detail: 'respuesta sin lista de resultados' })
         fallo = 'upstream'
       }
       // El titular se cayó a mitad: lo que falta se lo lleva la contingencia.
       if (fallo) { corte = fallo; break }
 
-      if (!proveedores.includes('PE')) proveedores.push('PE')
+      // Un latido por corrida, no por lote: la línea de tiempo del panel
+      // necesita saber que el titular contestó, no cuántas veces.
+      if (!proveedores.includes('PE')) {
+        proveedores.push('PE')
+        await anotar({ ...ctx, outcome: 'OK', duracionMs: Date.now() - inicio })
+      }
       const byId = new Map(chunk.map(r => [r.id, r]))
       for (const raw of payload!.results as unknown[]) {
         if (!isObj(raw)) continue
@@ -166,6 +173,8 @@ export async function rastrearLote(rows: Rastreable[], now = new Date().toISOStr
       // Sin valor inicial a propósito: los únicos caminos que llegan al `if`
       // de abajo son los que lo asignan (el `catch` corta la corrida).
       let resultados: unknown[] | null
+      const ctxLat = { proveedor: 'SHALOM_LAT' as const, op: 'tracking.lote' }
+      const inicioLat = Date.now()
       try {
         const r = await fetch(`${SHALOM_LAT_BASE}/track/batch`, {
           method: 'POST',
@@ -175,7 +184,7 @@ export async function rastrearLote(rows: Rastreable[], now = new Date().toISOStr
           }),
         })
         if (!r.ok) {
-          console.error('shalom rastreo: LAT upstream', r.status, await r.text().catch(() => ''))
+          await anotarRespuesta(ctxLat, r, Date.now() - inicioLat)
           corte = r.status === 429 ? 'rate_limit' : 'upstream'
           break
         }
@@ -187,17 +196,20 @@ export async function rastrearLote(rows: Rastreable[], now = new Date().toISOStr
             .map(k => body[k]).find(Array.isArray) as unknown[] | undefined ?? null
           : null
       } catch (e) {
-        console.error('shalom rastreo: LAT red caída', e)
+        await anotarSinRespuesta(ctxLat, e, Date.now() - inicioLat)
         corte = 'upstream'
         break
       }
       if (!resultados) {
-        console.error('shalom rastreo: LAT respuesta sin lista de resultados')
+        await anotar({ ...ctxLat, outcome: 'FALLO', detail: 'respuesta sin lista de resultados' })
         corte = 'upstream'
         break
       }
 
-      if (!proveedores.includes('LAT')) proveedores.push('LAT')
+      if (!proveedores.includes('LAT')) {
+        proveedores.push('LAT')
+        await anotar({ ...ctxLat, outcome: 'OK', duracionMs: Date.now() - inicioLat })
+      }
       for (const raw of resultados) {
         const numero = numeroDeResultado(raw)
         const filas = numero ? porNumero.get(numero) : undefined
@@ -247,11 +259,13 @@ export async function rastrearUno(
   const [keyPE, keyLAT] = await Promise.all([shalomApiKey(), shalomLatApiKey()])
   const puedeLat = esRastreablePorLat({ numero: t.numero, codigo: t.codigo })
 
+  const ctxPE = { proveedor: 'SHALOM_PE' as const, op: 'tracking.consulta' }
   if (keyPE) {
     const params = new URLSearchParams()
     if (t.numero) params.set('numero', t.numero)
     if (t.oseId) params.set('ose_id', t.oseId)
     if (t.codigo) params.set('codigo', t.codigo)
+    const inicio = Date.now()
     try {
       const r = await fetch(`${SHALOM_PE_BASE}/v1/tracking?${params}`, {
         headers: { 'X-API-Key': keyPE, Accept: 'application/json' },
@@ -268,16 +282,18 @@ export async function rastrearUno(
             order: isObj(data.order) ? data.order : null,
           }
         }
-        console.error('shalom rastreo: PE respuesta sin status')
+        await anotar({ ...ctxPE, outcome: 'FALLO', detail: 'respuesta sin status', httpStatus: r.status })
       } else {
-        // El detalle crudo del proveedor va SOLO a los logs (regla del repo:
-        // ningún texto de terceros frente a compradores/vendedores).
-        console.error('shalom rastreo: PE upstream', r.status, await r.text().catch(() => ''))
-        // Guía inexistente SÍ es 404 acá, y eso es una respuesta, no una caída.
+        // El detalle crudo del proveedor NO va al chat (regla del repo: ningún
+        // texto de terceros frente a compradores/vendedores). Va al registro,
+        // que es de la plataforma y existe justamente para reclamárselo.
+        // Guía inexistente SÍ es 404 acá, y eso es una respuesta, no una caída:
+        // se anota igual, pero como rechazo.
+        await anotarRespuesta(ctxPE, r, Date.now() - inicio)
         if (r.status === 404) return { ok: false, stage: 'not_found' }
       }
     } catch (e) {
-      console.error('shalom rastreo: PE red caída', e)
+      await anotarSinRespuesta(ctxPE, e, Date.now() - inicio)
     }
   } else {
     console.error('shalom rastreo: sin SHALOM_API_KEY (ni secret ni Vault)')
@@ -285,6 +301,8 @@ export async function rastrearUno(
 
   if (!puedeLat || !keyLAT) return { ok: false, stage: keyPE || keyLAT ? 'upstream' : 'config' }
 
+  const ctxLat = { proveedor: 'SHALOM_LAT' as const, op: 'tracking.consulta' }
+  const inicioLat = Date.now()
   try {
     const r = await fetch(`${SHALOM_LAT_BASE}/track`, {
       method: 'POST',
@@ -292,7 +310,7 @@ export async function rastrearUno(
       body: JSON.stringify(trackBody({ numero: t.numero, codigo: t.codigo })),
     })
     if (!r.ok) {
-      console.error('shalom rastreo: LAT upstream', r.status, await r.text().catch(() => ''))
+      await anotarRespuesta(ctxLat, r, Date.now() - inicioLat)
       if (r.status === 404) return { ok: false, stage: 'not_found' }
       return { ok: false, stage: r.status === 429 ? 'rate_limit' : 'upstream' }
     }
@@ -308,7 +326,7 @@ export async function rastrearUno(
       order: null,
     }
   } catch (e) {
-    console.error('shalom rastreo: LAT red caída', e)
+    await anotarSinRespuesta(ctxLat, e, Date.now() - inicioLat)
     return { ok: false, stage: 'upstream' }
   }
 }

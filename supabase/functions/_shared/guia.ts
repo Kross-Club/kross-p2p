@@ -14,6 +14,7 @@ import { broadcast, chatMessage, supabase } from './tracking.ts'
 import { shalomApiKey, shalomLatApiKey } from './shalom.ts'
 import { SHALOM_LAT_BASE, trackBody } from './shalom-lat.ts'
 import { olvaLatApiKey, subscribeAtLat } from './olva-lat-api.ts'
+import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
 import { normalizeYear } from './olva.ts'
 import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from './mensaje-de-guia.ts'
 import type { Courier } from './mensaje-de-guia.ts'
@@ -191,7 +192,11 @@ async function suscribirWebhook(
       await supabase.from('order_sessions')
         .update({ olva_lat_subscribed_at: new Date().toISOString() }).eq('id', sessionId)
     } else {
-      console.error('registrarGuia: suscripción Olva LAT falló', r.stage, r.status ?? '')
+      await anotar({
+        proveedor: 'OLVA_LAT', op: 'tracking.suscribir', sessionId,
+        outcome: r.status ? (r.status >= 500 ? 'FALLO' : 'RECHAZO') : 'SIN_RESPUESTA',
+        httpStatus: r.status ?? null, errorCode: r.stage,
+      })
     }
     return
   }
@@ -199,8 +204,10 @@ async function suscribirWebhook(
   if (g.courier !== 'SHALOM' || !codigo) return
 
   const intento = async (
-    quien: string, url: string, headers: Record<string, string>, body: unknown,
+    quien: 'SHALOM_PE' | 'SHALOM_LAT', url: string, headers: Record<string, string>, body: unknown,
   ): Promise<boolean> => {
+    const ctx = { proveedor: quien, op: 'tracking.suscribir', sessionId }
+    const inicio = Date.now()
     try {
       const r = await fetch(url, {
         method: 'POST',
@@ -208,21 +215,21 @@ async function suscribirWebhook(
         body: JSON.stringify(body),
       })
       if (r.ok) return true
-      console.error(`registrarGuia: suscripción webhook ${quien} falló`, r.status, await r.text().catch(() => ''))
+      await anotarRespuesta(ctx, r, Date.now() - inicio)
     } catch (e) {
-      console.error(`registrarGuia: suscripción webhook ${quien} falló`, e)
+      await anotarSinRespuesta(ctx, e, Date.now() - inicio)
     }
     return false
   }
 
   const key = await shalomApiKey()
-  if (key && await intento('PE',
+  if (key && await intento('SHALOM_PE',
     'https://api.shalom-api-peru.com/v1/tracking/subscriptions',
     { 'X-API-Key': key }, { numero, codigo })) return
 
   const keyLat = await shalomLatApiKey()
   if (!keyLat) return
-  await intento('LAT',
+  await intento('SHALOM_LAT',
     `${SHALOM_LAT_BASE}/tracking/subscriptions`,
     { 'x-api-key': keyLat }, trackBody({ numero, codigo }))
 }

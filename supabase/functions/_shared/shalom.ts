@@ -1,6 +1,7 @@
 import { isObj, supabase } from './tracking.ts'
 import type { Phase } from './tracking.ts'
 import { SHALOM_LAT_BASE, signingSecretOf } from './shalom-lat.ts'
+import { anotar } from './api-eventos.ts'
 
 // ─── Shalom — lo ESPECÍFICO del courier ──────────────────────────────────────
 // El reflejo compartido (fase hacia adelante, avisos de transición, cobranza al
@@ -93,7 +94,11 @@ export async function ensureWebhook(apiKey: string): Promise<void> {
     })
     const body = await r.json().catch(() => null) as { signing_secret?: unknown; verified?: unknown } | null
     if (!r.ok || !body || typeof body.signing_secret !== 'string' || !body.signing_secret) {
-      console.error('shalom webhook: registro falló', r.status)
+      await anotar({
+        proveedor: 'SHALOM_PE', op: 'webhook.registrar',
+        outcome: r.ok ? 'FALLO' : r.status >= 500 ? 'FALLO' : 'RECHAZO',
+        httpStatus: r.status, detail: r.ok ? 'respuesta sin signing_secret' : null,
+      })
       return
     }
     const { error } = await supabase.rpc('store_shalom_webhook_secret', { secret: body.signing_secret })
@@ -158,7 +163,11 @@ export async function ensureLatWebhook(apiKey: string): Promise<void> {
     })
     const secret = r.ok ? signingSecretOf(await r.json().catch(() => null)) : null
     if (!secret) {
-      console.error('shalom LAT webhook: registro falló', r.status)
+      await anotar({
+        proveedor: 'SHALOM_LAT', op: 'webhook.registrar',
+        outcome: r.ok ? 'FALLO' : r.status >= 500 ? 'FALLO' : 'RECHAZO',
+        httpStatus: r.status, detail: r.ok ? 'respuesta sin secreto de firma' : null,
+      })
       return
     }
     const { error } = await supabase.rpc('store_shalom_lat_webhook_secret', { secret })

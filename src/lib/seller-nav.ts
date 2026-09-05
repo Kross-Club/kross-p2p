@@ -1,4 +1,4 @@
-import { ShoppingBag, Users, Package, Store, UserPlus } from 'lucide-react'
+import { ShoppingBag, Users, Package, Store, UserPlus, Plug } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { SellerProfile } from './seller-session'
 import { administraLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
@@ -37,8 +37,15 @@ export function sellerNavLinks(effective: SellerProfile | null | undefined): Sel
   const platform = administraLaPlataforma(effective)
   const storeAdmin = !!effective?.is_admin && !platform
 
+  // **Conexiones** solo en la plataforma: son las APIs de las que depende Kross
+  // entero —los rieles de cobro, los couriers, WhatsApp—. El admin de una marca
+  // puede abrir la pantalla por URL y ve sus propios eventos, pero no la lleva
+  // en el menú: cuando algo de esto se cae, quien lo destraba es Kross, y
+  // ponérselo delante todos los días es enseñarle un tablero que no puede
+  // accionar.
   if (platform) return [
     { to: '/vendedor/marca', icon: Store, label: 'Tiendas' },
+    { to: '/vendedor/conexiones', icon: Plug, label: 'Conexiones' },
     { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
   ]
 

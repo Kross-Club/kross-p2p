@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
 
 const supabase = createClient(
@@ -70,8 +71,17 @@ Deno.serve(async (req) => {
           template: { name: body.template, language: { code: lang }, components: parameters.length ? [{ type: 'body', parameters }] : [] },
         }),
       })
-      if (res.ok) sent++; else failed++
-    } catch { failed++ }
+      if (res.ok) sent++
+      else {
+        failed++
+        // Una por corrida, como en las campañas: el mismo error 300 veces no
+        // dice más que una.
+        if (failed === 1) await anotarRespuesta({ proveedor: 'WHATSAPP', op: 'invitacion.enviar', storeId }, res)
+      }
+    } catch (e) {
+      failed++
+      if (failed === 1) await anotarSinRespuesta({ proveedor: 'WHATSAPP', op: 'invitacion.enviar', storeId }, e)
+    }
     // Mark invited regardless (don't re-hit a bad number every run)
     await supabase.from('buyers').update({ invited_at: new Date().toISOString() }).eq('id', b.id)
   }

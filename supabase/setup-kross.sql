@@ -1977,3 +1977,63 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_order_reason text;
 -- Lo escribe el checkout al registrar el pedido. Los pedidos anteriores no lo
 -- tienen: esos se despachan a mano y el aviso lo dice.
 ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS agency_branch_label text;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §42 · EVENTOS DE LAS APIS DE TERCEROS  (03-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Kross se apoya en una docena de APIs que no controla. Hasta hoy, cuando una
+-- fallaba, el error moría en un `console.error`: había que entrar al dashboard
+-- de Supabase, buscar a mano y aun así no quedaba NINGÚN identificador que
+-- enseñarle al dueño de esa API. Reclamar empezaba por "búscalo tú".
+--
+-- Esta tabla es el registro. Guarda lo que NO salió bien —y un latido `OK` por
+-- barrido o chequeo, para que haya línea de tiempo— con:
+--   · `ref`: el identificador corto y legible por teléfono (KX-7QK4M2). Es lo
+--     que se le enseña al proveedor y lo que se pega en un reclamo.
+--   · `provider_ref`: SU id de request (x-request-id, cf-ray…), que es lo
+--     primero que pide su soporte.
+--   · `detail`: su respuesta cruda, SANEADA (`sanear()` en
+--     `_shared/integraciones.ts`) y recortada. Un error sirve por lo que dice;
+--     lo que no puede llevar es una llave de vuelta.
+--
+-- Quién la lee: la Edge Function `integraciones`, y solo para quien administra
+-- la plataforma (o el admin de una marca, limitado a SU store_id). Nunca el
+-- comprador ni el vendedor raso: el texto crudo de un tercero no va al chat.
+CREATE TABLE IF NOT EXISTS api_events (
+  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  ref          text        NOT NULL,
+  provider     text        NOT NULL,   -- SHALOM_PE | SHALOM_LAT | OLVA | PAY360 | FLOW | …
+  op           text        NOT NULL,   -- 'tracking.batch', 'orders.create', 'template.send'…
+  outcome      text        NOT NULL,   -- OK | RECHAZO | FALLO | SIN_RESPUESTA
+  http_status  int,
+  error_code   text,
+  detail       text,
+  provider_ref text,
+  -- De qué marca y de qué pedido salió la llamada, cuando aplica. NULL en las
+  -- de plataforma (un barrido no es de nadie en particular).
+  store_id     text,
+  session_id   uuid,
+  duration_ms  int,
+  created_at   timestamptz DEFAULT now()
+);
+
+ALTER TABLE api_events ENABLE ROW LEVEL SECURITY; -- solo service role (Edge Functions)
+
+-- La consulta del panel: los últimos de un proveedor, y los de una marca.
+CREATE INDEX IF NOT EXISTS idx_api_events_provider ON api_events(provider, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_api_events_store    ON api_events(store_id, created_at DESC)
+  WHERE store_id IS NOT NULL;
+-- Buscar por la referencia que alguien tiene apuntada: es el caso de uso.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_events_ref ON api_events(ref);
+-- Y la purga, que barre por fecha.
+CREATE INDEX IF NOT EXISTS idx_api_events_created ON api_events(created_at);
+
+-- 42.b La purga. Un registro de fallos crece para siempre si nadie lo corta, y
+-- un fallo de hace tres meses no se le reclama a nadie. 30 días es más que el
+-- plazo en que un proveedor contesta un ticket.
+SELECT cron.schedule(
+  'api-events-purge',
+  '20 4 * * *',
+  $$ DELETE FROM api_events WHERE created_at < now() - interval '30 days' $$
+);
+

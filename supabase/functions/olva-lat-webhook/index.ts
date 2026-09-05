@@ -26,6 +26,7 @@ import { applyTracking, chatMessage, supabase, TRACKED_COLUMNS } from '../_share
 import type { TrackedRow } from '../_shared/tracking.ts'
 import { readLatPayload } from '../_shared/olva-lat.ts'
 import { firmaValida, olvaLatWebhookSecret } from '../_shared/olva-lat-api.ts'
+import { anotar } from '../_shared/api-eventos.ts'
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v)
@@ -67,6 +68,10 @@ Deno.serve(async (req) => {
   }
   if (!(await firmaValida(raw, req.headers.get('X-Olva-Signature'), secret))) {
     console.error('olva-lat-webhook: firma inválida', req.headers.get('X-Olva-Event-Id') ?? '')
+    await anotar({
+      proveedor: 'OLVA_LAT', op: 'webhook.firma', outcome: 'RECHAZO',
+      detail: 'firma inválida o fuera de la ventana anti-replay',
+    })
     return new Response('invalid signature', { status: 400 })
   }
 

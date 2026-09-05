@@ -23,6 +23,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { columnasDe } from '../_shared/cobros.ts'
+import { anotar, anotarConversion, anotarResultado } from '../_shared/api-eventos.ts'
 import { comisionDeKross, desgloseDelEvento, hayDesvio } from '../_shared/comision.ts'
 import { acuseDePago } from '../_shared/acuse-de-pago.ts'
 import { mensajeDeClave } from '../_shared/mensaje-de-guia.ts'
@@ -172,9 +173,10 @@ Deno.serve(async (req) => {
     timestamp: h.get(PAY360_HEADERS.timestamp),
   })
   if (!check.ok) {
-    console.error('[pay360-webhook] firma rechazada', JSON.stringify({
-      reason: check.reason, hook: hookId ? 'sí' : 'no', event: eventId,
-    }))
+    await anotar({
+      proveedor: 'PAY360', op: 'webhook.firma', outcome: 'RECHAZO',
+      errorCode: check.reason, detail: `hook ${hookId ? 'sí' : 'no'} · evento ${eventId}`,
+    })
     // 401 y no 4xx genérico: si el motivo es nuestro (secreto no cargado
     // todavía), que 360pay reintente y el evento no se pierda.
     return ok({ error: 'bad_signature' }, 401)
@@ -279,6 +281,7 @@ Deno.serve(async (req) => {
     // pueda volver a intentarlo, y se pide el reintento con un 5xx.
     await supabase.from('payment_events').delete()
       .eq('store_id', storeId).eq('dedupe_key', dedupeKey)
+    await anotarResultado({ proveedor: 'PAY360', op: 'cupon.estado', storeId: originStoreId }, coupon)
     return ok({ error: 'coupon_unverified' }, 503)
   }
   if (!isPaid(coupon.data)) {
@@ -471,7 +474,7 @@ Deno.serve(async (req) => {
       cfg.tiktokTestCode = adSec?.tiktok_test_event_code ?? null
       if (hasAnyCapi(cfg)) {
         const orderValue = Number(session.product_price ?? 0)
-        runInBackground(dispatchConversion('PURCHASE', cfg, {
+        runInBackground(anotarConversion({ storeId: originStoreId, sessionId: String(session.id), evento: 'PURCHASE' }, dispatchConversion('PURCHASE', cfg, {
           eventId: String(session.id),
           sourceUrl: session.ad_source_url ?? null,
           value: paid,
@@ -485,7 +488,7 @@ Deno.serve(async (req) => {
             ttp: session.ad_ttp ?? null, ttclid: session.ad_ttclid ?? null,
             clientIp: session.ad_client_ip ?? null, clientUserAgent: session.ad_client_ua ?? null,
           },
-        }))
+        })))
       }
     }
   } catch (e) {

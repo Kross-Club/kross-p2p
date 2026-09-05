@@ -39,6 +39,7 @@
 import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { chatMessage, supabase } from '../_shared/tracking.ts'
 import { latAgencies, latFetch, olvaLatApiKey } from '../_shared/olva-lat-api.ts'
+import { anotar } from '../_shared/api-eventos.ts'
 import {
   buildLatShipment, esRastreable, parseLatShipment, resolveAgencyCode,
 } from '../_shared/olva-lat-orders.ts'
@@ -217,6 +218,7 @@ Deno.serve(async (req: Request) => {
     // panel ofrece reintentar a mano DESPUÉS de que una persona verificó.
     const res = await latFetch('/account/register', {
       key,
+      sessionId,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(armado.body),
@@ -224,7 +226,8 @@ Deno.serve(async (req: Request) => {
     })
 
     if (!res.ok) {
-      // El detalle crudo del proveedor quedó en los logs de `latFetch`.
+      // El detalle crudo del proveedor quedó anotado en `api_events` por
+      // `latFetch`, con su referencia para reclamárselo (§42).
       const sinRespuesta = res.stage === 'network'
       await cerrar(sessionId, 'FAILED', sinRespuesta
         ? 'el proveedor no respondió'
@@ -272,6 +275,12 @@ Deno.serve(async (req: Request) => {
       return json({ created: true, guardado: false }, 500)
     }
 
+    // Una guía registrada es plata gastada: se anota SIEMPRE, salga bien o
+    // mal, y por eso este `OK` no es ruido como el de una consulta cualquiera.
+    await anotar({
+      proveedor: 'OLVA_LAT', op: 'account.register', outcome: 'OK',
+      sessionId, detail: `guía ${g.ids}`,
+    })
     await aLogistica(sessionId,
       `📦 Envío registrado automáticamente en Olva · ${g.ids}. El comprador ya tiene su guía en el chat. `
       + 'La clave de recojo la coordina una persona: Olva no la emite por API.')

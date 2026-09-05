@@ -18,6 +18,7 @@
 
 import { supabase } from './tracking.ts'
 import { OLVA_LAT_BASE, parseLatSignature, firmaVigente } from './olva-lat.ts'
+import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
 import { parseLatAgencies } from './olva-lat-orders.ts'
 import type { LatAgency } from './olva-lat-orders.ts'
 
@@ -71,9 +72,18 @@ const TIMEOUT_MS = 20_000
  */
 export async function latFetch<T = unknown>(
   path: string,
-  init: RequestInit & { key: string; timeoutMs?: number },
+  init: RequestInit & { key: string; timeoutMs?: number; sessionId?: string | null },
 ): Promise<LatCall<T>> {
-  const { key, timeoutMs, ...rest } = init
+  const { key, timeoutMs, sessionId, ...rest } = init
+  // La operación sale del path (`/track` → `track`), como en el emisor de
+  // Shalom LAT: basta para leer la lista de Conexiones y evita pasarle un
+  // rótulo a cada llamada.
+  const ctx = {
+    proveedor: 'OLVA_LAT' as const,
+    op: path.replace(/^\/+/, '').split('?')[0].replace(/\//g, '.') || 'raiz',
+    sessionId: sessionId ?? null,
+  }
+  const inicio = Date.now()
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs ?? TIMEOUT_MS)
   let r: Response
@@ -84,19 +94,21 @@ export async function latFetch<T = unknown>(
       headers: { 'x-api-key': key, Accept: 'application/json', ...(rest.headers ?? {}) },
     })
   } catch (e) {
-    console.error('[olva-lat] sin respuesta de', path, String(e).slice(0, 200))
+    await anotarSinRespuesta(ctx, e, Date.now() - inicio)
     return { ok: false, stage: 'network' }
   } finally {
     clearTimeout(t)
   }
 
   if (!r.ok) {
-    console.error('[olva-lat]', path, r.status, (await r.text().catch(() => '')).slice(0, 300))
+    // El texto crudo del proveedor NO va al chat; va al registro de la
+    // plataforma (§42), que existe para poder reclamárselo con datos.
+    await anotarRespuesta(ctx, r, Date.now() - inicio)
     return { ok: false, stage: stageDe(r.status), status: r.status }
   }
   const data = await r.json().catch(() => null)
   if (data === null) {
-    console.error('[olva-lat] respuesta no-JSON', path)
+    await anotar({ ...ctx, outcome: 'FALLO', detail: 'respuesta no-JSON', httpStatus: r.status })
     return { ok: false, stage: 'upstream', status: r.status }
   }
   return { ok: true, data: data as T }
