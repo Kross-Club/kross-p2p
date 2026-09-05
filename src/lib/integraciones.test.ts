@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   esProveedor, esRef, INTEGRACIONES, integracionDe, nuevaRef, PROVEEDORES,
-  refDelProveedor, ROTULO_SALUD, sanear, saludDe,
+  refDelProveedor, ROTULO_SALUD, sanear, saludDe, suplenteDe,
 } from '../../supabase/functions/_shared/integraciones.ts'
 
 describe('el catálogo', () => {
@@ -36,6 +36,21 @@ describe('el catálogo', () => {
 
   it('el titular de Shalom apunta a su suplente', () => {
     expect(integracionDe('SHALOM_PE')?.suplente).toBe('SHALOM_LAT')
+  })
+
+  it('y la relación se puede leer al revés: quién respalda a quién', () => {
+    expect(suplenteDe('SHALOM_LAT')?.id).toBe('SHALOM_PE')
+    expect(suplenteDe('OLVA_LAT')?.id).toBe('OLVA')
+    // Un titular no es suplente de nadie — eso es lo que la pantalla usa para
+    // no rotular "crítica" a una contingencia apagada.
+    expect(suplenteDe('SHALOM_PE')).toBe(null)
+    expect(suplenteDe('PAY360')).toBe(null)
+  })
+
+  it('todo suplente apuntado existe en el catálogo', () => {
+    for (const i of INTEGRACIONES) {
+      if (i.suplente) expect(integracionDe(i.suplente)).toBeDefined()
+    }
   })
 
   it('reconoce un proveedor y rechaza lo que no lo es', () => {
