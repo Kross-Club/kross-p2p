@@ -11,6 +11,8 @@
 import webpush from 'npm:web-push'
 import { supabase } from './tracking.ts'
 import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
+import { enviarSms, tiendaParaSms, type ResultadoSms } from './sms.ts'
+import { enlaceDelPedido, smsGenerico } from './sms-texto.ts'
 
 // WhatsApp es no-op hasta que la tienda tenga wa_enabled + wa_phone_number_id
 // y exista el secret global WHATSAPP_TOKEN.
@@ -74,6 +76,17 @@ export interface NotifyInput {
   type: 'message' | 'call' | 'status'; icon?: string | null; badge?: string | null
   waProduct?: string
   waName?: string; waLink?: string   // WhatsApp template vars: {{1}} name, {{2}} link
+  /**
+   * El riel SMS (05-set-2026, `sms.ts`). `respaldo` (default): solo si ningún
+   * push llegó — el comprador sin permiso de push es justo el que lo necesita.
+   * `siempre`: los hitos que valen un segmento aunque haya push (el recibo del
+   * pago, la guía, la llegada a la agencia): el push se desliza y se pierde;
+   * el SMS queda en la bandeja. `nunca`: avisos que no ameritan gastar.
+   */
+  sms?: 'siempre' | 'respaldo' | 'nunca'
+  /** El texto del SMS, ya armado con `sms-texto.ts`. Sin él se arma uno
+   *  genérico con la tienda, el cuerpo del push y el enlace del pedido. */
+  smsBody?: string
 }
 
 export async function notifyBuyer(n: NotifyInput): Promise<void> {
@@ -93,6 +106,37 @@ export async function notifyBuyer(n: NotifyInput): Promise<void> {
     const results = await Promise.all(subs.map(s => trySendPush(s.subscription, payload)))
     pushOk = results.filter(Boolean).length
     if (pushOk === 0) await anotarPushCaido(n, subs.length)
+  }
+
+  // ─── SMS: el aviso de quien no tiene push ni volverá al chat ─────────────
+  // Va ANTES que WhatsApp y no lo reemplaza: WhatsApp sigue siendo manual (o
+  // automático con WA_AUTO_FALLBACK) y cuesta más; el SMS es el riel de avisos.
+  let sms: ResultadoSms | 'not_needed' | 'throttled' = 'not_needed'
+  let smsError: string | undefined
+  const modoSms = n.sms ?? 'respaldo'
+  if (modoSms !== 'nunca' && (modoSms === 'siempre' || pushOk === 0)) {
+    let allowed = true
+    // Los mensajes del equipo van y vienen: uno cada diez minutos por pedido,
+    // como WhatsApp. Los hitos (`siempre`) no se estrangulan: cada uno es único.
+    if (modoSms !== 'siempre' && n.type === 'message') {
+      const since = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+      const { data: recent } = await supabase.from('notifications_log')
+        .select('id').eq('session_id', n.sessionId).eq('sms', 'sent').gte('created_at', since).limit(1)
+      if (recent && recent.length > 0) allowed = false
+    }
+    if (!allowed) {
+      sms = 'throttled'
+    } else {
+      const phone = await telefonoDelComprador(n)
+      const tienda = await tiendaParaSms(n.storeId)
+      const body = n.smsBody ?? smsGenerico({
+        tienda: tienda.nombre, cuerpo: n.body,
+        link: n.url.startsWith('/p/') ? enlaceDelPedido(tienda.slug, n.url.slice(3)) : null,
+      })
+      const r = await enviarSms({ storeId: n.storeId, sessionId: n.sessionId }, phone, body)
+      sms = r.result
+      smsError = r.error
+    }
   }
 
   let whatsapp = 'not_needed'
@@ -122,10 +166,23 @@ export async function notifyBuyer(n: NotifyInput): Promise<void> {
     }
   }
 
+  const fila = {
+    store_id: n.storeId ?? null, buyer_id: n.buyerId ?? null, session_id: n.sessionId,
+    kind: n.type, push_count: pushOk, whatsapp, detail: smsError ?? waError ?? n.body.slice(0, 120),
+  }
   try {
-    await supabase.from('notifications_log').insert({
-      store_id: n.storeId ?? null, buyer_id: n.buyerId ?? null, session_id: n.sessionId,
-      kind: n.type, push_count: pushOk, whatsapp, detail: waError ?? n.body.slice(0, 120),
-    })
+    // La columna `sms` es del §43; si el SQL no corrió todavía, la fila entra
+    // igual sin ella — el registro de push y WhatsApp no depende del riel nuevo.
+    const { error } = await supabase.from('notifications_log').insert({ ...fila, sms })
+    if (error) await supabase.from('notifications_log').insert(fila)
   } catch { /* ignore */ }
+}
+
+async function telefonoDelComprador(n: { buyerId?: string | null; sessionId: string }): Promise<string | null> {
+  if (n.buyerId) {
+    const { data: b } = await supabase.from('buyers').select('phone').eq('id', n.buyerId).maybeSingle()
+    if (b?.phone) return b.phone
+  }
+  const { data: s } = await supabase.from('order_sessions').select('buyer_phone').eq('id', n.sessionId).maybeSingle()
+  return s?.buyer_phone ?? null
 }

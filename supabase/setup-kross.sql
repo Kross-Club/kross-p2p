@@ -2037,3 +2037,22 @@ SELECT cron.schedule(
   $$ DELETE FROM api_events WHERE created_at < now() - interval '30 days' $$
 );
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §43 · EL RIEL SMS  (05-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El comprador de provincia con poca costumbre digital no instala la app, no
+-- da permiso de push y no vuelve al chat. Lee SMS: es el canal de los avisos
+-- "oficiales" (el banco, Yape, la agencia). El riel manda tres avisos —el
+-- recibo del pago, la guía y la llegada a la agencia— y de respaldo cualquier
+-- otro cuyo push no llegó. Twilio, un remitente de Kross para todas las marcas
+-- (`_shared/sms.ts`); los textos en `_shared/sms-texto.ts`.
+--
+-- Lo único que la base necesita saber es CÓMO terminó cada SMS, al lado del
+-- push y de WhatsApp, en la misma bitácora: es donde se cuenta lo que Kross
+-- paga por marca (`manage-store` → `wa_usage` devuelve también `sms`).
+--   'sent' · 'failed' · 'skipped' · 'not_configured' · 'no_phone' ·
+--   'not_needed' (el push llegó y el aviso no era un hito) · 'throttled'
+ALTER TABLE notifications_log ADD COLUMN IF NOT EXISTS sms text;
+CREATE INDEX IF NOT EXISTS idx_notiflog_sms ON notifications_log(store_id, created_at DESC)
+  WHERE sms = 'sent';
+

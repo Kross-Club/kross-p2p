@@ -2,6 +2,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { mensajeDeOrigen } from './mensaje-de-guia.ts'
 import { soles, textoDeCobro } from './cobro-por-chat.ts'
 import { esRielEnLinea } from './comision.ts'
+import { enviarSms, tiendaParaSms } from './sms.ts'
+import { enlaceDelPedido, smsLlegoAgencia } from './sms-texto.ts'
 
 // ─── Reflejo de tracking en el pedido — lógica COMPARTIDA entre couriers ─────
 // La usan todas las entradas que deben comportarse idéntico:
@@ -74,12 +76,17 @@ export interface TrackedRow {
   tracking_phase: string | null
   tracking_demora_at: string | null
   tracking_checked_at: string | null
+  /** Para el SMS de llegada: a quién y por dónde vuelve. Opcionales porque
+   *  los tests arman filas sin ellos. */
+  token?: string | null
+  buyer_phone?: string | null
 }
 
 /** Columnas que toda entrada lee del pedido para poder reflejar. */
 export const TRACKED_COLUMNS =
   'id, store_id, product_price, advance_amount, payment_verification, saldo_verification, payment_provider, agency_name, ' +
-  'tracking_numero, tracking_codigo, tracking_ose_id, tracking_year, tracking_phase, tracking_demora_at, tracking_checked_at'
+  'tracking_numero, tracking_codigo, tracking_ose_id, tracking_year, tracking_phase, tracking_demora_at, tracking_checked_at, ' +
+  'token, buyer_phone'
 
 // Plantilla WA de recojo por tienda (stores.wa_recojo_template). Se resuelve
 // una vez por invocación; NULL = esa marca no auto-envía WhatsApp.
@@ -151,6 +158,22 @@ async function onTransition(row: TrackedRow, phase: Phase) {
       ? `Paga tu saldo de S/${saldo} con Yape desde este mismo enlace de tu pedido —nunca en la agencia— y te entregamos tu clave de recojo para retirarlo con tu DNI.`
       : 'Como ya pagaste el total, tu clave de recojo va por este chat: retíralo con tu DNI cuando quieras.'
     await chatMessage(row.id, `📍 ¡Tu pedido ya llegó a tu agencia ${agencia}! ${cobro}`, 'all')
+    // Y el SMS, siempre: es el paso 1 de la cascada de recojo (doc 08) y el
+    // aviso que más recojos salva. Quien no tiene push ni volverá al chat se
+    // entera por aquí. Best-effort: un SMS que falla queda en api_events y no
+    // frena el reflejo.
+    try {
+      const tienda = await tiendaParaSms(row.store_id)
+      const r = await enviarSms({ storeId: row.store_id, sessionId: row.id }, row.buyer_phone, smsLlegoAgencia({
+        tienda: tienda.nombre, agencia, saldo, link: enlaceDelPedido(tienda.slug, row.token),
+      }))
+      await supabase.from('notifications_log').insert({
+        store_id: row.store_id, session_id: row.id, kind: 'status', push_count: 0,
+        whatsapp: 'not_needed', sms: r.result, detail: r.error ?? `llegada a ${agencia}`,
+      })
+    } catch (e) {
+      console.error('tracking reflect: fallo el SMS de llegada', row.id, e)
+    }
     // El vendedor entra a cobrar: su aviso es la "cola de llamadas" v1.
     await chatMessage(
       row.id,

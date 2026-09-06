@@ -16,6 +16,7 @@
 // nace después, así que nace sin la deuda.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { twilioAuth } from '../_shared/sms.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
 import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import { olvaApiKey } from '../_shared/olva-key.ts'
@@ -68,6 +69,13 @@ async function pingDe(id: Proveedor, llaves: Record<string, string | null>): Pro
     // `/validate` además confirma que la llave sigue activa, que es la mitad
     // de las veces que una integración "se cae".
     return llaves.SHALOM_LAT ? ping(`${SHALOM_LAT_BASE}/validate`, { 'x-api-key': llaves.SHALOM_LAT }) : null
+  }
+  if (id === 'TWILIO') {
+    // `GET Accounts/{sid}` no manda nada ni cuesta: confirma que la cuenta y
+    // la credencial siguen vivas, que es la mitad de las veces que un riel
+    // "se cae" (token rotado, cuenta suspendida por saldo).
+    const t = twilioAuth()
+    return t ? ping(t.url, t.headers) : null
   }
   if (id === 'OLVA_LAT') {
     // Su `/validate` es gratis (no consume cuota) y además dice si la llave

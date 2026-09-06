@@ -272,7 +272,19 @@ Deno.serve(async (req) => {
       const sid = (r as { store_id: string | null }).store_id
       if (sid) usage[sid] = (usage[sid] ?? 0) + 1
     }
-    return json({ usage, since: start })
+    // Y los SMS del mes (§43): Kross los paga, y en algún momento se cobran o
+    // se incluyen en el plan de cada marca. Si la columna aún no existe, cero.
+    const sms: Record<string, number> = {}
+    try {
+      let qs = supabase.from('notifications_log').select('store_id').eq('sms', 'sent').gte('created_at', start)
+      if (!isSuper) qs = qs.eq('store_id', me.store_id)
+      const { data: ds } = await qs
+      for (const r of ds ?? []) {
+        const sid = (r as { store_id: string | null }).store_id
+        if (sid) sms[sid] = (sms[sid] ?? 0) + 1
+      }
+    } catch { /* sin columna todavía */ }
+    return json({ usage, sms, since: start })
   }
 
   // ─── CLIENT STATS (embudo de activación de retención) ────────────────────────

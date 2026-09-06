@@ -192,6 +192,7 @@ Todo el stack, en el punto donde se sabe **de qué marca** era la llamada:
 | **Meta CAPI · TikTok** | los tres sitios que disparan conversiones, vía `anotarCapi` |
 | **RENIEC (Decolecta)** | `dni-lookup` |
 | **Web Push** | `_shared/notificar.ts` — solo cuando fallaron **todas** las suscripciones (una muerta es normal) |
+| **Twilio (SMS)** · dieciséis (05-set-2026) | `_shared/sms.ts` — cada envío rechazado o caído, con el código de Twilio en `error_code` y su `Twilio-Request-Id` en `provider_ref`. El chequeo del tablero es `GET Accounts/{sid}`: gratis, y confirma que la credencial vive. Secreto que la enciende: `TWILIO_ACCOUNT_SID` (más el token o una API key, y el remitente: ver `ESTADO-OPERATIVO.md` § *El riel SMS*) |
 | **ElevenLabs · Resend · Nominatim** | sus funciones |
 
 Dos detalles de diseño que evitan inundar la tabla: en las **campañas** y las

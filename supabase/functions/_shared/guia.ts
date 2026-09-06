@@ -17,6 +17,8 @@ import { olvaLatApiKey, subscribeAtLat } from './olva-lat-api.ts'
 import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
 import { normalizeYear } from './olva.ts'
 import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from './mensaje-de-guia.ts'
+import { enviarSms, tiendaParaSms } from './sms.ts'
+import { enlaceDelPedido, smsGuia } from './sms-texto.ts'
 import type { Courier } from './mensaje-de-guia.ts'
 export type { Courier } from './mensaje-de-guia.ts'
 
@@ -152,6 +154,25 @@ export async function registrarGuia(
   }
   await broadcast(session.id, 'tracking_update', g.tracking)
   if (!opts.yaSuscrito) await suscribirWebhook(session.id, g)
+  // El SMS de la guía: el número es lo que la agencia pregunta, y quien no
+  // instaló nada lo necesita en su bandeja. Lo que hace falta (teléfono, token,
+  // tienda) se lee aquí y no se le pide a los tres que llaman. Best-effort.
+  try {
+    const { data: s } = await supabase.from('order_sessions')
+      .select('store_id, token, buyer_phone').eq('id', session.id).maybeSingle()
+    if (s) {
+      const tienda = await tiendaParaSms(s.store_id)
+      const r = await enviarSms({ storeId: s.store_id, sessionId: session.id }, s.buyer_phone, smsGuia({
+        tienda: tienda.nombre, courier: g.courier, ids: g.ids, link: enlaceDelPedido(tienda.slug, s.token),
+      }))
+      await supabase.from('notifications_log').insert({
+        store_id: s.store_id, session_id: session.id, kind: 'status', push_count: 0,
+        whatsapp: 'not_needed', sms: r.result, detail: r.error ?? `guia ${g.courier} ${g.ids}`.slice(0, 120),
+      })
+    }
+  } catch (e) {
+    console.error('registrarGuia: fallo el SMS de la guía', session.id, e)
+  }
   return { ok: true }
 }
 
