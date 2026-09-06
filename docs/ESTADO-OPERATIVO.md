@@ -94,9 +94,12 @@ supabase functions deploy seller-send-message shalom-order olva-order order-mana
    su SID (`SK…`) y su secret como `TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET`. El
    `TWILIO_ACCOUNT_SID` (`AC…`) está en la portada de la consola y va siempre. Usar la API
    key y no el Auth Token: se rota sin tocar la cuenta.
-5. **Probar.** Un pedido en Kross Shop con yape confirmado debe producir el SMS del recibo
-   en segundos. *Monitor → Logs → Messaging* muestra cada envío con su estado; los
-   rechazos aparecen además en *Panel → Conexiones → Twilio* con su `KX-…`.
+5. **Probar, sin pagar un pedido.** *Panel → Conexiones → Twilio → Probar el riel*: se
+   escribe un celular y sale un SMS de prueba; la tarjeta dice si fue enviado (con el id de
+   Twilio) o por qué rebotó, y el rechazo queda abajo con su `KX-…`. Solo lo puede mandar
+   quien administra la plataforma (acción `probar_sms` de `integraciones`). Después, la
+   prueba de verdad: un pedido en Kross Shop con yape confirmado produce el SMS del recibo
+   en segundos. *Monitor → Logs → Messaging* en Twilio muestra cada envío con su estado.
 
 **Lo que este riel todavía no hace:** los pasos 2 y 3 de la cascada de recojo (cron), la
 verificación del celular por código, y el cobro del SMS a cada marca (`wa_usage` ya

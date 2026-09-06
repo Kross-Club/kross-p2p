@@ -16,7 +16,7 @@
 // nace después, así que nace sin la deuda.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { twilioAuth } from '../_shared/sms.ts'
+import { enviarSms, twilioAuth } from '../_shared/sms.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
 import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import { olvaApiKey } from '../_shared/olva-key.ts'
@@ -196,6 +196,20 @@ Deno.serve(async (req) => {
     if (suTienda) q = q.eq('store_id', suTienda)
     const { data } = await q.maybeSingle()
     return json({ evento: data ?? null })
+  }
+
+  // ─── PROBAR SMS · un mensaje de prueba al celular que se indique ──────────
+  // Solo quien administra la plataforma: el riel es de Kross y cada SMS cuesta.
+  // No toca ningún pedido ni la bitácora; lo que falle queda en `api_events`
+  // como cualquier envío, con su `KX-…`, que es justamente lo que se quiere ver
+  // al configurar Twilio por primera vez.
+  if (body.action === 'probar_sms') {
+    if (!plataforma) return json({ error: 'prohibido' }, 403)
+    const phone = String((body as { phone?: unknown }).phone ?? '').trim()
+    if (!phone) return json({ error: 'falta_phone' }, 400)
+    const r = await enviarSms({}, phone,
+      'Kross: prueba del riel de avisos por SMS. Si lees esto, el riel funciona.')
+    return json({ ...r, checked_at: new Date().toISOString() })
   }
 
   return json({ error: 'accion_desconocida' }, 400)
