@@ -455,7 +455,9 @@ export default function CheckoutModal({
           {done && (
             <OrderDone
               orderCode={phase.orderCode}
-              advance={state.advanceAmount}
+              state={state}
+              price={price}
+              packName={pack?.nombre ?? null}
               // El pago ya confirmado por el webhook llega verificado: la caja
               // nace verde y el polling ni se monta. Si no, el estado real.
               verification={phase.paid ? 'MATCHED' : state.payment.verification}

@@ -50,7 +50,7 @@ export function acuseDePago(a: Acuse): string {
   const primero = saldoRestante > 0
     ? (a.esRecojo
         ? `✅ ¡Recibimos tu adelanto de S/${a.pagado}! Te queda un saldo de S/${saldoRestante}`
-          + ' que nos pagas por esta misma app —no en la agencia— cuando te enviemos la guía'
+          + ' que nos pagas con Yape desde este mismo enlace de tu pedido —no en la agencia— cuando te enviemos la guía'
           + ' de tu envío. Apenas lo pagues te entregamos tu clave de recojo.'
         : `✅ ¡Recibimos tu adelanto de S/${a.pagado}! Te queda un saldo de S/${saldoRestante}`
           + ' que pagas al recibir tu pedido.')

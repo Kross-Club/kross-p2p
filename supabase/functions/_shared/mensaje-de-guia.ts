@@ -69,7 +69,12 @@ export function mensajeDeClave(clave: string): string {
 
 export function mensajeDeGuia(courier: Courier, ids: string, saldo: number): string {
   const cobroCopy = saldo > 0
-    ? `Tu saldo de S/${saldo} lo pagas cuando quieras por esta misma app —nunca en la agencia— y apenas lo pagues te entregamos tu clave de recojo.`
+    // Sin la palabra "app" (05-set-2026): el comprador de provincia con poca
+    // costumbre digital no sabe qué es una app, y sí sabe qué es Yape y un
+    // enlace. "Nunca en la agencia" evita que llegue al mostrador con el saldo
+    // en efectivo y sin clave. La misma frase vive en `acuse-de-pago.ts`,
+    // `tracking.ts` y en el ticket del checkout (`lib/checkout/ticket.ts`).
+    ? `Tu saldo de S/${saldo} lo pagas con Yape desde este mismo enlace de tu pedido, cuando quieras y nunca en la agencia. Apenas lo pagues te entregamos tu clave de recojo.`
     : 'Como ya pagaste el total, junto con la guía te entregaremos tu clave de recojo.'
 
   if (courier === 'OLVA') {
@@ -80,7 +85,7 @@ export function mensajeDeGuia(courier: Courier, ids: string, saldo: number): str
 
   return `📦 ¡Tu envío ya está registrado en SHALOM! ${ids} — guárdalos para el recojo.\n\n`
     + 'Por ahora es una pre-guía: se vuelve oficial cuando tu paquete entre a la agencia '
-    + 'de origen, y por acá te avisamos apenas pase. Desde ya puedes seguir tu envío en '
-    + 'esta misma app —está sincronizada con tu guía— o directamente en Shalom.\n\n'
+    + 'de origen, y por acá te avisamos apenas pase. Desde ya puedes seguir tu envío desde '
+    + 'este mismo enlace de tu pedido —está sincronizado con tu guía— o directamente en Shalom.\n\n'
     + cobroCopy
 }
