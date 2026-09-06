@@ -34,6 +34,74 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El riel SMS con Twilio · SQL + secretos + 11 funciones (05-sep-2026)
+
+**Qué entró.** Tres avisos por mensaje de texto que le llegan a cualquier celular, sin
+app, sin permiso de push y sin WhatsApp: el **recibo del pago** (`pay360-webhook`: "Gadicaf:
+recibimos tu pago de S/95 (pedido …). Te avisaremos cuando llegue a la agencia. Tu pedido:
+enlace"), **la guía con su número** (`registrarGuia`) y **la llegada a la agencia**
+(`tracking.ts`, fase `EN_DESTINO`; es el paso 1 de la cascada del doc 08). Y de respaldo,
+cualquier otro aviso cuyo push no llegó (`notifyBuyer` con `sms: 'respaldo'`, uno cada diez
+minutos por pedido). Un remitente de Kross para todas las marcas: el texto nombra a la
+tienda, y eso es lo que separa el aviso del fraude. Reglas de los textos en
+`_shared/sms-texto.ts` (con tests en `src/lib/sms.test.ts`): nunca piden plata, nunca
+dicen "app", sin tildes para que cada segmento rinda 160 caracteres.
+
+**Qué se ve si no entra:** nada. Sin `TWILIO_ACCOUNT_SID` el riel no existe y todo sigue
+como hoy. Sin el SQL, los avisos salen igual y solo no quedan contados en la bitácora.
+
+**1. El SQL** (§43, idempotente): la columna `sms` de `notifications_log`.
+
+```sql
+-- correr supabase/setup-kross.sql, o el bloque §43 suelto
+```
+
+**2. Los secretos** (con los valores reales; NUNCA en el repo ni en un chat):
+
+```
+supabase secrets set TWILIO_ACCOUNT_SID=AC… TWILIO_AUTH_TOKEN=… \
+  TWILIO_MESSAGING_SERVICE_SID=MG… --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> Alternativas que el código acepta: una **API key** (`TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET`)
+> en vez del token de la cuenta, y `TWILIO_SMS_FROM` (un número o un remitente alfanumérico)
+> en vez del Messaging Service. `SMS_ENABLED=off` apaga el riel sin borrar nada.
+
+**3. Las funciones:**
+
+```
+supabase functions deploy pay360-webhook shalom-webhook olva-lat-webhook \
+  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy seller-send-message shalom-order olva-order order-manage \
+  olva-tracking olva-tracking-sync shalom-tracking-sync integraciones \
+  --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**En la consola de Twilio, en este orden** (la cuenta nació como prueba):
+
+1. **Salir de la cuenta de prueba.** *Billing → Upgrade*: la de prueba solo manda a
+   números verificados, antepone "Sent from your Twilio trial account" y no sirve para un
+   cliente real. Cargar saldo y poner una **alerta de uso** (*Monitor → Usage → Triggers*).
+2. **Permitir Perú.** *Messaging → Settings → Geo permissions*: marcar **Peru**. Sin esto
+   todo envío rebota con el código 21408, y así aparece en *Panel → Conexiones*.
+3. **El remitente.** *Messaging → Services → Create*: un Messaging Service (queda `MG…`,
+   que es el `TWILIO_MESSAGING_SERVICE_SID`). En su *Sender Pool* agregar un **Alphanumeric
+   Sender ID** `KROSS`. Twilio no vende números peruanos con SMS: el remitente alfanumérico
+   es el camino para Perú, y hay que revisar en la guía *SMS guidelines → Peru* de Twilio
+   si algún operador exige registro previo. Es un canal de una sola vía: nadie puede
+   responder, y por eso cada aviso lleva el enlace del pedido.
+4. **Las llaves.** *Account → API keys & tokens*: crear una **Standard API key** y guardar
+   su SID (`SK…`) y su secret como `TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET`. El
+   `TWILIO_ACCOUNT_SID` (`AC…`) está en la portada de la consola y va siempre. Usar la API
+   key y no el Auth Token: se rota sin tocar la cuenta.
+5. **Probar.** Un pedido en Kross Shop con yape confirmado debe producir el SMS del recibo
+   en segundos. *Monitor → Logs → Messaging* muestra cada envío con su estado; los
+   rechazos aparecen además en *Panel → Conexiones → Twilio* con su `KX-…`.
+
+**Lo que este riel todavía no hace:** los pasos 2 y 3 de la cascada de recojo (cron), la
+verificación del celular por código, y el cobro del SMS a cada marca (`wa_usage` ya
+devuelve el conteo `sms` por tienda para cuando se decida).
+
 ### La pantalla de gracias es un ticket para capturar · 10 funciones, sin SQL (05-sep-2026)
 
 Después del yape confirmado, la pantalla final ya no es solo "pedido confirmado, entra al

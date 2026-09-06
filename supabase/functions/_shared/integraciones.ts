@@ -18,6 +18,7 @@ export const PROVEEDORES = [
   'PAY360', 'FLOW',
   'WHATSAPP', 'META_CAPI', 'TIKTOK_CAPI',
   'LIVEKIT', 'ELEVENLABS', 'DECOLECTA', 'RESEND', 'WEB_PUSH', 'NOMINATIM',
+  'TWILIO',
 ] as const
 export type Proveedor = typeof PROVEEDORES[number]
 
@@ -122,6 +123,10 @@ export const INTEGRACIONES: Integracion[] = [
   {
     id: 'ELEVENLABS', nombre: 'ElevenLabs', que: 'La voz del closer de IA',
     dueno: 'ElevenLabs', host: 'api.elevenlabs.io', alcance: 'plataforma', secreto: 'ELEVENLABS_API_KEY', critico: false,
+  },
+  {
+    id: 'TWILIO', nombre: 'Twilio (SMS)', que: 'Los avisos por mensaje de texto: el recibo del pago, la guía y la llegada a la agencia',
+    dueno: 'Twilio', host: 'api.twilio.com', alcance: 'plataforma', secreto: 'TWILIO_ACCOUNT_SID', critico: false,
   },
   {
     id: 'WEB_PUSH', nombre: 'Web Push (VAPID)', que: 'Los avisos que llegan al celular con la app cerrada',

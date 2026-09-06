@@ -29,6 +29,7 @@ import { acuseDePago } from '../_shared/acuse-de-pago.ts'
 import { mensajeDeClave } from '../_shared/mensaje-de-guia.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
 import { notifyBuyer } from '../_shared/notificar.ts'
+import { enlaceDelPedido, smsPagoRecibido, smsSaldoRecibido } from '../_shared/sms-texto.ts'
 import {
   PAY360_HEADERS, getCoupon, isPaid, pay360BaseUrl, pickPartnerKey, verifySignature, type Pay360Env,
 } from '../_shared/pay360.ts'
@@ -101,13 +102,25 @@ async function avisar(sessionId: string, acuse: unknown) {
  */
 async function empujarAcuse(s: {
   sesion: { id: string; token?: string | null; buyer_id?: string | null; buyer_name?: string | null
-            store_id?: string | null; product_name?: string | null }
-  tienda: { nombre?: string | null; notif_icon_url?: string | null; logo_url?: string | null } | null
+            store_id?: string | null; product_name?: string | null; order_id?: string | null }
+  tienda: { nombre?: string | null; slug?: string | null; notif_icon_url?: string | null; logo_url?: string | null } | null
   cuerpo: string
+  /** El recibo por SMS (`sms-texto.ts`). Es EL comprobante de quien no volverá
+   *  a abrir nada: va SIEMPRE, con o sin push. `null` = un cobro extra, que
+   *  solo avisa por SMS si el push no llegó. */
+  sms: { tipo: 'adelanto' | 'saldo'; pagado: number; esRecojo: boolean } | null
 }) {
   try {
     const icono = s.tienda?.notif_icon_url ?? s.tienda?.logo_url ?? null
+    const tienda = s.tienda?.nombre?.trim() || 'Kross'
+    const link = enlaceDelPedido(s.tienda?.slug, s.sesion.token)
+    const smsBody = !s.sms ? undefined
+      : s.sms.tipo === 'saldo'
+        ? smsSaldoRecibido({ tienda, monto: s.sms.pagado, codigo: s.sesion.order_id, link })
+        : smsPagoRecibido({ tienda, monto: s.sms.pagado, codigo: s.sesion.order_id, recojo: s.sms.esRecojo, link })
     await notifyBuyer({
+      sms: s.sms ? 'siempre' : 'respaldo',
+      smsBody,
       buyerId: s.sesion.buyer_id ?? null,
       sessionId: s.sesion.id,
       storeId: s.sesion.store_id ?? null,
@@ -271,7 +284,7 @@ Deno.serve(async (req) => {
 
   const originStoreId = String(session.origin_store_id ?? session.store_id)
   const { data: store } = await supabase.from('stores')
-    .select('pay360_env, meta_pixel_id, tiktok_pixel_id, nombre, notif_icon_url, logo_url').eq('id', originStoreId).maybeSingle()
+    .select('pay360_env, meta_pixel_id, tiktok_pixel_id, nombre, slug, notif_icon_url, logo_url').eq('id', originStoreId).maybeSingle()
   const env = (store?.pay360_env === 'live' ? 'live' : 'sandbox') as Pay360Env
 
   const coupon = await getCoupon(pay360BaseUrl(env, 'partner'),
@@ -405,7 +418,7 @@ Deno.serve(async (req) => {
       body: acuseDePago({ tipo: 'extra', pagado: paid, total: Number(session.product_price ?? 0), esRecojo, concepto: cobroDelCupon?.concepto }),
     }).select().single()
     await avisar(session.id, acuse)
-    if (acuse) await empujarAcuse({ sesion: session, tienda: store, cuerpo: acuse.body ?? '' })
+    if (acuse) await empujarAcuse({ sesion: session, tienda: store, cuerpo: acuse.body ?? '', sms: null })
     // Y se corta acá, antes de CAPI: un cobro extra no es otra compra. Contarlo
     // como `Purchase` le sumaría a Meta y a TikTok una conversión por cada flete
     // cobrado, y el público "de los que sí pagaron" —que es para lo que existe
@@ -424,7 +437,12 @@ Deno.serve(async (req) => {
     }),
   }).select().single()
   await avisar(session.id, acuse)
-  if (acuse) await empujarAcuse({ sesion: session, tienda: store, cuerpo: acuse.body ?? '' })
+  if (acuse) {
+    await empujarAcuse({
+      sesion: session, tienda: store, cuerpo: acuse.body ?? '',
+      sms: { tipo: esSaldo ? 'saldo' : 'adelanto', pagado: paid, esRecojo },
+    })
+  }
 
   // ─── La clave de recojo, contra el saldo pagado ────────────────────────────
   //

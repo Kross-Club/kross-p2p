@@ -10,6 +10,38 @@
 
 ---
 
+## Actualización · el riel de avisos es SMS, y el paso 1 ya existe ✅ (05-set-2026)
+
+Este diseño se escribió con **push + WhatsApp**. Dos cosas cambiaron:
+
+1. **WhatsApp deja de ser el riel de avisos.** Cobra por mensaje, invita a conversar
+   (y nadie lee esas respuestas: no hay webhook entrante) y el comprador de
+   provincia con poca costumbre digital no siempre lo tiene. El SMS es el canal de
+   los avisos "oficiales" (banco, Yape, la agencia): llega sin app, sin permiso y sin
+   datos, se relee, y fija la expectativa de aviso, no de conversación. WhatsApp
+   queda para dos rescates: el formulario abandonado y, si la marca lo configura,
+   el recojo (`wa_recojo_template`). La discusión completa está en
+   `14-EVALUACION-KROSS-CLUB.md` y en la entrada del riel en `ESTADO-OPERATIVO.md`.
+2. **"Llegó a agencia" ya no lo marca una persona.** El tracking de Shalom y Olva
+   (`_shared/tracking.ts`, fase `EN_DESTINO`) lo sabe solo, así que el paso 1 de la
+   cadencia —el que más recojos salva— **ya corre**: mensaje al chat, push si dio
+   permiso, y **SMS siempre** (`smsLlegoAgencia` en `_shared/sms-texto.ts`). Con
+   saldo dice cuánto y que se paga desde el pedido, nunca en la agencia; sin saldo,
+   que la clave está en su pedido. La columna `arrived_at_agency_at` de abajo la
+   reemplaza `tracking_phase_at` con fase `EN_DESTINO`.
+
+Además del paso 1, el riel manda otros dos avisos que no estaban en este diseño y
+que son la persistencia de quien no volverá a abrir nada: el **recibo del pago**
+(`pay360-webhook`) y **la guía con su número** (`registrarGuia`).
+
+**Lo que sigue pendiente 🔮:** los pasos 2 y 3 (recordatorio a los 2 días, último
+aviso con la fecha de devolución), el cron `pickup-reminders` y las columnas
+`pickup_reminder_step` / `agency_hold_days`. Cuando se construyan, el canal de los
+pasos 2 y 3 es SMS, con el mismo `enviarSms`, y las plantillas de WhatsApp de más
+abajo quedan como opción por marca, no como riel. El paso 4 (aviso al vendedor) y
+la llamada humana desde la cola siguen igual: para quien no lee mensajes, una voz
+real cierra lo que ningún texto cierra.
+
 ## El problema
 
 En provincia el pedido viaja por agencia (`dispatch_type = 'AGENCIA_PROVINCIA'`,
