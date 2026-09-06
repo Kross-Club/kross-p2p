@@ -313,6 +313,11 @@ export default function ConexionesPage() {
                 {!problema && eventos[i.id]?.length === 0 && (
                   <p className="text-[10px] text-gray-400">Sin eventos en los últimos 30 días.</p>
                 )}
+                {/* El riel SMS se prueba desde acá y no con un pedido real: un
+                    mensaje al celular que uno quiera, con la respuesta cruda de
+                    Twilio si rebota. Solo quien administra la plataforma (lo
+                    decide el servidor). */}
+                {!problema && i.id === 'TWILIO' && i.configurado && <PruebaSms />}
                 <div className="space-y-1.5">
                   {(eventos[i.id] ?? []).map(e => <Evento key={e.ref} e={e} />)}
                 </div>
@@ -321,6 +326,54 @@ export default function ConexionesPage() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** Manda un SMS de prueba al celular que se escriba y enseña qué contestó el
+ *  riel: `sent` con el id de Twilio, o el motivo exacto del rechazo. */
+function PruebaSms() {
+  const [celular, setCelular] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [resultado, setResultado] = useState<string | null>(null)
+
+  const probar = async () => {
+    if (!celular.trim() || enviando) return
+    setEnviando(true)
+    setResultado(null)
+    const r = await llamar({ action: 'probar_sms', phone: celular.trim() })
+    const d = r.data as { result?: string; sid?: string; error?: string; segmentos?: number }
+    if (r.status === 403) setResultado('Solo quien administra la plataforma puede mandar la prueba.')
+    else if (!r.ok) setResultado(`El servidor respondió ${r.status}. ¿Está desplegada la función integraciones?`)
+    else if (d.result === 'sent') setResultado(`Enviado · ${d.segmentos ?? 1} segmento${(d.segmentos ?? 1) === 1 ? '' : 's'} · Twilio ${d.sid ?? ''}. Debe llegar en segundos.`)
+    else if (d.result === 'no_phone') setResultado('Ese número no es un celular peruano (9 dígitos que empiezan con 9).')
+    else if (d.result === 'not_configured') setResultado(`Falta configurar el riel: ${d.error ?? 'TWILIO_ACCOUNT_SID, la credencial o el remitente'}.`)
+    else setResultado(`Rechazado: ${d.error ?? d.result ?? 'sin detalle'}. Quedó anotado abajo con su referencia KX.`)
+    setEnviando(false)
+  }
+
+  return (
+    <div className="mt-2 mb-2 rounded-xl p-2.5" style={{ background: 'var(--surface-3)' }}>
+      <p className="text-[10px] font-black mb-1.5">Probar el riel</p>
+      <div className="flex gap-1.5">
+        <input
+          type="tel"
+          value={celular}
+          onChange={e => setCelular(e.target.value)}
+          placeholder="Celular, ej. 999 111 222"
+          className="flex-1 min-w-0 text-xs px-2.5 py-1.5 rounded-lg border bg-transparent"
+          style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+        />
+        <button
+          onClick={probar}
+          disabled={enviando || !celular.trim()}
+          className="text-xs font-black px-3 py-1.5 rounded-lg disabled:opacity-50"
+          style={{ background: 'var(--brand)', color: 'var(--on-brand, #fff)' }}
+        >
+          {enviando ? 'Enviando…' : 'Enviar SMS de prueba'}
+        </button>
+      </div>
+      {resultado && <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-muted)' }}>{resultado}</p>}
     </div>
   )
 }
