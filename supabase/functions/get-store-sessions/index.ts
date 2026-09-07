@@ -5,21 +5,32 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
 
-// ⚠️ Toda cabecera `x-…` que el panel manda tiene que estar acá: si falta una,
-// el preflight del navegador la rechaza y `fetch` muere con «Failed to fetch»
-// sin que esta función llegue a correr. `x-include-cancelled` faltó del 27-ago
-// al 07-set-2026 y el tablero estuvo en cero. Lo vigila `edge-functions.test.ts`.
-const corsHeaders = {
+// ⚠️ Toda cabecera `x-…` que el panel manda tiene que estar permitida acá: si
+// falta una, el preflight del navegador la rechaza y `fetch` muere con «Failed
+// to fetch» sin que esta función llegue a correr —sin status y sin logs—.
+// `x-include-cancelled` faltó del 27-ago al 07-set-2026 y el tablero estuvo en
+// cero todo ese tiempo. Dos redes para que no vuelva a pasar:
+//   · Se DEVUELVE lo que el navegador pida (`access-control-request-headers`),
+//     así una cabecera nueva del panel nunca queda fuera de la lista. La lista
+//     fija es el respaldo de las respuestas que no son preflight.
+//   · `edge-functions.test.ts` compara lo que el front manda con esta lista.
+const FIJAS = 'authorization, content-type, x-store-id, x-seller-id, x-include-cancelled'
+const cors = (req?: Request) => ({
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, x-store-id, x-seller-id, x-include-cancelled',
-}
+  'Access-Control-Allow-Headers': req?.headers.get('access-control-request-headers') ?? FIJAS,
+})
+const corsHeaders = cors()
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) })
 
   const storeId = req.headers.get('x-store-id')
   const sellerId = req.headers.get('x-seller-id')
-  const includeCancelled = req.headers.get('x-include-cancelled') === '1'
+  // Por la URL (lo que manda el panel desde el 07-set: un parámetro no necesita
+  // permiso de CORS) o por la cabecera de antes, que sigue leyéndose para que
+  // una versión vieja del front no pierda los cancelados.
+  const includeCancelled = new URL(req.url).searchParams.get('cancelados') === '1'
+    || req.headers.get('x-include-cancelled') === '1'
   if (!storeId) return new Response('Missing store id', { status: 400, headers: corsHeaders })
 
   // El bloque geográfico y de pago (dispatch_type … tracking_phase) alimenta el
