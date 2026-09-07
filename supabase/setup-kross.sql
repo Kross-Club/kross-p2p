@@ -2056,3 +2056,64 @@ ALTER TABLE notifications_log ADD COLUMN IF NOT EXISTS sms text;
 CREATE INDEX IF NOT EXISTS idx_notiflog_sms ON notifications_log(store_id, created_at DESC)
   WHERE sms = 'sent';
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §44 · LA CASCADA DE RECOJO  (06-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Entre el 27 % y el 35 % de los compradores NO recoge su paquete de la agencia
+-- si nadie insiste, y el 100 % necesita al menos una llamada (entrevistas con
+-- operadores reales, `ICP Sales/VALIDACION-AGENCIA.md`). La agencia lo devuelve
+-- a los ~7 días y ahí se pierden el flete de ida, el de vuelta y la venta.
+-- Perseguir eso a mano es el techo operativo que este producto mueve.
+--
+-- La cadencia (doc 08), anclada a la llegada del paquete y con urgencia
+-- creciente sobre un plazo REAL:
+--   día 0 · llegada          → ya lo manda el tracking (`EN_DESTINO`)
+--   día 2 · recordatorio     → cascada
+--   día 4 · último aviso, con la fecha de devolución → cascada
+--   día 5 · aviso al vendedor: recién acá entra una persona → cascada
+--
+-- No hace falta una etapa nueva: `tracking_phase = 'EN_DESTINO'` con el `stage`
+-- todavía abierto ES "esperando recojo", y `entregado` / `no_entregado` cierran
+-- la cadencia solos.
+
+-- Qué paso mandó la cascada: 0 nada · 1 recordatorio · 2 último aviso · 3
+-- vendedor avisado. El aviso de llegada NO se cuenta acá porque no lo manda el
+-- cron. Es lo que vuelve idempotente al job: se escribe en la misma corrida que
+-- envía, así que dispararlo dos veces no manda nada dos veces.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pickup_reminder_step    smallint DEFAULT 0;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS pickup_reminder_last_at timestamptz;
+
+-- Config por marca (white-label: cada tienda decide).
+--   `pickup_reminders_enabled` nace ENCENDIDA, y es una decisión: el aviso de
+--   llegada ya sale para todos, y una cascada apagada por defecto es código
+--   muerto hasta que alguien se acuerde de prenderla. La marca que no la quiera
+--   la apaga (falta el interruptor en *Marca*, anotado en el doc 08).
+--   `agency_hold_days` es lo que la agencia guarda el paquete: de ahí sale la
+--   FECHA que el último aviso le promete al comprador.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS pickup_reminders_enabled boolean  DEFAULT true;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS agency_hold_days         smallint DEFAULT 7;
+
+-- La consulta del cron: los que esperan recojo con la cascada sin terminar.
+CREATE INDEX IF NOT EXISTS idx_recojo_pendiente ON order_sessions(tracking_phase_at)
+  WHERE tracking_phase = 'EN_DESTINO' AND pickup_reminder_step < 3;
+
+-- 44.b El job diario. **16:00 UTC = 11:00 en Lima**: hora decente para sonar un
+-- teléfono, y deja la tarde para que el que se enteró hoy alcance a ir.
+-- `cron.schedule` con el mismo nombre ACTUALIZA el job: correr esto dos veces
+-- no duplica nada.
+SELECT cron.schedule(
+  'pickup-reminders',
+  '0 16 * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/pickup-reminders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mZGpnaG50dm1yZGZqaGF6ZnZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTM4NDcsImV4cCI6MjA5OTA4OTg0N30.DSgcjvYZUWLqUyQ9aFTOjkAISt7hOwpLUhwFTniBQsI'
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 120000
+  );
+  $$
+);
+
