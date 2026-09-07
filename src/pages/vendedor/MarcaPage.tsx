@@ -1053,7 +1053,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
                 <button onClick={toggleAutoGuia} disabled={shalomBusy || store.shalom_pro_status !== 'CONNECTED'}
                   className="text-[10px] font-black px-2.5 py-1.5 rounded-lg disabled:opacity-40 flex-shrink-0"
                   style={autoGuia
-                    ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
+                    ? { background: 'var(--ok-bg)', color: 'var(--ok-on)' }
                     : { background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
                   {shalomBusy ? '…' : autoGuia ? '● Encendida' : '○ Apagada'}
                 </button>

@@ -329,7 +329,7 @@ export default function OrderDetailModal({ session, role, onClose, onPatch, onIn
           ) : cancelled ? (
             role === 'seller' ? (
               <button onClick={recreate} disabled={busy}
-                className="w-full py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
+                className="w-full py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50" style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}>
                 <RefreshCw size={15} /> {busy ? 'Reactivando…' : 'Reactivar pedido (recuperar venta)'}
               </button>
             ) : (

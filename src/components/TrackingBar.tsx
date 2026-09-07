@@ -277,7 +277,7 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
             <button onClick={reenviar} disabled={reenvio === 'yendo'}
               className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg flex-shrink-0 disabled:opacity-50"
               style={reenvio === 'listo'
-                ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
+                ? { background: 'var(--ok-bg)', color: 'var(--ok-on)' }
                 : { background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
               {reenvio === 'listo' ? <><Check size={10} /> Enviado</> : <><Send size={10} /> Reenviar</>}
             </button>
