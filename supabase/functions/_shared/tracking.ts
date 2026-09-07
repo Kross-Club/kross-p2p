@@ -42,18 +42,34 @@ export async function broadcast(sessionId: string, event: string, payload: unkno
   } catch { /* ignore */ }
 }
 
+/**
+ * Escribe un mensaje del sistema en el hilo del pedido.
+ *
+ * Devuelve si se ESCRIBIÓ. Antes se tragaba el error del insert —`const { data:
+ * msg }`, sin mirar `error`— y un mensaje que no entró se veía exactamente
+ * igual que uno que nadie leyó: nada en el chat y nada en los logs. Es la misma
+ * clase de fallo silencioso que dejó el tablero en cero (07-set-2026), y acá
+ * cuesta más caro: el aviso de la guía es lo que el comprador necesita para
+ * recoger. Ahora el fallo queda en los logs con su motivo y quien llama puede
+ * decirlo en pantalla en vez de dar por hecho que llegó.
+ */
 export async function chatMessage(
   sessionId: string, body: string, visibility: 'all' | 'sellers',
   /** `type` para los mensajes que se pintan distinto (la guía, con su botón);
    *  `media_url` para el adjunto que ese botón abre (el PDF de Shalom). */
   extra: { type?: string; media_url?: string | null } = {},
-) {
-  const { data: msg } = await supabase.from('chat_messages').insert({
+): Promise<{ ok: boolean; error?: string }> {
+  const { data: msg, error } = await supabase.from('chat_messages').insert({
     session_id: sessionId, sender_role: 'system', sender_name: 'Kross',
     type: extra.type ?? 'status_update', visibility, body,
     media_url: extra.media_url ?? null,
   }).select().single()
+  if (error) {
+    console.error('chatMessage: no se pudo escribir', sessionId, extra.type ?? 'status_update', error.message)
+    return { ok: false, error: error.message }
+  }
   if (msg) await broadcast(sessionId, 'new_message', msg)
+  return { ok: true }
 }
 
 export interface TrackedRow {

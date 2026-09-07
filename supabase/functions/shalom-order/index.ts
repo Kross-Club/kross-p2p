@@ -667,8 +667,13 @@ Deno.serve(async (req: Request) => {
         return json({ created: true, guardado: false }, 500)
       }
 
+      // "Ya la tiene en su chat" solo si el aviso ENTRÓ: `registrarGuia` lo dice
+      // en `avisado`. Darlo por hecho es lo que hacía que un mensaje que nunca
+      // se escribió pareciera entregado (07-set-2026).
       const cabecera = aviso
-        ?? '📦 Guía generada automáticamente en Shalom. El comprador ya la tiene en su chat.'
+        ?? (reg.avisado
+          ? '📦 Guía generada automáticamente en Shalom. El comprador ya la tiene en su chat.'
+          : '📦 Guía generada automáticamente en Shalom.')
       // Una guía emitida es plata gastada: se anota SIEMPRE, salga bien o mal, y
       // por eso este `OK` no es ruido como el de una consulta cualquiera.
       await anotar({
