@@ -257,12 +257,31 @@ export default function MarcaPage() {
 }
 
 // Upload a logo to the public "branding" bucket, return its URL
-async function uploadLogo(file: File, adminId: string): Promise<string | null> {
-  const ext = file.name.split('.').pop() || 'png'
-  const path = `${adminId}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`
+/**
+ * Sube un logo al bucket público `branding` y devuelve su URL.
+ *
+ * Devuelve el MOTIVO cuando falla. Antes hacía `if (error) return null` y el
+ * fallo se veía exactamente igual que no haber tocado nada: la miniatura se
+ * quedaba vacía, sin decir por qué (pasó el 07-set-2026). Un logo que no sube
+ * puede ser el bucket sin crear, un permiso, un archivo enorme o un formato que
+ * el bucket no acepta — y ninguna de esas se adivina mirando un cuadrado gris.
+ */
+async function uploadLogo(file: File, adminId: string): Promise<{ url: string } | { error: string }> {
+  if (!adminId) return { error: 'No se pudo identificar tu sesión. Vuelve a entrar e intenta de nuevo.' }
+  // 5 MB: un logo no pesa más, y el límite del bucket devuelve un error feo.
+  if (file.size > 5 * 1024 * 1024) return { error: 'La imagen pesa más de 5 MB. Súbela más liviana.' }
+
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '')
+  const path = `${adminId}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext || 'png'}`
   const { error } = await supabase.storage.from('branding').upload(path, file, { contentType: file.type, upsert: true })
-  if (error) return null
-  return supabase.storage.from('branding').getPublicUrl(path).data.publicUrl
+  if (error) {
+    console.error('[marca] no se pudo subir el logo', error)
+    // El texto del proveedor tal cual: "Bucket not found" y "new row violates
+    // row-level security policy" dicen exactamente qué correr o qué revisar, y
+    // traducirlos a "no se pudo" borra justo esa pista.
+    return { error: `No se pudo subir: ${error.message}` }
+  }
+  return { url: supabase.storage.from('branding').getPublicUrl(path).data.publicUrl }
 }
 
 /**
@@ -312,7 +331,7 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
  *  que alguien suba tres veces la misma imagen. Y `object-contain`, no `cover`:
  *  recortar el logo de una marca para que llene la caja es lo último que se
  *  debe hacer con un logo. */
-function LogoPicker({ logo, uploading, onPick, round, wide, help }: { logo: string | null; uploading: boolean; onPick: (f: File) => void; round?: boolean; wide?: boolean; help?: string }) {
+function LogoPicker({ logo, uploading, onPick, round, wide, help, error }: { logo: string | null; uploading: boolean; onPick: (f: File) => void; round?: boolean; wide?: boolean; help?: string; error?: string }) {
   const fileRef = useRef<HTMLInputElement>(null)
   return (
     <div className="flex items-center gap-3">
@@ -324,7 +343,9 @@ function LogoPicker({ logo, uploading, onPick, round, wide, help }: { logo: stri
           className="text-xs font-black px-3 py-2 rounded-xl disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
           {uploading ? 'Subiendo…' : logo ? 'Cambiar' : 'Subir'}
         </button>
-        <p className="text-[10px] text-gray-400 mt-1">{help ?? 'PNG cuadrado, 512×512 recomendado.'}</p>
+        {error
+          ? <p className="text-[10px] mt-1 font-bold" style={{ color: 'var(--danger-fg)' }}>{error}</p>
+          : <p className="text-[10px] text-gray-400 mt-1">{help ?? 'PNG cuadrado, 512×512 recomendado.'}</p>}
       </div>
       <input ref={fileRef} type="file" accept="image/*" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) onPick(f); if (fileRef.current) fileRef.current.value = '' }} />
@@ -451,6 +472,9 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [uploading, setUploading] = useState(false)
   const [uploadingIcon, setUploadingIcon] = useState(false)
   const [uploadingWide, setUploadingWide] = useState(false)
+  const [errLogo, setErrLogo] = useState('')
+  const [errIcon, setErrIcon] = useState('')
+  const [errWide, setErrWide] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   // Borrar: el subdominio tecleado. Un "¿seguro?" se contesta con un Enter de
@@ -460,9 +484,21 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const estorbo = estorboParaBorrar(store, quien)
 
 
-  const pick = async (f: File) => { setUploading(true); const url = await uploadLogo(f, adminId); if (url) setLogo(url); setUploading(false) }
-  const pickIcon = async (f: File) => { setUploadingIcon(true); const url = await uploadLogo(f, adminId); if (url) setNotifIcon(url); setUploadingIcon(false) }
-  const pickWide = async (f: File) => { setUploadingWide(true); const url = await uploadLogo(f, adminId); if (url) setLogoWide(url); setUploadingWide(false) }
+  // Los tres suben igual y fallan igual: el motivo se enseña DEBAJO del picker
+  // que se tocó, no en un sitio general — quien acaba de tocar "Subir" mira ahí.
+  const subir = (
+    marcar: (v: boolean) => void,
+    guardar: (url: string) => void,
+    avisar: (e: string) => void,
+  ) => async (f: File) => {
+    marcar(true); avisar('')
+    const r = await uploadLogo(f, adminId)
+    if ('url' in r) guardar(r.url); else avisar(r.error)
+    marcar(false)
+  }
+  const pick = subir(setUploading, setLogo, setErrLogo)
+  const pickIcon = subir(setUploadingIcon, setNotifIcon, setErrIcon)
+  const pickWide = subir(setUploadingWide, setLogoWide, setErrWide)
 
   const borrar = async () => {
     setBorrando(true); setErr('')
@@ -714,19 +750,19 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
             Estirar uno solo se ve mal en dos de los tres. */}
         <label className="text-xs font-bold text-gray-500 mb-1 block">Logo de la app</label>
         <div className="mb-4">
-          <LogoPicker logo={logo} uploading={uploading} onPick={pick}
+          <LogoPicker logo={logo} uploading={uploading} onPick={pick} error={errLogo}
             help="PNG cuadrado, 512×512. Es el ícono en el celular: centra la marca y déjale aire, porque Android lo recorta a su forma." />
         </div>
 
         <label className="text-xs font-bold text-gray-500 mb-1 block">Ícono de notificación</label>
         <div className="mb-4">
-          <LogoPicker logo={notifIcon} uploading={uploadingIcon} onPick={pickIcon} round
+          <LogoPicker logo={notifIcon} uploading={uploadingIcon} onPick={pickIcon} round error={errIcon}
             help="PNG con fondo transparente y borde redondo (como WhatsApp). Sale muy pequeño en la barra de Android. Si no lo pones, usa el de la app." />
         </div>
 
         <label className="text-xs font-bold text-gray-500 mb-1 block">Logo apaisado</label>
         <div className="mb-4">
-          <LogoPicker logo={logoWide} uploading={uploadingWide} onPick={pickWide} wide
+          <LogoPicker logo={logoWide} uploading={uploadingWide} onPick={pickWide} wide error={errWide}
             help="PNG horizontal con fondo transparente. Firma la cabecera del panel, donde sobra ancho. Si no lo pones, usa el de la app." />
         </div>
 
@@ -1375,7 +1411,14 @@ function CreateBrand({ adminId, onClose, onDone }: { adminId: string; onClose: (
 
   const autoSlug = (v: string) => v.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
 
-  const pick = async (f: File) => { setUploading(true); const url = await uploadLogo(f, adminId); if (url) setLogo(url); setUploading(false) }
+  // El alta de marca comparte el error de arriba (`err`): acá el formulario ya
+  // tiene un sitio donde se leen los problemas, y un logo que no sube es uno.
+  const pick = async (f: File) => {
+    setUploading(true); setErr('')
+    const r = await uploadLogo(f, adminId)
+    if ('url' in r) setLogo(r.url); else setErr(r.error)
+    setUploading(false)
+  }
 
   const submit = async () => {
     if (!nombre.trim() || !slug.trim()) { setErr('Completa nombre y subdominio.'); return }

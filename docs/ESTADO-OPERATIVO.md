@@ -34,6 +34,41 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Subir un logo no decía por qué fallaba · solo frontend (07-sep-2026)
+
+**Qué se ve.** *Panel → Mi marca → Subir* un logo: el botón dice «Subiendo…», vuelve a su sitio, y
+la miniatura sigue vacía. Sin error, sin nada. Idéntico a no haber tocado el botón.
+
+**Por qué.** `uploadLogo` hacía `if (error) return null` y tiraba el motivo. Es la misma clase de
+fallo silencioso que llevamos todo el día: la lista de pedidos vacía, el `BOOT_ERROR`, el mensaje de
+la guía que la base rechazaba. Ahora devuelve el texto del proveedor **tal cual** —«Bucket not
+found», «new row violates row-level security policy»— porque esos dos dicen exactamente qué correr
+o qué revisar, y traducirlos a «no se pudo» borra justo esa pista. Se enseña debajo del picker que
+se tocó, y hay dos cortes antes de salir a la red: sin sesión identificada y más de 5 MB.
+
+**Lo más probable, y cómo comprobarlo.** Que el bucket `branding` no exista en este proyecto — la
+sección 5c del esquema es vieja y puede no haberse corrido nunca acá (ninguna marca tiene logo
+todavía, que es la pista):
+
+```sql
+select id, public from storage.buckets where id = 'branding';
+select policyname from pg_policies where tablename = 'objects' and policyname like 'branding%';
+```
+
+Si la primera no devuelve fila, la 5c completa (idempotente):
+
+```sql
+INSERT INTO storage.buckets (id, name, public) VALUES ('branding', 'branding', true)
+ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS branding_upload ON storage.objects;
+CREATE POLICY branding_upload ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'branding');
+DROP POLICY IF EXISTS branding_update ON storage.objects;
+CREATE POLICY branding_update ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'branding');
+```
+
+> El bucket `products` (5b) se crea en el mismo bloque. Si `branding` falta, conviene mirar si las
+> imágenes de producto suben, porque probablemente arrastran el mismo problema.
+
 ### El tablero tarda 5 s en abrir · **SQL** + 1 función (07-sep-2026)
 
 **Qué se ve.** Panel → Pedidos: cinco segundos de spinner. El **demo abre al instante**, y esa
