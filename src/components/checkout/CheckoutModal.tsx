@@ -462,6 +462,7 @@ export default function CheckoutModal({
               // nace verde y el polling ni se monta. Si no, el estado real.
               verification={phase.paid ? 'MATCHED' : state.payment.verification}
               token={phase.token}
+              sessionId={phase.sessionId}
               unpaid={phase.unpaid}
             />
           )}

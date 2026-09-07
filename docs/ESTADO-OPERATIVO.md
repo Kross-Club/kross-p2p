@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 03-sep-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 07-sep-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -33,6 +33,26 @@ fecha de arriba.
 
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
+
+### La pantalla de gracias: el recorrido, la app y el PDF de la guía · solo frontend (07-sep-2026)
+
+**Qué cambió.** Con el webhook ya cruzando, se miró la pantalla final con un pedido real y
+salieron dos cosas. (1) *Ver mi guía de Shalom* abría la hoja de guía de Kross y no el PDF
+de Shalom con su QR: una carrera entre el sondeo de la pantalla y `registrarGuia`, que
+escribe el número antes que el mensaje con el PDF; el sondeo ahora sigue hasta ver el PDF.
+(2) Las cajas de «te falta pagar» y «el día del recojo lleva» se volvieron un recorrido
+vertical de puntos («Así va tu pedido») con el saldo y el DNI como detalle de su paso, y la
+pantalla cierra pidiendo instalar la app —«¿Te gustaría que te avisemos cuando llegue tu
+pedido?», botón *Descargar la app*— en vez de ofrecer el chat: seguimiento y consultas son
+cosa de la app. Detalle en `01-SALES-ENGINE.md` § *El recorrido y la app*.
+
+**Qué desplegar.** Nada: se va con el deploy de Vercel al mergear. Sin SQL, sin funciones.
+
+**Cómo probarlo.** Un pedido en agencia con adelanto por Yape en el celular: al confirmarse,
+la guía tiene que salir con el botón al PDF del courier (no a `/guia/…`) en menos de un
+minuto, el recorrido marcar *En camino a Shalom* en actual, y *Descargar la app* abrir el
+aviso de instalar de Android; al aceptar, la app abre el pedido y pide permiso de avisos.
+En iPhone se ven los dos toques (Compartir → Agregar a inicio).
 
 ### `pay360-webhook` no arrancaba: un cobro real quedó sin cruzar · 3 funciones, sin SQL (06-sep-2026)
 

@@ -520,6 +520,54 @@ El contenido lo arma `src/lib/checkout/ticket.ts` (puro, con tests en
 - Deuda anotada: `Store` del `store-context` ahora trae `wa_display_phone`; la
   caché por slug de antes no lo tiene hasta la siguiente carga.
 
+#### El recorrido y la app ✅ (07-set-2026)
+
+Segunda vuelta sobre el ticket, después de mirarlo con un pedido real. Tres cambios
+y las razones:
+
+**1. Las cajas gritonas se volvieron pasos.** «Te falta pagar S/ 94» en amarillo y la
+lista de «El día del recojo lleva» asustaban a quien acababa de pagar: una cifra
+fuera de su momento parece un reclamo. Ahora el ticket lleva debajo **«Así va tu
+pedido»**, una línea vertical de puntos con lo hecho (verde), lo que está pasando
+(color de la marca, con pulso) y lo que viene (gris). **Nada se quitó, cambió de
+sitio**: el saldo es el detalle de *Llegó a la agencia* («ahí pagas tu saldo de S/ 94
+con Yape desde tu pedido, nunca en la agencia, y recibes tu clave de recojo») y el
+DNI es el detalle de *Recojo* («con tu DNI y tu clave de recojo»). En agencia el
+recorrido es Pago recibido → Guía de envío emitida → En camino a Shalom/Olva → Llegó
+a la agencia → Recojo; a domicilio, Pago recibido → Preparando tu pedido → En camino
+a {distrito} → Entrega («pagas S/ X al recibir»). Si el adelanto no está cobrado, el
+primer paso es «Pedido registrado» en actual y la guía queda pendiente: sigue la
+regla de nunca decirle que su pago no existe. Lo arma `buildTicket` como `pasos` y
+lo prueban los tests con la etiqueta de cada paso.
+
+**2. El chat ya no es un botón de esta pantalla; es cosa de la app.** El comprador
+que instala la app tiene seguimiento, chat y avisos; el que no, tiene el ticket, la
+guía y el teléfono. Así que la pantalla cierra con el bloque **«¿Te gustaría que te
+avisemos cuando llegue tu pedido?»** —ilustración de un celular con avisos y el logo
+de la marca— y un solo botón *Descargar la app* con el subtítulo *Dale seguimiento a
+tu pedido*. Pide instalar con el MOTIVO, no con la mecánica, y es la única acción de
+la pantalla. Cómo se comporta:
+
+- **Android/Chrome**: usa el `beforeinstallprompt` que `main.tsx` guarda en
+  `window.__deferredInstallPrompt`. Si acepta, se activa el push del pedido
+  (`subscribePush({ sessionId, role: 'buyer' })`) y se abre `/p/<token>`: la app
+  nace con el pedido adentro, no vacía. Si el navegador no dio el aviso, se enseña
+  «Abre el menú ⋮ y elige Instalar app».
+- **iPhone**: Apple no deja instalar con un clic. Se muestran los dos toques
+  (`IOSSteps`, el mismo dibujo del `InstallBanner`).
+- **Ya instalada**: el botón pasa a *Abrir mi pedido en la app*.
+- **Escritorio**: «Abre esta página desde tu celular para instalar la app».
+
+**3. El botón de la guía abría la hoja de Kross en vez del PDF de Shalom.** No era el
+enlace: era una carrera. `registrarGuia` escribe primero el número de guía en
+`order_sessions` y DESPUÉS inserta el mensaje `guia` con el `media_url` del PDF; el
+sondeo de la pantalla paraba al ver el número y, si caía en ese hueco, dejaba el
+botón apuntando a `/guia/<token>` para siempre. Ahora sigue consultando hasta ver el
+PDF (o agotar los 15 intentos), y mientras tanto muestra la hoja de respaldo.
+
+La palabra "app" **sí** aparece ahora, pero solo en el bloque de instalar y con su
+beneficio al lado; el ticket y el recorrido siguen sin ella (el test lo vigila).
+
 ## El checkout multi-paso es el default
 
 Desde este cambio, la landing abre el checkout de 3 pasos. El viejo (`CheckoutQuiz`)
