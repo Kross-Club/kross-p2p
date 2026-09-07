@@ -4,6 +4,7 @@ import { soles, textoDeCobro } from './cobro-por-chat.ts'
 import { esRielEnLinea } from './comision.ts'
 import { enviarSms, tiendaParaSms } from './sms.ts'
 import { enlaceDelPedido, smsLlegoAgencia } from './sms-texto.ts'
+import { mandarPlantillaDeRecojo } from './wa-recojo.ts'
 
 // ─── Reflejo de tracking en el pedido — lógica COMPARTIDA entre couriers ─────
 // La usan todas las entradas que deben comportarse idéntico:
@@ -87,20 +88,6 @@ export const TRACKED_COLUMNS =
   'id, store_id, product_price, advance_amount, payment_verification, saldo_verification, payment_provider, agency_name, ' +
   'tracking_numero, tracking_codigo, tracking_ose_id, tracking_year, tracking_phase, tracking_demora_at, tracking_checked_at, ' +
   'token, buyer_phone'
-
-// Plantilla WA de recojo por tienda (stores.wa_recojo_template). Se resuelve
-// una vez por invocación; NULL = esa marca no auto-envía WhatsApp.
-const waTemplateCache = new Map<string, string | null>()
-async function waRecojoTemplate(storeId: string | null): Promise<string | null> {
-  if (!storeId) return null
-  if (waTemplateCache.has(storeId)) return waTemplateCache.get(storeId)!
-  const { data } = await supabase.from('stores')
-    .select('wa_enabled, wa_recojo_template').eq('id', storeId).maybeSingle()
-  const tpl = data?.wa_enabled && typeof data?.wa_recojo_template === 'string' && data.wa_recojo_template
-    ? data.wa_recojo_template : null
-  waTemplateCache.set(storeId, tpl)
-  return tpl
-}
 
 export type ConSaldo = Pick<TrackedRow,
   'product_price' | 'advance_amount' | 'payment_verification' | 'saldo_verification'>
@@ -187,23 +174,11 @@ async function onTransition(row: TrackedRow, phase: Phase) {
         : `📞 Pedido EN DESTINO (${agencia}) con todo pagado. Confirmar que tiene su clave de recojo y coordinar el retiro.`,
       'sellers'
     )
-    // WhatsApp de recojo/cobro si la marca lo configuró. Reusa send-wa-template
-    // (mismo proyecto): el log en notifications_log y la nota al chat van gratis.
-    const tpl = await waRecojoTemplate(row.store_id)
-    if (tpl) {
-      try {
-        await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-wa-template`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-          },
-          body: JSON.stringify({ session_id: row.id, template: tpl, mapping: ['name', 'product', 'link'] }),
-        })
-      } catch (e) {
-        console.error('tracking reflect: fallo enviando WA de recojo', row.id, e)
-      }
-    }
+    // Paso 1 de la cascada de recojo, por WhatsApp: el riel de los
+    // recordatorios desde el 06-set-2026 (ver `_shared/wa-recojo.ts` — el SMS
+    // costaba más de lo que el pedido deja). Si la marca no aprobó su plantilla
+    // no manda nada, y el chat y el push salen igual.
+    await mandarPlantillaDeRecojo(row.id, row.store_id, 'listo')
     return
   }
 
