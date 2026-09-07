@@ -623,6 +623,25 @@ function anunciarGuiaEnDemo(
  * la entrega automática funciona igual que con una guía de API: el chat la
  * suelta cuando el saldo se pague.
  */
+/**
+ * Reenviarle al comprador el aviso de su guía, enseñando — espejo de
+ * `reenviarGuia`. Repite el MISMO mensaje con lo que el pedido ya tiene; no
+ * toca el rastreo. El PDF sale si la guía del demo lo tenía, igual que en la
+ * tienda real, donde se reusa el del mensaje anterior.
+ */
+export function reenviarGuiaEnDemo(pedido: StoreOrder): void {
+  const p = pedido as unknown as PedidoDemo
+  const numero = String(p.tracking_numero ?? '')
+  if (!numero) return
+  const courier = String(p.tracking_courier ?? 'SHALOM').toUpperCase() === 'OLVA' ? 'OLVA' : 'SHALOM'
+  anunciarGuiaEnDemo(p, courier, {
+    numero,
+    codigo: p.tracking_codigo ?? null,
+    // La clave NO se reenvía: la entrega el pago, igual que en la tienda real.
+    clave: null,
+  }, courier === 'SHALOM')
+}
+
 export function guiaManualEnDemo(
   p: PedidoDemo, g: { numero: string; codigo: string; clave: string },
 ): CambioDemo {

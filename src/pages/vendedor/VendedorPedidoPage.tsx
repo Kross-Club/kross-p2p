@@ -48,7 +48,7 @@ import {
   cobroEnviadoEnDemo, saldoPagadoEnDemo, cobroExtraEnDemo, cobroExtraPagadoEnDemo,
   quitarCobroEnDemo, ESPERA_CLIENTE_DEMO,
   invitarEnDemo, reasignarEnDemo, quitarEnDemo,
-  guiaManualEnDemo, reintentoShalomEnDemo,
+  guiaManualEnDemo, reenviarGuiaEnDemo, reintentoShalomEnDemo,
 } from '../../lib/demo/cambios-demo'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
@@ -1591,6 +1591,12 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
             const patch = reintentoShalomEnDemo(session as unknown as StoreOrder)
             reloadSession()
             return patch as TrackingFields
+          },
+          // Reenviar no devuelve patch: no toca el rastreo, solo repite el
+          // aviso en el hilo — por eso alcanza con releerlo.
+          reenviar: () => {
+            reenviarGuiaEnDemo(session as unknown as StoreOrder)
+            reloadSession()
           },
         } : undefined}
       />

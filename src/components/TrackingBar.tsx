@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { KeyRound, PackageCheck, Pencil, RefreshCw } from 'lucide-react'
+import { Check, KeyRound, PackageCheck, Pencil, RefreshCw, Send } from 'lucide-react'
 import { isPickupDispatch } from '../lib/session'
 import { trackShipment } from '../lib/checkout/services/OlvaTrackingService'
 
@@ -62,6 +62,8 @@ export interface TrackingFields {
 export interface AccionesDemo {
   registrar: (g: { numero: string; codigo: string; clave: string }) => TrackingFields | null
   reintentar: () => TrackingFields | null
+  /** Reenviarle al comprador el aviso de su guía — el mismo mensaje, otra vez. */
+  reenviar: () => void
 }
 
 export default function TrackingBar({ sessionId, role, dispatchType, agencyName, tracking, onUpdated, demo }: {
@@ -81,6 +83,9 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
   const [busy, setBusy] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  // El reenvío del aviso al comprador: 'listo' se apaga solo, es un acuse, no
+  // un estado del pedido.
+  const [reenvio, setReenvio] = useState<'no' | 'yendo' | 'listo' | 'error'>('no')
   const [error, setError] = useState<string | null>(null)
   const [refreshNote, setRefreshNote] = useState<string | null>(null)
 
@@ -144,6 +149,35 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
       setError('No se pudo registrar la guía. Revisa los datos e intenta de nuevo.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Reenviarle al comprador el aviso de su guía: el MISMO mensaje, otra vez.
+  // No toca el rastreo — es solo el mensaje—, así que no hay nada que romper
+  // pulsándolo dos veces. Existe porque un aviso puede no haber llegado (la
+  // base rechazó los mensajes `guia` hasta el 07-set-2026), porque el comprador
+  // borró su chat, o porque dice que no vio nada.
+  const reenviar = async () => {
+    if (reenvio === 'yendo') return
+    setReenvio('yendo')
+    setError(null)
+    try {
+      if (demo) {
+        demo.reenviar()
+        setReenvio('listo')
+        return
+      }
+      const res = await fetch(`${BASE}/order-manage`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resend_guia', session_id: sessionId }),
+      })
+      const r = await res.json().catch(() => ({}))
+      if (!res.ok || !r.ok) throw new Error('failed')
+      setReenvio('listo')
+    } catch {
+      setReenvio('error')
+      setError('No se pudo reenviar el aviso. Intenta de nuevo.')
     }
   }
 
@@ -236,11 +270,23 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
           </button>
         )}
         {role === 'seller' && registered && !editing && (
-          <button onClick={() => setEditing(true)}
-            className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg flex-shrink-0"
-            style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
-            <Pencil size={10} /> Corregir
-          </button>
+          <>
+            {/* Reenviar va ANTES de Corregir: es lo que se busca cuando el
+                comprador dice "no me llegó", y es la acción sin riesgo de las
+                dos. Corregir reescribe la guía; esta solo repite el aviso. */}
+            <button onClick={reenviar} disabled={reenvio === 'yendo'}
+              className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg flex-shrink-0 disabled:opacity-50"
+              style={reenvio === 'listo'
+                ? { background: 'var(--ok-bg)', color: 'var(--ok-fg)' }
+                : { background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
+              {reenvio === 'listo' ? <><Check size={10} /> Enviado</> : <><Send size={10} /> Reenviar</>}
+            </button>
+            <button onClick={() => setEditing(true)}
+              className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg flex-shrink-0"
+              style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
+              <Pencil size={10} /> Corregir
+            </button>
+          </>
         )}
       </div>
 
