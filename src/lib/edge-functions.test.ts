@@ -94,6 +94,8 @@ describe('las Edge Functions', () => {
   // el 27-ago hasta el 07-set-2026: el panel mandaba `x-include-cancelled` y
   // `get-store-sessions` permitía `x-store-id, x-seller-id` y nada más. En cero
   // con pedidos reales en la base, y el demo —que no consulta— tapándolo.
+  // (Ese caso ya no aplica: los cancelados se piden por la URL. La prueba se
+  // queda porque la clase de error sigue viva con cada cabecera nueva.)
   //
   // La regla: toda cabecera `x-…` que una función LEE (`req.headers.get`) y que
   // el front ENVÍA (aparece como literal en `src/`) tiene que estar en su lista.
@@ -106,7 +108,9 @@ describe('las Edge Functions', () => {
       if (/\.test\.tsx?$/.test(ruta)) continue
       for (const m of src.matchAll(/'(x-[a-z-]+)'/g)) enviadas.add(m[1])
     }
-    expect(enviadas).toContain('x-include-cancelled')
+    // Guardarraíl: si el barrido dejara de encontrar cabeceras, la prueba
+    // pasaría sin mirar nada. `x-store-id` es la que no se va a ir.
+    expect(enviadas).toContain('x-store-id')
 
     const faltan: string[] = []
     for (const ruta of archivos) {

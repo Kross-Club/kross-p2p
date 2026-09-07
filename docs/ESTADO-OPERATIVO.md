@@ -56,6 +56,28 @@ supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
 Sin SQL. Se comprueba recargando el tablero: la franja roja desaparece y los pedidos del 06-set
 aparecen en su columna.
 
+**Segunda vuelta (mismo día): el deploy de la función no bastó.** Se desplegó y el tablero siguió
+igual, sin forma de comprobar desde fuera qué versión estaba viva. Así que la pantalla dejó de
+depender de ese deploy: **los cancelados se piden por la URL** (`?cancelados=1`) y no por una
+cabecera propia — un parámetro de consulta no necesita permiso de CORS, así que el preflight pasa
+**incluso contra la versión vieja de la función**. Con esto el tablero se arregla con el deploy de
+Vercel solo. La función lee los dos (parámetro y cabecera vieja) para que ninguna mitad dependa de
+la otra, y su CORS ahora **devuelve las cabeceras que el navegador pida**
+(`access-control-request-headers`), de modo que una cabecera nueva del panel no pueda volver a
+quedar fuera de la lista.
+
+**Cómo saber qué versión está viva** (lo que faltó para no adivinar):
+
+```
+curl -i -X OPTIONS "https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/get-store-sessions" \
+  -H "Origin: https://kross-shop.krossclub.app" \
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: authorization,x-store-id,x-include-cancelled"
+```
+
+Si `access-control-allow-headers` de la respuesta no incluye `x-include-cancelled`, el deploy no
+tomó — casi siempre por correrlo desde un checkout sin actualizar.
+
 ### El PDF de la guía que no llegaba: se anota por qué y se repone desde el rastreo · 3 funciones, sin SQL (07-sep-2026)
 
 **Qué pasó.** Con el recorrido nuevo desplegado, *Ver mi guía de Shalom* siguió abriendo la hoja

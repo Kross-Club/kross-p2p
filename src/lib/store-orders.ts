@@ -240,12 +240,20 @@ export function useStoreOrders(
 
     const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': storeId }
     if (sellerId) headers['x-seller-id'] = sellerId
-    if (incluirCancelados) headers['x-include-cancelled'] = '1'
+
+    // Los cancelados se piden por la URL y NO por una cabecera propia
+    // (07-set-2026). Cada cabecera `x-…` nueva hay que permitirla además en el
+    // CORS de la función, y si se olvida el navegador mata la llamada en el
+    // preflight: «Failed to fetch», sin status y sin logs — el tablero estuvo
+    // once días en cero por eso. Un parámetro de consulta no necesita permiso
+    // de nadie, así que esta pantalla ya no depende de que las dos mitades se
+    // desplieguen juntas. La función sigue leyendo la cabecera vieja.
+    const url = `${BASE}/get-store-sessions${incluirCancelados ? '?cancelados=1' : ''}`
 
     // Un fallo NO se disfraza de lista vacía: se guarda el motivo y la pantalla
     // lo dice. Un 500 por una columna que falta en la base (PostgREST rechaza
     // el select entero) se veía exactamente igual que "hoy no vendiste nada".
-    fetch(`${BASE}/get-store-sessions`, { headers })
+    fetch(url, { headers })
       .then(async r => {
         if (r.ok) return r.json() as Promise<StoreOrder[]>
         const cuerpo = await r.text().catch(() => '')
