@@ -102,7 +102,10 @@ async function waRecojoTemplate(storeId: string | null): Promise<string | null> 
   return tpl
 }
 
-function saldoOf(row: TrackedRow): number {
+export type ConSaldo = Pick<TrackedRow,
+  'product_price' | 'advance_amount' | 'payment_verification' | 'saldo_verification'>
+
+export function saldoOf(row: ConSaldo): number {
   // Un saldo YA cruzado es deuda que no existe (misma regla que `registrarGuia`).
   if (row.saldo_verification === 'MATCHED') return 0
   const pagado = row.payment_verification === 'MATCHED' ? Number(row.advance_amount ?? 0) : 0

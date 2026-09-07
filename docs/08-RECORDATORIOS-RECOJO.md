@@ -1,12 +1,16 @@
-# 08 — Recordatorios de recojo en agencia 🔮
+# 08 — Recordatorios de recojo en agencia ✅
 
-> **Diseño, aún no construido.** Cascada automática de recordatorios (push + WhatsApp)
-> para que el comprador recoja su pedido de la agencia sin que una persona tenga que
-> perseguirlo. Sustituye la idea del "robocall tipo Entel/Claro", que se evaluó y se
-> descartó para esta fase (ver decisión al final).
+> **Construida (06-set-2026).** Cascada automática para que el comprador recoja su
+> pedido de la agencia sin que una persona tenga que perseguirlo. Sustituye la idea
+> del "robocall tipo Entel/Claro", que se evaluó y se descartó para esta fase (ver
+> decisión al final).
 >
-> Estado: 🔮 planeado · toca `order_sessions` (contrato `MerchantCustomerSession`,
-> ver `00-CORE-ARCHITECTURE.md`), Edge Functions y pg_cron.
+> El canal es **SMS + push**, no WhatsApp (ver la actualización de abajo). Los cuatro
+> pasos corren: el 1 lo dispara el tracking al llegar el paquete, los 2, 3 y 4 el cron
+> diario `pickup-reminders`.
+>
+> Estado: ✅ construido · `order_sessions.pickup_reminder_step`, `stores.agency_hold_days`
+> (§44), Edge Function `pickup-reminders`, pg_cron a las 16:00 UTC.
 
 ---
 
@@ -34,13 +38,44 @@ Además del paso 1, el riel manda otros dos avisos que no estaban en este diseñ
 que son la persistencia de quien no volverá a abrir nada: el **recibo del pago**
 (`pay360-webhook`) y **la guía con su número** (`registrarGuia`).
 
-**Lo que sigue pendiente 🔮:** los pasos 2 y 3 (recordatorio a los 2 días, último
-aviso con la fecha de devolución), el cron `pickup-reminders` y las columnas
-`pickup_reminder_step` / `agency_hold_days`. Cuando se construyan, el canal de los
-pasos 2 y 3 es SMS, con el mismo `enviarSms`, y las plantillas de WhatsApp de más
-abajo quedan como opción por marca, no como riel. El paso 4 (aviso al vendedor) y
-la llamada humana desde la cola siguen igual: para quien no lee mensajes, una voz
-real cierra lo que ningún texto cierra.
+## La cascada completa, construida ✅ (06-set-2026)
+
+Los pasos 2, 3 y 4 los manda el cron diario `pickup-reminders` (§44 del esquema), a
+las **16:00 UTC = 11:00 en Lima**: hora decente para sonar un teléfono, y deja la
+tarde para que el que se enteró hoy alcance a ir.
+
+| Paso | Día | Quién lo manda | Canales | Qué dice |
+|---|---|---|---|---|
+| 1 | 0 · llegada | `_shared/tracking.ts` en `EN_DESTINO` | chat · push · SMS | Llegó, lleva tu DNI, y el saldo se paga desde tu pedido y nunca en la agencia |
+| 2 | 2 | `pickup-reminders` | chat · push · SMS | Sigue esperándote. Corto: el que no fue en dos días no necesita más información, necesita acordarse |
+| 3 | 4 | `pickup-reminders` | chat · push · SMS | **La fecha real** en que la agencia lo devuelve. Un plazo verificable mueve al que ya ignoró dos mensajes; «no te olvides» no mueve a nadie |
+| 4 | 5 | `pickup-reminders` | nota interna en el hilo | «No recoge, se devuelve el {fecha}, ya se le avisó dos veces: toca llamarlo». Recién acá entra una persona, y solo para las excepciones |
+
+Las reglas del motor, y por qué:
+
+- **La regla de los días es pura y está probada:** `_shared/recojo.ts` +
+  `src/lib/recojo.test.ts`. Equivocarse en un día es prometerle a alguien una fecha
+  que ya pasó.
+- **Salta los pasos vencidos.** Si el cron estuvo caído tres días, un pedido de día 6
+  recibe el aviso al vendedor, no un recordatorio de hace cuatro días: un aviso viejo
+  no solo no sirve, enseña que los mensajes de esta marca llegan tarde.
+- **Idempotente.** `pickup_reminder_step` se escribe en la misma corrida que envía,
+  así que disparar el cron dos veces no manda nada dos veces.
+- **Corte automático.** `entregado` o `no_entregado` cierran la cadencia solos, y el
+  pipeline lo sigue moviendo una persona: la cascada solo deja de insistir.
+- **La fecha se calcula en hora de Lima** (UTC-5 fijo). En UTC, todo lo que pase
+  después de las 7 p. m. cae en el día siguiente, y eso le regalaría al comprador un
+  día que no tiene.
+- **Techo por corrida:** 300 pedidos. Cada paso de comprador cuesta un SMS, y una
+  corrida que se dispara sola no puede tener un costo sin tope.
+- **Se puede apagar por marca** (`stores.pickup_reminders_enabled`), pero **nace
+  encendida**: el aviso de llegada ya sale para todos, y una cascada apagada por
+  defecto es código muerto hasta que alguien se acuerde de prenderla.
+
+**Lo que queda pendiente 🔮:** el interruptor y el campo `agency_hold_days` en la
+pantalla *Marca* (hoy se cambian por SQL), y los contadores de recojo en el panel
+(paso F3 del plan de abajo). Las plantillas de WhatsApp que siguen más abajo quedan
+como opción por marca (`wa_recojo_template`), no como riel.
 
 ## El problema
 

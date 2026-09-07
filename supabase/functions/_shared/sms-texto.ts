@@ -129,6 +129,30 @@ export function smsLlegoAgencia(i: { tienda: string; agencia: string; saldo: num
   return arma(cuerpo, i.link)
 }
 
+/**
+ * Paso 2 de la cascada (día 2): sigue esperándote. Corto a propósito — el que
+ * no fue en dos días no necesita más información, necesita acordarse.
+ */
+export function smsRecordatorioRecojo(i: { tienda: string; agencia: string; saldo: number; link: string | null }): string {
+  const cuerpo = i.saldo > 0
+    ? `${i.tienda}: tu pedido sigue esperandote en ${nombreCourier(i.agencia)}. Paga tu saldo de ${soles(i.saldo)} desde tu pedido y recogelo con tu DNI.`
+    : `${i.tienda}: tu pedido sigue esperandote en ${nombreCourier(i.agencia)}. Recogelo con tu DNI y tu clave, que esta en tu pedido.`
+  return arma(cuerpo, i.link)
+}
+
+/**
+ * Paso 3 (día 4): el último aviso, con la FECHA en que la agencia lo devuelve.
+ * Un plazo real y verificable es lo que mueve al que ya ignoró dos mensajes;
+ * "no te olvides" no mueve a nadie. Sin mayúsculas ni signos de alarma: el
+ * dato asusta lo suficiente, y un SMS que grita se lee como estafa.
+ */
+export function smsUltimoAvisoRecojo(i: { tienda: string; agencia: string; fecha: string; link: string | null }): string {
+  return arma(
+    `${i.tienda}: ultimo aviso. ${nombreCourier(i.agencia)} devuelve tu pedido el ${i.fecha} y despues ya no podremos entregartelo. Recogelo con tu DNI.`,
+    i.link,
+  )
+}
+
 /** Un aviso genérico (mensaje del equipo, llamada perdida): el cuerpo que ya
  *  se usó en el push, recortado, con la tienda adelante y el enlace atrás. */
 export function smsGenerico(i: { tienda: string; cuerpo: string; link: string | null }): string {

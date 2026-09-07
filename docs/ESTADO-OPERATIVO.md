@@ -34,6 +34,64 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La cascada de recojo completa · SQL + 1 función nueva + 2 desplegadas (06-sep-2026)
+
+**Qué entró.** El cron diario que persigue al comprador que no fue por su paquete, para
+que no lo haga una persona. El paso 1 (la llegada) ya lo mandaba el tracking; ahora
+salen los tres que faltaban, con SMS + push + mensaje al chat:
+
+| Paso | Día | Qué dice |
+|---|---|---|
+| 2 | 2 | «Tu pedido sigue esperandote en Shalom. Paga tu saldo de S/94 desde tu pedido y recogelo con tu DNI.» |
+| 3 | 4 | «Ultimo aviso. Shalom devuelve tu pedido el sabado 12 de setiembre y despues ya no podremos entregartelo.» |
+| 4 | 5 | Nota interna en el hilo: «no recoge, se devuelve el {fecha}, ya se le avisó dos veces: toca llamarlo» |
+
+Es el 27-35 % que no recoge sin que alguien insista (`ICP Sales/VALIDACION-AGENCIA.md`).
+Detalle y reglas en `08-RECORDATORIOS-RECOJO.md` § *La cascada completa, construida*.
+
+**Qué se ve si no entra:** nada cambia. Sin el SQL la función no encuentra las columnas
+y no manda; sin el cron, nadie la llama.
+
+**1. El SQL** (§44, idempotente): las columnas del progreso, la config por marca
+(`pickup_reminders_enabled` **nace encendida**, `agency_hold_days` = 7), su índice y el
+job de pg_cron a las **16:00 UTC = 11:00 en Lima**.
+
+```sql
+-- correr supabase/setup-kross.sql, o el bloque §44 suelto
+```
+
+**2. Las funciones** (la nueva primero: el cron la llama por URL, y si no está
+desplegada el job pega contra una URL que no responde):
+
+```
+supabase functions deploy pickup-reminders --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-webhook olva-lat-webhook --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy shalom-tracking-sync olva-tracking olva-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+```
+
+> Las de tracking van porque `saldoOf` cambió de firma en `_shared/tracking.ts` (ahora
+> pide solo las cuatro columnas que lee, para que la cascada la use sin castear). El
+> comportamiento es idéntico; si no se despliegan, siguen con la copia vieja y también
+> funcionan.
+
+**Cómo probarlo sin esperar dos días.** El cron se puede disparar a mano, y para ver un
+paso concreto se retrocede la llegada del pedido:
+
+```sql
+-- Un pedido en EN_DESTINO al que se le quiere ver el último aviso (día 4):
+update order_sessions
+   set tracking_phase_at = now() - interval '4 days', pickup_reminder_step = 1
+ where id = '<session_id>';
+```
+
+```
+curl -X POST https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/pickup-reminders \
+  -H "Authorization: Bearer <ANON_KEY>" -H "Content-Type: application/json" -d '{}'
+```
+
+Devuelve `{revisados, recordatorios, ultimos_avisos, avisos_al_vendedor, saltados}`. Y
+para ver el job agendado: `select jobname, schedule from cron.job;`
+
 ### El semáforo de Twilio decía "Caída" con el riel funcionando · `integraciones` (06-sep-2026)
 
 **Qué pasaba.** Con el riel recién configurado y **enviando SMS de verdad**, *Panel →
