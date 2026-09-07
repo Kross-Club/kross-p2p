@@ -52,13 +52,46 @@ function config(): Config | null {
 /** ¿Hay riel? Para el tablero de Conexiones. */
 export const smsConfigurado = (): boolean => !!config()
 
-/** La cabecera Basic para el chequeo barato del tablero (`GET Accounts/{sid}`). */
-export function twilioAuth(): { url: string; headers: Record<string, string> } | null {
+/**
+ * El chequeo del tablero: **listar un mensaje**, que es una lectura sobre el
+ * mismo recurso en el que escribimos. Gratis, y responde la pregunta que
+ * importa —¿estas credenciales pueden usar la API de mensajes?— en vez de una
+ * de administración de la cuenta.
+ *
+ * Antes preguntaba por `GET Accounts/{sid}.json` y con una API key eso podía
+ * rebotar aunque el envío funcionara perfecto: el panel pintaba **Caída** un
+ * riel que estaba mandando SMS (06-set-2026). Un chequeo que no ejercita la
+ * capacidad de la que dependemos no sirve para nada.
+ *
+ * `null` = no hay llave (SIN_CONFIGURAR, que no es lo mismo que caída). Si
+ * falla, queda anotado con su `KX-…`: un punto rojo sin explicación obliga a
+ * adivinar, que es justo lo que §42 existe para evitar.
+ */
+export async function chequearTwilio(): Promise<boolean | null> {
   const c = config()
   if (!c) return null
-  return {
-    url: `https://api.twilio.com/2010-04-01/Accounts/${c.accountSid}.json`,
-    headers: { Authorization: `Basic ${btoa(`${c.user}:${c.pass}`)}` },
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${c.accountSid}/Messages.json?PageSize=1`
+  const headers = { Authorization: `Basic ${btoa(`${c.user}:${c.pass}`)}` }
+  const ctrl = new AbortController()
+  const alarma = setTimeout(() => ctrl.abort(), 5000)
+  const t0 = Date.now()
+  try {
+    const res = await fetch(url, { headers, signal: ctrl.signal })
+    if (res.ok) return true
+    const txt = await res.text().catch(() => '')
+    const j = safeJson(txt) as { code?: number } | null
+    await anotar({
+      proveedor: 'TWILIO', op: 'cuenta.chequeo',
+      outcome: res.status >= 500 ? 'FALLO' : 'RECHAZO',
+      httpStatus: res.status, errorCode: j?.code != null ? String(j.code) : null,
+      detail: txt, providerRef: res.headers.get('twilio-request-id'), duracionMs: Date.now() - t0,
+    })
+    return false
+  } catch (e) {
+    await anotarSinRespuesta({ proveedor: 'TWILIO', op: 'cuenta.chequeo' }, e, Date.now() - t0)
+    return false
+  } finally {
+    clearTimeout(alarma)
   }
 }
 

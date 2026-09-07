@@ -34,6 +34,23 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El semáforo de Twilio decía "Caída" con el riel funcionando · `integraciones` (06-sep-2026)
+
+**Qué pasaba.** Con el riel recién configurado y **enviando SMS de verdad**, *Panel →
+Conexiones* pintaba Twilio en rojo. El chequeo preguntaba por `GET Accounts/{sid}.json`
+—administración de la cuenta— y no por la API de mensajes: con una API key (`SK…`) eso
+puede rebotar aunque el envío funcione perfecto. Ahora el chequeo **lista un mensaje**
+(`Messages?PageSize=1`), que es una lectura sobre lo mismo que escribimos, y si falla
+**anota el motivo** en `api_events` con su `KX-…` en vez de dejar un punto rojo sin
+explicación.
+
+```
+supabase functions deploy integraciones --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**Qué se ve si no entra:** los SMS siguen saliendo igual (el semáforo nunca frenó nada);
+la tarjeta de Twilio sigue en rojo.
+
 ### El riel SMS con Twilio · SQL + secretos + 11 funciones (05-sep-2026)
 
 **Qué entró.** Tres avisos por mensaje de texto que le llegan a cualquier celular, sin
