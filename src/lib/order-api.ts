@@ -69,6 +69,10 @@ export interface OrderSession {
   payment_provider?: string | null
   items?: OrderItem[] | null
   buyer_can_call?: boolean
+  /** El DNI de quien recoge. Viaja también al COMPRADOR —a diferencia de
+   *  `buyer_contact`, que es solo del vendedor—: su ticket lo enseña al lado
+   *  del nombre porque el ticket se reenvía a quien va al mostrador. */
+  buyer_document?: string | null
   assigned_seller_id?: string | null
   involved_seller_ids?: string[] | null
   writer_seller_ids?: string[] | null

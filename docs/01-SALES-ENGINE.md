@@ -522,6 +522,21 @@ El contenido lo arma `src/lib/checkout/ticket.ts` (puro, con tests en
 
 #### La pantalla final deja de ser una ventana: `/pedido/:token` ✅ (07-set-2026)
 
+> **«La persona que recoge», con su DNI (mismo día).** «A nombre de» describía la factura; lo que
+> importa es **quién va al mostrador**, que puede no ser quien compró — el ticket se reenvía. Ahora
+> la línea nombra la acción y lleva el documento **al costado del nombre**, porque allí se leen
+> juntos y separarlos en dos renglones invita a llevar solo la mitad. A domicilio dice «recibe» y
+> **sin DNI**: no hay mostrador, y el ticket no nombra un documento que nadie va a mirar.
+>
+> Para eso `get-session` manda ahora `buyer_document` **también al comprador** (`buyer_contact`
+> sigue siendo solo del vendedor). Es su propio documento y la llave de la página es el token del
+> pedido, el mismo que ya enseña su nombre y su dirección.
+>
+> Y se fue «nunca en la agencia» del paso *Llegó a la agencia*: el botón apagado dice mejor que
+> cualquier frase que el saldo se paga ahí. La advertencia sigue viva donde de verdad hace falta —
+> en el aviso que le llega al celular cuando el paquete llega.
+
+
 > **Cuatro detalles, probándola en un celular de verdad (mismo día).**
 >
 > 1. **Instalar ya no navega a ningún lado.** Abría el chat, que tenía sentido cuando esta pantalla

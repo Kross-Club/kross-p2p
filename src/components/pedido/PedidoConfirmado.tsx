@@ -82,7 +82,12 @@ export default function PedidoConfirmado({ ticket, orderCode, paid, sessionId }:
           {ticket.lines.map(l => (
             <div key={l.label} className="px-4 py-3">
               <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{l.label}</dt>
-              <dd className="text-[15px] font-bold text-gray-900 leading-snug">{l.value}</dd>
+              {/* `aside` va AL COSTADO del valor —el DNI pegado al nombre—, y
+                  cae debajo solo si no entra: en el mostrador se leen juntos. */}
+              <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-[15px] font-bold text-gray-900 leading-snug">{l.value}</span>
+                {l.aside && <span className="text-sm font-bold text-gray-500 tabular-nums">{l.aside}</span>}
+              </dd>
               {l.detail && <dd className="text-sm text-gray-600 leading-snug mt-0.5">{l.detail}</dd>}
             </div>
           ))}

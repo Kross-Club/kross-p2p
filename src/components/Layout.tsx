@@ -22,12 +22,16 @@ import { administraLaPlataforma } from '../../supabase/functions/_shared/alcance
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
+/** La firma de la marca en el panel: el apaisado si lo tiene, y el cuadrado
+ *  de respaldo (ver `BrandMark`). */
+interface Marca { nombre: string; logo_url: string | null; logo_wide_url?: string | null }
+
 export default function Layout() {
   const { real, effective, impersonating, stopActing } = useSeller()
   const [uploading, setUploading] = useState(false)
   const [avatar, setAvatar] = useState<string | null>(null)
   const [available, setAvailable] = useState(true)
-  const [brand, setBrand] = useState<{ nombre: string; logo_url: string | null } | null>(null)
+  const [brand, setBrand] = useState<Marca | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -48,8 +52,8 @@ export default function Layout() {
     if (!effective) return
     if (administraLaPlataforma(effective)) { setBrand({ nombre: 'Kross', logo_url: null }); return }
     if (!effective.store_id) return
-    supabase.from('stores').select('nombre, logo_url').eq('id', effective.store_id).maybeSingle()
-      .then(({ data }) => { if (data) setBrand(data as { nombre: string; logo_url: string | null }) })
+    supabase.from('stores').select('nombre, logo_url, logo_wide_url').eq('id', effective.store_id).maybeSingle()
+      .then(({ data }) => { if (data) setBrand(data as Marca) })
   }, [effective?.store_id, effective?.is_admin, effective?.is_super_admin])
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])

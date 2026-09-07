@@ -617,3 +617,22 @@ Mapeo actual → objetivo:
 ## Ver también
 - Capa estratégica: [`ICP Sales`](./ICP%20Sales/) y [`ICP LTV`](./ICP%20LTV/).
 - Módulos: [01-SALES](./01-SALES-ENGINE.md) · [02-LOGISTICS](./02-SMART-LOGISTICS.md) · [03-LOYALTY](./03-LOYALTY-ENGINE.md).
+
+## Los tres logos de una marca (07-set-2026)
+
+No es coquetería: cada uno vive en un sitio con una forma distinta, y estirar uno solo se ve mal en
+dos de los tres.
+
+| Columna | Forma | Dónde se usa | Si falta |
+|---|---|---|---|
+| `stores.logo_url` | Cuadrado, 512×512 | El ícono de la app instalada y el del aviso de instalar de Android | — |
+| `stores.notif_icon_url` | Redondo, transparente | Las notificaciones push, en la barra de Android | Cae al cuadrado |
+| `stores.logo_wide_url` | Apaisado, transparente | La firma de la cabecera del panel (`BrandMark`) | Cae al cuadrado + el nombre escrito |
+
+⚠️ **Android recorta el cuadrado a su máscara** (círculo, squircle, según el lanzador), así que la
+marca tiene que ir centrada y con aire en el archivo: un logo descentrado en el PNG se ve
+descentrado en el celular, y eso no se arregla desde el código. Se suben en *Panel → Mi marca*, los
+tres al bucket `branding`, y `manage-store` los guarda con el mismo candado que el nombre.
+
+Con logo apaisado, `BrandMark` **no escribe el nombre al lado**: un lockup ya lo trae dibujado como
+la marca quiere que se lea, y repetirlo en nuestra tipografía lo dice dos veces y peor.

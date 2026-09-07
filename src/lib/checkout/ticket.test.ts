@@ -73,7 +73,6 @@ describe('ticket · agencia con adelanto pagado', () => {
   it('el saldo vive en el paso donde se paga, y enseña su botón apagado', () => {
     const llegada = t.pasos.find(p => p.label === 'Llegó a la agencia')!
     expect(llegada.detail).toMatch(/saldo de S\/ 94/)
-    expect(llegada.detail).toMatch(/nunca en la agencia/)
     expect(llegada.detail).toMatch(/clave de recojo/)
     expect(llegada.accion).toBe('Pagar S/ 94 con Yape')
   })
@@ -95,8 +94,20 @@ describe('ticket · agencia con adelanto pagado', () => {
   it('sin guía todavía, el ticket no la promete', () => {
     expect(t.guide).toBeNull()
   })
-  it('a nombre de quien recibe', () => {
-    expect(t.lines.find(l => l.label === 'A nombre de')?.value).toBe('Rosa Quispe')
+  // "La persona que recoge", no "a nombre de" (07-set-2026): el ticket se
+  // reenvía y quien va al mostrador puede no ser quien compró. El DNI va AL
+  // COSTADO del nombre porque allí se leen juntos.
+  it('nombra a quien recoge, con su DNI al costado', () => {
+    const quien = t.lines.find(l => l.label === 'La persona que recoge')!
+    expect(quien.value).toBe('Rosa Quispe')
+    expect(quien.aside).toBe('DNI 12345678')
+  })
+
+  it('a domicilio nadie recoge: recibe, y sin DNI porque no hay mostrador', () => {
+    const t2 = buildTicket({ state: domicilioLima(), price: 140, packName: null, paid: false, unpaid: false, branch: null })
+    const quien = t2.lines.find(l => l.label === 'La persona que recibe')!
+    expect(quien).toBeTruthy()
+    expect(quien.aside).toBeUndefined()
   })
 })
 

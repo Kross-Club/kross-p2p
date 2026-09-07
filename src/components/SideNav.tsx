@@ -22,7 +22,7 @@ export default function SideNav({
   brand,
 }: {
   effective: SellerProfile | null | undefined
-  brand: { nombre: string; logo_url: string | null } | null
+  brand: { nombre: string; logo_url: string | null; logo_wide_url?: string | null } | null
 }) {
   const links = sellerNavLinks(effective)
   const plegado = useMenuPlegado()

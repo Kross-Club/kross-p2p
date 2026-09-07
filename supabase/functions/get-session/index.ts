@@ -113,6 +113,12 @@ Deno.serve(async (req) => {
   // abajo: mismas reglas que `payment_reason`, es PII y no debe viajar al
   // navegador de un comprador que mira la pestaña de red).
   let buyerContact: Record<string, unknown> | null = null
+  // El documento de quien recoge SÍ viaja al comprador (07-set-2026), aparte
+  // de la ficha del vendedor: su ticket dice "La persona que recoge" con el
+  // DNI al lado, porque el ticket se REENVÍA a quien va al mostrador y ahí se
+  // lo van a pedir. Es su propio documento y la llave de esta página es el
+  // token del pedido — el mismo que ya enseña su nombre y su dirección.
+  let buyerDocument: string | null = null
   if (session.buyer_id) {
     const { data: b } = await supabase
       .from('buyers')
@@ -120,6 +126,7 @@ Deno.serve(async (req) => {
       .eq('id', session.buyer_id)
       .maybeSingle()
     buyerCanCall = !!b?.can_call
+    buyerDocument = b?.document_number ?? null
     if (viewerIsSeller && b) {
       // ¿Se le puede mandar una push AHORA? No es lo mismo que "entró alguna
       // vez": desinstalar la app no avisa a nadie, pero la suscripción se cae
@@ -268,7 +275,7 @@ Deno.serve(async (req) => {
         // recién cuando su saldo cruza, nunca por esta vía.
         shalom_pickup_code: puedeLeerInterno ? session.shalom_pickup_code : undefined,
         seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar,
-        participants, buyer_can_call: buyerCanCall,
+        participants, buyer_can_call: buyerCanCall, buyer_document: buyerDocument,
         buyer_contact: buyerContact, payment_trace: paymentTrace, saldo_trace: saldoTrace,
         // `null` y no `[]` cuando no hay filas: una lista vacía haría que el
         // panel leyera de ella y diera el pedido por no cobrado. Sin lista, cae
