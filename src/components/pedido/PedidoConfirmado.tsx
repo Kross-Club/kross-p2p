@@ -29,7 +29,7 @@
 //      instala—.
 
 import { useEffect, useState } from 'react'
-import { Camera, Check, Download, ExternalLink, Phone, Smartphone } from 'lucide-react'
+import { Camera, Check, Download, ExternalLink, Phone, Smartphone, Wallet } from 'lucide-react'
 import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
 import { useStore } from '../../lib/store-context'
@@ -44,14 +44,11 @@ interface Props {
   orderCode: string
   /** ¿El adelanto cruzó? Solo pinta de verde la primera frase. */
   paid: boolean
-  /** Token del pedido: la llave de `/pedido/:token`, que la app abre al
-   *  instalarse. */
-  token?: string | null
   /** Id del pedido: a él se suscribe el push cuando el comprador instala. */
   sessionId?: string | null
 }
 
-export default function PedidoConfirmado({ ticket, orderCode, paid, token, sessionId }: Props) {
+export default function PedidoConfirmado({ ticket, orderCode, paid, sessionId }: Props) {
   const { store } = useStore()
   const phone = store.wa_display_phone?.trim() || null
 
@@ -142,7 +139,7 @@ export default function PedidoConfirmado({ ticket, orderCode, paid, token, sessi
       <Recorrido pasos={ticket.pasos} />
 
       {/* ── La app ── */}
-      <InstalarApp token={token} sessionId={sessionId} nombre={store.nombre} logo={store.logo_url} />
+      <InstalarApp sessionId={sessionId} nombre={store.nombre} logo={store.logo_url} />
     </div>
   )
 }
@@ -175,6 +172,17 @@ function Recorrido({ pasos }: { pasos: TicketStep[] }) {
                   {p.detail}
                 </p>
               )}
+              {/* El botón que traerá ese paso, apagado. Se enseña para que lo
+                  reconozca cuando de verdad se encienda; `disabled` de verdad,
+                  no un dibujo, para que ni el teclado ni el lector de pantalla
+                  lo ofrezcan. */}
+              {p.accion && (
+                <button type="button" disabled
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-black
+                    bg-gray-100 text-gray-400 cursor-not-allowed">
+                  <Wallet size={14} strokeWidth={2.5} /> {p.accion}
+                </button>
+              )}
             </div>
           </li>
         )
@@ -183,26 +191,46 @@ function Recorrido({ pasos }: { pasos: TicketStep[] }) {
   )
 }
 
+/** Que ya la instaló, recordado entre visitas. `isInstalled()` solo sabe si la
+ *  página se está viendo DENTRO de la app; en la pestaña del navegador —que es
+ *  donde está el comprador cuando la instala— vuelve `false` para siempre, y
+ *  sin esto el botón le seguiría ofreciendo instalar lo que ya tiene. */
+const YA_INSTALADA = 'kross-app-instalada'
+const recordarInstalada = () => { try { localStorage.setItem(YA_INSTALADA, '1') } catch { /* modo privado */ } }
+const seInstalo = () => { try { return localStorage.getItem(YA_INSTALADA) === '1' } catch { return false } }
+
 /**
  * "¿Te avisamos cuando llegue?" y el botón de la app. Reusa el aviso de
- * instalación que `main.tsx` guarda en `__deferredInstallPrompt`; al aceptar,
- * se suscribe al push del pedido y abre `/p/:token` —que ahora es la app—.
+ * instalación que `main.tsx` guarda en `__deferredInstallPrompt`.
+ *
+ * Al aceptar NO se navega a ningún lado (07-set-2026). Antes abría el chat, y
+ * eso tenía sentido cuando esta pantalla era una ventana que se cerraba: había
+ * que llevarlo a alguna parte. Ahora el comprador está en su pedido y Android
+ * está instalando la app en ese mismo momento — moverlo de página es quitarle
+ * de encima justo lo que vino a mirar. Lo que hace falta es enseñarle el ÍCONO
+ * que va a tener que buscar en su celular, y eso es lo que se queda en
+ * pantalla, también si vuelve más tarde.
  */
-function InstalarApp({ token, sessionId, nombre, logo }: {
-  token?: string | null; sessionId?: string | null; nombre: string; logo: string | null
+function InstalarApp({ sessionId, nombre, logo }: {
+  /** Id del pedido: a él se suscribe el push cuando el comprador instala. */
+  sessionId?: string | null; nombre: string; logo: string | null
 }) {
   const desktop = useIsDesktop()
   const [prompt, setPrompt] = useState<{ prompt: () => void; userChoice: Promise<{ outcome: string }> } | null>(
     () => (typeof window !== 'undefined' ? (window as { __deferredInstallPrompt?: never }).__deferredInstallPrompt ?? null : null),
   )
-  const [instalada, setInstalada] = useState(() => (typeof window !== 'undefined' ? isInstalled() : false))
+  // Dentro de la app no hay nada que ofrecer; en el navegador, lo que se
+  // recordó de una instalación anterior.
+  const dentroDeLaApp = typeof window !== 'undefined' && isInstalled()
+  const [instalada, setInstalada] = useState(() => typeof window !== 'undefined' && seInstalo())
   const [ayuda, setAyuda] = useState(false)
   const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
-  const abrir = token ? `/p/${token}` : '/'
 
   useEffect(() => {
     const ready = () => setPrompt((window as { __deferredInstallPrompt?: never }).__deferredInstallPrompt ?? null)
-    const installed = () => setInstalada(true)
+    // Android confirma la instalación por su cuenta, la haya pedido este botón
+    // o el menú del navegador.
+    const installed = () => { recordarInstalada(); setInstalada(true) }
     window.addEventListener('install-prompt-ready', ready)
     window.addEventListener('appinstalled', installed)
     return () => {
@@ -220,8 +248,30 @@ function InstalarApp({ token, sessionId, nombre, logo }: {
     if (outcome !== 'accepted') return
     // Los avisos son la razón por la que instaló: se piden en el mismo gesto.
     if (sessionId) await subscribePush({ sessionId, role: 'buyer' }).catch(() => {})
+    recordarInstalada()
     setInstalada(true)
-    window.location.assign(abrir)
+  }
+
+  // Viéndolo DENTRO de la app no hay nada que ofrecer: ya está instalada y el
+  // pedido es lo que tiene delante.
+  if (dentroDeLaApp) return null
+
+  // Ya la tiene: lo único útil es el ícono con el que va a encontrarla. Sin
+  // botón — mandarlo a otra página ahora es sacarlo de su pedido.
+  if (instalada) {
+    return (
+      <div className="rounded-2xl px-4 py-5 text-center"
+        style={{ background: 'color-mix(in srgb, var(--brand) 8%, white)', border: '0.5px solid color-mix(in srgb, var(--brand) 35%, transparent)' }}>
+        <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center overflow-hidden"
+          style={{ background: 'var(--brand)' }}>
+          {logo
+            ? <img src={logo} alt={nombre} className="w-full h-full object-contain p-1.5" />
+            : <Smartphone size={26} className="text-white" />}
+        </div>
+        <p className="text-base font-black text-gray-900 leading-snug mt-3">{COPY.doneInstallReady}</p>
+        <p className="text-sm text-gray-600 leading-snug mt-1 px-2">{COPY.doneInstallFind(nombre)}</p>
+      </div>
+    )
   }
 
   return (
@@ -231,13 +281,7 @@ function InstalarApp({ token, sessionId, nombre, logo }: {
       <p className="text-base font-black text-gray-900 leading-snug mt-3">{COPY.doneInstallQuestion}</p>
       <p className="text-sm text-gray-600 leading-snug mt-1 px-2">{COPY.doneInstallBody(nombre)}</p>
 
-      {instalada ? (
-        <a href={abrir} className="mt-4 flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-black text-base text-white
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-          style={{ background: 'var(--brand)' }}>
-          <Smartphone size={18} strokeWidth={2.5} /> {COPY.doneInstallOpen}
-        </a>
-      ) : isIOS ? (
+      {isIOS ? (
         <div className="mt-3 flex flex-col items-center">
           <p className="text-xs text-gray-500 mb-1">{COPY.doneInstallIos}</p>
           <IOSSteps />
@@ -293,8 +337,11 @@ function Ilustracion({ logo, nombre }: { logo: string | null; nombre: string }) 
       </svg>
       <div className="absolute left-1/2 top-[38px] -translate-x-1/2 w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center"
         style={{ background: 'var(--brand)' }}>
+        {/* `object-contain`, no `cover` (07-set-2026): recortar un logo que ya
+            trae su propio aire lo dejaba visiblemente corrido dentro del
+            cuadrado. Contenido y con margen se ve entero y centrado. */}
         {logo
-          ? <img src={logo} alt={nombre} className="w-full h-full object-cover" />
+          ? <img src={logo} alt={nombre} className="w-full h-full object-contain p-1" />
           : <Smartphone size={18} className="text-white" />}
       </div>
     </div>
