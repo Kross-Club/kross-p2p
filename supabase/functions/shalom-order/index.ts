@@ -34,7 +34,7 @@
 // `TrackingBar` — el mismo camino de siempre, que ahora comparte código con
 // este (`_shared/guia.ts`).
 
-import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
+import { descargarPdfDeGuia, normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { chatMessage, supabase } from '../_shared/tracking.ts'
 import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import {
@@ -606,42 +606,10 @@ Deno.serve(async (req: Request) => {
      * no baja jamás retrasa ni tumba el registro de la guía — sin él, el botón
      * abre la hoja de guía de la app, que es el respaldo de siempre.
      */
-    async function guardarPdfDeGuia(oseId: string | null, numero: string | null): Promise<string | null> {
-      if (!oseId) return null
-      try {
-        for (const doc of ['voucher', 'label']) {
-          const ctrl = new AbortController()
-          const t = setTimeout(() => ctrl.abort(), 30_000)
-          const r = await fetch(`${SHALOM_API_BASE}/v1/orders/${oseId}/${doc}`, { headers: auth, signal: ctrl.signal })
-            .catch(() => null)
-          clearTimeout(t)
-          if (!r?.ok || !(r.headers.get('content-type') ?? '').includes('pdf')) {
-            // Best-effort, pero anotado: un voucher que no baja es de las cosas
-            // que solo se notan cuando el comprador dice "no me abre el botón".
-            await anotar({
-              proveedor: 'SHALOM_PE', op: `guia.${doc}`, sessionId,
-              outcome: r ? (r.status >= 500 ? 'FALLO' : 'RECHAZO') : 'SIN_RESPUESTA',
-              httpStatus: r?.status ?? null,
-              detail: r ? `content-type ${r.headers.get('content-type') ?? '—'}` : 'sin respuesta',
-            })
-            continue
-          }
-          const bytes = new Uint8Array(await r.arrayBuffer())
-          if (bytes.length === 0) continue
-          const path = `${sessionId}/${numero ?? oseId}.pdf`
-          const up = await supabase.storage.from('shalom-guias')
-            .upload(path, bytes, { contentType: 'application/pdf', upsert: true })
-          if (up.error) {
-            console.error('[shalom-order] no se pudo subir el PDF de la guía', up.error.message)
-            return null
-          }
-          return supabase.storage.from('shalom-guias').getPublicUrl(path).data.publicUrl
-        }
-      } catch (e) {
-        console.error('[shalom-order] PDF de la guía no descargado', String(e).slice(0, 200))
-      }
-      return null
-    }
+    /** La guía formal en PDF, si se pudo bajar ahora. Si no, `reponerPdfDeGuia`
+     *  lo vuelve a intentar desde el rastreo (`_shared/guia.ts`). */
+    const guardarPdfDeGuia = (oseId: string | null, numero: string | null) =>
+      descargarPdfDeGuia({ sessionId, storeId, oseId, numero, auth })
 
     /** Escribe la guía en el pedido. La clave de retiro se guarda en la fila y
      *  NO viaja a ningún chat: en Kross se entrega contra el saldo pagado. */
@@ -710,7 +678,9 @@ Deno.serve(async (req: Request) => {
       })
       await aLogistica(sessionId,
         `${cabecera} Guía: ${g.ids}. `
-        + 'Su clave de retiro quedó guardada en el pedido y el chat se la entrega solo contra el saldo pagado.')
+        + 'Su clave de retiro quedó guardada en el pedido y el chat se la entrega solo contra el saldo pagado.'
+        + (pdfUrl ? '' : ' Todavía sin el PDF de Shalom (el comprador ve la hoja de guía de la app); '
+          + 'se vuelve a intentar con cada novedad del rastreo. El motivo está en Panel → Conexiones → Shalom PE.'))
       return json({ created: true, proveedor, tracking: g.tracking })
     }
   }

@@ -2,6 +2,7 @@ import {
   applyTracking, chatMessage, ensureLatWebhook, ensureWebhook,
   shalomApiKey, shalomLatApiKey, supabase, TRACKED_COLUMNS, type TrackedRow,
 } from '../_shared/shalom.ts'
+import { reponerPdfDeGuia } from '../_shared/guia.ts'
 import { rastrearLote } from '../_shared/shalom-rastreo.ts'
 
 const corsHeaders = {
@@ -78,12 +79,17 @@ Deno.serve(async (req) => {
       continue
     }
 
+    const primera = !row.tracking_checked_at
     const { transitioned } = await applyTracking(row, {
       phase: lectura.phase,
       demoraIso: lectura.demoraIso,
       oseId: lectura.oseId,
     })
     if (transitioned) transitions++
+    // La guía sin su PDF (contingencia sin `ose_id`, voucher que no bajó al
+    // emitir): se vuelve a intentar en el primer chequeo y en cada cambio de
+    // fase — un puñado de requests por pedido, no una cada media hora.
+    if (transitioned || primera) await reponerPdfDeGuia(row, lectura.oseId)
   }
 
   return json({

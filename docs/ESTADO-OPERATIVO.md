@@ -34,6 +34,41 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El PDF de la guía que no llegaba: se anota por qué y se repone desde el rastreo · 3 funciones, sin SQL (07-sep-2026)
+
+**Qué pasó.** Con el recorrido nuevo desplegado, *Ver mi guía de Shalom* siguió abriendo la hoja
+de guía de Kross en un pedido real. La pantalla y la tarjeta del chat caen a esa hoja por una sola
+razón: el mensaje `guia` no trae `media_url`, o sea el voucher NO se bajó al emitir. Tres causas
+posibles, y ninguna se veía: (1) la guía salió por la contingencia (Shalom LAT), que no maneja
+`ose_id`, y sin él no hay voucher que pedir; (2) el voucher del titular rechazó o vino con otro
+`content-type` (`application/octet-stream` se descartaba aunque fuera el PDF correcto); (3) la
+subida al bucket `shalom-guias` falló —bucket sin crear, permisos— y eso solo iba a `console.error`.
+
+**Qué cambió.** La descarga vive ahora en `_shared/guia.ts` (`descargarPdfDeGuia`): acepta el PDF
+por tipo **o por firma `%PDF-`**, y anota cada tropiezo en `api_events` bajo Shalom PE con ops
+`guia.voucher`, `guia.label` y `guia.storage` (Panel → Conexiones). Y **se repone sola**
+(`reponerPdfDeGuia`): el webhook y el barrido de Shalom, en el primer chequeo y en cada cambio de
+fase, si el mensaje de guía sigue sin PDF y ya hay `ose_id` (el barrido lo aprende del rastreo
+aunque la guía haya salido por LAT), bajan el voucher y se lo ponen al mensaje. El chat lo enseña
+en su siguiente apertura. El aviso a Logística dice cuando la guía salió sin PDF y a dónde mirar.
+La pantalla de pedido confirmado espera ahora dos minutos, no uno.
+
+**Qué desplegar.**
+
+```
+supabase functions deploy shalom-order         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-webhook       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+Sin SQL nuevo, pero **verificar que el bucket existe**: Storage → `shalom-guias` (público). Si no
+está, es que el §38 del 01-set no se corrió; basta correr ese bloque de `setup-kross.sql`.
+
+**Cómo saber la causa del pedido que falló.** Panel → Conexiones → Shalom PE: si hay filas
+`guia.voucher`/`guia.label`, ahí está el status y el `content-type`; si hay `guia.storage`, es el
+bucket; si no hay ninguna y en el chat el aviso de Logística dice *«vía de contingencia»*, fue LAT
+sin `ose_id` —y con este deploy el barrido de 30 min le repone el PDF solo.
+
 ### La pantalla de gracias: el recorrido, la app y el PDF de la guía · solo frontend (07-sep-2026)
 
 **Qué cambió.** Con el webhook ya cruzando, se miró la pantalla final con un pedido real y

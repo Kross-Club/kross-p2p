@@ -1175,6 +1175,13 @@ guías Shalom*) y **`GET /v1/orders/{ose_id}/voucher`** (01-set-2026): la guía
 formal de Shalom en PDF binario, que `shalom-order` descarga al emitir y sube
 al bucket `shalom-guias` (§38 del esquema) para el botón *"Ver mi guía de
 Shalom"* del chat; si falla, intenta el rótulo (`/label`, mismo contrato).
+Desde el 07-set la descarga vive en `_shared/guia.ts` (`descargarPdfDeGuia`):
+acepta el PDF por `content-type` **o por la firma `%PDF-`**, anota cada
+tropiezo en `api_events` (`guia.voucher` / `guia.label` / `guia.storage`) y
+**se repone sola** (`reponerPdfDeGuia`) desde el webhook y el barrido —primer
+chequeo y cada cambio de fase— cuando el mensaje de guía quedó sin PDF y ya
+hay `ose_id`; así la guía emitida por LAT (que no trae `ose_id`) recibe su PDF
+apenas el rastreo del titular lo aprende.
 ⚠️ No confundir con `GET /v1/tracking/{ose_id}/voucher`, que su doc declara
 **fuera de servicio** (404 para toda orden). Siguen sin usar:
 `GET /v1/tracking/{ose_id}/events`, el GRT (exige credenciales Shalom Pro +
