@@ -17,6 +17,8 @@ import { olvaLatApiKey, subscribeAtLat } from './olva-lat-api.ts'
 import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
 import { normalizeYear } from './olva.ts'
 import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from './mensaje-de-guia.ts'
+import { esPdf } from './shalom-orders.ts'
+import type { TrackedRow } from './tracking.ts'
 import { enviarSms, tiendaParaSms } from './sms.ts'
 import { enlaceDelPedido, smsGuia } from './sms-texto.ts'
 import type { Courier } from './mensaje-de-guia.ts'
@@ -174,6 +176,126 @@ export async function registrarGuia(
     console.error('registrarGuia: fallo el SMS de la guía', session.id, e)
   }
   return { ok: true }
+}
+
+// ─── El PDF de la guía formal de Shalom ──────────────────────────────────────
+// `GET /v1/orders/{ose_id}/voucher` devuelve la guía como PDF binario: se baja
+// una vez, se sube al bucket `shalom-guias` y su URL pública viaja en el
+// mensaje `guia` del chat. Es lo que abre "Ver mi guía de Shalom", en el chat
+// y en la pantalla de pedido confirmado; sin ella los dos caen a la hoja de
+// guía de la app (`/guia/<token>`).
+//
+// Vive acá y no dentro de `shalom-order` porque tiene que poder correr DESPUÉS
+// de la emisión (`reponerPdfDeGuia`), y pasó (07-set-2026) que un pedido real
+// se quedó con la hoja de la app: la contingencia por Shalom LAT emite sin
+// `ose_id` —sin él no hay voucher que pedir— hasta que el rastreo lo aprende,
+// y el voucher del titular puede no bajar el día de la emisión y bajar al
+// siguiente. Un PDF que no llegó a tiempo no puede ser un PDF que no llega
+// nunca. Cada tropiezo queda en `api_events` (Panel → Conexiones → Shalom PE,
+// ops `guia.voucher` / `guia.label` / `guia.storage`) para que "no me abre la
+// guía" tenga una causa y no una teoría.
+
+const SHALOM_PE_BASE = 'https://api.shalom-api-peru.com'
+const PDF_TIMEOUT_MS = 30_000
+
+/** Las cabeceras de la familia de crear pedido de Shalom PE: la llave del
+ *  proveedor más la cuenta Shalom Pro de la marca. El voucher se pide con la
+ *  misma cuenta que emitió. */
+export type AuthShalomPro = Record<'X-API-Key' | 'X-Shalom-Email' | 'X-Shalom-Password', string>
+
+export async function authShalomPro(storeId: string): Promise<AuthShalomPro | null> {
+  const key = await shalomApiKey()
+  if (!key) return null
+  const { data } = await supabase.from('store_secrets')
+    .select('shalom_pro_email, shalom_pro_password, shalom_pro_status')
+    .eq('store_id', storeId).maybeSingle()
+  const email = String(data?.shalom_pro_email ?? '')
+  const password = String(data?.shalom_pro_password ?? '')
+  if (!email || !password || data?.shalom_pro_status !== 'CONNECTED') return null
+  return { 'X-API-Key': key, 'X-Shalom-Email': email, 'X-Shalom-Password': password }
+}
+
+/**
+ * Baja el voucher (y si no, el rótulo) y lo sube al bucket. Devuelve la URL
+ * pública o `null`. Best-effort y con timeout propio: un PDF que no baja no
+ * puede retrasar ni tumbar el registro de la guía. Sin `ose_id` no hay nada
+ * que pedir (Shalom LAT no lo maneja).
+ */
+export async function descargarPdfDeGuia(p: {
+  sessionId: string
+  storeId: string | null
+  oseId: string | null
+  numero: string | null
+  auth: AuthShalomPro
+}): Promise<string | null> {
+  if (!p.oseId) return null
+  const ctx = { proveedor: 'SHALOM_PE' as const, sessionId: p.sessionId, storeId: p.storeId }
+  try {
+    for (const doc of ['voucher', 'label']) {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), PDF_TIMEOUT_MS)
+      const inicio = Date.now()
+      const r = await fetch(`${SHALOM_PE_BASE}/v1/orders/${p.oseId}/${doc}`, { headers: p.auth, signal: ctrl.signal })
+        .catch(() => null)
+      clearTimeout(t)
+      const bytes = r?.ok
+        ? new Uint8Array(await r.arrayBuffer().catch(() => new ArrayBuffer(0)))
+        : new Uint8Array(0)
+      const tipo = r?.headers.get('content-type') ?? null
+      if (!r?.ok || !esPdf(tipo, bytes)) {
+        // Anotado con lo que hace falta para reclamar: status, tipo y tamaño.
+        await anotar({
+          ...ctx, op: `guia.${doc}`,
+          outcome: r ? (r.status >= 500 ? 'FALLO' : 'RECHAZO') : 'SIN_RESPUESTA',
+          httpStatus: r?.status ?? null,
+          detail: r ? `content-type ${tipo ?? '—'} · ${bytes.length} bytes` : 'sin respuesta',
+          duracionMs: Date.now() - inicio,
+        })
+        continue
+      }
+      const path = `${p.sessionId}/${p.numero ?? p.oseId}.pdf`
+      const up = await supabase.storage.from('shalom-guias')
+        .upload(path, bytes, { contentType: 'application/pdf', upsert: true })
+      if (up.error) {
+        // No es Shalom, es nuestro Storage (bucket sin crear, permisos), pero
+        // se anota en la misma línea de tiempo: es donde se va a mirar.
+        await anotar({ ...ctx, op: 'guia.storage', outcome: 'FALLO', detail: `Storage shalom-guias: ${up.error.message}` })
+        return null
+      }
+      return supabase.storage.from('shalom-guias').getPublicUrl(path).data.publicUrl
+    }
+  } catch (e) {
+    console.error('[guia] PDF de la guía no descargado', p.sessionId, String(e).slice(0, 200))
+  }
+  return null
+}
+
+/**
+ * Si el mensaje de guía del pedido quedó SIN PDF y ya se conoce el `ose_id`,
+ * lo baja ahora y se lo pone al mensaje. Lo llaman el webhook y el barrido de
+ * Shalom en cada novedad del rastreo —no en cada chequeo—, así que cuesta un
+ * puñado de requests por pedido, no una por cada media hora durante 21 días.
+ * El chat lo enseña con el botón en su siguiente apertura; la pantalla de
+ * pedido confirmado solo ve lo que existía en su primer minuto.
+ */
+export async function reponerPdfDeGuia(
+  row: Pick<TrackedRow, 'id' | 'store_id' | 'tracking_numero' | 'tracking_ose_id'>,
+  /** El `ose_id` recién leído, cuando la fila todavía no lo tiene. */
+  oseIdLeido: string | null | undefined = null,
+): Promise<boolean> {
+  const oseId = row.tracking_ose_id ?? oseIdLeido ?? null
+  if (!oseId || !row.store_id) return false
+  const { data: msg } = await supabase.from('chat_messages').select('id')
+    .eq('session_id', row.id).eq('type', 'guia').is('media_url', null)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (!msg) return false
+  const auth = await authShalomPro(row.store_id)
+  if (!auth) return false
+  const url = await descargarPdfDeGuia({ sessionId: row.id, storeId: row.store_id, oseId, numero: row.tracking_numero, auth })
+  if (!url) return false
+  const { error } = await supabase.from('chat_messages').update({ media_url: url }).eq('id', msg.id)
+  if (error) { console.error('[guia] no se pudo poner el PDF al mensaje', row.id, error.message); return false }
+  return true
 }
 
 /**

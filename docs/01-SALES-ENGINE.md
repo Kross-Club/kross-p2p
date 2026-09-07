@@ -563,7 +563,9 @@ enlace: era una carrera. `registrarGuia` escribe primero el número de guía en
 `order_sessions` y DESPUÉS inserta el mensaje `guia` con el `media_url` del PDF; el
 sondeo de la pantalla paraba al ver el número y, si caía en ese hueco, dejaba el
 botón apuntando a `/guia/<token>` para siempre. Ahora sigue consultando hasta ver el
-PDF (o agotar los 15 intentos), y mientras tanto muestra la hoja de respaldo.
+PDF (o agotar dos minutos), y mientras tanto muestra la hoja de respaldo. Si el PDF
+no existió en ese lapso, el rastreo lo repone después en el chat (`reponerPdfDeGuia`,
+ver `02-SMART-LOGISTICS.md`).
 
 La palabra "app" **sí** aparece ahora, pero solo en el bloque de instalar y con su
 beneficio al lado; el ticket y el recorrido siguen sin ella (el test lo vigila).

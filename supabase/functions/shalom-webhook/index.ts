@@ -2,6 +2,7 @@ import {
   applyTracking, chatMessage, derivePhase, isObj, latWebhookSecret, limaDate,
   supabase, TRACKED_COLUMNS, webhookSecret, type TrackedRow,
 } from '../_shared/shalom.ts'
+import { reponerPdfDeGuia } from '../_shared/guia.ts'
 import { lecturaDeEvento, validLatSignature } from '../_shared/shalom-lat.ts'
 
 // Webhook de tracking de Shalom (02-SMART-LOGISTICS §3) — la entrada RÁPIDA del
@@ -169,7 +170,13 @@ Deno.serve(async (req) => {
     const status = statusFromEvent(data)
     const demoraIso = isObj(status.demora) ? eventDate(status.demora) ?? new Date().toISOString() : null
     const reading = { phase: derivePhase(status), demoraIso, oseId }
-    for (const row of rows as TrackedRow[]) await applyTracking(row, reading)
+    for (const row of rows as TrackedRow[]) {
+      const primera = !row.tracking_checked_at
+      const { transitioned } = await applyTracking(row, reading)
+      // La guía sin su PDF (contingencia sin `ose_id`, voucher que no bajó al
+      // emitir): se vuelve a intentar con cada novedad, no con cada evento.
+      if (transitioned || primera) await reponerPdfDeGuia(row, oseId)
+    }
   } else if (kind === 'tracking.expired') {
     // El proveedor soltó la suscripción (~21 días sin cierre; devuelto y
     // cancelado también terminan así). El barrido de pg_cron sigue cubriendo

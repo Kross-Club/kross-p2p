@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  buildOrderPayload, buscarOrdenPorDni, esPickupCodeValido, esRastreable,
+  buildOrderPayload, buscarOrdenPorDni, esPdf, esPickupCodeValido, esRastreable,
   isDeclaredContent, isShalomSize, nuevoPickupCode, parseOrderResponse,
   resolveProductId, SHALOM_SIZES,
 } from '../../../supabase/functions/_shared/shalom-orders.ts'
@@ -378,5 +378,34 @@ describe('la sede de recojo del pedido', () => {
     expect(pickupBranchIdOf({ delivery_reference: 'Casa de rejas verdes' })).toBeNull()
     expect(pickupBranchIdOf({ delivery_reference: 'Shalom Huaycán' })).toBeNull()
     expect(pickupBranchIdOf({})).toBeNull()
+  })
+})
+
+// ─── El PDF de la guía ───────────────────────────────────────────────────────
+// El voucher se acepta por tipo O por firma: un PDF servido como
+// `application/octet-stream` es un PDF igual, y un HTML de error con
+// `content-type: application/pdf` no lo es por mucho que lo diga la cabecera.
+describe('el voucher se reconoce como PDF', () => {
+  const pdf = new TextEncoder().encode('%PDF-1.4\n%âãÏÓ\n1 0 obj')
+  const html = new TextEncoder().encode('<!doctype html><title>Error</title>')
+
+  it('por el content-type, como siempre', () => {
+    expect(esPdf('application/pdf', pdf)).toBe(true)
+    expect(esPdf('application/pdf; charset=binary', pdf)).toBe(true)
+  })
+
+  it('por la firma %PDF- aunque el servidor lo sirva como octet-stream', () => {
+    expect(esPdf('application/octet-stream', pdf)).toBe(true)
+    expect(esPdf(null, pdf)).toBe(true)
+    expect(esPdf('binary/octet-stream', pdf)).toBe(true)
+  })
+
+  it('un HTML de error no pasa aunque venga sin tipo', () => {
+    expect(esPdf(null, html)).toBe(false)
+    expect(esPdf('text/html', html)).toBe(false)
+  })
+
+  it('un cuerpo vacío nunca es un PDF, diga lo que diga la cabecera', () => {
+    expect(esPdf('application/pdf', new Uint8Array(0))).toBe(false)
   })
 })

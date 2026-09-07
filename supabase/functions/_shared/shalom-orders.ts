@@ -328,3 +328,18 @@ export function buscarOrdenPorDni(json: unknown, dni: string): (GuideResult & { 
   }
   return null
 }
+
+/**
+ * ¿Lo que bajó del voucher ES un PDF? Se acepta por el `Content-Type` O por la
+ * firma del archivo (`%PDF-`): hay servidores que sirven el PDF correcto como
+ * `application/octet-stream`, y exigir el tipo dejaba al comprador sin su
+ * guía por un rótulo de cabecera. Lo que no tiene ni lo uno ni lo otro —un
+ * HTML de error, un JSON— se descarta: mandarle al comprador un botón que
+ * abre basura es peor que no mandar botón.
+ */
+export function esPdf(contentType: string | null | undefined, bytes: Uint8Array): boolean {
+  if (bytes.length < 5) return false
+  if ((contentType ?? '').toLowerCase().includes('pdf')) return true
+  // %PDF- en ASCII
+  return bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d
+}

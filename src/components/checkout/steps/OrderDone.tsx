@@ -59,10 +59,12 @@ interface OrderDoneProps {
   unpaid?: boolean
 }
 
-/** Cuánto se espera la guía: cada 4 s durante un minuto. Más que eso y el
- *  comprador ya se fue; la guía le llega igual por el chat y el aviso. */
+/** Cuánto se espera la guía: cada 4 s durante dos minutos. Emitirla lleva
+ *  varias llamadas al proveedor y bajar el voucher tiene 30 s de timeout, así
+ *  que un minuto se quedaba corto. Más que esto y el comprador ya se fue; la
+ *  guía le llega igual por el chat y el aviso. */
 const GUIDE_POLL_MS = 4_000
-const GUIDE_POLL_MAX = 15
+const GUIDE_POLL_MAX = 30
 
 export default function OrderDone({ orderCode, state, price, packName, verification, token, sessionId, unpaid }: OrderDoneProps) {
   const { store } = useStore()
