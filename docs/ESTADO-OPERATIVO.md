@@ -34,6 +34,38 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### `pay360-webhook` no arrancaba: un cobro real quedó sin cruzar · 3 funciones, sin SQL (06-sep-2026)
+
+**Qué pasó.** Un pago real de S/6 en Kross Shop (cupón `KSH36674827766`, operación 30045211)
+quedó con la pantalla en «Esperando tu pago por Yape…». La consola de 360pay marcaba la
+entrega **Fallida**, y los logs de la función decían `worker boot error: Uncaught
+SyntaxError: The requested module '../_shared/api-eventos.ts' does not provide an export
+named 'anotarConversion'`. La función no arrancaba, respondía 500 en los cuatro reintentos
+(21:28, 21:29, 21:31, 21:35) y 360pay se rindió.
+
+**La causa** viene del 03-sep: la consola de Conexiones (`487a9cd`) puso `anotarCapi` en
+`api-eventos.ts`, pero `pay360-webhook`, `flow-confirm` y `register-buyer` importan
+`anotarConversion`. Estuvo latente porque ninguna de las tres se redesplegó desde entonces;
+el deploy del riel SMS del 05-sep lo destapó. **`register-buyer` y `flow-confirm` tienen el
+mismo import roto**: si se despliegan tal cual, el checkout deja de registrar pedidos.
+
+**El arreglo:** `anotarConversion` existe ahora (recibe la promesa del envío, como la llaman
+las tres) y un test en Node, en `src/lib/edge-functions.test.ts`, comprueba en cada `npm test`
+que todo import con nombre de `supabase/functions` exista en su módulo — la mitad del
+enlace de Deno que sí se puede hacer sin Deno. De paso el webhook lee el evento **dentro del
+array** que 360pay manda (PR #156): con el objeto pelado de antes, `external_ref` salía
+null y el cobro se descartaba en silencio.
+
+```
+supabase functions deploy pay360-webhook flow-confirm --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy register-buyer --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**Recuperar el cobro que quedó colgado:** con la función desplegada, en la consola de 360pay
+(*Settings → Entregas del webhook*) el botón ↻ de la fila `evt_fa1c2f9b…` reenvía el evento.
+Entra con firma nueva, pasa el dedupe (los intentos fallidos nunca llegaron a insertar) y el
+pedido cruza. La pantalla del comprador, si sigue abierta, cambia sola.
+
 ### El riel de recordatorios pasa a WhatsApp, y el SMS queda apagado · SQL + 8 funciones (06-sep-2026)
 
 **Por qué.** La cotización real de Twilio a Perú es **US$0.2476 por segmento** (~S/0.92)
