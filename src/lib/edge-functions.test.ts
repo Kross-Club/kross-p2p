@@ -85,6 +85,67 @@ describe('las Edge Functions', () => {
     expect(rotos).toEqual([])
   })
 
+  // ─── Que ningún alcance redeclare un `const`/`let` ────────────────────────
+  //
+  // `transpileModule` de arriba NO atrapa esto: redeclarar es un error del
+  // BINDER (TS2451), no de la gramática, así que el archivo "parsea" perfecto.
+  // Deno no: al cargar el módulo lanza «Identifier 'x' has already been
+  // declared» y la función devuelve **BOOT_ERROR** — una respuesta del gateway
+  // de Supabase SIN las cabeceras CORS de la función, que el navegador reporta
+  // como «Failed to fetch», sin status y sin logs. Indistinguible de un fallo
+  // de red, y en el panel, de una tienda sin pedidos.
+  //
+  // Pasó con `get-store-sessions` (07-set-2026): dos bloques que llegaron por
+  // su lado —el del DNI el 28-ago, el de los cobros el 31-ago— declararon
+  // `const filas` en el mismo alcance. Estuvo una semana en `main` sin que se
+  // notara porque nadie redesplegó esa función; se desplegó y el tablero se
+  // apagó.
+  //
+  // Se cuenta por ALCANCE de bloque, que es como lo cuenta JavaScript: el mismo
+  // nombre en dos bloques distintos es correcto y no se marca.
+  it('ningún alcance declara dos veces el mismo const o let', () => {
+    const abreAlcance = new Set<ts.SyntaxKind>([
+      ts.SyntaxKind.Block, ts.SyntaxKind.ModuleBlock, ts.SyntaxKind.CaseBlock,
+      ts.SyntaxKind.ForStatement, ts.SyntaxKind.ForInStatement, ts.SyntaxKind.ForOfStatement,
+    ])
+    // Un `const {a, b: c}` o un `const [x]` declaran varios nombres.
+    const nombresDe = (n: ts.BindingName, out: string[]) => {
+      if (ts.isIdentifier(n)) { out.push(n.text); return }
+      for (const el of n.elements) if (ts.isBindingElement(el)) nombresDe(el.name, out)
+    }
+
+    const choques: string[] = []
+    for (const ruta of archivos) {
+      const sf = ts.createSourceFile(enElRepo(ruta), fuentes[ruta], ts.ScriptTarget.ESNext, true)
+      const linea = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1
+
+      const recorrer = (nodo: ts.Node, alcance: Map<string, number>) => {
+        ts.forEachChild(nodo, hijo => {
+          if (ts.isVariableStatement(hijo)) {
+            const f = hijo.declarationList.flags
+            if (f & (ts.NodeFlags.Let | ts.NodeFlags.Const)) {
+              for (const d of hijo.declarationList.declarations) {
+                const nombres: string[] = []
+                nombresDe(d.name, nombres)
+                for (const nombre of nombres) {
+                  const antes = alcance.get(nombre)
+                  if (antes !== undefined) {
+                    choques.push(`${enElRepo(ruta)}:${linea(d)} — '${nombre}' ya estaba declarado en la línea ${antes}`)
+                  } else {
+                    alcance.set(nombre, linea(d))
+                  }
+                }
+              }
+            }
+          }
+          recorrer(hijo, abreAlcance.has(hijo.kind) ? new Map() : alcance)
+        })
+      }
+      recorrer(sf, new Map())
+    }
+    expect(choques).toEqual([])
+  })
+
   // ─── Que toda cabecera propia que el panel manda esté PERMITIDA por CORS ──
   //
   // El navegador pregunta antes de mandar una cabecera `x-…` (preflight), y si

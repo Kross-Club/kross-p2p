@@ -34,7 +34,7 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-### El tablero en cero con pedidos reales en la base: CORS · 1 función, sin SQL (07-sep-2026)
+### El tablero en cero: DOS bugs con el mismo síntoma · 1 función, sin SQL (07-sep-2026)
 
 **Qué pasó.** Panel → Pedidos → Tablero, filtro *Todo*, en Kross Shop: cero en todas las columnas
 y «S/ 0 en juego», con los pedidos reales del 06-set existiendo (se veían desde *Clientes*, que
@@ -69,14 +69,41 @@ quedar fuera de la lista.
 **Cómo saber qué versión está viva** (lo que faltó para no adivinar):
 
 ```
-curl -i -X OPTIONS "https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/get-store-sessions" \
-  -H "Origin: https://kross-shop.krossclub.app" \
-  -H "Access-Control-Request-Method: GET" \
-  -H "Access-Control-Request-Headers: authorization,x-store-id,x-include-cancelled"
+curl.exe -i -X OPTIONS "https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/get-store-sessions" -H "Origin: https://kross-shop.krossclub.app" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization,x-store-id,x-include-cancelled"
 ```
+
+(En una sola línea: PowerShell no entiende las barras de continuación de bash.)
 
 Si `access-control-allow-headers` de la respuesta no incluye `x-include-cancelled`, el deploy no
 tomó — casi siempre por correrlo desde un checkout sin actualizar.
+
+**Tercera vuelta, y la causa de verdad: `BOOT_ERROR`.** Con el CORS arreglado y desplegado el
+tablero SEGUÍA en cero. El curl de arriba lo dijo en una línea:
+
+```
+sb-error-code: BOOT_ERROR
+access-control-allow-headers: authorization, x-client-info, apikey   ← las del GATEWAY, no las nuestras
+{"code":"BOOT_ERROR","message":"Function failed to start (please check logs)"}
+```
+
+`get-store-sessions` **declaraba `const filas` dos veces en el mismo alcance**: el bloque del DNI lo
+declaró el 28-ago y el de los cobros el 31-ago, cada uno por su lado. Eso es un `SyntaxError` de
+JavaScript —el módulo no carga— y Supabase responde con su propio error de gateway, que **no lleva
+las cabeceras CORS de la función**. El navegador lo reporta como «Failed to fetch», sin status y sin
+logs: exactamente el mismo síntoma que el preflight rechazado.
+
+Por eso costó tres vueltas: **eran dos bugs distintos con el síntoma idéntico**, y el segundo estuvo
+escondido una semana en `main` porque nadie redesplegó esta función — la versión viva era la del
+29-ago, que sí arrancaba. Al desplegar para arreglar el CORS se publicó el código roto.
+
+Lo que queda de red: `edge-functions.test.ts` ahora falla si **cualquier** función redeclara un
+`const`/`let` en el mismo alcance de bloque. `transpileModule` no lo veía —redeclarar es error del
+binder (TS2451), no de la gramática—, así que el archivo "parseaba" perfecto y el fallo solo
+aparecía en el arranque, en producción.
+
+> **Regla:** «Failed to fetch» en el panel tiene tres causas posibles y se separan con un `curl -i
+> -X OPTIONS`: si vuelve `sb-error-code: BOOT_ERROR`, la función no arranca; si vuelve 200 sin la
+> cabecera que el panel manda, es el preflight; si vuelve bien, es el navegador.
 
 ### El PDF de la guía que no llegaba: se anota por qué y se repone desde el rastreo · 3 funciones, sin SQL (07-sep-2026)
 
