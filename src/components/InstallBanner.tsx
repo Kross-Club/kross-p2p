@@ -9,8 +9,9 @@ export function isInstalled() {
     (navigator as any).standalone === true
 }
 
-// Small step-by-step illustration for iOS (no programmatic install there)
-function IOSSteps({ dark }: { dark?: boolean }) {
+// Small step-by-step illustration for iOS (no programmatic install there).
+// Exportado: la pantalla de pedido confirmado lo enseña con su propio botón.
+export function IOSSteps({ dark }: { dark?: boolean }) {
   const fg = dark ? 'rgba(255,255,255,0.85)' : '#374151'
   const chip = dark ? 'rgba(255,255,255,0.12)' : 'var(--brand)'
   return (

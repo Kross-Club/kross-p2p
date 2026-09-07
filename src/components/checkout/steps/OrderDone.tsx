@@ -1,34 +1,46 @@
-// ─── Pedido confirmado: el ticket ────────────────────────────────────────────
+// ─── Pedido confirmado: el ticket y el recorrido ─────────────────────────────
 // La pantalla que define el KPI del refactor: llegar aquí es la conversión.
 //
 // Regla dura del módulo: **al comprador nunca se le dice que su pago no
 // existe.** Si el adelanto no está cobrado, para él sigue siendo un pedido
 // registrado que un asesor va a coordinar.
 //
-// Rediseño del 05-set-2026 (ver `01-SALES-ENGINE.md` § Pantalla final): esta
-// pantalla se diseña para SER CAPTURADA. El comprador que más nos importa —en
-// provincia, con poca costumbre digital— no instala la app ni vuelve al chat;
-// guarda capturas. Así que todo lo que va a necesitar el día que le avisen que
-// su paquete llegó cabe aquí, en su idioma: qué pidió, dónde lo recoge y con
-// qué dirección, cuánto pagó y cuánto falta, su guía si ya salió, qué llevar,
-// qué sigue y a quién llamar. Nada que lo obligue a volver.
+// Rediseño del 07-set-2026 (ver `01-SALES-ENGINE.md` § Pantalla final). Es el
+// momento de más atención del comprador, y se usa para tres cosas, en orden:
 //
-// Aquí vivía un polling de 22 consultas que esperaba a que el cruce manual
-// encontrara su yape. Murió con el flujo manual: hoy esta pantalla solo se
-// alcanza con el pago YA confirmado por el webhook (`paid`), o sin nada que
-// esperar —la tienda no cobra en línea, o el comprador pidió que lo llamen—.
+//   1. EL TICKET: qué pidió, dónde lo recoge y con qué dirección, a nombre de
+//      quién, y su guía con número apenas exista. Diseñado para capturarse.
+//   2. EL RECORRIDO: en qué va el pedido y qué viene, como una línea vertical
+//      de puntos. El saldo y el DNI ya no son cajas sueltas que gritan: son el
+//      detalle del paso donde tocan ("Llegó a la agencia · pagas tu saldo…",
+//      "Recojo · con tu DNI y tu clave"). Nada se quitó; cambió de sitio.
+//   3. LA APP: "¿te avisamos cuando llegue?" con un solo botón. En Android sale
+//      el aviso del sistema y, al aceptar, se activan los avisos y se abre el
+//      pedido. En iPhone Apple no deja instalar con un clic: se enseñan los dos
+//      toques. Y el chat ya no se ofrece desde acá: seguimiento y consultas son
+//      cosa de la app —el ticket, la guía y el teléfono sostienen al que no la
+//      instala—.
+//
 // Lo que sí se espera, y poco, es LA GUÍA: el webhook del pago la dispara en
 // segundo plano, así que puede nacer mientras el comprador mira esta pantalla.
+// ⚠️ `registrarGuia` escribe primero el número en el pedido y DESPUÉS el
+// mensaje que lleva el PDF del courier: si el sondeo se detuviera al ver el
+// número, un comprador que cayera en ese hueco se quedaría con la hoja de
+// respaldo para siempre (pasó el 07-set). Por eso sigue mirando hasta ver el
+// PDF o agotar los intentos.
 
 import { useEffect, useState } from 'react'
-import { Camera, Check, ExternalLink, MessageCircle, Phone } from 'lucide-react'
+import { Camera, Check, Download, ExternalLink, Phone, Smartphone } from 'lucide-react'
 import { COPY } from '../../../lib/checkout/checkout.config'
 import { buildTicket } from '../../../lib/checkout/ticket'
-import type { TicketGuide } from '../../../lib/checkout/ticket'
+import type { TicketGuide, TicketStep } from '../../../lib/checkout/ticket'
 import { AgencyService } from '../../../lib/checkout/services/AgencyService'
 import { getSession } from '../../../lib/order-api'
 import { enlaceDeGuia } from '../../../lib/hoja-de-guia'
 import { useStore } from '../../../lib/store-context'
+import { subscribePush } from '../../../lib/push'
+import { useIsDesktop } from '../../../lib/use-desktop'
+import { IOSSteps, isInstalled } from '../../InstallBanner'
 import type { AgencyBranch, CheckoutState, PaymentVerification } from '../../../lib/checkout/types'
 
 interface OrderDoneProps {
@@ -38,8 +50,10 @@ interface OrderDoneProps {
   price: number
   packName: string | null
   verification: PaymentVerification
-  /** Token del pedido: abre su chat en `/p/:token`. */
+  /** Token del pedido: es la llave de `/p/:token`, que la app abre al instalarse. */
   token?: string | null
+  /** Id del pedido: a él se suscribe el push cuando el comprador instala. */
+  sessionId?: string | null
   /** El comprador eligió que lo contacte un asesor en vez de pagar ahora: no
    *  se muestra la caja del adelanto, porque no hay pago en vuelo. */
   unpaid?: boolean
@@ -50,7 +64,7 @@ interface OrderDoneProps {
 const GUIDE_POLL_MS = 4_000
 const GUIDE_POLL_MAX = 15
 
-export default function OrderDone({ orderCode, state, price, packName, verification, token, unpaid }: OrderDoneProps) {
+export default function OrderDone({ orderCode, state, price, packName, verification, token, sessionId, unpaid }: OrderDoneProps) {
   const { store } = useStore()
   const paid = verification === 'MATCHED'
   const isAgency = state.deliveryMethod === 'AGENCIA'
@@ -72,7 +86,8 @@ export default function OrderDone({ orderCode, state, price, packName, verificat
   // La guía, si nace mientras mira. Solo con el adelanto confirmado —es lo que
   // autoriza a emitirla— y solo en agencia. El botón abre el mejor documento
   // disponible, con la misma regla que la tarjeta del chat: el PDF del courier
-  // si la API lo trajo, y si no la hoja de guía de la app.
+  // si la API lo trajo, y si no la hoja de guía de la app. Mientras el PDF no
+  // aparezca se sigue preguntando (ver el aviso de arriba).
   const [guide, setGuide] = useState<TicketGuide | null>(null)
   useEffect(() => {
     if (!paid || !isAgency || !token) return
@@ -81,6 +96,7 @@ export default function OrderDone({ orderCode, state, price, packName, verificat
     let timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
       tries += 1
+      let listo = false
       try {
         const d = await getSession(token)
         const s = d.session
@@ -94,10 +110,10 @@ export default function OrderDone({ orderCode, state, price, packName, verificat
             oseId: s.tracking_ose_id ?? null,
             href: pdf ?? enlaceDeGuia(token),
           })
-          return
+          listo = !!pdf
         }
       } catch { /* sin red o sin pedido: se reintenta hasta el tope */ }
-      if (alive && tries < GUIDE_POLL_MAX) timer = setTimeout(tick, GUIDE_POLL_MS)
+      if (alive && !listo && tries < GUIDE_POLL_MAX) timer = setTimeout(tick, GUIDE_POLL_MS)
     }
     timer = setTimeout(tick, GUIDE_POLL_MS)
     return () => { alive = false; if (timer) clearTimeout(timer) }
@@ -161,39 +177,6 @@ export default function OrderDone({ orderCode, state, price, packName, verificat
             </div>
           )}
 
-          {ticket.balance && (
-            <div className="px-4 py-3" style={{ background: '#FFFBEB' }}>
-              <dt className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#92400E' }}>
-                {ticket.balance.label}
-              </dt>
-              <dd className="text-lg font-black tabular-nums" style={{ color: '#78350F' }}>{ticket.balance.value}</dd>
-              {ticket.balance.detail && (
-                <dd className="text-sm leading-snug mt-0.5" style={{ color: '#92400E' }}>{ticket.balance.detail}</dd>
-              )}
-            </div>
-          )}
-
-          {ticket.bring.length > 0 && (
-            <div className="px-4 py-3">
-              <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{COPY.doneBringTitle}</dt>
-              <dd>
-                <ul className="mt-1 space-y-1">
-                  {ticket.bring.map(b => (
-                    <li key={b} className="flex items-start gap-2 text-[15px] font-bold text-gray-900 leading-snug">
-                      <Check size={16} strokeWidth={3} className="mt-0.5 flex-shrink-0" style={{ color: '#16A34A' }} />
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-              </dd>
-            </div>
-          )}
-
-          <div className="px-4 py-3">
-            <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{COPY.doneNextTitle}</dt>
-            <dd className="text-[15px] text-gray-900 leading-snug">{ticket.next}</dd>
-          </div>
-
           {phone && (
             <div className="px-4 py-3">
               <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
@@ -221,23 +204,160 @@ export default function OrderDone({ orderCode, state, price, packName, verificat
         {COPY.doneScreenshotHint}
       </p>
 
-      {/* El chat es soporte y seguimiento, ya no "el canal": el ticket, la
-          guía y el teléfono sostienen al que no entra. Sigue siendo la ÚNICA
-          acción, y salir sigue siendo la X de la cabecera (`requestClose`). */}
-      {token && (
+      {/* ── El recorrido ── */}
+      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2 px-1">{COPY.doneTimelineTitle}</p>
+      <Recorrido pasos={ticket.pasos} />
+
+      {/* ── La app ── */}
+      <InstalarApp token={token} sessionId={sessionId} nombre={store.nombre} logo={store.logo_url} />
+    </div>
+  )
+}
+
+/** La línea vertical de puntos: lo hecho en verde, lo actual con el color de
+ *  la marca y latiendo, lo que viene en gris. */
+function Recorrido({ pasos }: { pasos: TicketStep[] }) {
+  return (
+    <ol className="relative mb-6 pl-1">
+      {pasos.map((p, i) => {
+        const ultimo = i === pasos.length - 1
+        const color = p.estado === 'hecho' ? '#16A34A' : p.estado === 'actual' ? 'var(--brand)' : '#D1D5DB'
+        return (
+          <li key={p.label} className="relative flex gap-3 pb-5">
+            {!ultimo && (
+              <span aria-hidden className="absolute left-[9px] top-5 bottom-0 w-0.5"
+                style={{ background: p.estado === 'hecho' ? '#16A34A' : '#E5E7EB' }} />
+            )}
+            <span aria-hidden className="relative mt-0.5 flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center"
+              style={{ background: color, boxShadow: p.estado === 'actual' ? '0 0 0 4px color-mix(in srgb, var(--brand) 25%, transparent)' : undefined }}>
+              {p.estado === 'hecho' && <Check size={12} strokeWidth={3.5} className="text-white" />}
+              {p.estado === 'actual' && <span className="w-2 h-2 rounded-full bg-white" />}
+            </span>
+            <div className="min-w-0">
+              <p className={`text-[15px] leading-snug ${p.estado === 'pendiente' ? 'text-gray-400 font-bold' : 'text-gray-900 font-black'}`}>
+                {p.label}
+              </p>
+              {p.detail && (
+                <p className={`text-sm leading-snug mt-0.5 ${p.estado === 'pendiente' ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {p.detail}
+                </p>
+              )}
+            </div>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/**
+ * "¿Te avisamos cuando llegue?" y el botón de la app. Reusa el aviso de
+ * instalación que `main.tsx` guarda en `__deferredInstallPrompt`; al aceptar,
+ * se suscribe al push del pedido y abre `/p/:token` —que ahora es la app—.
+ */
+function InstalarApp({ token, sessionId, nombre, logo }: {
+  token?: string | null; sessionId?: string | null; nombre: string; logo: string | null
+}) {
+  const desktop = useIsDesktop()
+  const [prompt, setPrompt] = useState<{ prompt: () => void; userChoice: Promise<{ outcome: string }> } | null>(
+    () => (typeof window !== 'undefined' ? (window as { __deferredInstallPrompt?: never }).__deferredInstallPrompt ?? null : null),
+  )
+  const [instalada, setInstalada] = useState(() => (typeof window !== 'undefined' ? isInstalled() : false))
+  const [ayuda, setAyuda] = useState(false)
+  const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const abrir = token ? `/p/${token}` : '/'
+
+  useEffect(() => {
+    const ready = () => setPrompt((window as { __deferredInstallPrompt?: never }).__deferredInstallPrompt ?? null)
+    const installed = () => setInstalada(true)
+    window.addEventListener('install-prompt-ready', ready)
+    window.addEventListener('appinstalled', installed)
+    return () => {
+      window.removeEventListener('install-prompt-ready', ready)
+      window.removeEventListener('appinstalled', installed)
+    }
+  }, [])
+
+  const instalar = async () => {
+    if (!prompt) { setAyuda(true); return }
+    prompt.prompt()
+    const { outcome } = await prompt.userChoice
+    ;(window as { __deferredInstallPrompt?: unknown }).__deferredInstallPrompt = null
+    setPrompt(null)
+    if (outcome !== 'accepted') return
+    // Los avisos son la razón por la que instaló: se piden en el mismo gesto.
+    if (sessionId) await subscribePush({ sessionId, role: 'buyer' }).catch(() => {})
+    setInstalada(true)
+    window.location.assign(abrir)
+  }
+
+  return (
+    <div className="rounded-2xl px-4 pt-4 pb-5 text-center"
+      style={{ background: 'color-mix(in srgb, var(--brand) 8%, white)', border: '0.5px solid color-mix(in srgb, var(--brand) 35%, transparent)' }}>
+      <Ilustracion logo={logo} nombre={nombre} />
+      <p className="text-base font-black text-gray-900 leading-snug mt-3">{COPY.doneInstallQuestion}</p>
+      <p className="text-sm text-gray-600 leading-snug mt-1 px-2">{COPY.doneInstallBody(nombre)}</p>
+
+      {instalada ? (
+        <a href={abrir} className="mt-4 flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-black text-base text-white
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          style={{ background: 'var(--brand)' }}>
+          <Smartphone size={18} strokeWidth={2.5} /> {COPY.doneInstallOpen}
+        </a>
+      ) : isIOS ? (
+        <div className="mt-3 flex flex-col items-center">
+          <p className="text-xs text-gray-500 mb-1">{COPY.doneInstallIos}</p>
+          <IOSSteps />
+        </div>
+      ) : (
         <>
-          <a
-            href={`/p/${token}`}
-            className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-black text-base
-              bg-green-500 text-white shadow-lg shadow-green-200
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-500"
-          >
-            <MessageCircle size={18} strokeWidth={2.5} />
-            {COPY.doneOpenChat}
-          </a>
-          <p className="text-[11px] text-gray-400 mt-2 px-4 text-center">{COPY.doneChatHint}</p>
+          <button type="button" onClick={instalar}
+            className="mt-4 flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-black text-base text-white
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={{ background: 'var(--brand)' }}>
+            <Download size={18} strokeWidth={2.5} /> {COPY.doneInstallCta}
+          </button>
+          <p className="text-[11px] text-gray-500 mt-2">{COPY.doneInstallSub}</p>
+          {ayuda && (
+            <p className="text-[11px] text-gray-500 mt-2 px-2">
+              {desktop ? COPY.doneInstallDesktop : COPY.doneInstallHelp}
+            </p>
+          )}
         </>
       )}
+    </div>
+  )
+}
+
+/** Un celular recibiendo los avisos del pedido, con el logo de la marca en la
+ *  pantalla. Dibujado, no una foto: se pinta con el color de cada marca. */
+function Ilustracion({ logo, nombre }: { logo: string | null; nombre: string }) {
+  return (
+    <div className="relative mx-auto w-[168px] h-[120px]" aria-hidden>
+      <svg viewBox="0 0 168 120" className="w-full h-full">
+        <rect x="58" y="6" width="52" height="108" rx="10" fill="#111827" />
+        <rect x="62" y="12" width="44" height="96" rx="7" fill="#FFFFFF" />
+        <rect x="76" y="14" width="16" height="3" rx="1.5" fill="#111827" />
+        <g>
+          <rect x="14" y="30" width="66" height="22" rx="7" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="1" />
+          <rect x="21" y="36" width="10" height="10" rx="3" fill="var(--brand)" />
+          <rect x="36" y="36" width="34" height="3.5" rx="1.75" fill="#111827" />
+          <rect x="36" y="43" width="24" height="3" rx="1.5" fill="#9CA3AF" />
+        </g>
+        <g>
+          <rect x="88" y="58" width="66" height="22" rx="7" fill="#FFFFFF" stroke="#E5E7EB" strokeWidth="1" />
+          <rect x="95" y="64" width="10" height="10" rx="3" fill="#16A34A" />
+          <rect x="110" y="64" width="34" height="3.5" rx="1.75" fill="#111827" />
+          <rect x="110" y="71" width="20" height="3" rx="1.5" fill="#9CA3AF" />
+        </g>
+        <circle cx="84" cy="94" r="3" fill="var(--brand)" />
+      </svg>
+      <div className="absolute left-1/2 top-[38px] -translate-x-1/2 w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center"
+        style={{ background: 'var(--brand)' }}>
+        {logo
+          ? <img src={logo} alt={nombre} className="w-full h-full object-cover" />
+          : <Smartphone size={18} className="text-white" />}
+      </div>
     </div>
   )
 }

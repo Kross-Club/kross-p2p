@@ -357,8 +357,6 @@ export const COPY = {
   // pantalla, en su idioma. El contenido lo arma `lib/checkout/ticket.ts`; aquí
   // solo van los rótulos fijos.
   doneScreenshotHint: 'Toma una captura de esta pantalla para tenerla a la mano.',
-  doneBringTitle: 'El día del recojo lleva',
-  doneNextTitle: 'Qué sigue',
   // El teléfono de la tienda es el respaldo de quien no va a volver a esta
   // app: para una persona mayor, un número al que llamar cierra lo que ningún
   // mensaje cierra. Solo se muestra si la marca lo configuró.
@@ -371,17 +369,26 @@ export const COPY = {
   // esperar por donde no vamos a escribir primero — y deja el chat, que es lo
   // que sostiene la tasa de entrega, sonando a algo secundario.
   doneCod: 'Pagas al recibir. Coordinamos la entrega por el chat de tu pedido.',
-  // Con el ticket (05-set-2026) el chat deja de ser "el canal" y pasa a ser
-  // soporte y seguimiento: el comprador ya tiene en la pantalla qué pagó,
-  // dónde recoge, su guía si salió y a quién llamar. El botón nombra el
-  // MOTIVO por el que entraría —tiene dudas—, no la mecánica ("abrir el
-  // chat") ni palabras que no le dicen nada ("app", "rastrear"). Sigue siendo
-  // la única acción de la pantalla: un segundo botón repartía el toque.
-  doneOpenChat: '¿Tienes dudas? Escríbenos aquí',
-  // Lo que además encuentra ahí. El saldo también se paga en esa página, pero
-  // eso lo lleva el aviso al celular cuando el paquete esté en camino, no este
-  // botón.
-  doneChatHint: 'Ahí también ves cómo va tu envío.',
+  // ── El recorrido y la app (07-set-2026) ──
+  // Las cajas de "te falta pagar" y "el día del recojo lleva" se fueron: el
+  // saldo y el DNI ahora son el detalle de su paso en el recorrido vertical
+  // (`ticket.ts`), así el comprador ve en qué va y qué viene sin que una cifra
+  // grite. Y el chat dejó de ser un botón de esta pantalla: la consulta y el
+  // seguimiento viven en la app instalada, que es lo único que trae al
+  // comprador de vuelta sin depender de WhatsApp. La pantalla pide instalarla
+  // con el MOTIVO —que le avisemos cuando llegue—, no con la mecánica.
+  doneTimelineTitle: 'Así va tu pedido',
+  doneInstallQuestion: '¿Te gustaría que te avisemos cuando llegue tu pedido?',
+  doneInstallBody: (tienda: string) =>
+    `Dale seguimiento y haz tus consultas desde la app de ${tienda}. Se instala con un clic.`,
+  doneInstallCta: 'Descargar la app',
+  doneInstallSub: 'Dale seguimiento a tu pedido',
+  // Ya instalada: el botón abre el pedido dentro de la app.
+  doneInstallOpen: 'Abrir mi pedido en la app',
+  // iPhone no deja instalar con un clic; se enseñan los dos toques.
+  doneInstallIos: 'En iPhone se instala en dos toques:',
+  doneInstallDesktop: 'Abre esta página desde tu celular para instalar la app.',
+  doneInstallHelp: 'Abre el menú ⋮ de tu navegador y elige "Instalar app".',
 
   advancePendingByChat: 'Un asesor te escribe por el chat para coordinar tu adelanto.',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',

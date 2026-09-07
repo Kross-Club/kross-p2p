@@ -42,6 +42,9 @@ function domicilioLima(over: Partial<CheckoutState> = {}): CheckoutState {
   }
 }
 
+const GUIA = { courier: 'SHALOM', numero: '80574902', codigo: 'CJTW', oseId: null, href: '/guia/tok' }
+const etiquetas = (t: ReturnType<typeof buildTicket>) => t.pasos.map(p => `${p.estado}:${p.label}`)
+
 describe('ticket · agencia con adelanto pagado', () => {
   const t = buildTicket({ state: agencia(), price: 189, packName: 'Pack x2', paid: true, unpaid: false, branch: SEDE })
 
@@ -54,26 +57,34 @@ describe('ticket · agencia con adelanto pagado', () => {
     expect(recojo.detail).toBe('Jr. San Martín 456, Juliaca')
     expect(JSON.stringify(t)).not.toContain('"77"')
   })
-  it('el saldo se paga con Yape desde el enlace, nunca en la agencia, y suelta la clave', () => {
-    expect(t.balance?.value).toBe('S/ 94')
-    expect(t.balance?.detail).toMatch(/con Yape desde el enlace de tu pedido/)
-    expect(t.balance?.detail).toMatch(/Nunca en la agencia/)
-    expect(t.balance?.detail).toMatch(/clave de recojo/)
+  it('el recorrido: el pago hecho, la guía en curso y lo que viene', () => {
+    expect(etiquetas(t)).toEqual([
+      'hecho:Pago recibido',
+      'actual:Guía de envío emitida',
+      'pendiente:En camino a Shalom',
+      'pendiente:Llegó a la agencia',
+      'pendiente:Recojo',
+    ])
+  })
+  it('el saldo vive en el paso donde se paga: con Yape desde el pedido, nunca en la agencia', () => {
+    const llegada = t.pasos.find(p => p.label === 'Llegó a la agencia')!
+    expect(llegada.detail).toMatch(/saldo de S\/ 94/)
+    expect(llegada.detail).toMatch(/con Yape desde tu pedido/)
+    expect(llegada.detail).toMatch(/nunca en la agencia/)
+    expect(llegada.detail).toMatch(/clave de recojo/)
+  })
+  it('el DNI y la clave viven en el paso del recojo, con la sede', () => {
+    expect(t.pasos.at(-1)?.detail).toBe('En Shalom · Juliaca Centro, con tu DNI y tu clave de recojo.')
+  })
+  it('el plazo del courier va en "en camino", sin nombrar canal de aviso', () => {
+    expect(t.pasos.find(p => p.label === 'En camino a Shalom')?.detail).toBe('Suele tardar 2 días.')
+    expect(JSON.stringify(t)).not.toMatch(/WhatsApp|SMS|push/i)
   })
   it('ninguna frase del ticket dice "app": quien no sabe qué es una app no la entiende', () => {
     expect(JSON.stringify(t)).not.toMatch(/\bapp\b/i)
   })
   it('sin guía todavía, el ticket no la promete', () => {
     expect(t.guide).toBeNull()
-  })
-  it('qué llevar: DNI y la clave', () => {
-    expect(t.bring[0]).toBe('Tu DNI')
-    expect(t.bring[1]).toMatch(/clave de recojo/)
-    expect(t.bring[1]).toMatch(/pagas el saldo/)
-  })
-  it('qué sigue: aviso al celular, sin nombrar canal, con el plazo del courier', () => {
-    expect(t.next).toBe('Te avisaremos a tu celular cuando tu pedido llegue a la agencia. Suele tardar 2 días.')
-    expect(t.next).not.toMatch(/WhatsApp|SMS|push/i)
   })
   it('a nombre de quien recibe', () => {
     expect(t.lines.find(l => l.label === 'A nombre de')?.value).toBe('Rosa Quispe')
@@ -82,13 +93,15 @@ describe('ticket · agencia con adelanto pagado', () => {
 
 describe('ticket · la guía ya salió', () => {
   it('Shalom: el número como lo nombra su voucher, y el botón con su nombre', () => {
-    const t = buildTicket({
-      state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE,
-      guide: { courier: 'SHALOM', numero: '80574902', codigo: 'CJTW', oseId: null, href: '/guia/tok' },
-    })
+    const t = buildTicket({ state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE, guide: GUIA })
     expect(t.guide?.line).toEqual({ label: 'Guía Shalom', value: 'Nro. de orden 80574902 · Código CJTW' })
     expect(t.guide?.button).toBe('Shalom')
     expect(t.guide?.href).toBe('/guia/tok')
+  })
+  it('el recorrido avanza: guía hecha, en camino en curso', () => {
+    const t = buildTicket({ state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE, guide: GUIA })
+    expect(etiquetas(t).slice(0, 3)).toEqual(['hecho:Pago recibido', 'hecho:Guía de envío emitida', 'actual:En camino a Shalom'])
+    expect(t.pasos[1].detail).toBe('Guía Shalom: Nro. de orden 80574902 · Código CJTW')
   })
   it('Shalom solo con orden de servicio (registrada a mano)', () => {
     const t = buildTicket({
@@ -108,10 +121,7 @@ describe('ticket · la guía ya salió', () => {
     expect(t.guide?.href).toBe('https://olva.example/g.pdf')
   })
   it('la clave de recojo nunca aparece, aunque la guía ya exista', () => {
-    const t = buildTicket({
-      state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE,
-      guide: { courier: 'SHALOM', numero: '80574902', codigo: 'CJTW', oseId: null, href: '/guia/tok' },
-    })
+    const t = buildTicket({ state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE, guide: GUIA })
     expect(JSON.stringify(t)).not.toMatch(/clave de recojo es/)
   })
   it('a domicilio no hay guía que mostrar aunque llegue una', () => {
@@ -125,9 +135,10 @@ describe('ticket · la guía ya salió', () => {
 
 describe('ticket · pagó el total en agencia', () => {
   const t = buildTicket({ state: agencia({ advanceAmount: 189 }), price: 189, packName: 'Pack x2', paid: true, unpaid: false, branch: SEDE })
-  it('no queda saldo y la clave se la enviamos', () => {
-    expect(t.balance).toBeNull()
-    expect(t.bring[1]).toBe('Tu clave de recojo (te la enviaremos)')
+  it('la llegada no habla de saldo y la clave se la enviamos', () => {
+    const llegada = t.pasos.find(p => p.label === 'Llegó a la agencia')!
+    expect(llegada.detail).toBe('Te avisaremos a tu celular, con tu clave de recojo.')
+    expect(JSON.stringify(t)).not.toMatch(/saldo/i)
   })
 })
 
@@ -136,6 +147,7 @@ describe('ticket · la sede aún no cargó', () => {
     const t = buildTicket({ state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: null })
     expect(t.lines.find(l => l.label === 'Lo recoges en')?.value).toBe('Shalom · Juliaca')
     expect(t.lines[0].value).toBe('Tu pack')
+    expect(t.pasos.at(-1)?.detail).toBe('En Shalom · Juliaca, con tu DNI y tu clave de recojo.')
   })
   it('agencia sin listado usa el texto libre', () => {
     const s = agencia({ pickup: { agency: 'OTRO', branchId: null, freeText: 'Marvisur, terminal' } })
@@ -145,40 +157,51 @@ describe('ticket · la sede aún no cargó', () => {
 })
 
 describe('ticket · nunca "tu pago no existe"', () => {
-  it('adelanto sin confirmar: pedido registrado y un asesor coordina', () => {
+  it('adelanto sin confirmar: pedido registrado, un asesor coordina, y el recorrido no avanza', () => {
     const t = buildTicket({ state: agencia(), price: 189, packName: null, paid: false, unpaid: false, branch: SEDE })
     expect(t.payment).toMatch(/^Pedido registrado/)
     expect(t.payment).toMatch(/S\/ 95/)
     expect(t.payment).not.toMatch(/no|error|falta/i)
+    expect(etiquetas(t)[0]).toBe('actual:Pedido registrado')
+    expect(t.pasos[0].detail).toMatch(/asesor/)
+    expect(t.pasos.slice(1).every(p => p.estado === 'pendiente')).toBe(true)
   })
-  it('eligió que lo llamen: lo dice sin caja de saldo', () => {
+  it('eligió que lo llamen: lo dice, y el saldo no aparece como deuda', () => {
     const t = buildTicket({ state: agencia(), price: 189, packName: null, paid: false, unpaid: true, branch: SEDE })
     expect(t.payment).toMatch(/asesor te escribe/)
-    expect(t.balance).toBeNull()
+    expect(etiquetas(t)[0]).toBe('actual:Pedido registrado')
   })
 })
 
 describe('ticket · domicilio en Lima, contraentrega', () => {
   const t = buildTicket({ state: domicilioLima(), price: 140, packName: 'Pack x1', paid: false, unpaid: false, branch: null })
-  it('paga todo al recibir y no hay nada que llevar', () => {
+  it('paga todo al recibir, y no hay mostrador ni DNI de por medio', () => {
     expect(t.payment).toBe('Pedido registrado. Pagas S/ 140 al recibir.')
-    expect(t.balance).toBeNull()
-    expect(t.bring).toEqual([])
+    expect(etiquetas(t)).toEqual([
+      'hecho:Pedido registrado',
+      'actual:Preparando tu pedido',
+      'pendiente:En camino a Comas',
+      'pendiente:Entrega',
+    ])
+    expect(t.pasos.at(-1)?.detail).toBe('Pagas S/ 140 al recibir.')
+    expect(JSON.stringify(t)).not.toMatch(/DNI|clave|agencia/i)
   })
   it('la dirección con distrito y referencia', () => {
     const llega = t.lines.find(l => l.label === 'Llega a')!
     expect(llega.value).toBe('Av. Túpac Amaru 1200')
     expect(llega.detail).toBe('Comas · frente al grifo')
   })
-  it('qué sigue: sale a tu dirección, sin plazo porque Lima no lo declara', () => {
-    expect(t.next).toBe('Te avisaremos a tu celular cuando tu pedido salga a tu dirección.')
+  it('en camino avisa sin plazo, porque Lima no lo declara', () => {
+    expect(t.pasos.find(p => p.label === 'En camino a Comas')?.detail).toBe('Te avisaremos a tu celular cuando salga.')
   })
 })
 
 describe('ticket · domicilio en Lima con adelanto', () => {
-  it('el saldo se paga al recibir', () => {
+  it('el saldo se paga al recibir, en el paso de la entrega', () => {
     const t = buildTicket({ state: domicilioLima({ advanceAmount: 70 }), price: 140, packName: null, paid: true, unpaid: false, branch: null })
-    expect(t.balance).toEqual({ label: 'Te falta pagar', value: 'S/ 70', detail: 'Lo pagas al recibir tu pedido.' })
+    expect(etiquetas(t)[0]).toBe('hecho:Pago recibido')
+    expect(t.pasos[0].detail).toBe('S/ 70 por Yape.')
+    expect(t.pasos.at(-1)?.detail).toBe('Pagas S/ 70 al recibir.')
   })
 })
 

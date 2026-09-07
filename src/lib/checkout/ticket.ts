@@ -3,9 +3,15 @@
 //
 // Existe por una decisión de producto (05-set-2026, ver `01-SALES-ENGINE.md`
 // § Pantalla final): el comprador de provincia con poca costumbre digital no
-// instala la app ni vuelve al chat; guarda CAPTURAS. La pantalla de gracias se
-// diseña para ser capturada: una sola pantalla con todo lo que va a necesitar
-// el día que le avisen que su paquete llegó. Nada que requiera volver.
+// vuelve al chat; guarda CAPTURAS. La pantalla de gracias se diseña para ser
+// capturada: una sola pantalla con todo lo que va a necesitar el día que le
+// avisen que su paquete llegó.
+//
+// Rediseño del 07-set-2026: lo que falta pagar y qué llevar dejaron de ser
+// cajas sueltas y pasaron a ser el DETALLE de su paso en el recorrido del
+// pedido (`pasos`): el saldo se explica en "Llegó a la agencia", el DNI y la
+// clave en "Recojo". Así el comprador ve en qué va y qué viene, y ninguna
+// cifra grita. Nada se quitó: cambió de sitio.
 //
 // Este archivo arma el contenido; el componente solo lo pinta. Así cada frase
 // se puede probar contra un estado del checkout, y la regla dura del módulo
@@ -28,7 +34,7 @@ export interface TicketInput {
   branch: AgencyBranch | null
   /** La guía del courier, si la API ya la emitió mientras el comprador miraba
    *  esta pantalla (el webhook del pago la dispara en segundo plano). `null`
-   *  mientras no exista: el ticket no la promete, "Qué sigue" ya avisa. */
+   *  mientras no exista: el recorrido la muestra como paso pendiente. */
   guide?: TicketGuide | null
 }
 
@@ -48,23 +54,28 @@ export interface TicketLine {
   detail?: string
 }
 
+/** Un paso del recorrido del pedido, como lo ve el comprador. */
+export interface TicketStep {
+  label: string
+  /** Lo que ese paso implica para él: cuánto, dónde, con qué. */
+  detail?: string
+  estado: 'hecho' | 'actual' | 'pendiente'
+}
+
 export interface Ticket {
   /** Cómo se pagó, en una frase. Es la primera línea después del título. */
   payment: string
-  /** El saldo que queda y CÓMO se paga. `null` si no queda saldo. */
-  balance: TicketLine | null
   /** Producto, entrega y a nombre de quién. */
   lines: TicketLine[]
   /** La guía en el ticket: el NÚMERO es lo que la agencia pregunta, así que va
    *  como línea (una captura no tiene botones) y el botón va aparte. `null`
    *  hasta que exista. */
   guide: { line: TicketLine; button: string; href: string } | null
-  /** Qué llevar el día de la entrega. Vacío en domicilio. */
-  bring: string[]
-  /** Qué va a pasar ahora, en una frase. Sin nombrar canal: hoy avisa push,
-   *  WhatsApp o SMS según lo que tenga el comprador, y prometer uno es mentir
-   *  a los que no lo tienen. */
-  next: string
+  /** El recorrido: en qué va el pedido y qué viene. El saldo y qué llevar van
+   *  en el detalle de su paso. Sin nombrar canal de aviso: hoy avisa push o
+   *  WhatsApp según lo que tenga el comprador, y prometer uno es mentirle a
+   *  quien no lo tiene. */
+  pasos: TicketStep[]
 }
 
 const soles = (n: number) => `S/ ${Math.max(0, Math.round(n))}`
@@ -87,25 +98,30 @@ export function buildTicket(i: TicketInput): Ticket {
   const isAgency = s.deliveryMethod === 'AGENCIA'
   const rest = Math.max(0, price - advance)
   const lines: TicketLine[] = []
+  const agencia = s.pickup.agency ? nombreAgencia(s.pickup.agency) : 'la agencia'
 
   lines.push({ label: 'Tu pedido', value: i.packName ?? 'Tu pack' })
 
+  let destino: string
   if (isAgency) {
-    const agencia = s.pickup.agency ? nombreAgencia(s.pickup.agency) : 'la agencia'
     if (i.branch) {
+      destino = `${agencia} · ${i.branch.name}`
       lines.push({
         label: 'Lo recoges en',
-        value: `${agencia} · ${i.branch.name}`,
+        value: destino,
         detail: [i.branch.address, i.branch.district ?? i.branch.province].filter(Boolean).join(', ') || undefined,
       })
     } else if (s.pickup.freeText?.trim()) {
-      lines.push({ label: 'Lo recoges en', value: `${agencia} · ${s.pickup.freeText.trim()}` })
+      destino = `${agencia} · ${s.pickup.freeText.trim()}`
+      lines.push({ label: 'Lo recoges en', value: destino })
     } else {
       const donde = s.locationType === 'LIMA' ? s.limaAddress?.district : s.provinciaConfig?.district
-      lines.push({ label: 'Lo recoges en', value: donde ? `${agencia} · ${donde}` : agencia })
+      destino = donde ? `${agencia} · ${donde}` : agencia
+      lines.push({ label: 'Lo recoges en', value: destino })
     }
   } else if (s.locationType === 'LIMA') {
     const a = s.limaAddress
+    destino = a?.district ?? 'tu dirección'
     lines.push({
       label: 'Llega a',
       value: a?.addressText?.trim() || a?.district || 'Tu dirección',
@@ -113,6 +129,7 @@ export function buildTicket(i: TicketInput): Ticket {
     })
   } else {
     const p = s.provinciaConfig
+    destino = p?.district ?? 'tu dirección'
     lines.push({
       label: 'Llega a',
       value: p?.address?.addressText?.trim() || [p?.district, p?.province].filter(Boolean).join(', ') || 'Tu dirección',
@@ -128,49 +145,19 @@ export function buildTicket(i: TicketInput): Ticket {
   // dice que un asesor lo hace. Si no hay cobro en línea, el pedido igual
   // está registrado y el adelanto se coordina por el chat.
   let payment: string
-  let balance: TicketLine | null = null
   if (advance > 0 && !unpaid) {
     payment = paid
       ? `Pago recibido por Yape: ${soles(advance)} de ${soles(price)}.`
       : `Pedido registrado. Tu adelanto de ${soles(advance)} lo coordina un asesor por el chat.`
-    if (rest > 0) {
-      balance = {
-        label: 'Te falta pagar',
-        value: soles(rest),
-        // Sin la palabra "app": quien no sabe qué es una app sí sabe qué es
-        // Yape, un enlace y su celular. "Nunca en la agencia" evita que llegue
-        // al mostrador con el saldo en efectivo y sin clave. La misma frase,
-        // adaptada, vive en los mensajes del servidor (`_shared/mensaje-de-guia`,
-        // `acuse-de-pago`, `tracking`).
-        detail: isAgency
-          ? 'Lo pagas con Yape desde el enlace de tu pedido, que te llega a tu celular cuando el paquete ya esté en camino. Nunca en la agencia. Al pagarlo te llega tu clave de recojo.'
-          : 'Lo pagas al recibir tu pedido.',
-      }
-    }
   } else if (advance > 0 && unpaid) {
     payment = `Pedido registrado. Un asesor te escribe para coordinar tu adelanto de ${soles(advance)}.`
   } else {
     payment = `Pedido registrado. Pagas ${soles(price)} al recibir.`
   }
 
-  // ── Qué llevar ──
-  const bring: string[] = []
-  if (isAgency) {
-    bring.push('Tu DNI')
-    // La clave de recojo aún no existe: la emite la guía. Se nombra para que
-    // el día del recojo no sorprenda, y para que sepa que le llega al pagar.
-    bring.push(rest > 0 ? 'Tu clave de recojo (te llega cuando pagas el saldo)' : 'Tu clave de recojo (te la enviaremos)')
-  }
-
-  // ── Qué sigue ──
-  const plazo = etaEnPalabras(s.provinciaConfig?.eta)
-  const tarda = plazo ? ` Suele tardar ${plazo}.` : ''
-  const next = isAgency
-    ? `Te avisaremos a tu celular cuando tu pedido llegue a la agencia.${tarda}`
-    : `Te avisaremos a tu celular cuando tu pedido salga a tu dirección.${tarda}`
-
   // ── La guía, si ya salió ──
-  const guide = isAgency && i.guide && (i.guide.numero || i.guide.oseId)
+  const conGuia = !!(isAgency && i.guide && (i.guide.numero || i.guide.oseId))
+  const guide = conGuia && i.guide
     ? {
         line: { label: `Guía ${nombreAgencia(i.guide.courier ?? s.pickup.agency ?? '')}`, value: idsDeGuia(i.guide) },
         button: `${nombreGuia(i.guide.courier ?? s.pickup.agency ?? '')}`,
@@ -178,7 +165,71 @@ export function buildTicket(i: TicketInput): Ticket {
       }
     : null
 
-  return { payment, balance, lines, guide, bring, next }
+  // ── El recorrido ──
+  // El primer paso ya pasó o está pasando; el resto se pinta como viene. El
+  // saldo va en el paso donde se paga y el DNI en el paso donde se pide: una
+  // cifra fuera de su momento asusta, y en su momento explica.
+  const plazo = etaEnPalabras(s.provinciaConfig?.eta)
+  const cobrado = advance > 0 ? (paid && !unpaid) : true
+  const pasos: TicketStep[] = []
+
+  if (advance > 0 && !cobrado) {
+    pasos.push({
+      label: 'Pedido registrado',
+      detail: `Un asesor te escribe para coordinar tu adelanto de ${soles(advance)}.`,
+      estado: 'actual',
+    })
+  } else {
+    pasos.push({
+      label: advance > 0 ? 'Pago recibido' : 'Pedido registrado',
+      detail: advance > 0 ? `${soles(advance)} por Yape.` : undefined,
+      estado: 'hecho',
+    })
+  }
+
+  if (isAgency) {
+    pasos.push({
+      label: 'Guía de envío emitida',
+      detail: guide ? `${guide.line.label}: ${guide.line.value}` : 'Te avisaremos a tu celular apenas salga.',
+      estado: !cobrado ? 'pendiente' : conGuia ? 'hecho' : 'actual',
+    })
+    pasos.push({
+      label: `En camino a ${agencia}`,
+      detail: plazo ? `Suele tardar ${plazo}.` : undefined,
+      estado: conGuia && cobrado ? 'actual' : 'pendiente',
+    })
+    pasos.push({
+      label: 'Llegó a la agencia',
+      detail: rest > 0
+        ? `Te avisaremos a tu celular. Ahí pagas tu saldo de ${soles(rest)} con Yape desde tu pedido, nunca en la agencia, y recibes tu clave de recojo.`
+        : 'Te avisaremos a tu celular, con tu clave de recojo.',
+      estado: 'pendiente',
+    })
+    pasos.push({
+      label: 'Recojo',
+      detail: `En ${destino}, con tu DNI y tu clave de recojo.`,
+      estado: 'pendiente',
+    })
+  } else {
+    pasos.push({
+      label: 'Preparando tu pedido',
+      estado: cobrado ? 'actual' : 'pendiente',
+    })
+    pasos.push({
+      label: `En camino a ${destino}`,
+      detail: [plazo ? `Suele tardar ${plazo}.` : null, 'Te avisaremos a tu celular cuando salga.'].filter(Boolean).join(' '),
+      estado: 'pendiente',
+    })
+    pasos.push({
+      label: 'Entrega',
+      detail: rest > 0
+        ? `Pagas ${soles(advance > 0 ? rest : price)} al recibir.`
+        : 'No te queda nada por pagar.',
+      estado: 'pendiente',
+    })
+  }
+
+  return { payment, lines, guide, pasos }
 }
 
 /** Los ids como los nombra el voucher del courier — el mismo vocabulario que
