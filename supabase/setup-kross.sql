@@ -32,6 +32,19 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_business_account_id text; -- WABA
 -- el ícono de la tienda. Si falta, cae al logo.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS notif_icon_url     text;
 
+-- Logo APAISADO (07-set-2026). Son tres y cada uno tiene su sitio, que es por
+-- lo que no puede ser uno solo estirado:
+--   · `logo_url`        — cuadrado. El ícono de la app instalada y el del aviso
+--                         de instalar. Android lo recorta a su máscara, así que
+--                         la marca tiene que estar centrada y con aire.
+--   · `notif_icon_url`  — redondo y transparente. El de las notificaciones
+--                         push, arriba en la barra de Android.
+--   · `logo_wide_url`   — apaisado. La firma de la marca donde hay ANCHO y no
+--                         alto: la cabecera del panel. Un cuadrado ahí obliga a
+--                         escribir el nombre al lado; el apaisado ya lo trae.
+-- Los tres son opcionales y cada uno cae al cuadrado si falta.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS logo_wide_url      text;
+
 -- Retención: recompensa de bienvenida al reclamar (puntos) + mensaje.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS welcome_points     integer DEFAULT 0;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS welcome_msg        text;

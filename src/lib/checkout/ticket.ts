@@ -57,6 +57,10 @@ export interface TicketLine {
   value: string
   /** Segunda línea, más chica: dirección de la sede, referencia. */
   detail?: string
+  /** Al COSTADO del valor, no debajo: el DNI de quien recoge va pegado a su
+   *  nombre porque en el mostrador se leen juntos, y separarlos en dos
+   *  renglones invita a llevar solo la mitad. */
+  aside?: string
 }
 
 /** Un paso del recorrido del pedido, como lo ve el comprador. */
@@ -146,7 +150,18 @@ export function buildTicket(i: TicketInput): Ticket {
     })
   }
 
-  lines.push({ label: 'A nombre de', value: s.customerInfo.receiverName.trim() || '—' })
+  // Quién RECOGE, no "a nombre de": el ticket se reenvía, y quien va al
+  // mostrador puede no ser quien compró. Se nombra la acción que esa persona
+  // va a hacer, con su documento al lado —es lo que le van a pedir—.
+  // El DNI solo en AGENCIA: es donde se lo van a pedir. A domicilio no hay
+  // mostrador, y el ticket no nombra un documento que nadie va a mirar —regla
+  // vieja del módulo, con su prueba.
+  const dni = String(s.customerInfo.dni ?? '').trim()
+  lines.push({
+    label: isAgency ? 'La persona que recoge' : 'La persona que recibe',
+    value: s.customerInfo.receiverName.trim() || '—',
+    aside: isAgency && dni ? `DNI ${dni}` : undefined,
+  })
 
   // ── Cómo se pagó ──
   // Regla dura: nunca "tu pago no existe". Si hay adelanto y el webhook lo
@@ -201,13 +216,14 @@ export function buildTicket(i: TicketInput): Ticket {
       {
         // Corto a propósito (07-set-2026): el párrafo largo explicaba la
         // mecánica del pago en un momento en el que todavía no toca. Lo que
-        // hace falta es que reconozca el botón cuando llegue, así que se
-        // enseña APAGADO debajo. "Nunca en la agencia" se queda —tres
-        // palabras— porque es lo que evita que pague en efectivo en el
-        // mostrador y se quede sin clave.
+        // hace falta es que reconozca el BOTÓN cuando llegue, y por eso se
+        // enseña apagado debajo — el botón dice mejor que cualquier frase que
+        // el saldo se paga acá. La advertencia de no pagar en el mostrador
+        // sigue viva donde sí toca: en el aviso que le llega al celular cuando
+        // el paquete llega (`_shared/tracking.ts`, `sms-texto.ts`).
         label: 'Llegó a la agencia',
         detail: rest > 0
-          ? `Paga tu saldo de ${soles(rest)} desde aquí —nunca en la agencia— y te damos tu clave de recojo.`
+          ? `Paga tu saldo de ${soles(rest)} desde aquí y te damos tu clave de recojo.`
           : 'Te avisaremos a tu celular, con tu clave de recojo.',
         accion: rest > 0 ? `Pagar ${soles(rest)} con Yape` : undefined,
       },

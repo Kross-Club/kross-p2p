@@ -12,7 +12,7 @@ export default function BrandMark({
   size = 28,
   soloLogo = false,
 }: {
-  brand: { nombre: string; logo_url: string | null } | null
+  brand: { nombre: string; logo_url: string | null; logo_wide_url?: string | null } | null
   size?: number
   /** Sin el nombre. El logo de una marca es 1:1, así que solo cabe él cuando el
    *  menú está plegado — y con el símbolo basta para saber dónde estás parado,
@@ -23,12 +23,24 @@ export default function BrandMark({
     return soloLogo ? <KrossIcon size={size} /> : <KrossLockup size={size * 0.86} />
   }
 
+  // Con logo APAISADO (07-set-2026) va él solo: un lockup ya trae el nombre
+  // dibujado como la marca quiere que se lea, y escribirlo al lado en nuestra
+  // tipografía lo dice dos veces y peor. Plegado no cabe: manda el cuadrado.
+  if (!soloLogo && brand.logo_wide_url) {
+    return (
+      <img src={brand.logo_wide_url} alt={brand.nombre}
+        className="object-contain object-left max-w-[168px]" style={{ height: size }} />
+    )
+  }
+
   return (
     <span className="flex items-center gap-2 min-w-0">
       {brand.logo_url ? (
+        // `object-contain`: recortar el logo de una marca para que llene el
+        // cuadrado es lo último que se debe hacer con un logo.
         <span className="rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center"
           style={{ width: size, height: size }}>
-          <img src={brand.logo_url} alt={brand.nombre} className="w-full h-full object-cover" />
+          <img src={brand.logo_url} alt={brand.nombre} className="w-full h-full object-contain" />
         </span>
       ) : (
         <KrossIcon size={size} />

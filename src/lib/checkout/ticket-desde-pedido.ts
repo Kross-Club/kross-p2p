@@ -30,6 +30,8 @@ export interface PedidoGuardado {
   agency_branch_id?: string | null
   delivery_reference?: string | null
   address?: string | null
+  /** El DNI de quien recoge, para la línea del ticket. */
+  buyer_document?: string | null
 }
 
 /** El número tal cual lo guarda la base, que a veces viaja como texto. */
@@ -55,7 +57,11 @@ export function estadoDesdePedido(p: PedidoGuardado): CheckoutState {
   const direccion = String(p.address ?? '').trim() || null
 
   return {
-    customerInfo: { dni: '', whatsapp: '', receiverName: String(p.buyer_name ?? '').trim() },
+    customerInfo: {
+      dni: String(p.buyer_document ?? '').trim(),
+      whatsapp: '',
+      receiverName: String(p.buyer_name ?? '').trim(),
+    },
     // Lima o provincia solo cambia de qué campo sale la dirección; en agencia
     // manda la sede, así que el ticket no lo nota.
     locationType: String(p.dispatch_type ?? '').includes('LIMA') ? 'LIMA' : 'PROVINCIA',

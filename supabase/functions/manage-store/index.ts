@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
     slug?: string
     logo_url?: string | null
     notif_icon_url?: string | null
+    logo_wide_url?: string | null
     color_primary?: string
     color_dark?: string
     active?: boolean
@@ -146,7 +147,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
+      .select('id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -361,6 +362,7 @@ Deno.serve(async (req) => {
     if (typeof body.nombre === 'string' && body.nombre.trim()) patch.nombre = body.nombre.trim()
     if (body.logo_url !== undefined) patch.logo_url = body.logo_url
     if (body.notif_icon_url !== undefined) patch.notif_icon_url = body.notif_icon_url
+    if (body.logo_wide_url !== undefined) patch.logo_wide_url = body.logo_wide_url
     // Welcome reward — a store admin controls their own retention config
     if (typeof body.welcome_points === 'number') patch.welcome_points = Math.max(0, Math.floor(body.welcome_points))
     if (typeof body.welcome_msg === 'string') patch.welcome_msg = body.welcome_msg.slice(0, 200)

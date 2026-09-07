@@ -20,6 +20,7 @@ interface StoreRow {
   nombre: string
   logo_url: string | null
   notif_icon_url?: string | null
+  logo_wide_url?: string | null
   color_primary: string
   color_dark: string
   active: boolean
@@ -305,12 +306,18 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
   )
 }
 
-function LogoPicker({ logo, uploading, onPick, round, help }: { logo: string | null; uploading: boolean; onPick: (f: File) => void; round?: boolean; help?: string }) {
+/** La miniatura se enseña con la MISMA forma que el sitio donde se va a usar:
+ *  cuadrada el ícono de la app, redonda el de notificaciones, apaisada la firma
+ *  del panel. Ver un cuadrado y que salga estirado en otro lado es lo que hace
+ *  que alguien suba tres veces la misma imagen. Y `object-contain`, no `cover`:
+ *  recortar el logo de una marca para que llene la caja es lo último que se
+ *  debe hacer con un logo. */
+function LogoPicker({ logo, uploading, onPick, round, wide, help }: { logo: string | null; uploading: boolean; onPick: (f: File) => void; round?: boolean; wide?: boolean; help?: string }) {
   const fileRef = useRef<HTMLInputElement>(null)
   return (
     <div className="flex items-center gap-3">
-      <div className={`w-16 h-16 overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center ${round ? 'rounded-full' : 'rounded-2xl'}`}>
-        {logo ? <img src={logo} alt="" className="w-full h-full object-cover" /> : <StoreIcon size={22} className="text-gray-300" />}
+      <div className={`overflow-hidden flex-shrink-0 bg-gray-100 flex items-center justify-center ${wide ? 'w-32 h-12 rounded-xl' : 'w-16 h-16'} ${round ? 'rounded-full' : wide ? '' : 'rounded-2xl'}`}>
+        {logo ? <img src={logo} alt="" className="w-full h-full object-contain p-1" /> : <StoreIcon size={22} className="text-gray-300" />}
       </div>
       <div className="flex-1">
         <button onClick={() => fileRef.current?.click()} disabled={uploading}
@@ -341,6 +348,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [slug, setSlug] = useState(store.slug)
   const [logo, setLogo] = useState<string | null>(store.logo_url)
   const [notifIcon, setNotifIcon] = useState<string | null>(store.notif_icon_url ?? null)
+  const [logoWide, setLogoWide] = useState<string | null>(store.logo_wide_url ?? null)
   const [cp, setCp] = useState(store.color_primary || '#55C8F5')
   const [cd, setCd] = useState(store.color_dark || '#060C1A')
   const [active, setActive] = useState(store.active)
@@ -442,6 +450,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
 
   const [uploading, setUploading] = useState(false)
   const [uploadingIcon, setUploadingIcon] = useState(false)
+  const [uploadingWide, setUploadingWide] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   // Borrar: el subdominio tecleado. Un "¿seguro?" se contesta con un Enter de
@@ -453,6 +462,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
 
   const pick = async (f: File) => { setUploading(true); const url = await uploadLogo(f, adminId); if (url) setLogo(url); setUploading(false) }
   const pickIcon = async (f: File) => { setUploadingIcon(true); const url = await uploadLogo(f, adminId); if (url) setNotifIcon(url); setUploadingIcon(false) }
+  const pickWide = async (f: File) => { setUploadingWide(true); const url = await uploadLogo(f, adminId); if (url) setLogoWide(url); setUploadingWide(false) }
 
   const borrar = async () => {
     setBorrando(true); setErr('')
@@ -483,7 +493,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     setBusy(true); setErr('')
     const payload: Record<string, unknown> = {
       action: 'update', admin_auth_id: adminId, store_id: store.id,
-      nombre: nombre.trim(), logo_url: logo, notif_icon_url: notifIcon, color_primary: cp, color_dark: cd,
+      nombre: nombre.trim(), logo_url: logo, notif_icon_url: notifIcon, logo_wide_url: logoWide, color_primary: cp, color_dark: cd,
       // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
       // verificado para estos campos — redirigen dinero, no un logo).
       pay360_enabled: pay360On, pay360_env: pay360Env,
@@ -698,13 +708,26 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
           </>
         )}
 
-        <label className="text-xs font-bold text-gray-500 mb-1 block">Logo</label>
-        <div className="mb-4"><LogoPicker logo={logo} uploading={uploading} onPick={pick} /></div>
+        {/* Tres logos, uno por sitio (07-set-2026). No es coquetería: Android
+            recorta el de la app a su máscara, el de las notificaciones sale
+            diminuto en la barra, y la cabecera del panel tiene ancho y no alto.
+            Estirar uno solo se ve mal en dos de los tres. */}
+        <label className="text-xs font-bold text-gray-500 mb-1 block">Logo de la app</label>
+        <div className="mb-4">
+          <LogoPicker logo={logo} uploading={uploading} onPick={pick}
+            help="PNG cuadrado, 512×512. Es el ícono en el celular: centra la marca y déjale aire, porque Android lo recorta a su forma." />
+        </div>
 
         <label className="text-xs font-bold text-gray-500 mb-1 block">Ícono de notificación</label>
         <div className="mb-4">
           <LogoPicker logo={notifIcon} uploading={uploadingIcon} onPick={pickIcon} round
-            help="PNG con fondo transparente y borde redondo (como WhatsApp). Si no lo pones, usa el logo." />
+            help="PNG con fondo transparente y borde redondo (como WhatsApp). Sale muy pequeño en la barra de Android. Si no lo pones, usa el de la app." />
+        </div>
+
+        <label className="text-xs font-bold text-gray-500 mb-1 block">Logo apaisado</label>
+        <div className="mb-4">
+          <LogoPicker logo={logoWide} uploading={uploadingWide} onPick={pickWide} wide
+            help="PNG horizontal con fondo transparente. Firma la cabecera del panel, donde sobra ancho. Si no lo pones, usa el de la app." />
         </div>
 
         <label className="text-xs font-bold text-gray-500 mb-1 block">Colores</label>

@@ -37,7 +37,7 @@ describe('el pedido guardado se traduce a lo que el ticket sabe leer', () => {
   it('en agencia: sede, destinatario y adelanto', () => {
     const t = ticket(enAgencia())
     expect(t.payment).toBe('Pago recibido por Yape: S/ 95 de S/ 189.')
-    expect(t.lines.find(l => l.label === 'A nombre de')?.value).toBe('Rosa Quispe')
+    expect(t.lines.find(l => l.label === 'La persona que recoge')?.value).toBe('Rosa Quispe')
     expect(t.lines.find(l => l.label === 'Lo recoges en')?.value).toBe('Shalom · Juliaca Centro')
   })
 
