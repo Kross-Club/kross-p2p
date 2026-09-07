@@ -101,7 +101,17 @@ Deno.serve(async (req) => {
   // se sigue sin la lista y el panel cae en las columnas de siempre. Es la misma
   // regla que el resto de la mudanza — nadie se queda sin pedidos por una tabla
   // que falta.
-  const filas = (data ?? []) as { id: string }[]
+  // UNA sola declaración para los dos bloques que siguen (cobros y DNI). Fueron
+  // dos `const filas` en el mismo alcance desde el 31-ago-2026 —cada bloque
+  // llegó por su lado— y eso es un `SyntaxError`: el módulo no carga y la
+  // función devuelve BOOT_ERROR, o sea una respuesta del gateway SIN nuestras
+  // cabeceras CORS. El navegador entonces dice «Failed to fetch», sin status y
+  // sin logs, y el panel se veía como una tienda sin pedidos. Vivió una semana
+  // en `main` porque nadie redesplegó esta función. Lo vigila
+  // `edge-functions.test.ts`.
+  type Fila = Record<string, unknown> & { id: string; buyer_id: string | null }
+  const filas = (data ?? []) as Fila[]
+
   if (filas.length > 0) {
     const { data: cobros } = await supabase.from('cobros')
       .select('id, session_id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, flow_token, coupon_expires_at, concepto, created_by, created_at, comision_pen, costo_pasarela_pen')
@@ -114,10 +124,10 @@ Deno.serve(async (req) => {
         lista.push(c)
         porPedido.set(c.session_id, lista)
       }
-      for (const f of filas as Record<string, unknown>[]) {
+      for (const f of filas) {
         // Solo si HAY filas. Poner `[]` haría que el panel leyera de la lista
         // y diera el pedido por no cobrado; sin nada, cae a las columnas.
-        const suyos = porPedido.get(f.id as string)
+        const suyos = porPedido.get(f.id)
         if (suyos?.length) f.cobros = suyos
       }
     }
@@ -136,7 +146,6 @@ Deno.serve(async (req) => {
   //
   // Un fallo acá NO tumba la respuesta: se devuelven los pedidos sin DNI y lo
   // único que se pierde es poder buscar por él.
-  const filas = Array.isArray(data) ? data : []
   const ids = [...new Set(filas.map(f => f.buyer_id).filter(Boolean))]
   let docPorComprador: Record<string, string | null> = {}
   if (ids.length) {
