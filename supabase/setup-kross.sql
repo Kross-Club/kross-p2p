@@ -2167,3 +2167,22 @@ SELECT cron.schedule(
 -- El vocabulario, para quien lo busque (no se valida acá, se documenta):
 --   text · audio · image · status_update · call_log · guia · cobro · offer
 ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS chat_messages_type_check;
+
+
+-- §46 · EL ÍNDICE QUE LE FALTABA AL CHAT  (07-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- `chat_messages` no tenía índice por `session_id` — la clave con la que TODO
+-- lo lee: el tablero trae los mensajes de hasta 500 pedidos en un solo embed
+-- (`get-store-sessions`), el chat abre uno (`get-session`), y el reenvío de la
+-- guía busca el último mensaje con PDF. El único índice era el parcial de
+-- `cobro_id`.
+--
+-- Con la tabla chica no se nota; con una marca despachando cien al día, cada
+-- lectura del tablero se vuelve un recorrido completo de la tabla por cada
+-- pedido. Es exactamente la clase de deuda que no avisa hasta que ya duele.
+--
+-- `created_at` va en el índice porque las tres lecturas ordenan por él: así el
+-- índice sirve para encontrar Y para ordenar, sin pasar por el disco.
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session
+  ON chat_messages(session_id, created_at);

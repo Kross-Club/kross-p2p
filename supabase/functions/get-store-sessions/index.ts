@@ -92,15 +92,6 @@ Deno.serve(async (req) => {
     })
   }
 
-  // ─── Los cobros de cada pedido (bloque §36) ────────────────────────────────
-  //
-  // En UNA consulta para todo el lote y no un `select` anidado: son hasta 500
-  // pedidos, y una consulta por pedido convertiría el tablero en 500 viajes.
-  //
-  // ⚠️ Si la tabla todavía no existe en este proyecto, esto NO tumba el tablero:
-  // se sigue sin la lista y el panel cae en las columnas de siempre. Es la misma
-  // regla que el resto de la mudanza — nadie se queda sin pedidos por una tabla
-  // que falta.
   // UNA sola declaración para los dos bloques que siguen (cobros y DNI). Fueron
   // dos `const filas` en el mismo alcance desde el 31-ago-2026 —cada bloque
   // llegó por su lado— y eso es un `SyntaxError`: el módulo no carga y la
@@ -112,47 +103,63 @@ Deno.serve(async (req) => {
   type Fila = Record<string, unknown> & { id: string; buyer_id: string | null }
   const filas = (data ?? []) as Fila[]
 
-  if (filas.length > 0) {
-    const { data: cobros } = await supabase.from('cobros')
-      .select('id, session_id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, flow_token, coupon_expires_at, concepto, created_by, created_at, comision_pen, costo_pasarela_pen')
-      .in('session_id', filas.map(f => f.id))
-      .order('created_at', { ascending: true })
-    if (cobros) {
-      const porPedido = new Map<string, unknown[]>()
-      for (const c of cobros as { session_id: string }[]) {
-        const lista = porPedido.get(c.session_id) ?? []
-        lista.push(c)
-        porPedido.set(c.session_id, lista)
-      }
-      for (const f of filas) {
-        // Solo si HAY filas. Poner `[]` haría que el panel leyera de la lista
-        // y diera el pedido por no cobrado; sin nada, cae a las columnas.
-        const suyos = porPedido.get(f.id)
-        if (suyos?.length) f.cobros = suyos
-      }
+  // ─── Los cobros y el DNI, EN PARALELO ──────────────────────────────────────
+  //
+  // Cada una en UNA consulta para todo el lote y no en un `select` anidado: son
+  // hasta 500 pedidos, y una consulta por pedido convertiría el tablero en 500
+  // viajes. Y las dos salen de `filas` pero no dependen entre sí: hasta el
+  // 07-set-2026 iban en serie, dos viajes de ida y vuelta encadenados a una
+  // base que vive en São Paulo mientras la función corre en us-east-1. Cada
+  // viaje cuesta más que las dos consultas juntas, así que se lanzan a la vez.
+  //
+  // ⚠️ Si `cobros` todavía no existe en este proyecto, esto NO tumba el
+  // tablero: se sigue sin la lista y el panel cae en las columnas de siempre.
+  // Es la misma regla que el resto de la mudanza — nadie se queda sin pedidos
+  // por una tabla que falta.
+  //
+  // El DNI va en consulta aparte y no embebido (`buyers ( document_number )`),
+  // aunque el embebido sería una línea: PostgREST lo resuelve por la CLAVE
+  // FORÁNEA, y la de `order_sessions.buyer_id` se creó con `ADD COLUMN IF NOT
+  // EXISTS ... REFERENCES` — que no hace nada si la columna ya existía. O sea
+  // que no hay manera de saber desde acá si en producción existe. Si no
+  // existiera, el embebido devolvería 400 y **el panel entero se quedaría sin
+  // pedidos** por querer enseñar un DNI. Un `IN` sobre ochenta ids no depende
+  // de ninguna constraint y cuesta lo mismo. Un fallo acá tampoco tumba la
+  // respuesta: se devuelven los pedidos sin DNI y lo único que se pierde es
+  // poder buscar por él.
+  const ids = [...new Set(filas.map(f => f.buyer_id).filter(Boolean))]
+  const [cobrosRes, compradoresRes] = await Promise.all([
+    filas.length
+      ? supabase.from('cobros')
+          .select('id, session_id, tipo, monto, estado, matched_at, pay360_coupon_id, pay360_consumer_code, flow_token, coupon_expires_at, concepto, created_by, created_at, comision_pen, costo_pasarela_pen')
+          .in('session_id', filas.map(f => f.id))
+          .order('created_at', { ascending: true })
+      : Promise.resolve({ data: null }),
+    ids.length
+      ? supabase.from('buyers').select('id, document_number').in('id', ids)
+      : Promise.resolve({ data: null }),
+  ])
+
+  const cobros = cobrosRes.data as { session_id: string }[] | null
+  if (cobros) {
+    const porPedido = new Map<string, unknown[]>()
+    for (const c of cobros) {
+      const lista = porPedido.get(c.session_id) ?? []
+      lista.push(c)
+      porPedido.set(c.session_id, lista)
+    }
+    for (const f of filas) {
+      // Solo si HAY filas. Poner `[]` haría que el panel leyera de la lista
+      // y diera el pedido por no cobrado; sin nada, cae a las columnas.
+      const suyos = porPedido.get(f.id)
+      if (suyos?.length) f.cobros = suyos
     }
   }
 
-  // ─── El DNI de cada comprador ──────────────────────────────────────────────
-  //
-  // En una consulta aparte y no embebido (`buyers ( document_number )`), aunque
-  // el embebido sería una línea: PostgREST lo resuelve por la CLAVE FORÁNEA, y
-  // la de `order_sessions.buyer_id` se creó con
-  // `ADD COLUMN IF NOT EXISTS ... REFERENCES` — que no hace nada si la columna
-  // ya existía. O sea que no hay manera de saber desde acá si en producción
-  // existe. Si no existiera, el embebido devolvería 400 y **el panel entero se
-  // quedaría sin pedidos** por querer enseñar un DNI. Un `IN` sobre ochenta ids
-  // no depende de ninguna constraint y cuesta una consulta.
-  //
-  // Un fallo acá NO tumba la respuesta: se devuelven los pedidos sin DNI y lo
-  // único que se pierde es poder buscar por él.
-  const ids = [...new Set(filas.map(f => f.buyer_id).filter(Boolean))]
-  let docPorComprador: Record<string, string | null> = {}
-  if (ids.length) {
-    const { data: compradores } = await supabase
-      .from('buyers').select('id, document_number').in('id', ids)
-    docPorComprador = Object.fromEntries((compradores ?? []).map(b => [b.id, b.document_number ?? null]))
-  }
+  const docPorComprador: Record<string, string | null> = Object.fromEntries(
+    ((compradoresRes.data ?? []) as { id: string; document_number: string | null }[])
+      .map(b => [b.id, b.document_number ?? null]),
+  )
 
   const conDoc = filas.map(f => ({
     ...f,
