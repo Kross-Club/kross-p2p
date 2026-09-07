@@ -34,6 +34,45 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La base rechazaba media mitad del chat: el `CHECK` de `chat_messages.type` · **SQL** (07-sep-2026)
+
+**Qué pasó.** Siguiendo por qué la tarjeta de la guía no llegaba al chat, el censo de tipos contra
+producción devolvió **solo tres**: `text` (50), `status_update` (21), `call_log` (2). Ni una fila de
+`guia` ni de `cobro`. El insert manual dio el veredicto:
+
+```
+ERROR: 23514: new row for relation "chat_messages" violates check constraint "chat_messages_type_check"
+```
+
+`chat_messages_type_check` venía del esquema original y solo aceptaba esos tres tipos. **Todo lo que
+se construyó después chocaba contra él, y en silencio** (`chatMessage` no miraba el error del
+insert hasta el arreglo de hoy). Lo que la base venía borrando:
+
+| Tipo | Qué se perdía |
+|---|---|
+| `guia` | La tarjeta con el número de guía y el botón del PDF. La guía se emitía y se cobraba; el comprador nunca la veía — y el panel anotaba «el comprador ya la tiene en su chat» |
+| `cobro` | **La tarjeta de pago del saldo.** Toda la cobranza del saldo de agencia por el chat depende de ese botón |
+| `offer` | La oferta que manda Ventas |
+| `audio` · `image` | Notas de voz y fotos del chat (incluida la captura del Yape que manda el comprador) |
+
+**Qué correr.** §45 de `setup-kross.sql`, idempotente y sin deploy:
+
+```sql
+ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS chat_messages_type_check;
+```
+
+**Se quita en vez de ampliarse, a propósito.** El vocabulario de tipos vive en el código —quien
+inserta y quien pinta— y crece con cada función nueva del chat; repetirlo en una restricción pone la
+misma verdad en dos sitios, y el que se olvida es siempre la base. Lo que aportaba (atajar un tipo
+mal escrito) no compensa lo que costaba: un tipo desconocido hoy se pinta como burbuja normal,
+mientras que la restricción **borraba el mensaje**. La red que faltaba —el fallo del insert en los
+logs y avisado a Logística— entró hoy mismo (la entrada de abajo).
+
+> Dato para dimensionarlo: las dos guías Shalom reales (`94870783` y `94871125`) se emitieron, se
+> pagaron y se rastrearon bien. Lo único que faltó fue avisarle al comprador. **Después de correr el
+> SQL, esos pedidos siguen sin su mensaje** —el que se rechazó no vuelve—: hay que reenviarles la
+> guía a mano por el chat.
+
 ### Un mensaje que no se escribe se veía igual que uno que nadie leyó · 3 funciones, sin SQL (07-sep-2026)
 
 **Qué pasó.** Con el tablero ya funcionando, el chat de un pedido real (guía Shalom

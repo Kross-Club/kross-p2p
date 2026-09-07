@@ -2130,3 +2130,40 @@ SELECT cron.schedule(
   $$
 );
 
+
+
+-- §45 · EL `CHECK` DE `chat_messages.type` SE VA  (07-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- `chat_messages_type_check` solo aceptaba los tres tipos del esquema original
+-- —`text`, `status_update`, `call_log`— y RECHAZABA todo lo que se construyó
+-- después. Como el insert fallaba en silencio (`chatMessage` no miraba el
+-- error, corregido el mismo día), la base rechazaba mensajes que el producto
+-- daba por entregados:
+--
+--   · `guia`   — la tarjeta con el número de guía y el botón del PDF. La guía
+--                se emitía, se cobraba, y el comprador NUNCA la veía. El panel
+--                además anotaba "el comprador ya la tiene en su chat".
+--   · `cobro`  — la tarjeta de pago del SALDO. La cobranza del saldo de agencia
+--                depende de ese botón.
+--   · `offer`  — la oferta que manda Ventas.
+--   · `audio` / `image` — las notas de voz y las fotos del chat (el comprobante
+--                que manda el comprador con su Yape, entre otras).
+--
+-- Se comprobó contra producción el 07-set: `select type, count(*) from
+-- chat_messages group by type` devolvía SOLO esos tres, y un insert manual con
+-- `type = 'guia'` daba `23514 violates check constraint
+-- "chat_messages_type_check"`.
+--
+-- Se QUITA en vez de ampliarse, y a propósito. El vocabulario de tipos vive en
+-- el código —quien inserta y quien pinta—, y crece con cada función nueva del
+-- chat; duplicarlo en una restricción de la base pone la misma verdad en dos
+-- sitios, y el sitio que se olvida es siempre este. Lo que aportaba (atajar un
+-- tipo mal escrito) no compensa lo que costaba: un tipo desconocido hoy se
+-- pinta como burbuja normal —degradación amable—, mientras que la restricción
+-- BORRABA el mensaje. Y desde el 07-set un insert que falla queda en los logs
+-- y se le avisa a Logística, que es la red que faltaba.
+--
+-- El vocabulario, para quien lo busque (no se valida acá, se documenta):
+--   text · audio · image · status_update · call_log · guia · cobro · offer
+ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS chat_messages_type_check;
