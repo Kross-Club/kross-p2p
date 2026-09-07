@@ -150,6 +150,33 @@ export async function anotarCapi(
   }
 }
 
+/**
+ * La forma en que la LLAMAN las Edge Functions: con el envío todavía en vuelo.
+ * `pay360-webhook`, `flow-confirm` y `register-buyer` hacen
+ * `runInBackground(anotarConversion(ctx, dispatchConversion(…)))` — le pasan
+ * la promesa, no el resultado— y este era el nombre que importaban desde que
+ * entró la consola de Conexiones (03-set-2026, `487a9cd`)… sin que existiera.
+ * Deno lo rechaza al enlazar («The requested module does not provide an export
+ * named 'anotarConversion'») y la función entera no arranca: el webhook de
+ * 360pay devolvió 500 en sus cuatro reintentos y un cobro real quedó sin
+ * cruzar (06-set-2026). Quedó latente tres días porque nadie redesplegó esas
+ * funciones hasta el riel SMS; lo destapó ese deploy, no lo causó.
+ *
+ * Lo vigila `src/lib/edge-functions.test.ts`: acá no hay Deno para enlazar, así
+ * que el test hace la mitad que sí se puede — que todo import con nombre exista.
+ */
+export async function anotarConversion(
+  ctx: { storeId?: string | null; sessionId?: string | null; evento: string },
+  envio: Promise<{ meta?: EnvioCapi; tiktok?: EnvioCapi }> | { meta?: EnvioCapi; tiktok?: EnvioCapi },
+): Promise<void> {
+  try {
+    await anotarCapi(ctx, await envio)
+  } catch (e) {
+    // Regla 1: anotar jamás tumba lo que estaba anotando.
+    console.error('[api-eventos] anotarConversion', String(e).slice(0, 200))
+  }
+}
+
 /** Anota que no hubo respuesta: timeout, red caída, DNS. */
 export const anotarSinRespuesta = (ctx: Contexto, e: unknown, duracionMs?: number) =>
   anotar({ ...ctx, outcome: 'SIN_RESPUESTA', detail: String(e), duracionMs })
