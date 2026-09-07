@@ -85,6 +85,44 @@ describe('las Edge Functions', () => {
     expect(rotos).toEqual([])
   })
 
+  // ─── Que toda cabecera propia que el panel manda esté PERMITIDA por CORS ──
+  //
+  // El navegador pregunta antes de mandar una cabecera `x-…` (preflight), y si
+  // la función no la lista en `Access-Control-Allow-Headers` la llamada muere
+  // ANTES de llegar: `fetch` lanza «Failed to fetch», sin status ni cuerpo, y
+  // los logs de la función no ven nada. Así estuvo el tablero de Pedidos desde
+  // el 27-ago hasta el 07-set-2026: el panel mandaba `x-include-cancelled` y
+  // `get-store-sessions` permitía `x-store-id, x-seller-id` y nada más. En cero
+  // con pedidos reales en la base, y el demo —que no consulta— tapándolo.
+  //
+  // La regla: toda cabecera `x-…` que una función LEE (`req.headers.get`) y que
+  // el front ENVÍA (aparece como literal en `src/`) tiene que estar en su lista.
+  // Las que lee y nadie manda desde el navegador (`x-forwarded-for` lo pone el
+  // proxy; `x-viewer-role` no lo usa ninguna pantalla) no cuentan.
+  it('toda cabecera x-… que el front manda está en el Allow-Headers de la función que la lee', () => {
+    const front = import.meta.glob('../**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+    const enviadas = new Set<string>()
+    for (const [ruta, src] of Object.entries(front)) {
+      if (/\.test\.tsx?$/.test(ruta)) continue
+      for (const m of src.matchAll(/'(x-[a-z-]+)'/g)) enviadas.add(m[1])
+    }
+    expect(enviadas).toContain('x-include-cancelled')
+
+    const faltan: string[] = []
+    for (const ruta of archivos) {
+      if (!/\/functions\/[^/]+\/index\.ts$/.test(ruta)) continue
+      const src = fuentes[ruta]
+      const permite = /'Access-Control-Allow-Headers':\s*'([^']*)'/.exec(src)
+      if (!permite) continue
+      const permitidas = new Set(permite[1].toLowerCase().split(',').map(h => h.trim()))
+      for (const m of src.matchAll(/req\.headers\.get\('(x-[a-z-]+)'\)/g)) {
+        const h = m[1].toLowerCase()
+        if (enviadas.has(h) && !permitidas.has(h)) faltan.push(`${enElRepo(ruta)} lee ${h} y no lo permite`)
+      }
+    }
+    expect(faltan).toEqual([])
+  })
+
   // Si un día la carpeta cambia de sitio, esta prueba pasaría sin mirar nada y
   // nadie se enteraría. Que falle es preferible a que mienta.
   it('encuentra los archivos donde espera', () => {
