@@ -34,6 +34,39 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El tablero tarda 5 s en abrir · **SQL** + 1 función (07-sep-2026)
+
+**Qué se ve.** Panel → Pedidos: cinco segundos de spinner. El **demo abre al instante**, y esa
+comparación es el dato: el demo **no toca la red** (`useStoreOrders` sale del generador y no llama a
+ninguna función), así que los 5 s están enteros en el camino red + función + base, no en el render.
+
+**Lo que se arregló, que es cierto independientemente de la medición:**
+
+- **Faltaba el índice de `chat_messages(session_id)`** (§46) — la clave con la que TODO lo lee: el
+  tablero trae los mensajes de hasta 500 pedidos en un embed, el chat abre uno, y el reenvío de la
+  guía busca el último con PDF. El único índice era el parcial de `cobro_id`. Con la tabla chica no
+  se nota; con una marca despachando cien al día, cada lectura del tablero recorre la tabla entera
+  por cada pedido.
+- **`get-store-sessions` hacía tres viajes en serie.** Los cobros y el DNI salen de la misma lista
+  pero no dependen entre sí, y la base está en **sa-east-1** mientras la función corre en
+  **us-east-1**: cada ida y vuelta cuesta más que las dos consultas juntas. Ahora van en paralelo.
+
+**Lo que todavía NO está medido.** La cadena antes de la lista también es en serie y nadie la ha
+cronometrado: `useSeller` hace `auth.getSession()` y luego consulta `sellers`, y solo cuando eso
+resuelve arranca `get-store-sessions` — que además puede pagar **arranque en frío** de la Edge
+Function (los `npm:` de Deno son lentos de cargar), igual que `get-store-drafts`, que sale a la vez.
+
+Cómo separarlo, en el navegador: F12 → Network → recargar el tablero → mirar `get-store-sessions`.
+Un **TTFB** alto con descarga corta es la función (frío o consulta); mucha **descarga** es el
+tamaño; y si la **segunda** recarga seguida va rápida, era arranque en frío. Con eso se decide si
+toca cachear la lista entre pantallas, adelgazar el embed de mensajes o reducir el arranque.
+
+```
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Y el §46 en el SQL Editor.
+
 ### La base rechazaba media mitad del chat: el `CHECK` de `chat_messages.type` · **SQL** (07-sep-2026)
 
 **Qué pasó.** Siguiendo por qué la tarjeta de la guía no llegaba al chat, el censo de tipos contra
