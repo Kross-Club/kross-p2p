@@ -124,7 +124,7 @@ export async function registrarGuia(
    *  vez gastaría una request del cupo para no cambiar nada. En Olva no
    *  aplica: allá la suscripción es una llamada aparte —y gratis—. */
   opts: { yaSuscrito?: boolean; pdfUrl?: string | null } = {},
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; avisado: boolean } | { ok: false; error: string }> {
   const { error } = await supabase.from('order_sessions').update(g.tracking).eq('id', session.id)
   if (error) return { ok: false, error: error.message }
 
@@ -137,7 +137,7 @@ export async function registrarGuia(
     ? 0
     : Math.max(0, Number(session.product_price ?? 0) - pagado)
 
-  await chatMessage(
+  const aviso = await chatMessage(
     session.id,
     mensajeDeGuia(g.courier, g.ids, saldo),
     'all',
@@ -146,6 +146,17 @@ export async function registrarGuia(
     // el mensaje sale igual, sin botón.
     { type: 'guia', media_url: opts.pdfUrl ?? null },
   )
+  // Si el aviso al comprador NO entró, la guía existe pero él no se enteró: sin
+  // tarjeta en su chat, sin número y sin PDF. Eso no puede quedar en silencio —
+  // se le dice a Logística, que es quien puede reenviarlo. Pasó invisible hasta
+  // el 07-set-2026 porque `chatMessage` no miraba el error del insert.
+  if (!aviso.ok) {
+    console.error('registrarGuia: el comprador NO recibió el aviso de su guía', session.id, aviso.error)
+    await chatMessage(session.id,
+      `⚠️ La guía quedó registrada (${g.ids}) pero el aviso al comprador NO se pudo escribir en su chat: `
+      + `${aviso.error ?? 'error desconocido'}. Él no ve su guía — escríbele tú y avisa al equipo.`,
+      'sellers')
+  }
   // La CLAVE, solo si ya no queda nada por pagar: el mensaje de arriba acaba de
   // prometer "junto con la guía te entregaremos tu clave de recojo", y esta es
   // la entrega. Con saldo pendiente NO sale — la suelta el webhook cuando el
@@ -175,7 +186,9 @@ export async function registrarGuia(
   } catch (e) {
     console.error('registrarGuia: fallo el SMS de la guía', session.id, e)
   }
-  return { ok: true }
+  // `avisado` viaja para que quien llama no escriba "el comprador ya la tiene
+  // en su chat" cuando no la tiene.
+  return { ok: true, avisado: aviso.ok }
 }
 
 // ─── El PDF de la guía formal de Shalom ──────────────────────────────────────

@@ -34,6 +34,57 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Un mensaje que no se escribe se veía igual que uno que nadie leyó · 3 funciones, sin SQL (07-sep-2026)
+
+**Qué pasó.** Con el tablero ya funcionando, el chat de un pedido real (guía Shalom
+`94870783 · WKCT`, emitida el 06-set 22:15) no tenía **la tarjeta de la guía**: estaban el acuse del
+adelanto y la nota interna «Guía generada automáticamente en Shalom. **El comprador ya la tiene en
+su chat**», pero el mensaje `type: 'guia'` —el que lleva el número y el botón del PDF— no existía.
+El panel sí sabe pintarlo (`VendedorPedidoPage`, rama `msg.type === 'guia'`), así que el mensaje
+nunca se insertó. Y **la nota afirmaba lo contrario** porque nadie miraba si el insert había
+entrado: `chatMessage` hacía `const { data: msg } = await …insert()` y descartaba `error`.
+
+Es la tercera vez el mismo día que un fallo silencioso se disfraza de «no pasó nada» (la lista de
+pedidos vacía, el BOOT_ERROR, y esto). Acá cuesta más caro: ese aviso es lo que el comprador
+necesita para recoger su paquete.
+
+**Qué cambió.**
+
+- `chatMessage` (`_shared/tracking.ts`) devuelve `{ ok, error }` y **escribe el fallo en los logs**
+  con el motivo de la base. Ya no se puede perder un mensaje en silencio.
+- `registrarGuia` (`_shared/guia.ts`): si el aviso al comprador NO entra, deja una **nota a
+  Logística** diciendo que la guía existe pero él no la ve, con el error. Vale para los tres
+  caminos (Shalom, Olva y la guía registrada a mano), porque vive en el módulo compartido.
+- `shalom-order` solo escribe «el comprador ya la tiene en su chat» cuando de verdad la tiene
+  (`reg.avisado`).
+
+**Qué desplegar.**
+
+```
+supabase functions deploy shalom-order   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-order     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage   --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL. (Las tres comparten `_shared/tracking.ts` y `_shared/guia.ts`, que se empaquetan en cada
+deploy.)
+
+**Lo que queda por saber.** Por qué falló ese insert concreto todavía no se sabe: `chat_messages.type`
+es texto libre (no hay restricción que rechace `'guia'`) y `media_url` existe. Y **ese pedido es de
+antes del deploy de hoy**, así que puede ser una versión vieja de `shalom-order` la que lo emitió.
+Se resuelve con dos consultas y una guía nueva:
+
+```sql
+-- Qué mensajes tiene ese pedido de verdad:
+select created_at, type, visibility, media_url is not null as tiene_pdf, left(body, 60) as texto
+from chat_messages
+where session_id = (select id from order_sessions where tracking_numero = '94870783')
+order by created_at;
+
+-- Si 'guia' nunca existió en esta base, no es este pedido: es siempre:
+select type, count(*) from chat_messages group by type order by 2 desc;
+```
+
 ### El tablero en cero: DOS bugs con el mismo síntoma · 1 función, sin SQL (07-sep-2026)
 
 **Qué pasó.** Panel → Pedidos → Tablero, filtro *Todo*, en Kross Shop: cero en todas las columnas
