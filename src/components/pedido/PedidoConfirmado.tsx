@@ -1,127 +1,58 @@
 // ─── Pedido confirmado: el ticket y el recorrido ─────────────────────────────
-// La pantalla que define el KPI del refactor: llegar aquí es la conversión.
+// Lo que el comprador ve cuando su pedido ya existe. Vivía DENTRO del modal del
+// checkout (`OrderDone`) y por eso era frágil: una X y no se veía nunca más.
+// Desde el 07-set-2026 tiene URL propia (`/pedido/:token`, `MiPedidoPage`), que
+// es lo que la hace recargable — y recargar es justo lo que hace el comprador
+// para ver si su envío avanzó.
+//
+// Este archivo solo PINTA. El ticket se lo dan armado: desde el checkout con el
+// estado del formulario, y desde la página con la fila del pedido
+// (`ticket-desde-pedido.ts`). Así la misma pantalla sirve a los dos sin que
+// ninguno sepa del otro.
 //
 // Regla dura del módulo: **al comprador nunca se le dice que su pago no
 // existe.** Si el adelanto no está cobrado, para él sigue siendo un pedido
-// registrado que un asesor va a coordinar.
+// registrado que un asesor va a coordinar. Eso lo resuelve `buildTicket`.
 //
-// Rediseño del 07-set-2026 (ver `01-SALES-ENGINE.md` § Pantalla final). Es el
-// momento de más atención del comprador, y se usa para tres cosas, en orden:
+// Tres bloques, en orden:
 //
 //   1. EL TICKET: qué pidió, dónde lo recoge y con qué dirección, a nombre de
 //      quién, y su guía con número apenas exista. Diseñado para capturarse.
 //   2. EL RECORRIDO: en qué va el pedido y qué viene, como una línea vertical
-//      de puntos. El saldo y el DNI ya no son cajas sueltas que gritan: son el
-//      detalle del paso donde tocan ("Llegó a la agencia · pagas tu saldo…",
-//      "Recojo · con tu DNI y tu clave"). Nada se quitó; cambió de sitio.
+//      de puntos. El saldo y el DNI no son cajas sueltas que gritan: son el
+//      detalle del paso donde tocan.
 //   3. LA APP: "¿te avisamos cuando llegue?" con un solo botón. En Android sale
 //      el aviso del sistema y, al aceptar, se activan los avisos y se abre el
 //      pedido. En iPhone Apple no deja instalar con un clic: se enseñan los dos
 //      toques. Y el chat ya no se ofrece desde acá: seguimiento y consultas son
 //      cosa de la app —el ticket, la guía y el teléfono sostienen al que no la
 //      instala—.
-//
-// Lo que sí se espera, y poco, es LA GUÍA: el webhook del pago la dispara en
-// segundo plano, así que puede nacer mientras el comprador mira esta pantalla.
-// ⚠️ `registrarGuia` escribe primero el número en el pedido y DESPUÉS el
-// mensaje que lleva el PDF del courier: si el sondeo se detuviera al ver el
-// número, un comprador que cayera en ese hueco se quedaría con la hoja de
-// respaldo para siempre (pasó el 07-set). Por eso sigue mirando hasta ver el
-// PDF o agotar los intentos.
 
 import { useEffect, useState } from 'react'
 import { Camera, Check, Download, ExternalLink, Phone, Smartphone } from 'lucide-react'
-import { COPY } from '../../../lib/checkout/checkout.config'
-import { buildTicket } from '../../../lib/checkout/ticket'
-import type { TicketGuide, TicketStep } from '../../../lib/checkout/ticket'
-import { AgencyService } from '../../../lib/checkout/services/AgencyService'
-import { getSession } from '../../../lib/order-api'
-import { enlaceDeGuia } from '../../../lib/hoja-de-guia'
-import { useStore } from '../../../lib/store-context'
-import { subscribePush } from '../../../lib/push'
-import { useIsDesktop } from '../../../lib/use-desktop'
-import { IOSSteps, isInstalled } from '../../InstallBanner'
-import type { AgencyBranch, CheckoutState, PaymentVerification } from '../../../lib/checkout/types'
+import { COPY } from '../../lib/checkout/checkout.config'
+import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
+import { useStore } from '../../lib/store-context'
+import { subscribePush } from '../../lib/push'
+import { useIsDesktop } from '../../lib/use-desktop'
+import { AndroidSteps, IOSSteps, isInstalled } from '../InstallBanner'
 
-interface OrderDoneProps {
+interface Props {
+  /** Ya armado por quien llama: el checkout desde el formulario, la página
+   *  desde la fila del pedido. Esta pantalla no consulta nada. */
+  ticket: Ticket
   orderCode: string
-  state: CheckoutState
-  /** Precio efectivo del pack, el mismo que vio en el paso 3. */
-  price: number
-  packName: string | null
-  verification: PaymentVerification
-  /** Token del pedido: es la llave de `/p/:token`, que la app abre al instalarse. */
+  /** ¿El adelanto cruzó? Solo pinta de verde la primera frase. */
+  paid: boolean
+  /** Token del pedido: la llave de `/pedido/:token`, que la app abre al
+   *  instalarse. */
   token?: string | null
   /** Id del pedido: a él se suscribe el push cuando el comprador instala. */
   sessionId?: string | null
-  /** El comprador eligió que lo contacte un asesor en vez de pagar ahora: no
-   *  se muestra la caja del adelanto, porque no hay pago en vuelo. */
-  unpaid?: boolean
 }
 
-/** Cuánto se espera la guía: cada 4 s durante dos minutos. Emitirla lleva
- *  varias llamadas al proveedor y bajar el voucher tiene 30 s de timeout, así
- *  que un minuto se quedaba corto. Más que esto y el comprador ya se fue; la
- *  guía le llega igual por el chat y el aviso. */
-const GUIDE_POLL_MS = 4_000
-const GUIDE_POLL_MAX = 30
-
-export default function OrderDone({ orderCode, state, price, packName, verification, token, sessionId, unpaid }: OrderDoneProps) {
+export default function PedidoConfirmado({ ticket, orderCode, paid, token, sessionId }: Props) {
   const { store } = useStore()
-  const paid = verification === 'MATCHED'
-  const isAgency = state.deliveryMethod === 'AGENCIA'
-
-  // La sede en palabras y con dirección. El catálogo ya está cargado porque el
-  // comprador acaba de elegirla; si por lo que sea no está, el ticket cae al
-  // distrito y no promete una dirección que no tiene.
-  const [branch, setBranch] = useState<AgencyBranch | null>(null)
-  const { agency, branchId } = state.pickup
-  useEffect(() => {
-    if (!isAgency || !agency || !branchId) return
-    let alive = true
-    AgencyService.getBranch(agency, branchId)
-      .then(b => { if (alive) setBranch(b) })
-      .catch(() => { /* el ticket cae al distrito */ })
-    return () => { alive = false }
-  }, [isAgency, agency, branchId])
-
-  // La guía, si nace mientras mira. Solo con el adelanto confirmado —es lo que
-  // autoriza a emitirla— y solo en agencia. El botón abre el mejor documento
-  // disponible, con la misma regla que la tarjeta del chat: el PDF del courier
-  // si la API lo trajo, y si no la hoja de guía de la app. Mientras el PDF no
-  // aparezca se sigue preguntando (ver el aviso de arriba).
-  const [guide, setGuide] = useState<TicketGuide | null>(null)
-  useEffect(() => {
-    if (!paid || !isAgency || !token) return
-    let alive = true
-    let tries = 0
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const tick = async () => {
-      tries += 1
-      let listo = false
-      try {
-        const d = await getSession(token)
-        const s = d.session
-        if (!alive) return
-        if (s.tracking_numero || s.tracking_ose_id) {
-          const pdf = d.messages.find(m => m.type === 'guia' && m.media_url)?.media_url ?? null
-          setGuide({
-            courier: s.tracking_courier ?? null,
-            numero: s.tracking_numero ?? null,
-            codigo: s.tracking_codigo ?? null,
-            oseId: s.tracking_ose_id ?? null,
-            href: pdf ?? enlaceDeGuia(token),
-          })
-          listo = !!pdf
-        }
-      } catch { /* sin red o sin pedido: se reintenta hasta el tope */ }
-      if (alive && !listo && tries < GUIDE_POLL_MAX) timer = setTimeout(tick, GUIDE_POLL_MS)
-    }
-    timer = setTimeout(tick, GUIDE_POLL_MS)
-    return () => { alive = false; if (timer) clearTimeout(timer) }
-  }, [paid, isAgency, token])
-
-  const ticket = buildTicket({ state, price, packName, paid, unpaid: !!unpaid, branch, guide })
   const phone = store.wa_display_phone?.trim() || null
 
   return (
@@ -320,11 +251,17 @@ function InstalarApp({ token, sessionId, nombre, logo }: {
             <Download size={18} strokeWidth={2.5} /> {COPY.doneInstallCta}
           </button>
           <p className="text-[11px] text-gray-500 mt-2">{COPY.doneInstallSub}</p>
-          {ayuda && (
-            <p className="text-[11px] text-gray-500 mt-2 px-2">
-              {desktop ? COPY.doneInstallDesktop : COPY.doneInstallHelp}
-            </p>
-          )}
+          {/* El navegador no dio el aviso de instalar (ya se rechazó una vez, o
+              este Chrome no lo ofrece). Se enseña el camino del menú con las
+              palabras exactas que va a leer, no una etiqueta inventada. */}
+          {ayuda && (desktop
+            ? <p className="text-[11px] text-gray-500 mt-2 px-2">{COPY.doneInstallDesktop}</p>
+            : (
+              <div className="mt-3">
+                <p className="text-[11px] text-gray-500 mb-1">{COPY.doneInstallHelp}</p>
+                <div className="flex justify-center"><AndroidSteps /></div>
+              </div>
+            ))}
         </>
       )}
     </div>

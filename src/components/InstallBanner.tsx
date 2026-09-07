@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, X, Share, Plus } from 'lucide-react'
+import { ArrowDownToLine, Download, EllipsisVertical, X, Share, Plus } from 'lucide-react'
 import { useStore } from '../lib/store-context'
 import { useIsDesktop } from '../lib/use-desktop'
 
@@ -24,6 +24,29 @@ export function IOSSteps({ dark }: { dark?: boolean }) {
       <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold"
         style={{ background: chip, color: '#fff' }}>
         <Plus size={13} /> Agregar a inicio
+      </span>
+    </div>
+  )
+}
+
+// Cómo se instala en Android, con las PALABRAS que el comprador va a ver.
+// Chrome no dice "Instalar app" en el menú: dice **"Instalar y crear acceso
+// directo"** (07-set-2026). Enseñar una etiqueta que no existe manda a buscar
+// algo que no está, y quien no vive en apps abandona ahí. Se enseña el ⋮ y la
+// opción tal cual, como los dos toques del iPhone.
+export function AndroidSteps({ dark }: { dark?: boolean }) {
+  const fg = dark ? 'rgba(255,255,255,0.85)' : '#374151'
+  const chip = dark ? 'rgba(255,255,255,0.12)' : 'var(--brand)'
+  return (
+    <div className="flex items-center gap-2 mt-2 flex-wrap">
+      <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold"
+        style={{ background: chip, color: '#fff' }}>
+        <EllipsisVertical size={13} /> Menú
+      </span>
+      <span style={{ color: fg }} className="text-xs font-black">→</span>
+      <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold"
+        style={{ background: chip, color: '#fff' }}>
+        <ArrowDownToLine size={13} /> Instalar y crear acceso directo
       </span>
     </div>
   )
@@ -122,7 +145,7 @@ export default function InstallBanner({ inline = false, onInstalled }: { inline?
                   style={{ background: 'var(--brand)' }}>
                   <Download size={13} /> Instalar app
                 </button>
-                {help && <p className="text-[10px] mt-1.5" style={{ color: '#9CA3AF' }}>Abre el menú ⋮ de tu navegador y elige "Instalar app".</p>}
+                {help && <AndroidSteps />}
               </>
             )}
         </div>
@@ -154,7 +177,7 @@ export default function InstallBanner({ inline = false, onInstalled }: { inline?
                     style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
                     <Download size={13} /> Instalar app
                   </button>
-                  {help && <p className="text-[10px] mt-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>Abre el menú ⋮ de tu navegador y elige "Instalar app".</p>}
+                  {help && <AndroidSteps dark />}
                 </>
               )}
           </div>

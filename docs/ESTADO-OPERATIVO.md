@@ -128,6 +128,14 @@ logs y avisado a Logística— entró hoy mismo (la entrada de abajo).
 
 #### El botón *Reenviar* de la barra de envío · 2 funciones (07-set-2026)
 
+> **Texto invisible sobre el lima (mismo día).** El acuse «Enviado» salía lima sobre lima: en tema
+> oscuro `--ok-bg` y `--ok-fg` son **el mismo** `--k-lime`. El par de un fondo lima es `--ok-on`, y
+> así lo usaban ya `TarjetaDePago`, `TarjetaDeGuia` y `TarjetaServicio`. Estaba mal en **cinco**
+> sitios —el botón nuevo, `OfferCard`, `OrderDetailModal`, `MarcaPage` y `VendedorPedidoPage`—, así
+> que la oferta que ve el comprador también tenía el texto ilegible. Regla: **sobre `--ok-bg` va
+> siempre `--ok-on`**; `--ok-fg` es para lima SOBRE fondo neutro.
+
+
 Un mensaje rechazado no vuelve solo, y hasta ahora la única forma de repararlo era abrir *Corregir*
 y **volver a escribir la guía a mano** — el formulario sale vacío, así que había que retipear el
 número y el código, con el riesgo de romper el rastreo de un envío que iba bien.

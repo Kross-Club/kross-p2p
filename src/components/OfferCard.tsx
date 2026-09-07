@@ -43,7 +43,7 @@ export default function OfferCard({ offer, role, onAccept }: {
 
             {role === 'buyer' && (
               accepted ? (
-                <div className="w-full mt-2 py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-1.5" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
+                <div className="w-full mt-2 py-2.5 rounded-xl font-black text-sm flex items-center justify-center gap-1.5" style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}>
                   <Check size={15} /> Oferta aceptada
                 </div>
               ) : (

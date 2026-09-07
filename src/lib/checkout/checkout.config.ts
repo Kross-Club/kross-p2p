@@ -388,7 +388,10 @@ export const COPY = {
   // iPhone no deja instalar con un clic; se enseñan los dos toques.
   doneInstallIos: 'En iPhone se instala en dos toques:',
   doneInstallDesktop: 'Abre esta página desde tu celular para instalar la app.',
-  doneInstallHelp: 'Abre el menú ⋮ de tu navegador y elige "Instalar app".',
+  // El camino del menú de Chrome. La ETIQUETA la pinta `AndroidSteps` con las
+  // palabras exactas que Chrome usa hoy ("Instalar y crear acceso directo"):
+  // escribirla acá a mano ya nos hizo enseñar una opción que no existe.
+  doneInstallHelp: 'En tu navegador:',
 
   advancePendingByChat: 'Un asesor te escribe por el chat para coordinar tu adelanto.',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',

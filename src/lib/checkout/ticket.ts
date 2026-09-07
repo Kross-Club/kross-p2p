@@ -36,6 +36,11 @@ export interface TicketInput {
    *  esta pantalla (el webhook del pago la dispara en segundo plano). `null`
    *  mientras no exista: el recorrido la muestra como paso pendiente. */
   guide?: TicketGuide | null
+  /** La fase que reporta el courier (`EN_ORIGEN` · `EN_TRANSITO` ·
+   *  `EN_DESTINO` · `ENTREGADO`), cuando la pantalla la conoce. Es lo que hace
+   *  que RECARGAR sirva de algo: sin ella el recorrido solo sabe si la guía
+   *  existe, y el comprador que vuelve a mirar ve siempre lo mismo. */
+  fase?: string | null
 }
 
 export interface TicketGuide {
@@ -166,70 +171,91 @@ export function buildTicket(i: TicketInput): Ticket {
     : null
 
   // ── El recorrido ──
-  // El primer paso ya pasó o está pasando; el resto se pinta como viene. El
-  // saldo va en el paso donde se paga y el DNI en el paso donde se pide: una
-  // cifra fuera de su momento asusta, y en su momento explica.
+  // Los pasos se escriben una vez y el ESTADO se deriva de un solo número: en
+  // qué paso va. Antes cada paso decidía el suyo con su propia condición, y
+  // eso no sabía crecer — el envío puede avanzar cuatro veces más (lo dice el
+  // courier) y el recorrido se quedaba clavado en "salió la guía".
+  //
+  // El saldo va en el paso donde se paga y el DNI en el paso donde se pide:
+  // una cifra fuera de su momento asusta, y en su momento explica.
   const plazo = etaEnPalabras(s.provinciaConfig?.eta)
   const cobrado = advance > 0 ? (paid && !unpaid) : true
-  const pasos: TicketStep[] = []
 
-  if (advance > 0 && !cobrado) {
-    pasos.push({
-      label: 'Pedido registrado',
-      detail: `Un asesor te escribe para coordinar tu adelanto de ${soles(advance)}.`,
-      estado: 'actual',
-    })
-  } else {
-    pasos.push({
-      label: advance > 0 ? 'Pago recibido' : 'Pedido registrado',
-      detail: advance > 0 ? `${soles(advance)} por Yape.` : undefined,
-      estado: 'hecho',
-    })
-  }
+  const crudos: { label: string; detail?: string }[] = [
+    advance > 0 && !cobrado
+      ? { label: 'Pedido registrado', detail: `Un asesor te escribe para coordinar tu adelanto de ${soles(advance)}.` }
+      : { label: advance > 0 ? 'Pago recibido' : 'Pedido registrado', detail: advance > 0 ? `${soles(advance)} por Yape.` : undefined },
+  ]
 
   if (isAgency) {
-    pasos.push({
-      label: 'Guía de envío emitida',
-      detail: guide ? `${guide.line.label}: ${guide.line.value}` : 'Te avisaremos a tu celular apenas salga.',
-      estado: !cobrado ? 'pendiente' : conGuia ? 'hecho' : 'actual',
-    })
-    pasos.push({
-      label: `En camino a ${agencia}`,
-      detail: plazo ? `Suele tardar ${plazo}.` : undefined,
-      estado: conGuia && cobrado ? 'actual' : 'pendiente',
-    })
-    pasos.push({
-      label: 'Llegó a la agencia',
-      detail: rest > 0
-        ? `Te avisaremos a tu celular. Ahí pagas tu saldo de ${soles(rest)} con Yape desde tu pedido, nunca en la agencia, y recibes tu clave de recojo.`
-        : 'Te avisaremos a tu celular, con tu clave de recojo.',
-      estado: 'pendiente',
-    })
-    pasos.push({
-      label: 'Recojo',
-      detail: `En ${destino}, con tu DNI y tu clave de recojo.`,
-      estado: 'pendiente',
-    })
+    crudos.push(
+      {
+        label: 'Guía de envío emitida',
+        detail: guide ? `${guide.line.label}: ${guide.line.value}` : 'Te avisaremos a tu celular apenas salga.',
+      },
+      { label: `En camino a ${agencia}`, detail: plazo ? `Suele tardar ${plazo}.` : undefined },
+      {
+        label: 'Llegó a la agencia',
+        detail: rest > 0
+          ? `Te avisaremos a tu celular. Ahí pagas tu saldo de ${soles(rest)} con Yape desde tu pedido, nunca en la agencia, y recibes tu clave de recojo.`
+          : 'Te avisaremos a tu celular, con tu clave de recojo.',
+      },
+      { label: 'Recojo', detail: `En ${destino}, con tu DNI y tu clave de recojo.` },
+    )
   } else {
-    pasos.push({
-      label: 'Preparando tu pedido',
-      estado: cobrado ? 'actual' : 'pendiente',
-    })
-    pasos.push({
-      label: `En camino a ${destino}`,
-      detail: [plazo ? `Suele tardar ${plazo}.` : null, 'Te avisaremos a tu celular cuando salga.'].filter(Boolean).join(' '),
-      estado: 'pendiente',
-    })
-    pasos.push({
-      label: 'Entrega',
-      detail: rest > 0
-        ? `Pagas ${soles(advance > 0 ? rest : price)} al recibir.`
-        : 'No te queda nada por pagar.',
-      estado: 'pendiente',
-    })
+    crudos.push(
+      { label: 'Preparando tu pedido' },
+      {
+        label: `En camino a ${destino}`,
+        detail: [plazo ? `Suele tardar ${plazo}.` : null, 'Te avisaremos a tu celular cuando salga.'].filter(Boolean).join(' '),
+      },
+      {
+        label: 'Entrega',
+        detail: rest > 0 ? `Pagas ${soles(advance > 0 ? rest : price)} al recibir.` : 'No te queda nada por pagar.',
+      },
+    )
   }
 
+  const { actual, completado } = enQuePasoVa({
+    isAgency, cobrado, conGuia, fase: i.fase, ultimo: crudos.length - 1,
+  })
+  const pasos: TicketStep[] = crudos.map((p, idx) => ({
+    ...p,
+    estado: idx < actual ? 'hecho' : idx === actual ? (completado ? 'hecho' : 'actual') : 'pendiente',
+  }))
+
   return { payment, lines, guide, pasos }
+}
+
+/**
+ * En qué paso va el pedido, en UN número.
+ *
+ * Manda lo que reporta el courier, porque es el único hecho comprobable: el
+ * comprador que recarga su pedido para ver si avanzó tiene que ver que avanzó.
+ * Sin fase se cae a lo que se sabe sin él —si el adelanto cruzó y si la guía
+ * existe—, que es todo lo que había antes de que esta pantalla tuviera URL.
+ */
+function enQuePasoVa(p: {
+  isAgency: boolean
+  cobrado: boolean
+  conGuia: boolean
+  fase: string | null | undefined
+  ultimo: number
+}): { actual: number; completado: boolean } {
+  // Sin cobro no hay envío que seguir: el pedido está en su primer paso.
+  if (!p.cobrado) return { actual: 0, completado: false }
+
+  const fase = String(p.fase ?? '').toUpperCase()
+  if (fase === 'ENTREGADO') return { actual: p.ultimo, completado: true }
+  // En agencia el último paso es el RECOJO, que lo hace el comprador: que el
+  // paquete esté en el mostrador no es haberlo recogido.
+  if (fase === 'EN_DESTINO') return { actual: p.isAgency ? 3 : 2, completado: false }
+  // `EN_ORIGEN` es "entró a la agencia de origen": para el comprador ya es
+  // camino, y decirle otra cosa sería vocabulario del courier, no suyo.
+  if (fase === 'EN_TRANSITO' || fase === 'EN_ORIGEN') return { actual: 2, completado: false }
+
+  if (!p.isAgency) return { actual: 1, completado: false }
+  return { actual: p.conGuia ? 2 : 1, completado: false }
 }
 
 /** Los ids como los nombra el voucher del courier — el mismo vocabulario que

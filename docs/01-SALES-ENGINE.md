@@ -520,6 +520,41 @@ El contenido lo arma `src/lib/checkout/ticket.ts` (puro, con tests en
 - Deuda anotada: `Store` del `store-context` ahora trae `wa_display_phone`; la
   caché por slug de antes no lo tiene hasta la siguiente carga.
 
+#### La pantalla final deja de ser una ventana: `/pedido/:token` ✅ (07-set-2026)
+
+**Por qué.** Vivía DENTRO del modal del checkout, así que un toque en la X la borraba para siempre:
+el pedido existía y el comprador no tenía a dónde volver. Y volver es lo normal — la gente recarga
+para ver si su envío avanzó, no abre un chat para eso.
+
+**Qué es ahora.** Una página con URL propia, hermana del chat y con otro oficio:
+
+| | Para qué | Quién llega |
+|---|---|---|
+| `/pedido/:token` | **Mirar**: ticket, recorrido, instalar la app | El que termina el checkout; el que recarga; *Ver mi pedido* en la landing |
+| `/p/:token` | **Hablar**: el chat del pedido | El enlace de WhatsApp; el que no instaló la app; la app instalada |
+
+El chat **no cambia**: sigue abriéndose desde la web para quien no tenga la app, que es lo que
+sostiene los avisos por WhatsApp.
+
+**Y recargar sirve.** El recorrido ya no depende solo de que exista la guía: avanza con la **fase
+que reporta el courier** (`buildTicket` con `fase` → `enQuePasoVa`). `EN_ORIGEN`/`EN_TRANSITO` lo
+ponen en camino, `EN_DESTINO` en la agencia, `ENTREGADO` lo cierra entero. Sin el adelanto cruzado
+no avanza nada, diga lo que diga la fase: sin cobro no hay envío que seguir.
+
+**Cómo se arma.** La página no tiene el estado del formulario —se entra por la URL, quizá días
+después—, así que reconstruye el ticket desde la FILA del pedido (`ticket-desde-pedido.ts`, puro y
+con tests). Lo que la fila no guarda (el plazo del courier) se calla: el ticket ya sabe hacerlo, y
+prometer un plazo que nadie escribió sería inventarlo. Sondea cada 4 s durante dos minutos y para
+cuando ya no queda nada por ver (adelanto cruzado y guía con PDF); lo demás lo trae la recarga.
+
+`PedidoConfirmado` (antes `OrderDone`) solo PINTA: el ticket se lo dan armado, desde el checkout o
+desde la página. La misma pantalla sirve a los dos sin que ninguno sepa del otro.
+
+**Instalar en Android, con las palabras de Chrome.** El menú de Chrome no dice «Instalar app»: dice
+**«Instalar y crear acceso directo»**. Enseñar una etiqueta que no existe manda a buscar algo que no
+está, y quien no vive en apps abandona ahí. `AndroidSteps` enseña el ⋮ y la opción tal cual, igual
+que los dos toques del iPhone.
+
 #### El recorrido y la app ✅ (07-set-2026)
 
 Segunda vuelta sobre el ticket, después de mirarlo con un pedido real. Tres cambios

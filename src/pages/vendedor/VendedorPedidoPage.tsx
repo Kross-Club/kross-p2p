@@ -2119,7 +2119,7 @@ function WaTemplatesSheet({ storeId, sessionId, sellerName, onClose }: {
                     style={{ borderColor: done === t.name ? '#25D366' : '#eee', borderWidth: 1.5 }}>
                     <div className="flex items-center justify-between">
                       <span className="font-black text-sm text-gray-900">{t.name}</span>
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: 'var(--ok-bg)', color: 'var(--ok-fg)' }}>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}>
                         {done === t.name ? 'Enviado ✓' : `${t.params} var${t.params === 1 ? '' : 's'}`}
                       </span>
                     </div>

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import CheckoutModal from '../components/checkout/CheckoutModal'
+import { enlaceDelChat, enlaceDeMiPedido } from '../lib/enlaces'
 import { COPY } from '../lib/checkout/checkout.config'
 import type { StoreFlow, StorePay360 } from '../lib/checkout/types'
 import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
@@ -176,7 +177,12 @@ export default function LandingProductoPage() {
             "Ver mi pedido" va en secundario: la landing sigue siendo para
             vender, no para dar seguimiento. */}
         {lastOrder && (
-          <a href={`/p/${lastOrder.token}`}
+          /* "Ver mi pedido" lleva a la PÁGINA del pedido (07-set-2026), que es
+             lo que quiere quien vuelve: mirar cómo va. Antes caía en el chat, y
+             abrir una conversación no es lo que uno busca para saber si su
+             paquete salió. El pago a medias es la excepción y sigue yendo al
+             chat: ahí es donde el asesor lo cobra. */
+          <a href={lastOrder.advancePending ? enlaceDelChat(lastOrder.token) : enlaceDeMiPedido(lastOrder.token)}
             className="font-black px-4 py-3.5 rounded-2xl text-sm flex-shrink-0 border-2 border-green-500 text-green-700 bg-white active:scale-95 transition-transform">
             {/* Un pago en línea que quedó a medias cambia el rótulo: el pedido
                 existe y el chat es donde el asesor lo cobra. El comprador que
