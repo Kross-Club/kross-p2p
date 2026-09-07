@@ -7,8 +7,10 @@
 // si hay data ingresada) y el CTA es sticky dentro del safe area de iOS.
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2, X } from 'lucide-react'
 import { useCheckout } from '../../lib/checkout/useCheckout'
+import { enlaceDeMiPedido } from '../../lib/enlaces'
 import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN, PAY360_POLL_MS, onlinePayActiveFor, preferredRailFor } from '../../lib/checkout/checkout.config'
 import { trackEvent } from '../../lib/checkout/analytics'
 import type { CheckoutState, StoreFlow, StorePay360 } from '../../lib/checkout/types'
@@ -27,7 +29,6 @@ import Step1Pack from './steps/Step1Pack'
 import type { PackOption } from './steps/Step1Pack'
 import Step2Delivery from './steps/Step2Delivery'
 import Step3Confirm from './steps/Step3Confirm'
-import OrderDone from './steps/OrderDone'
 import ExitOffer from './ExitOffer'
 
 
@@ -314,6 +315,17 @@ export default function CheckoutModal({
   const onlineActive = onlinePayActiveFor(state)
   const done = phase.k === 'DONE'
 
+  // Terminado el pedido, la pantalla de confirmación NO se pinta acá: se va a
+  // su propia URL (07-set-2026). Vivía dentro de este modal y por eso era
+  // frágil — un toque en la X y el comprador no volvía a verla nunca, aunque
+  // su pedido ya existiera. Con URL propia puede recargarla, que es lo que
+  // hace la gente para ver si su envío avanzó.
+  const navigate = useNavigate()
+  const irAlPedido = done ? phase.token : null
+  useEffect(() => {
+    if (irAlPedido) navigate(enlaceDeMiPedido(irAlPedido))
+  }, [irAlPedido, navigate])
+
   return (
     <>
       <div className="fixed inset-0 bg-black/50 z-40" onClick={requestClose} aria-hidden="true" />
@@ -452,19 +464,12 @@ export default function CheckoutModal({
             </div>
           )}
 
+          {/* Un instante, mientras el router cambia de página. */}
           {done && (
-            <OrderDone
-              orderCode={phase.orderCode}
-              state={state}
-              price={price}
-              packName={pack?.nombre ?? null}
-              // El pago ya confirmado por el webhook llega verificado: la caja
-              // nace verde y el polling ni se monta. Si no, el estado real.
-              verification={phase.paid ? 'MATCHED' : state.payment.verification}
-              token={phase.token}
-              sessionId={phase.sessionId}
-              unpaid={phase.unpaid}
-            />
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 size={28} className="animate-spin text-green-500" />
+              <p className="text-sm font-bold text-gray-600">{COPY.doneTitle}</p>
+            </div>
           )}
         </div>
 

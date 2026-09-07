@@ -28,6 +28,7 @@ import MarcaPage from './pages/vendedor/MarcaPage'
 import ConexionesPage from './pages/vendedor/ConexionesPage'
 import ClientesPage from './pages/vendedor/ClientesPage'
 import OrderChatPage from './pages/pedido/OrderChatPage'
+import MiPedidoPage from './pages/pedido/MiPedidoPage'
 import ComprobantePage from './pages/comprobante/ComprobantePage'
 import GuiaPage from './pages/guia/GuiaPage'
 import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
@@ -116,6 +117,9 @@ export default function App() {
 
         {/* Public routes */}
         <Route path="/p/:token" element={<OrderChatPage />} />
+        {/* La página del pedido: mirar cómo va. Su hermana `/p/:token` es el
+            chat — hablar. Ver `lib/enlaces.ts`. */}
+        <Route path="/pedido/:token" element={<MiPedidoPage />} />
         {/* La constancia de un pago. Abierta a propósito: la llave es el uuid
             del cobro, igual que el token del pedido, para que el comprador la
             enseñe y la reenvíe sin tener que iniciar sesión. */}
