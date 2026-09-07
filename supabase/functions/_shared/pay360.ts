@@ -545,3 +545,50 @@ export async function verifySignature(
   const expected = await hmacHex(secret, signedPayload(headers.timestamp, rawBody))
   return timingSafeEqual(expected, received) ? { ok: true } : { ok: false, reason: 'mismatch' }
 }
+
+// ─── El evento dentro del cuerpo del webhook ─────────────────────────────────
+//
+// 360pay manda el evento en **un array** (verificado el 06-set-2026 en su
+// consola, entrega `evt_fa1c2f9b…`):
+//
+//   [ { "_id": "…", "external_ref": "…", "status": "paid", "event": "ticket.paid" } ]
+//
+// El webhook lo leía como objeto, así que `external_ref` y `_id` salían `null`,
+// el pedido no se encontraba y el cobro se descartaba con un "pedido no
+// encontrado" — devolviendo 200, así que 360pay dejaba de reintentar y el
+// comprador se quedaba con su pago hecho y su pantalla esperando. Es la peor
+// forma de fallar: silenciosa de los dos lados.
+//
+// También se contempla el sobre `{ data: [...] }` y el objeto pelado de antes:
+// la forma del payload es configurable por hook (`payload_mapping`), así que
+// esto acepta las tres en vez de casarse con una.
+
+/** Desenvuelve el cuerpo del webhook hasta el objeto del evento. */
+export function eventoDelWebhook(payload: unknown): Record<string, unknown> | null {
+  const primero = (v: unknown): unknown => (Array.isArray(v) ? v[0] : v)
+  const raiz = primero(payload)
+  if (!raiz || typeof raiz !== 'object' || Array.isArray(raiz)) return null
+  const obj = raiz as Record<string, unknown>
+  // El sobre `{ data: … }` puede traer a su vez un array.
+  if (!('_id' in obj) && !('external_ref' in obj) && 'data' in obj) {
+    const dentro = primero(obj.data)
+    if (dentro && typeof dentro === 'object' && !Array.isArray(dentro)) {
+      return dentro as Record<string, unknown>
+    }
+  }
+  return obj
+}
+
+/** Un string del evento, ya desenvuelto. Busca en la raíz y dentro de `data`. */
+export function campoDelEvento(payload: unknown, key: string): string | null {
+  const ev = eventoDelWebhook(payload)
+  if (!ev) return null
+  const directo = ev[key]
+  if (typeof directo === 'string' && directo.trim()) return directo.trim()
+  const d = ev.data
+  if (d && typeof d === 'object' && !Array.isArray(d)) {
+    const anidado = (d as Record<string, unknown>)[key]
+    if (typeof anidado === 'string' && anidado.trim()) return anidado.trim()
+  }
+  return null
+}

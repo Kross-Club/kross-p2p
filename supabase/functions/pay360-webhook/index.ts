@@ -31,7 +31,8 @@ import { isPickupDispatch } from '../_shared/despacho.ts'
 import { notifyBuyer } from '../_shared/notificar.ts'
 import { enlaceDelPedido, smsPagoRecibido, smsSaldoRecibido } from '../_shared/sms-texto.ts'
 import {
-  PAY360_HEADERS, getCoupon, isPaid, pay360BaseUrl, pickPartnerKey, verifySignature, type Pay360Env,
+  PAY360_HEADERS, campoDelEvento, getCoupon, isPaid, pay360BaseUrl, pickPartnerKey,
+  verifySignature, type Pay360Env,
 } from '../_shared/pay360.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 
@@ -549,17 +550,10 @@ function safeJson(raw: string): unknown {
   try { return JSON.parse(raw) } catch { return null }
 }
 
-/** Busca una clave en la raíz o dentro de `data`: 360pay puede envolver el
- *  evento, y el payload es configurable por hook (`payload_mapping`). */
-function pickString(payload: unknown, key: string): string | null {
-  if (!payload || typeof payload !== 'object') return null
-  const p = payload as Record<string, unknown>
-  const direct = p[key]
-  if (typeof direct === 'string' && direct.trim()) return direct.trim()
-  const d = p.data
-  if (d && typeof d === 'object') {
-    const nested = (d as Record<string, unknown>)[key]
-    if (typeof nested === 'string' && nested.trim()) return nested.trim()
-  }
-  return null
-}
+/**
+ * Busca una clave del evento. Vive en `_shared/pay360.ts` (`campoDelEvento`)
+ * porque la forma del cuerpo la decide 360pay y no esta función: manda el
+ * evento dentro de un ARRAY, y leerlo como objeto dejaba `external_ref` y
+ * `_id` en null — el cobro se descartaba en silencio. Con test.
+ */
+const pickString = campoDelEvento

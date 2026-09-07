@@ -2101,6 +2101,19 @@ CREATE INDEX IF NOT EXISTS idx_recojo_pendiente ON order_sessions(tracking_phase
 -- teléfono, y deja la tarde para que el que se enteró hoy alcance a ir.
 -- `cron.schedule` con el mismo nombre ACTUALIZA el job: correr esto dos veces
 -- no duplica nada.
+-- 44.c Las plantillas de los pasos 2 y 3, aprobadas en el WABA de cada marca
+-- (06-set-2026). El riel de los recordatorios es **WhatsApp utility**, no SMS:
+-- la cotización real de Twilio a Perú es US$0.2476 por segmento (~S/0.92) y
+-- Kross gana S/1.28 por cobro — un solo segmento se comía el 72 % de lo que el
+-- pedido deja. El SMS quedó construido y apagado (`SMS_ENABLED`), esperando un
+-- operador con tarifa peruana. Sin nombre de plantilla ese paso no manda
+-- WhatsApp, y el chat y el push salen igual.
+--   `wa_recojo_template`      → paso 1 · {{1}} nombre {{2}} producto {{3}} agencia+sede {{4}} link
+--   `wa_recordatorio_template`→ paso 2 · {{1}} nombre {{2}} agencia+sede {{3}} link
+--   `wa_ultimo_aviso_template`→ paso 3 · {{1}} nombre {{2}} fecha de devolución {{3}} link
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_recordatorio_template text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_ultimo_aviso_template text;
+
 SELECT cron.schedule(
   'pickup-reminders',
   '0 16 * * *',

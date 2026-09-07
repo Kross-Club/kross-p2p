@@ -8,10 +8,67 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  CONSUMER_CODE_MAX, PAY360_HEADERS, SIGNATURE_TOLERANCE_MS, consumerCodeFor, hmacHex,
+  CONSUMER_CODE_MAX, PAY360_HEADERS, SIGNATURE_TOLERANCE_MS, campoDelEvento, consumerCodeFor,
+  eventoDelWebhook, hmacHex,
   COUPON_TTL_DAYS, couponExpiryFrom, isPaid, isValidConsumerCode, pay360BaseUrl, paymentUrlOf, pickPartnerKey, signedPayload, timingSafeEqual, unwrap,
   verifySignature, yapeDeeplink, YAPE_360PAY, YAPE_SERVICES_PAY_URL,
 } from '../../../supabase/functions/_shared/pay360.ts'
+
+// El cuerpo REAL de una entrega de 360pay, copiado de su consola (entrega
+// `evt_fa1c2f9b…`, 06-set-2026). Viene en un ARRAY: leerlo como objeto dejaba
+// `external_ref` y `_id` en null, el pedido no se encontraba y el cobro se
+// descartaba con un 200 — 360pay dejaba de reintentar y el comprador se quedaba
+// con su pago hecho y la pantalla esperando.
+const CUERPO_REAL = [
+  {
+    _id: '6a9e213df44f28091ad954d7',
+    business_id: '6a878f9e4c2f4d5a1fb5e7d9',
+    customer_id: '6a9e213df44f28091ad954d6',
+    customer_name: 'Jhoann Pacahuala',
+    external_ref: 'bdef85e4-def7-446e-958d-888fff53587d',
+    amount: 6,
+    description: 'Adelanto ORD-1788748089082',
+    status: 'paid',
+    payment_reference: 'ZRZHI0T8IQRSDV',
+    operation_number: '30045211',
+    bank_tx_id: 'BCP',
+    fee_platform: 3.72,
+    fee_partner: 1.28,
+    event: 'ticket.paid',
+  },
+]
+
+describe('el cuerpo del webhook', () => {
+  it('encuentra el pedido y el cupón en el array real de 360pay', () => {
+    expect(campoDelEvento(CUERPO_REAL, 'external_ref')).toBe('bdef85e4-def7-446e-958d-888fff53587d')
+    expect(campoDelEvento(CUERPO_REAL, '_id')).toBe('6a9e213df44f28091ad954d7')
+  })
+
+  it('sigue leyendo el objeto pelado de antes', () => {
+    expect(campoDelEvento(CUERPO_REAL[0], 'external_ref')).toBe('bdef85e4-def7-446e-958d-888fff53587d')
+  })
+
+  it('y el sobre `data`, con o sin array adentro', () => {
+    expect(campoDelEvento({ data: CUERPO_REAL }, '_id')).toBe('6a9e213df44f28091ad954d7')
+    expect(campoDelEvento({ data: CUERPO_REAL[0] }, '_id')).toBe('6a9e213df44f28091ad954d7')
+    expect(campoDelEvento([{ data: CUERPO_REAL[0] }], '_id')).toBe('6a9e213df44f28091ad954d7')
+  })
+
+  it('lo que no es un evento no inventa datos', () => {
+    for (const basura of [null, undefined, '', 'texto', 42, [], [[]], {}]) {
+      expect(campoDelEvento(basura, '_id')).toBeNull()
+    }
+    expect(eventoDelWebhook([])).toBeNull()
+    expect(eventoDelWebhook(null)).toBeNull()
+  })
+
+  it('un campo que no viene es null, no una cadena vacía', () => {
+    expect(campoDelEvento(CUERPO_REAL, 'no_existe')).toBeNull()
+    expect(campoDelEvento([{ external_ref: '   ' }], 'external_ref')).toBeNull()
+    // Los números no se convierten: quien los quiera los lee del evento.
+    expect(campoDelEvento(CUERPO_REAL, 'amount')).toBeNull()
+  })
+})
 
 describe('bases por ambiente', () => {
   it('separa sandbox por HOST, no por prefijo de ruta', () => {

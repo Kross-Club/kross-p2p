@@ -46,10 +46,43 @@ tarde para que el que se enteró hoy alcance a ir.
 
 | Paso | Día | Quién lo manda | Canales | Qué dice |
 |---|---|---|---|---|
-| 1 | 0 · llegada | `_shared/tracking.ts` en `EN_DESTINO` | chat · push · SMS | Llegó, lleva tu DNI, y el saldo se paga desde tu pedido y nunca en la agencia |
-| 2 | 2 | `pickup-reminders` | chat · push · SMS | Sigue esperándote. Corto: el que no fue en dos días no necesita más información, necesita acordarse |
-| 3 | 4 | `pickup-reminders` | chat · push · SMS | **La fecha real** en que la agencia lo devuelve. Un plazo verificable mueve al que ya ignoró dos mensajes; «no te olvides» no mueve a nadie |
+| 1 | 0 · llegada | `_shared/tracking.ts` en `EN_DESTINO` | chat · push · **WhatsApp** | Llegó, lleva tu DNI, y el saldo se paga desde tu pedido y nunca en la agencia |
+| 2 | 2 | `pickup-reminders` | chat · push · **WhatsApp** | Sigue esperándote. Corto: el que no fue en dos días no necesita más información, necesita acordarse |
+| 3 | 4 | `pickup-reminders` | chat · push · **WhatsApp** | **La fecha real** en que la agencia lo devuelve. Un plazo verificable mueve al que ya ignoró dos mensajes; «no te olvides» no mueve a nadie |
 | 4 | 5 | `pickup-reminders` | nota interna en el hilo | «No recoge, se devuelve el {fecha}, ya se le avisó dos veces: toca llamarlo». Recién acá entra una persona, y solo para las excepciones |
+
+### ⚠️ El riel es WhatsApp utility, no SMS (06-set-2026)
+
+La actualización de más arriba puso el SMS como riel. **La cotización real lo mató**:
+Twilio cobra **US$0.2476 por segmento** a Perú (~S/0.92) y Kross gana **S/1.28 por
+cobro** (`fee_partner`, `07-CONTRATO-360PAY.md`). Un solo segmento se comía el 72 % de
+lo que el pedido deja, y la cascada completa costaba cinco o seis veces eso. Peor: el
+costo lo pone Kross y el beneficio se lo lleva la marca.
+
+Una plantilla de utilidad de WhatsApp cuesta un orden de magnitud menos y llega al
+mismo teléfono. El SMS **no se borró**: quedó construido, probado y apagado
+(`SMS_ENABLED`, ver `_shared/sms.ts`), esperando un operador con tarifa peruana. Cuando
+aparezca vuelve a ser lo que siempre debió ser: el respaldo para quien no tiene
+WhatsApp, que es la única cosa que WhatsApp no cubre.
+
+**Las plantillas las aprueba cada marca en su WABA** y su nombre se guarda por tienda.
+El mapeo de variables es el contrato: si acá dice `name · agency · link`, la plantilla
+aprobada tiene que tener esos tres `{{n}}` en ese orden.
+
+| Paso | Columna | Variables |
+|---|---|---|
+| 1 · llegada | `stores.wa_recojo_template` | `{{1}}` nombre · `{{2}}` producto · `{{3}}` agencia + sede · `{{4}}` link |
+| 2 · recordatorio | `stores.wa_recordatorio_template` | `{{1}}` nombre · `{{2}}` agencia + sede · `{{3}}` link |
+| 3 · último aviso | `stores.wa_ultimo_aviso_template` | `{{1}}` nombre · `{{2}}` fecha de devolución · `{{3}}` link |
+
+Todas **categoría Utility** (más baratas que Marketing y sin riesgo de bloqueo por
+promocional). Las variables las resuelve el servidor en `send-wa-template`, que para
+esto ganó tres del catálogo: `agency` (courier + sede), `saldo` y `deadline` (la fecha
+de devolución, calculada con `agency_hold_days`). Nunca las manda quien dispara: el que
+llama no siempre tiene el dato, y un `{{2}}` mal armado le llega al comprador.
+
+**Sin plantilla configurada no se manda WhatsApp**, y el chat y el push salen igual. Una
+marca sin `wa_enabled` simplemente no usa este canal.
 
 Las reglas del motor, y por qué:
 

@@ -35,7 +35,14 @@ interface Config {
 function config(): Config | null {
   const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')?.trim() ?? ''
   if (!accountSid) return null
-  if ((Deno.env.get('SMS_ENABLED') ?? 'on').toLowerCase() === 'off') return null
+  // ⚠️ APAGADO POR DEFECTO desde el 06-set-2026, y no por precaución genérica:
+  // la cotización real de Twilio a Perú es **US$0.2476 por segmento** (~S/0.92)
+  // y Kross gana **S/1.28 por cobro**. Un solo segmento se come el 72 % de lo
+  // que el pedido deja; la cascada completa costaba cinco veces eso. El riel
+  // quedó construido y probado esperando un operador con tarifa peruana: se
+  // enciende con `SMS_ENABLED=on` y vuelve a funcionar tal cual. Mientras
+  // tanto, los recordatorios van por plantilla de WhatsApp (`wa-recojo.ts`).
+  if ((Deno.env.get('SMS_ENABLED') ?? 'off').toLowerCase() !== 'on') return null
   const keySid = Deno.env.get('TWILIO_API_KEY_SID')?.trim()
   const keySecret = Deno.env.get('TWILIO_API_KEY_SECRET')?.trim()
   const token = Deno.env.get('TWILIO_AUTH_TOKEN')?.trim()

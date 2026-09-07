@@ -29,8 +29,7 @@
 
 import { broadcast, chatMessage, saldoOf, supabase } from '../_shared/tracking.ts'
 import { notifyBuyer } from '../_shared/notificar.ts'
-import { tiendaParaSms } from '../_shared/sms.ts'
-import { enlaceDelPedido, smsRecordatorioRecojo, smsUltimoAvisoRecojo } from '../_shared/sms-texto.ts'
+import { mandarPlantillaDeRecojo, type PasoWa } from '../_shared/wa-recojo.ts'
 import {
   DIAS_EN_AGENCIA_DEFAULT, diasDesde, fechaDeDevolucion, fechaEnPalabras,
   pasoDebido, type PasoRecojo,
@@ -161,17 +160,12 @@ async function mandarPaso(p: Fila, paso: PasoRecojo, diasEnAgencia: number): Pro
     return true
   }
 
-  const tienda = await tiendaParaSms(p.store_id)
-  const link = enlaceDelPedido(tienda.slug, p.token)
-
   if (paso === 1) {
     const texto = saldo > 0
       ? `📦 Tu pedido sigue esperándote en ${agencia}. Paga tu saldo de S/${saldo} desde acá y recógelo con tu DNI.`
       : `📦 Tu pedido sigue esperándote en ${agencia}. Recógelo con tu DNI y tu clave de recojo.`
     await chatMessage(p.id, texto, 'all')
-    await avisar(p, `📦 ${tienda.nombre}`, texto, smsRecordatorioRecojo({
-      tienda: tienda.nombre, agencia, saldo, link,
-    }))
+    await avisar(p, texto, 'recordatorio')
     return true
   }
 
@@ -180,29 +174,29 @@ async function mandarPaso(p: Fila, paso: PasoRecojo, diasEnAgencia: number): Pro
   const texto = `⚠️ ${agencia} devuelve tu pedido el ${vence} y después ya no podremos entregártelo.`
     + (saldo > 0 ? ` Paga tu saldo de S/${saldo} desde acá y recógelo con tu DNI.` : ' Recógelo con tu DNI y tu clave de recojo.')
   await chatMessage(p.id, texto, 'all')
-  await avisar(p, `⚠️ ${tienda.nombre}`, texto, smsUltimoAvisoRecojo({
-    tienda: tienda.nombre, agencia, fecha: vence, link,
-  }))
+  await avisar(p, texto, 'ultimo_aviso')
   return true
 }
 
-/** Push + SMS por el mismo embudo que el resto del producto. `siempre` porque
- *  estos dos avisos son justo los que el comprador sin push necesita: el push
- *  se desliza y se pierde, el SMS queda en la bandeja. */
-async function avisar(p: Fila, titulo: string, cuerpo: string, sms: string) {
+/**
+ * Push + plantilla de WhatsApp. El push es gratis y llega al que dio permiso;
+ * la plantilla de utilidad es la que alcanza al resto, y es el riel desde que
+ * la cotización de Twilio mostró que un SMS cuesta más de lo que el pedido
+ * deja (`_shared/wa-recojo.ts`). El SMS del embudo queda en `'nunca'`: hoy está
+ * apagado por precio, y prenderlo aquí duplicaría el aviso.
+ */
+async function avisar(p: Fila, cuerpo: string, paso: PasoWa) {
   try {
     await notifyBuyer({
       buyerId: p.buyer_id, sessionId: p.id, storeId: p.store_id,
-      title: titulo,
+      title: p.product_name ? `📦 ${p.product_name}` : '📦 Tu pedido',
       body: cuerpo.replace(/^[^\s]+\s/, '').slice(0, 140),
       url: p.token ? `/p/${p.token}` : '/',
       tag: `recojo-${p.id}`,
       type: 'status',
-      sms: 'siempre',
-      smsBody: sms,
-      waName: (p.buyer_name ?? 'Hola').split(' ')[0],
-      waProduct: p.product_name ?? 'tu pedido',
+      sms: 'nunca',
     })
+    await mandarPlantillaDeRecojo(p.id, p.store_id, paso)
     await broadcast(p.id, 'tracking_update', {})
   } catch (e) {
     // El chat ya tiene el mensaje: que falle el aviso no borra lo hecho.

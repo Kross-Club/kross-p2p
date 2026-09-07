@@ -1,5 +1,16 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
+import { saldoOf } from '../_shared/tracking.ts'
+import { DIAS_EN_AGENCIA_DEFAULT, fechaDeDevolucion, fechaEnPalabras } from '../_shared/recojo.ts'
+
+/** El courier como se nombra a una persona. Igual que en el ticket y en el
+ *  chat: el comprador ve "Shalom", no "SHALOM". */
+function nombreCourier(a: string | null | undefined): string {
+  const u = String(a ?? '').toUpperCase()
+  if (u === 'SHALOM') return 'Shalom'
+  if (u === 'OLVA') return 'Olva'
+  return a ?? ''
+}
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -40,13 +51,14 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('store_id, buyer_id, buyer_name, buyer_phone, product_name, product_price, order_id, address, token')
+    .select('store_id, buyer_id, buyer_name, buyer_phone, product_name, product_price, order_id, address, token, '
+      + 'agency_name, agency_branch_label, tracking_phase_at, advance_amount, payment_verification, saldo_verification')
     .eq('id', session_id).maybeSingle()
   if (!session) return json({ error: 'session_not_found' }, 404)
 
   const token = Deno.env.get('WHATSAPP_TOKEN')
   const { data: store } = await supabase
-    .from('stores').select('wa_enabled, wa_phone_number_id, slug').eq('id', session.store_id).maybeSingle()
+    .from('stores').select('wa_enabled, wa_phone_number_id, slug, agency_hold_days').eq('id', session.store_id).maybeSingle()
   if (!token || !store?.wa_enabled || !store?.wa_phone_number_id) return json({ error: 'wa_not_configured' }, 400)
 
   // Recipient phone
@@ -66,6 +78,22 @@ Deno.serve(async (req) => {
     price: session.product_price != null ? `S/${session.product_price}` : '',
     address: session.address ?? '',
     order_id: session.order_id ?? '',
+    // ─── Las tres de la cascada de recojo (doc 08) ───────────────────────────
+    // Se resuelven acá y no las manda quien llama, por la misma razón que el
+    // enlace: el que dispara la plantilla no siempre tiene el dato, y un
+    // "{{2}}" mal armado le llega al comprador.
+    // La agencia CON su sede: para ir a recoger, "Shalom" no alcanza.
+    agency: [nombreCourier(session.agency_name), session.agency_branch_label].filter(Boolean).join(' · '),
+    // El saldo, con la misma regla que el resto del repo (`saldoOf`).
+    saldo: `S/${saldoOf(session as Parameters<typeof saldoOf>[0])}`,
+    // La FECHA en que la agencia devuelve el paquete: el único plazo
+    // verificable que tenemos, y lo que mueve al que ya ignoró dos avisos.
+    deadline: session.tracking_phase_at
+      ? fechaEnPalabras(fechaDeDevolucion(
+          session.tracking_phase_at,
+          Number(store.agency_hold_days) > 0 ? Number(store.agency_hold_days) : DIAS_EN_AGENCIA_DEFAULT,
+        ))
+      : '',
   }
 
   // Which keys go in which {{n}} — from mapping, or the default order

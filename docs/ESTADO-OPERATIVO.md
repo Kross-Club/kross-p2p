@@ -34,6 +34,49 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El riel de recordatorios pasa a WhatsApp, y el SMS queda apagado · SQL + 8 funciones (06-sep-2026)
+
+**Por qué.** La cotización real de Twilio a Perú es **US$0.2476 por segmento** (~S/0.92)
+y Kross gana **S/1.28 por cobro**. Un solo segmento se comía el **72 %** de lo que el
+pedido deja, y la cascada completa costaba cinco o seis veces eso — con el costo en
+Kross y el beneficio en la marca. Una plantilla de utilidad de WhatsApp cuesta un orden
+de magnitud menos y llega al mismo teléfono.
+
+**Qué cambia.** Los tres avisos al comprador de la cascada de recojo (llegada, día 2,
+día 4) van por **plantilla de WhatsApp**; el chat y el push no se tocan. El SMS **queda
+apagado por defecto**: el riel sigue construido y probado, y se enciende con
+`SMS_ENABLED=on` el día que haya un operador con tarifa peruana. Eso apaga también el
+recibo del pago y el de la guía, que eran los otros dos SMS.
+
+**Qué se ve si no entra:** los recordatorios siguen saliendo por SMS y cobrándose a
+US$0.2476 el segmento.
+
+**1. El SQL** (§44.c, idempotente): las dos columnas de plantilla nuevas.
+
+```sql
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_recordatorio_template text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_ultimo_aviso_template text;
+```
+
+**2. Las funciones:**
+
+```
+supabase functions deploy pay360-webhook shalom-webhook olva-lat-webhook --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy pickup-reminders send-wa-template shalom-tracking-sync olva-tracking olva-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**3. En Meta, por marca.** Aprobar tres plantillas **categoría Utility** y pegar sus
+nombres en las columnas de arriba. El mapeo de variables está en
+`08-RECORDATORIOS-RECOJO.md` § *El riel es WhatsApp utility*: si la plantilla no tiene
+los `{{n}}` en ese orden, el comprador recibe los datos cambiados de sitio. Kross Shop
+todavía tiene `wa_enabled = false`, así que hasta que se le active WhatsApp la cascada
+le sale solo por chat y push.
+
+**Deuda anotada:** los textos de SMS de la cascada (`smsRecordatorioRecojo`,
+`smsUltimoAvisoRecojo`) quedan con sus tests pero sin llamador, a propósito: son lo que
+se enciende cuando vuelva el SMS. Y falta el campo de las plantillas en *Marca*: hoy se
+pegan por SQL.
+
 ### La cascada de recojo completa · SQL + 1 función nueva + 2 desplegadas (06-sep-2026)
 
 **Qué entró.** El cron diario que persigue al comprador que no fue por su paquete, para
