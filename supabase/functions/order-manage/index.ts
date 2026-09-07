@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
+import { reenviarGuia, normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { cabeEnElMismoPaquete } from '../_shared/upsell.ts'
 import { puedeEscribir, puedeInvitar, puedeQuitar, puedeReasignar } from '../_shared/equipo-pedido.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
@@ -292,6 +292,25 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ ok: true, tracking: g.tracking }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── REENVIAR LA GUÍA AL COMPRADOR ─────────────────────────────────────────
+  //
+  // Solo el MENSAJE, con lo que ya está guardado en el pedido: no toca el
+  // rastreo. Nació el 07-set-2026, cuando se descubrió que la base venía
+  // rechazando los mensajes `guia` (§45) y quedaron pedidos con su guía
+  // emitida y cobrada cuyo comprador nunca la vio. Hasta entonces la única
+  // reparación era volver a escribir la guía en *Corregir* —retipeando el
+  // número, con el riesgo de romper el rastreo de un envío que iba bien—.
+  //
+  // Misma puerta que `set_tracking`, que está justo arriba y es de la misma
+  // pantalla: reenviar es estrictamente menos peligroso que reescribir la guía.
+  if (body.action === 'resend_guia') {
+    const r = await reenviarGuia(session.id)
+    if (!r.ok) {
+      return new Response(JSON.stringify({ error: r.error }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    return new Response(JSON.stringify({ ok: true, conPdf: r.conPdf }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   // ─── RETRY SHALOM (reintentar a mano la emisión automática que falló) ───────

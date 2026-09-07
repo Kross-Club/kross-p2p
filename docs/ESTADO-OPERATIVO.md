@@ -70,8 +70,30 @@ logs y avisado a Logística— entró hoy mismo (la entrada de abajo).
 
 > Dato para dimensionarlo: las dos guías Shalom reales (`94870783` y `94871125`) se emitieron, se
 > pagaron y se rastrearon bien. Lo único que faltó fue avisarle al comprador. **Después de correr el
-> SQL, esos pedidos siguen sin su mensaje** —el que se rechazó no vuelve—: hay que reenviarles la
-> guía a mano por el chat.
+> SQL, esos pedidos siguen sin su mensaje**: el que se rechazó no vuelve. Para eso está el botón de
+> abajo.
+
+#### El botón *Reenviar* de la barra de envío · 2 funciones (07-set-2026)
+
+Un mensaje rechazado no vuelve solo, y hasta ahora la única forma de repararlo era abrir *Corregir*
+y **volver a escribir la guía a mano** — el formulario sale vacío, así que había que retipear el
+número y el código, con el riesgo de romper el rastreo de un envío que iba bien.
+
+Ahora la barra de envío del panel tiene **Reenviar** junto a *Corregir* (antes que él: es lo que se
+busca cuando el comprador dice «no me llegó», y es la acción sin riesgo de las dos). Manda otra vez
+el MISMO aviso con lo que el pedido ya tiene guardado y **no toca el rastreo**, así que pulsarlo dos
+veces no rompe nada. El PDF se reusa del mensaje anterior si lo hubo; si no, se baja en el momento.
+La clave de recojo **no** se reenvía: la entrega el pago, y repetirla desde un botón la volvería
+algo que se pide en vez de algo que se gana pagando.
+
+Vive en `_shared/guia.ts` (`reenviarGuia`) y se llama con la acción `resend_guia` de `order-manage`.
+El demo lo enseña igual (`reenviarGuiaEnDemo`) — la paridad es la regla.
+
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL (aparte del §45 de arriba, que va primero: sin él el reenvío también sería rechazado).
 
 ### Un mensaje que no se escribe se veía igual que uno que nadie leyó · 3 funciones, sin SQL (07-sep-2026)
 

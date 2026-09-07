@@ -10,7 +10,7 @@
 // en `tracking.ts` (si un pedido hablara dos idiomas según por dónde llegó la
 // noticia, la mitad de los envíos quedaría fuera de la cascada).
 
-import { broadcast, chatMessage, supabase } from './tracking.ts'
+import { broadcast, chatMessage, saldoOf, supabase } from './tracking.ts'
 import { shalomApiKey, shalomLatApiKey } from './shalom.ts'
 import { SHALOM_LAT_BASE, trackBody } from './shalom-lat.ts'
 import { olvaLatApiKey, subscribeAtLat } from './olva-lat-api.ts'
@@ -132,10 +132,9 @@ export async function registrarGuia(
   // a quien pagó el total no se le habla de un saldo que no existe — su clave
   // de recojo va sin condición. Y un saldo YA cruzado cuenta como pagado: si el
   // pago llegó antes que la guía, la deuda no existe.
-  const pagado = session.payment_verification === 'MATCHED' ? Number(session.advance_amount ?? 0) : 0
-  const saldo = session.saldo_verification === 'MATCHED'
-    ? 0
-    : Math.max(0, Number(session.product_price ?? 0) - pagado)
+  // `saldo_verification` es opcional en `GuiaSession` (la guía manual no lo
+  // trae) y `saldoOf` lo pide siempre: se normaliza acá, sin duplicar la regla.
+  const saldo = saldoOf({ ...session, saldo_verification: session.saldo_verification ?? null })
 
   const aviso = await chatMessage(
     session.id,
@@ -309,6 +308,63 @@ export async function reponerPdfDeGuia(
   const { error } = await supabase.from('chat_messages').update({ media_url: url }).eq('id', msg.id)
   if (error) { console.error('[guia] no se pudo poner el PDF al mensaje', row.id, error.message); return false }
   return true
+}
+
+/**
+ * Vuelve a mandarle al comprador el aviso de su guía, con lo que YA está
+ * guardado en el pedido. No toca el rastreo: es solo el mensaje.
+ *
+ * Existe porque hasta el 07-set-2026 la base rechazaba los mensajes `guia`
+ * (§45 del esquema) y hay pedidos con su guía emitida y cobrada cuyo comprador
+ * nunca la vio. Un mensaje rechazado no vuelve solo, y la única forma de
+ * repararlo era volver a escribir la guía a mano en *Corregir* —retipeando el
+ * número, con el riesgo de romper el rastreo de un envío que iba bien—. Se
+ * queda después del arreglo porque el caso no era exótico: un chat borrado, un
+ * comprador que dice "no me llegó nada", un mensaje que no entró.
+ *
+ * El PDF se reusa del mensaje anterior si lo hubo; si no, se baja ahora (mismo
+ * camino que la emisión). Sin PDF el mensaje sale igual y su botón cae a la
+ * hoja de guía de la app, como el de una guía registrada a mano.
+ */
+export async function reenviarGuia(
+  sessionId: string,
+): Promise<{ ok: true; conPdf: boolean } | { ok: false; error: string }> {
+  const { data: row, error } = await supabase.from('order_sessions')
+    .select('id, store_id, agency_name, product_price, advance_amount, payment_verification, saldo_verification, '
+      + 'tracking_courier, tracking_numero, tracking_codigo, tracking_ose_id, tracking_year')
+    .eq('id', sessionId).maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  if (!row) return { ok: false, error: 'pedido no encontrado' }
+
+  const g = normalizarGuia({
+    courier: row.tracking_courier, numero: row.tracking_numero,
+    codigo: row.tracking_codigo, ose_id: row.tracking_ose_id, year: row.tracking_year,
+  }, row.agency_name)
+  if (!g.ok) return { ok: false, error: 'el pedido no tiene una guía registrada' }
+
+  // El PDF que ya se le mandó alguna vez manda: bajarlo otra vez gastaría una
+  // request del cupo para subir el mismo documento.
+  const { data: previo } = await supabase.from('chat_messages')
+    .select('media_url').eq('session_id', sessionId).eq('type', 'guia')
+    .not('media_url', 'is', null)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+  let pdfUrl: string | null = previo?.media_url ?? null
+  if (!pdfUrl && g.courier === 'SHALOM' && row.tracking_ose_id && row.store_id) {
+    const auth = await authShalomPro(row.store_id)
+    if (auth) {
+      pdfUrl = await descargarPdfDeGuia({
+        sessionId, storeId: row.store_id, oseId: row.tracking_ose_id, numero: row.tracking_numero, auth,
+      })
+    }
+  }
+
+  // La clave NO se reenvía acá aunque el pedido ya no deba nada: la entrega el
+  // pago (`mensajeDeClave` desde el webhook), y repetirla desde un botón la
+  // convertiría en algo que se pide, no en algo que se gana pagando.
+  const r = await chatMessage(sessionId, mensajeDeGuia(g.courier, g.ids, saldoOf(row)), 'all',
+    { type: 'guia', media_url: pdfUrl })
+  if (!r.ok) return { ok: false, error: r.error ?? 'no se pudo escribir el mensaje' }
+  return { ok: true, conPdf: !!pdfUrl }
 }
 
 /**
