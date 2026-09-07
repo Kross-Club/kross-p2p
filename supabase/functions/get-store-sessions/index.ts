@@ -5,9 +5,13 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
 
+// ⚠️ Toda cabecera `x-…` que el panel manda tiene que estar acá: si falta una,
+// el preflight del navegador la rechaza y `fetch` muere con «Failed to fetch»
+// sin que esta función llegue a correr. `x-include-cancelled` faltó del 27-ago
+// al 07-set-2026 y el tablero estuvo en cero. Lo vigila `edge-functions.test.ts`.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type, x-store-id, x-seller-id',
+  'Access-Control-Allow-Headers': 'authorization, content-type, x-store-id, x-seller-id, x-include-cancelled',
 }
 
 Deno.serve(async (req) => {

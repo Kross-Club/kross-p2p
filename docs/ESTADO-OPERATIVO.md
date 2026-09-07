@@ -34,36 +34,27 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-### El tablero en cero con pedidos reales en la base · solo frontend (07-sep-2026)
+### El tablero en cero con pedidos reales en la base: CORS · 1 función, sin SQL (07-sep-2026)
 
 **Qué pasó.** Panel → Pedidos → Tablero, filtro *Todo*, en Kross Shop: cero en todas las columnas
-y «S/ 0 en juego», con los pedidos reales del 06-set (dos guías emitidas) existiendo —se ven desde
-*Clientes*, que los busca por comprador y no por tienda. **No se resolvió todavía**: desde la
-sesión no hay acceso a la base, y la causa está en los datos. Son tres candidatas, en este orden:
+y «S/ 0 en juego», con los pedidos reales del 06-set existiendo (se veían desde *Clientes*, que
+busca por comprador). **Causa:** desde el 27-ago el panel manda la cabecera `x-include-cancelled`
+(los cancelados van en su propia columna) y `get-store-sessions` solo permitía `x-store-id` y
+`x-seller-id` en `Access-Control-Allow-Headers`. El navegador rechaza el preflight y `fetch` muere
+con «Failed to fetch» **antes de llegar a la función**: sin status, sin logs, y el panel lo
+disfrazaba de lista vacía (`r.ok ? … : []`). Once días así, y el demo —que no consulta nada— tapándolo.
 
-1. **`get-store-sessions` devolvió 500** y el panel lo disfrazaba de lista vacía (`r.ok ? … : []`).
-   Un 500 ahí casi siempre es una columna del `select` que falta en producción: PostgREST rechaza
-   el select entero. Desde este cambio el panel **lo dice** con el status y el cuerpo del error, y
-   un botón *Reintentar*. Si al recargar sale la franja roja, ahí está la causa.
-2. **`store_id` del pedido ≠ id de la tienda.** La consulta del admin filtra `store_id = tienda`;
-   el pedido nace con `store_id = tienda del vendedor asignado` (hoy siempre la misma, el pool es
-   de la propia tienda) y `origin_store_id = tienda del producto`. Si la tienda se borró y se
-   volvió a crear, o el perfil «Estás en Kross Shop» guardado en el navegador trae un id viejo, el
-   filtro no encuentra nada. Se comprueba con la consulta de abajo.
-3. **`status` distinto de `active`/`cancelado`/`anulado`.** Solo `order-manage` escribe `status`
-   (cancelar), así que es la menos probable.
+**Qué cambió.** (1) `get-store-sessions` permite `x-include-cancelled`. (2) El panel ya no traga el
+fallo: franja roja con el motivo y *Reintentar* (`useStoreOrders.error`). (3) Un test en
+`edge-functions.test.ts` vigila que toda cabecera `x-…` que el front manda esté en el
+Allow-Headers de la función que la lee — la clase entera de error, no este caso.
 
-```sql
--- Los últimos pedidos, con las dos tiendas y el estado que mira el tablero:
-select o.order_id, o.store_id, o.origin_store_id, o.status, o.stage, o.assigned_seller_id, o.created_at
-from order_sessions o order by o.created_at desc limit 10;
--- Y el id que el panel manda en `x-store-id` tiene que ser este:
-select id, slug, nombre, active from stores;
+```
+supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
 ```
 
-Si `store_id` no coincide con el id de Kross Shop, la salida es que `get-store-sessions` filtre por
-`or(origin_store_id.eq.X, and(origin_store_id.is.null, store_id.eq.X))` —lo que ya hace
-`buyer-login`—, no reescribir filas a mano.
+Sin SQL. Se comprueba recargando el tablero: la franja roja desaparece y los pedidos del 06-set
+aparecen en su columna.
 
 ### El PDF de la guía que no llegaba: se anota por qué y se repone desde el rastreo · 3 funciones, sin SQL (07-sep-2026)
 
