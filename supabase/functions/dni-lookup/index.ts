@@ -2,6 +2,7 @@ import { anotarRespuesta } from '../_shared/api-eventos.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Max-Age': '7200',
 }
 
 // Resolves a Peruvian DNI to the person's full name via Decolecta (RENIEC).

@@ -9,6 +9,7 @@ import { anotar, anotarRespuesta, anotarSinRespuesta } from '../_shared/api-even
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Max-Age': '7200',
 }
 
 // Barrido de tracking Olva (02-SMART-LOGISTICS §3). Lo invoca pg_cron cada

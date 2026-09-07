@@ -19,14 +19,46 @@ export interface SellerProfile {
 }
 
 const ACTING_KEY = 'acting_seller'
+const REAL_KEY = 'seller_profile'
 const EVT = 'acting-seller-changed'
 
 // Module-level cache of the resolved seller. useSeller re-runs on every page
 // mount; without this, `real` is briefly null on each client-side navigation,
 // which left data-loading pages (e.g. Equipo) stuck on their spinner until a
 // hard refresh. Seeding state from the cache makes `real` available synchronously.
-let cachedReal: SellerProfile | null = null
-export function clearSellerCache() { cachedReal = null }
+//
+// Y en el ARRANQUE se siembra del disco (07-set-2026). El panel tardaba cinco
+// segundos en enseñar los pedidos, y solo uno era la consulta: el resto era una
+// cadena en serie —bajar el JS, `auth.getSession()`, consultar `sellers`— antes
+// de que la petición de la lista saliera siquiera. Con el perfil en disco, la
+// primera pintada ya sabe de qué tienda pedir y la lista arranca de inmediato;
+// la comprobación de verdad sigue corriendo y corrige si cambió algo.
+//
+// No es una llave: el perfil no abre nada. Quién puede qué lo decide el
+// servidor en cada llamada, y el perfil "actuando" ya vivía acá desde antes.
+let cachedReal: SellerProfile | null = leerPerfil()
+export function clearSellerCache() {
+  cachedReal = null
+  try { localStorage.removeItem(REAL_KEY) } catch { /* modo privado */ }
+}
+
+function leerPerfil(): SellerProfile | null {
+  try {
+    const raw = localStorage.getItem(REAL_KEY)
+    const p = raw ? (JSON.parse(raw) as SellerProfile) : null
+    // Sin `store_id` no sirve para adelantar nada, que es lo único que hace.
+    return p?.store_id ? p : null
+  } catch {
+    return null
+  }
+}
+
+function guardarPerfil(p: SellerProfile | null) {
+  try {
+    if (p) localStorage.setItem(REAL_KEY, JSON.stringify(p))
+    else localStorage.removeItem(REAL_KEY)
+  } catch { /* modo privado: se sigue sin adelantar, no es un error */ }
+}
 
 export function getActingSeller(): SellerProfile | null {
   try {
@@ -53,13 +85,16 @@ export function useSeller() {
   useEffect(() => {
     let alive = true
     supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) { cachedReal = null; if (alive) { setReal(null); setLoading(false) } return }
+      // Sin sesión no hay perfil que valga: se borra también el del disco, o
+      // el próximo arranque adelantaría con el de quien ya salió.
+      if (!data.session) { cachedReal = null; guardarPerfil(null); if (alive) { setReal(null); setLoading(false) } return }
       const { data: profile } = await supabase
         .from('sellers')
         .select('id, auth_user_id, nombre, role_label, store_id, avatar_url, is_admin, is_super_admin, is_operator, available')
         .eq('auth_user_id', data.session.user.id)
         .maybeSingle()
       cachedReal = (profile as SellerProfile) ?? null
+      guardarPerfil(cachedReal)
       if (alive) { setReal(cachedReal); setLoading(false) }
     })
     return () => { alive = false }

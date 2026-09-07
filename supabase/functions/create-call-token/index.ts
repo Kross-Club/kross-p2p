@@ -10,6 +10,7 @@ const supabase = createClient(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-kross-token, content-type',
+  'Access-Control-Max-Age': '7200',
 }
 
 const VAPID_PUBLIC  = Deno.env.get('VAPID_PUBLIC_KEY') ?? ''

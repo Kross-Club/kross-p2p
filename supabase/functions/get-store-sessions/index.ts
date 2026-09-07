@@ -18,6 +18,7 @@ const FIJAS = 'authorization, content-type, x-store-id, x-seller-id, x-include-c
 const cors = (req?: Request) => ({
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': req?.headers.get('access-control-request-headers') ?? FIJAS,
+  'Access-Control-Max-Age': '7200',
 })
 const corsHeaders = cors()
 

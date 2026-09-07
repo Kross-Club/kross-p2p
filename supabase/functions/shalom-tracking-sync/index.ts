@@ -8,6 +8,7 @@ import { rastrearLote } from '../_shared/shalom-rastreo.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Max-Age': '7200',
 }
 
 // Barrido de tracking Shalom (02-SMART-LOGISTICS §3) — el RESPALDO del webhook.

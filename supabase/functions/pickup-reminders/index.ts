@@ -39,6 +39,7 @@ import { isPickupDispatch } from '../_shared/despacho.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Max-Age': '7200',
 }
 
 /** Techo por corrida. Cada paso de comprador cuesta un SMS, y una corrida que

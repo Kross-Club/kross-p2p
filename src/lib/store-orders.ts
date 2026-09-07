@@ -202,17 +202,23 @@ export function useStoreOrders(
   opts: { incluirCancelados?: boolean } = {},
 ): StoreOrders {
   const { incluirCancelados = false } = opts
-  const [crudos, setPedidos] = useState<StoreOrder[]>([])
-  const [cargando, setCargando] = useState(true)
+  // Una respuesta lleva SU clave. Así no hace falta reiniciar nada al cambiar
+  // de tienda o de rol: la respuesta vieja simplemente deja de valer, y no hay
+  // un `setState` dentro del efecto que el linter —y React— reprochen.
+  const [resp, setResp] = useState<Respuesta | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [leidoEn, setLeidoEn] = useState(() => Date.now())
   const [intento, setIntento] = useState(0)
+  // El instante del montaje, para cuando todavía no hay lista de la que sacar
+  // uno. Se calcula una vez: `Date.now()` en cada pintada haría impuro el
+  // render y movería las antigüedades entre pintadas.
+  const [montaje] = useState(() => Date.now())
 
   const storeId = effective?.store_id
   const alcance = alcanceDePedidos(effective)
   const sellerId = alcance?.sellerId ?? null
 
   const demo = useDemo(storeId)
+  const clave = `${demo ? 'demo' : storeId ?? ''}|${sellerId ?? ''}|${incluirCancelados}`
 
   useEffect(() => {
     let vivo = true
@@ -223,20 +229,15 @@ export function useStoreOrders(
     // es una constante y no un número suelto: cambiar uno y no el otro haría
     // que el demo y la tienda de verdad cortaran distinto.
     if (demo) {
-      setCargando(true)
-      setError(null)
       tiendaDemo().then(t => {
         if (!vivo) return
-        setPedidos(t.pedidos.slice(0, TOPE))
-        setLeidoEn(Date.now())
-        setCargando(false)
+        guardar(clave, t.pedidos.slice(0, TOPE), setResp)
+        setError(null)
       })
       return () => { vivo = false }
     }
 
     if (!storeId) return
-    setCargando(true)
-    setError(null)
 
     const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': storeId }
     if (sellerId) headers['x-seller-id'] = sellerId
@@ -261,21 +262,25 @@ export function useStoreOrders(
       })
       .then((data: StoreOrder[]) => {
         if (!vivo) return
-        setPedidos(Array.isArray(data) ? data : [])
-        setLeidoEn(Date.now())
+        guardar(clave, Array.isArray(data) ? data : [], setResp)
+        // El error se limpia cuando ENTRA una lista buena, no al empezar a
+        // pedirla: mientras se reintenta, la franja roja sigue explicando por
+        // qué lo que se ve es de antes.
+        setError(null)
       })
       .catch((e: unknown) => {
         if (!vivo) return
-        setPedidos([])
+        // La respuesta fallida NO se guarda en la caché: la próxima entrada
+        // tiene que volver a preguntar, no heredar un vacío que era un error.
+        setResp({ clave, pedidos: [], leidoEn: Date.now() })
         setError(e instanceof Error ? e.message : String(e))
       })
-      .finally(() => { if (vivo) setCargando(false) })
 
     // `vivo` corta la respuesta de una petición que quedó en el aire cuando el
     // vendedor cambió de tienda o de rol: sin esto la lista vieja podía pisar
     // a la nueva y mostrarle los pedidos de otra marca.
     return () => { vivo = false }
-  }, [demo, storeId, sellerId, incluirCancelados, intento])
+  }, [demo, storeId, sellerId, incluirCancelados, intento, clave])
 
   const recargar = useCallback(() => setIntento(n => n + 1), [])
 
@@ -284,10 +289,46 @@ export function useStoreOrders(
   // derivado: guardarlo en estado obligaría a un efecto por cada cambio, y el
   // tablero tiene que moverse en el mismo render en que se mueve la etapa.
   const cambios = useCambiosDemo()
+
+  // La respuesta de ESTA clave, o la última que se guardó de ella. Volver a
+  // Pedidos enseña la lista de inmediato y la refresca por detrás, en vez de
+  // cinco segundos de spinner sobre datos que ya teníamos (07-set-2026).
+  const fresca = resp?.clave === clave ? resp : null
+  const guardada = CACHE.get(clave) ?? null
+  const base = fresca ?? guardada
+
   const pedidos = useMemo(
-    () => (demo ? listaConCambios(crudos, cambios) : crudos),
-    [demo, crudos, cambios],
+    () => (demo ? listaConCambios(base?.pedidos ?? [], cambios) : base?.pedidos ?? []),
+    [demo, base, cambios],
   )
 
-  return { pedidos, cargando, error, soloMios: !!sellerId, recargar, leidoEn }
+  return {
+    pedidos,
+    // Solo hay spinner cuando no hay NADA que enseñar. Con lista guardada se
+    // refresca por detrás y la pantalla no parpadea.
+    cargando: !base,
+    error,
+    soloMios: !!sellerId,
+    recargar,
+    leidoEn: base?.leidoEn ?? montaje,
+  }
 }
+
+interface Respuesta {
+  clave: string
+  pedidos: StoreOrder[]
+  leidoEn: number
+}
+
+/** La última lista buena de cada clave, para que volver a Pedidos no cueste
+ *  otra espera. Vive en memoria: se va con la pestaña, que es lo correcto —
+ *  no queremos pedidos de una tienda guardados en el disco de nadie. */
+const CACHE = new Map<string, Respuesta>()
+
+function guardar(clave: string, pedidos: StoreOrder[], setResp: (r: Respuesta) => void) {
+  const r: Respuesta = { clave, pedidos, leidoEn: Date.now() }
+  CACHE.set(clave, r)
+  setResp(r)
+}
+
+
