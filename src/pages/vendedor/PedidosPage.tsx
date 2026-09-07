@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useSeller } from '../../lib/seller-session'
 import { useStoreOrders } from '../../lib/store-orders'
@@ -171,6 +172,21 @@ export default function PedidosPage() {
             )
           })}
         </div>
+
+        {/* Si la lista no llegó, se dice con el motivo y con el botón de volver
+            a pedirla. Sin esto un fallo de la función deja el tablero en cero
+            y la tienda cree que no vendió. */}
+        {lista.error && (
+          <div className="mt-2 flex items-start gap-2 rounded-2xl px-3 py-2.5 text-xs"
+            style={{ background: 'rgba(220,38,38,0.08)', color: '#B91C1C', border: '0.5px solid rgba(220,38,38,0.35)' }}>
+            <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-bold">No se pudieron cargar los pedidos.</p>
+              <p className="mt-0.5 break-words" style={{ opacity: 0.85 }}>{lista.error}</p>
+            </div>
+            <button onClick={lista.recargar} className="flex-shrink-0 font-bold underline">Reintentar</button>
+          </div>
+        )}
 
         <div className="mt-2">
           <FiltroPedidos

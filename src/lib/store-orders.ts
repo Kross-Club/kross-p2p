@@ -174,6 +174,12 @@ export interface StoreOrders {
    *  cálculo que armó la consulta, así que la etiqueta de la pantalla no puede
    *  contradecir a lo que se pidió. */
   soloMios: boolean
+  /** Por qué NO llegó la lista, si no llegó: el status de la función o el
+   *  error de red. Una lista vacía por un fallo se lee igual que una tienda
+   *  sin pedidos, y eso es lo peor que puede pasar en esta pantalla (pasó el
+   *  07-set: el tablero en cero con pedidos reales en la base). `null` cuando
+   *  la lista llegó, aunque venga vacía. */
+  error: string | null
   /** Vuelve a pedir la lista. Útil después de mover un pedido. */
   recargar: () => void
   /** Cuándo llegó esta lista. Medir antigüedad contra el momento de la lectura
@@ -198,6 +204,7 @@ export function useStoreOrders(
   const { incluirCancelados = false } = opts
   const [crudos, setPedidos] = useState<StoreOrder[]>([])
   const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [leidoEn, setLeidoEn] = useState(() => Date.now())
   const [intento, setIntento] = useState(0)
 
@@ -217,6 +224,7 @@ export function useStoreOrders(
     // que el demo y la tienda de verdad cortaran distinto.
     if (demo) {
       setCargando(true)
+      setError(null)
       tiendaDemo().then(t => {
         if (!vivo) return
         setPedidos(t.pedidos.slice(0, TOPE))
@@ -228,19 +236,31 @@ export function useStoreOrders(
 
     if (!storeId) return
     setCargando(true)
+    setError(null)
 
     const headers: Record<string, string> = { Authorization: `Bearer ${ANON}`, 'x-store-id': storeId }
     if (sellerId) headers['x-seller-id'] = sellerId
     if (incluirCancelados) headers['x-include-cancelled'] = '1'
 
+    // Un fallo NO se disfraza de lista vacía: se guarda el motivo y la pantalla
+    // lo dice. Un 500 por una columna que falta en la base (PostgREST rechaza
+    // el select entero) se veía exactamente igual que "hoy no vendiste nada".
     fetch(`${BASE}/get-store-sessions`, { headers })
-      .then(r => (r.ok ? r.json() : []))
+      .then(async r => {
+        if (r.ok) return r.json() as Promise<StoreOrder[]>
+        const cuerpo = await r.text().catch(() => '')
+        throw new Error(`HTTP ${r.status}${cuerpo ? ` · ${cuerpo.slice(0, 160)}` : ''}`)
+      })
       .then((data: StoreOrder[]) => {
         if (!vivo) return
         setPedidos(Array.isArray(data) ? data : [])
         setLeidoEn(Date.now())
       })
-      .catch(() => { if (vivo) setPedidos([]) })
+      .catch((e: unknown) => {
+        if (!vivo) return
+        setPedidos([])
+        setError(e instanceof Error ? e.message : String(e))
+      })
       .finally(() => { if (vivo) setCargando(false) })
 
     // `vivo` corta la respuesta de una petición que quedó en el aire cuando el
@@ -261,5 +281,5 @@ export function useStoreOrders(
     [demo, crudos, cambios],
   )
 
-  return { pedidos, cargando, soloMios: !!sellerId, recargar, leidoEn }
+  return { pedidos, cargando, error, soloMios: !!sellerId, recargar, leidoEn }
 }
