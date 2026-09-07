@@ -9,6 +9,7 @@ const supabase = createClient(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Max-Age': '7200',
 }
 
 async function broadcast(sessionId: string, event: string, payload: unknown) {

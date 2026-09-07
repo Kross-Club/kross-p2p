@@ -14,6 +14,7 @@ const supabase = createClient(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Max-Age': '7200',
 }
 /** Respuesta JSON con CORS. Estaba escrito a mano en cada `return`; con dos
  *  acciones nuevas que fallan de cinco maneras, valía la pena tenerlo. */

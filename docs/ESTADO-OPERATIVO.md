@@ -51,21 +51,41 @@ ninguna función), así que los 5 s están enteros en el camino red + función +
   pero no dependen entre sí, y la base está en **sa-east-1** mientras la función corre en
   **us-east-1**: cada ida y vuelta cuesta más que las dos consultas juntas. Ahora van en paralelo.
 
-**Lo que todavía NO está medido.** La cadena antes de la lista también es en serie y nadie la ha
-cronometrado: `useSeller` hace `auth.getSession()` y luego consulta `sellers`, y solo cuando eso
-resuelve arranca `get-store-sessions` — que además puede pagar **arranque en frío** de la Edge
-Function (los `npm:` de Deno son lentos de cargar), igual que `get-store-drafts`, que sale a la vez.
+**Medido en Network (07-set, tarde).** La consulta NO era el problema:
 
-Cómo separarlo, en el navegador: F12 → Network → recargar el tablero → mirar `get-store-sessions`.
-Un **TTFB** alto con descarga corta es la función (frío o consulta); mucha **descarga** es el
-tamaño; y si la **segunda** recarga seguida va rápida, era arranque en frío. Con eso se decide si
-toca cachear la lista entre pantallas, adelgazar el embed de mensajes o reducir el arranque.
+| | |
+|---|---|
+| `get-store-sessions` | **1,04 s** · 16,7 kB |
+| Su **preflight** | **225 ms**, y se pagaba en cada llamada |
+| `stores` (contexto de marca) | 211 ms |
+| `mark-chat-read` | 521 ms + 250 ms de preflight |
+| Bundle principal | 1,12 MB (**306 kB** gzip) |
+| Página completa | DOMContentLoaded 603 ms · Load 1,36 s · Finish **4,39 s** |
+
+O sea: la petición de la lista **empieza pasados unos 3 segundos**. Lo que se va en esos 3 s es una
+cadena en serie: bajar y ejecutar el JS → `auth.getSession()` → consultar `sellers` → recién
+entonces pedir los pedidos. Tres cosas atacan eso:
+
+- **El preflight se cachea** (`Access-Control-Max-Age: 7200`) en las 42 funciones. El navegador
+  deja de preguntar permiso antes de cada llamada durante dos horas: 225 ms menos por petición.
+- **El perfil del vendedor se siembra del disco** (`seller-session.ts`). La primera pintada ya sabe
+  de qué tienda pedir, así que la lista sale sin esperar a `auth` ni a `sellers`; la comprobación
+  de verdad sigue corriendo y corrige si cambió algo. No es una llave: quién puede qué lo decide el
+  servidor en cada llamada, y el perfil «actuando» ya vivía en disco desde antes.
+- **La lista se guarda por clave en memoria** (`useStoreOrders`). Volver a Pedidos la enseña de
+  inmediato y la refresca por detrás; solo hay spinner cuando no hay nada que enseñar. Es lo que
+  hace que se sienta como el demo, que es instantáneo justamente porque no toca la red.
+
+**Lo que queda sin atacar**, por si vuelve a molestar: el segundo entero de la función (arranque en
+frío de Deno con `npm:`, más la base en sa-east-1 y la función en us-east-1) y los 306 kB de
+bundle, que se partirían separando el panel del comprador.
 
 ```
 supabase functions deploy get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
 ```
 
-Y el §46 en el SQL Editor.
+Y el §46 en el SQL Editor. El resto de funciones puede esperar al siguiente deploy: sin el
+`Max-Age` solo se paga el preflight de siempre.
 
 ### La base rechazaba media mitad del chat: el `CHECK` de `chat_messages.type` · **SQL** (07-sep-2026)
 

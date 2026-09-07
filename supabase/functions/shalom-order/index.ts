@@ -54,6 +54,7 @@ const TIMEOUT_MS = 145_000
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Max-Age': '7200',
 }
 
 const json = (body: unknown, status = 200) =>
