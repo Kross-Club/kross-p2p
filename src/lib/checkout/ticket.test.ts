@@ -66,12 +66,21 @@ describe('ticket · agencia con adelanto pagado', () => {
       'pendiente:Recojo',
     ])
   })
-  it('el saldo vive en el paso donde se paga: con Yape desde el pedido, nunca en la agencia', () => {
+  // El texto se acortó el 07-set-2026: explicaba la mecánica del pago en un
+  // momento en que todavía no toca. Lo que sostiene el sentido es el BOTÓN
+  // apagado —para que lo reconozca cuando se encienda— y las tres palabras que
+  // evitan que pague en efectivo en el mostrador y se quede sin clave.
+  it('el saldo vive en el paso donde se paga, y enseña su botón apagado', () => {
     const llegada = t.pasos.find(p => p.label === 'Llegó a la agencia')!
     expect(llegada.detail).toMatch(/saldo de S\/ 94/)
-    expect(llegada.detail).toMatch(/con Yape desde tu pedido/)
     expect(llegada.detail).toMatch(/nunca en la agencia/)
     expect(llegada.detail).toMatch(/clave de recojo/)
+    expect(llegada.accion).toBe('Pagar S/ 94 con Yape')
+  })
+
+  it('sin saldo no hay botón que enseñar', () => {
+    const sinSaldo = buildTicket({ state: agencia({ advanceAmount: 189 }), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE })
+    expect(sinSaldo.pasos.find(p => p.label === 'Llegó a la agencia')?.accion).toBeUndefined()
   })
   it('el DNI y la clave viven en el paso del recojo, con la sede', () => {
     expect(t.pasos.at(-1)?.detail).toBe('En Shalom · Juliaca Centro, con tu DNI y tu clave de recojo.')

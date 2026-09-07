@@ -522,6 +522,27 @@ El contenido lo arma `src/lib/checkout/ticket.ts` (puro, con tests en
 
 #### La pantalla final deja de ser una ventana: `/pedido/:token` ✅ (07-set-2026)
 
+> **Cuatro detalles, probándola en un celular de verdad (mismo día).**
+>
+> 1. **Instalar ya no navega a ningún lado.** Abría el chat, que tenía sentido cuando esta pantalla
+>    era una ventana que se cerraba: había que llevarlo a alguna parte. Ahora el comprador está en su
+>    pedido y Android instala la app en ese mismo momento — moverlo de página es quitarle de encima
+>    justo lo que vino a mirar. En su lugar queda el **ícono que va a tener que buscar**, y se
+>    recuerda (`localStorage`), así que si vuelve a tocar el botón ve «¡Listo! Ya tienes la app» en
+>    vez de que le ofrezcan instalar lo que ya tiene. `isInstalled()` no sirve para esto: solo sabe
+>    si la página se ve DENTRO de la app, y en la pestaña del navegador es `false` para siempre.
+> 2. **«Llegó a la agencia» se acortó** y enseña su botón **apagado** (*Pagar S/ X con Yape*). El
+>    párrafo explicaba la mecánica del pago cuando todavía no toca; lo que hace falta es que
+>    reconozca el botón cuando se encienda. Se quedan las tres palabras que evitan que pague en
+>    efectivo en el mostrador y se quede sin clave.
+> 3. **El logo va `object-contain`, no `object-cover`**: recortar un logo que ya trae su propio aire
+>    lo dejaba visiblemente corrido dentro del cuadrado. ⚠️ El ícono de la app INSTALADA y el del
+>    aviso de Android **no** salen de acá: son `stores.logo_url` tal cual, así que un logo descentrado
+>    en el archivo se ve descentrado en el lanzador. Eso se arregla en la imagen, no en el código.
+> 4. **El pie lleva el logo** junto al nombre de la marca: es lo que el comprador reconoce, y es el
+>    mismo ícono con el que va a encontrar la app.
+
+
 **Por qué.** Vivía DENTRO del modal del checkout, así que un toque en la X la borraba para siempre:
 el pedido existía y el comprador no tenía a dónde volver. Y volver es lo normal — la gente recarga
 para ver si su envío avanzó, no abre un chat para eso.

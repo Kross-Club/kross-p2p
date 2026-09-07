@@ -149,12 +149,19 @@ export default function MiPedidoPage() {
           ticket={ticket}
           orderCode={pedido.order_id}
           paid={pagadoDelPedido(pedido)}
-          token={token}
           sessionId={pedido.id}
         />
-        {/* El nombre de la marca cierra la página: en una pantalla que se
-            recarga días después, saber de quién es el pedido no es adorno. */}
-        <p className="text-center text-[11px] text-gray-400 pb-8">{store.nombre}</p>
+        {/* La marca cierra la página, con su logo: en una pantalla que se
+            recarga días después, saber de quién es el pedido no es adorno — y
+            el logo es lo que el comprador reconoce, no el nombre escrito. Es
+            además el mismo ícono con el que va a encontrar la app. */}
+        <div className="flex items-center justify-center gap-2 pb-8">
+          {store.logo_url && (
+            <img src={store.logo_url} alt="" aria-hidden
+              className="w-5 h-5 rounded-md object-contain" />
+          )}
+          <span className="text-[11px] text-gray-400">{store.nombre}</span>
+        </div>
       </div>
     </div>
   )

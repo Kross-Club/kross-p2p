@@ -64,6 +64,10 @@ export interface TicketStep {
   label: string
   /** Lo que ese paso implica para él: cuánto, dónde, con qué. */
   detail?: string
+  /** El botón que ESE paso va a traer cuando llegue, enseñado apagado. No es
+   *  decoración: el saldo se paga desde el pedido y nunca en el mostrador, y
+   *  enseñarlo apagado ahora es lo que hace que se reconozca después. */
+  accion?: string
   estado: 'hecho' | 'actual' | 'pendiente'
 }
 
@@ -181,7 +185,7 @@ export function buildTicket(i: TicketInput): Ticket {
   const plazo = etaEnPalabras(s.provinciaConfig?.eta)
   const cobrado = advance > 0 ? (paid && !unpaid) : true
 
-  const crudos: { label: string; detail?: string }[] = [
+  const crudos: Omit<TicketStep, 'estado'>[] = [
     advance > 0 && !cobrado
       ? { label: 'Pedido registrado', detail: `Un asesor te escribe para coordinar tu adelanto de ${soles(advance)}.` }
       : { label: advance > 0 ? 'Pago recibido' : 'Pedido registrado', detail: advance > 0 ? `${soles(advance)} por Yape.` : undefined },
@@ -195,10 +199,17 @@ export function buildTicket(i: TicketInput): Ticket {
       },
       { label: `En camino a ${agencia}`, detail: plazo ? `Suele tardar ${plazo}.` : undefined },
       {
+        // Corto a propósito (07-set-2026): el párrafo largo explicaba la
+        // mecánica del pago en un momento en el que todavía no toca. Lo que
+        // hace falta es que reconozca el botón cuando llegue, así que se
+        // enseña APAGADO debajo. "Nunca en la agencia" se queda —tres
+        // palabras— porque es lo que evita que pague en efectivo en el
+        // mostrador y se quede sin clave.
         label: 'Llegó a la agencia',
         detail: rest > 0
-          ? `Te avisaremos a tu celular. Ahí pagas tu saldo de ${soles(rest)} con Yape desde tu pedido, nunca en la agencia, y recibes tu clave de recojo.`
+          ? `Paga tu saldo de ${soles(rest)} desde aquí —nunca en la agencia— y te damos tu clave de recojo.`
           : 'Te avisaremos a tu celular, con tu clave de recojo.',
+        accion: rest > 0 ? `Pagar ${soles(rest)} con Yape` : undefined,
       },
       { label: 'Recojo', detail: `En ${destino}, con tu DNI y tu clave de recojo.` },
     )

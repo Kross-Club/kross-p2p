@@ -383,8 +383,10 @@ export const COPY = {
     `Dale seguimiento y haz tus consultas desde la app de ${tienda}. Se instala con un clic.`,
   doneInstallCta: 'Descargar la app',
   doneInstallSub: 'Dale seguimiento a tu pedido',
-  // Ya instalada: el botón abre el pedido dentro de la app.
-  doneInstallOpen: 'Abrir mi pedido en la app',
+  // Ya instalada. NO se ofrece abrir nada: el comprador está en su pedido y lo
+  // único que le falta saber es con qué ícono encontrar la app en su celular.
+  doneInstallReady: '¡Listo! Ya tienes la app',
+  doneInstallFind: (tienda: string) => `Búscala en tu celular con este ícono: ${tienda}.`,
   // iPhone no deja instalar con un clic; se enseñan los dos toques.
   doneInstallIos: 'En iPhone se instala en dos toques:',
   doneInstallDesktop: 'Abre esta página desde tu celular para instalar la app.',
