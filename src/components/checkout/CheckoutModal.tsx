@@ -287,18 +287,60 @@ export default function CheckoutModal({
   // está registrado y la pantalla dice que se puede cerrar, así que seguir
   // consultando mientras esté abierta no le cuesta nada y le ahorra el susto de
   // volver y no ver su pago reflejado.
+  //
+  // ⚠️ **Con FLOW no existe AWAITING** y esta espera es la ÚNICA que hay. El
+  // comprador SALE de la PWA, así que la fase se queda en ISSUING mientras el
+  // navegador navega — y si vuelve, esta pantalla se quedaba con el spinner
+  // para siempre, con el pago ya cruzado. Pasó en la primera compra real
+  // (08-set-2026, ORD-1788900938194): pagó, volvió, y siguió viendo Flow.
+  //
+  // Y la vuelta NO se puede delegar en Flow: su `waitYapeOneShot.php` es una
+  // página de ESPERA que hace su propio polling y recién ahí dispara el POST a
+  // `urlReturn`. Como el comprador se va a la app de Yape a aprobar, Android
+  // congela ese JS y el retorno no ocurre nunca. O sea que la vuelta la tiene
+  // que ver ESTA pantalla, o no la ve nadie.
+  const enEspera = phase.k === 'AWAITING' || (phase.k === 'ISSUING' && phase.rail === 'FLOW')
+  // El token y no `phase`: así el intervalo no se recrea en cada render, y el
+  // efecto se limpia solo cuando deja de haber espera que atender.
+  const tokenEnEspera = enEspera && 'token' in phase ? phase.token : null
+
+  // ¿Ya se fue a pagar y volvió? Mientras no vuelva, la pantalla dice «te
+  // llevamos a pagar»; una vez que volvió eso es mentira —ya fue— y lo que
+  // corresponde es la espera de la confirmación.
+  const [volvioDePagar, setVolvioDePagar] = useState(false)
+
   useEffect(() => {
-    if (phase.k !== 'AWAITING') return
+    if (!tokenEnEspera) return
     let alive = true
     const tick = async () => {
-      const v = await fetchPaymentVerification(phase.token)
+      const v = await fetchPaymentVerification(tokenEnEspera)
       if (!alive) return
       if (v === 'MATCHED') phaseDispatch({ type: 'PAID' })
     }
+    // Al VOLVER se consulta al instante, sin esperar el siguiente intervalo: el
+    // comprador acaba de pagar y tres segundos mirando un spinner se notan.
+    // `pageshow` cubre lo que `visibilitychange` no ve — la restauración desde
+    // el bfcache al tocar «Atrás», que en Android es el camino normal de vuelta
+    // desde la página de Flow.
+    const alVolver = (e?: Event) => {
+      if (document.visibilityState !== 'visible') return
+      // Un `pageshow` de carga inicial no es una vuelta; el del bfcache sí.
+      if (!e || e.type === 'visibilitychange' || (e as PageTransitionEvent).persisted) {
+        setVolvioDePagar(true)
+      }
+      void tick()
+    }
+    document.addEventListener('visibilitychange', alVolver)
+    window.addEventListener('pageshow', alVolver)
     const id = setInterval(tick, PAY360_POLL_MS)
     void tick()
-    return () => { alive = false; clearInterval(id) }
-  }, [phase])
+    return () => {
+      alive = false
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', alVolver)
+      window.removeEventListener('pageshow', alVolver)
+    }
+  }, [tokenEnEspera])
 
   // Retry de la emisión: SOLO desde ISSUE_FAILED. El reducer ya lo impone; el
   // guard evita el viaje de red.
@@ -416,10 +458,14 @@ export default function CheckoutModal({
                   dice a dónde va y que vuelve solo, antes de que la pantalla
                   cambie. Sin nombrar el motor — para él es Yape. */}
               <p className="text-base font-black text-gray-900">
-                {phase.rail === 'FLOW' ? COPY.flowRedirecting : COPY.submitting}
+                {phase.rail !== 'FLOW'
+                  ? COPY.submitting
+                  : volvioDePagar ? COPY.pay360Waiting : COPY.flowRedirecting}
               </p>
               {phase.rail === 'FLOW' && (
-                <p className="mt-1.5 px-4 text-[13px] leading-relaxed text-gray-600">{COPY.flowRedirectingHint}</p>
+                <p className="mt-1.5 px-4 text-[13px] leading-relaxed text-gray-600">
+                  {volvioDePagar ? COPY.pay360WaitingHint : COPY.flowRedirectingHint}
+                </p>
               )}
             </div>
           )}

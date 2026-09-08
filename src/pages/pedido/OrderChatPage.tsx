@@ -615,6 +615,32 @@ export default function OrderChatPage() {
       .catch((e: Error) => setState(e.message === 'not_found' ? 'not_found' : 'error'))
   }, [token])
 
+  // ─── Volver de pagar ──────────────────────────────────────────────────────
+  // El `cobros_update` de arriba solo sirve si el canal está VIVO cuando entra
+  // el cobro, y con Flow no lo está: el comprador sale de la PWA a la página de
+  // pago, esta pantalla se desmonta, y el aviso pasa mientras no hay nadie
+  // escuchando. Vuelve —«Atrás», o la vuelta de `flow-return`— y ve su pedido
+  // como lo dejó: con el botón ofreciéndole pagar lo que acaba de pagar.
+  //
+  // Así que al volver se vuelve a pedir el pedido entero. `pageshow` cubre lo
+  // que `visibilitychange` no ve: la restauración desde el bfcache, que es
+  // exactamente lo que hace el botón «Atrás» en Android.
+  useEffect(() => {
+    if (!token) return
+    const refrescar = () => {
+      if (document.visibilityState !== 'visible') return
+      getSession(token)
+        .then(({ session: s, messages: m }) => { setSession({ ...s, token }); setMessages(m) })
+        .catch(() => {})
+    }
+    document.addEventListener('visibilitychange', refrescar)
+    window.addEventListener('pageshow', refrescar)
+    return () => {
+      document.removeEventListener('visibilitychange', refrescar)
+      window.removeEventListener('pageshow', refrescar)
+    }
+  }, [token])
+
   // Realtime broadcast subscription
   useEffect(() => {
     if (!session) return

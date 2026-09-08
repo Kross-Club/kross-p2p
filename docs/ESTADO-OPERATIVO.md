@@ -34,6 +34,38 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Flow cobró de verdad, y la vuelta era la que faltaba · frontend (08-set-2026)
+
+**El riel funcionó completo.** `ORD-1788900938194`: adelanto de S/6 pagado con Yape One Shot
+(`Op. 180775009`), cruzado a MATCHED por `flow-confirm`, comprobante emitido y **guía de Shalom
+generada sola** (`95107445 · NDK3`). Es el primer cobro real de este riel de punta a punta.
+
+**Lo que falló fue volver.** El comprador pagó en Yape, regresó al navegador y siguió viendo la
+página de Flow; el pedido estaba confirmado y él no lo veía. La causa: `waitYapeOneShot.php` es
+una página de ESPERA que hace su propio polling y recién ahí dispara el POST a `urlReturn` —
+como el comprador se va a la app de Yape, Android congela ese JS y el retorno no ocurre nunca.
+Y de nuestro lado, `ISSUING` (la fase donde vive Flow, porque no hay `AWAITING`) no consultaba
+nada, así que el spinner se quedaba para siempre.
+
+**El arreglo.** `ISSUING` con riel FLOW consulta como `AWAITING`, y dispara al instante con
+`visibilitychange` y `pageshow` — el segundo es el que cubre «Atrás» en Android, que restaura
+desde el bfcache. Igual en `/p/<token>`: al volver se vuelve a pedir el pedido entero, porque el
+`cobros_update` del canal solo sirve si el canal estaba vivo cuando entró el cobro. Y la copy
+decía «ingresas tu celular y tu código de aprobación»: no hay código que teclear, se aprueba
+dentro de Yape.
+
+Solo frontend, se despliega con Vercel al mergear. Sin funciones ni SQL.
+
+**Dos deudas que dejó medidas este cobro:**
+
+- **`costo_pasarela_pen` quedó NULL.** El panel de Flow dice que costó `0.33 + 0.06 IVA`, pero
+  `getStatus` no traía `paymentData.fee` al confirmar: la venta estaba «Por depositar» y el fee
+  todavía no existía. Hoy el panel no puede mostrar lo que Flow se quedó en ningún cobro de este
+  riel. Se concilia contra `settlement/getByIdv2`, como ya anticipaba `12-FLOW.md`.
+- **La tasa real es 5.50%, no 3.5%.** Con eso el cruce de rieles deja de estar en S/90 y se va a
+  **~S/57** (`3.15 / 0.055`). `COSTO_PASARELA.FLOW.pct` sigue en 3.5%. El fijo sí está bien:
+  «Tasa adicional 0.00» confirma que `FLOW.fijo = 0`.
+
 ### Flow emitió su primera orden · sin código pendiente (08-set-2026)
 
 Con `flow-order` desplegado, el reintento del pedido `ORD-1788883965064` salió: **`flowOrder`
