@@ -68,12 +68,22 @@ era el camino directo a emitir —y pagar— una segunda.
 Detalle en [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md) § *La sexta defensa*. Las cuatro
 invariantes están en pruebas (`src/lib/checkout/shalom-order.test.ts`), leídas del fuente.
 
-⚠️ **Sigue abierto: el presupuesto de tiempo.** `TIMEOUT_MS` son 145 s **por llamada** y el login
-del proveedor tarda ~90 s, pero la invocación entera tiene el límite de wall-clock de Supabase. Un
-login lento se come el presupuesto y el POST —el que cuesta plata— aterriza sin tiempo para
-registrarse. Es la hipótesis principal de estos dos pedidos; la confirma la línea
-`[shalom-order] error inesperado` en los logs de la función. Con este cambio, el próximo caso se
-lee del expediente sin ir a los logs.
+**La causa, del log (08-set).** `ReferenceError: Cannot access 'guardarPdfDeGuia' before
+initialization`. Era un **`const` arrow declarado en la línea 657**, después de todos los
+`return await guardar(...)` (387, 567, 610, 627): `generar()` llamaba a `guardar`, salía por un
+`return` y nunca llegaba a inicializar el const que `guardar` necesitaba. **Zona muerta temporal**
+— una `function` anidada se iza y queda lista, un `const` no. Toda emisión buena moría ahí, justo
+después de que Shalom cobrara la guía, así que **la guía automática nunca funcionó de punta a punta
+ni una vez**. Ahora es una `function` y lee `cabeceras` (un `let` inicializado en `null` al entrar)
+en vez de `auth`, que se declara en la 429 mientras la contingencia por falta de llave llama a
+`guardar` desde la 416. `ordenYaCreada` tenía el mismo defecto.
+
+Y queda **una prueba que lo ataja antes del deploy** (`edge-functions.test.ts`): por cada `function`
+anidada compara la primera sentencia que la puede disparar contra dónde se declara cada `const`/`let`
+que lee. Corre sobre las 45 funciones sin un falso positivo y contra el código de antes marca las dos.
+
+(La primera hipótesis fue el wall-clock de Supabase. Era plausible y era falsa; el log la descartó
+en una línea.)
 
 **Los dos pedidos del 07-set se arreglan a mano**, no reintentando: en cada uno, *Corregir* con su
 número y su código. Desde ahí engancha igual que si hubiera nacido por API — se suscribe al

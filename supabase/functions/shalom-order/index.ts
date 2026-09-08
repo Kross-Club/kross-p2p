@@ -251,6 +251,13 @@ Deno.serve(async (req: Request) => {
   }
 
   async function generar(): Promise<Response> {
+    // Las credenciales del titular, para el PDF de la guía. Se declaran ACÁ
+    // ARRIBA —y no junto a `auth`— porque `guardar` puede correr antes de que
+    // `auth` exista (la contingencia por falta de llave), y un `const` sin
+    // inicializar no se puede ni leer para preguntar si está. `null` mientras
+    // no haya: sin credenciales no hay voucher que pedir, y eso no es un error.
+    let cabeceras: { 'X-API-Key': string; 'X-Shalom-Email': string; 'X-Shalom-Password': string } | null = null
+
     // ─── La config: marca, producto, comprador ───────────────────────────────
     const [{ data: store }, { data: secrets }, { data: product }, { data: buyer }] = await Promise.all([
       supabase.from('stores').select('nombre, shalom_auto_guide_enabled').eq('id', storeId).maybeSingle(),
@@ -424,6 +431,7 @@ Deno.serve(async (req: Request) => {
       'X-Shalom-Email': email,
       'X-Shalom-Password': password,
     }
+    cabeceras = auth
 
     // ─── Lo que hay que resolver contra el proveedor ─────────────────────────
     // El producto (su id es POR CUENTA) y la persona (para no chocar con el 409
@@ -615,7 +623,12 @@ Deno.serve(async (req: Request) => {
      *  comparten los tres que la necesitan: el timeout, el reintento por 5xx y
      *  la respuesta que no se deja leer. */
     async function ordenYaCreada() {
-      const r = await llamar('guia.reconciliar', sessionId, `${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
+      // `cabeceras` y no `auth`, por lo mismo que `guardarPdfDeGuia`: la
+      // contingencia por falta de llave llama a `guardar` ANTES de que `auth`
+      // exista, y desde ahí se puede llegar hasta acá. Sin credenciales no hay
+      // a quién preguntarle, que no es un error: es que no hay titular.
+      if (!cabeceras) return null
+      const r = await llamar('guia.reconciliar', sessionId, `${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: cabeceras })
       return r?.ok ? buscarOrdenPorDni(await leerJson(r), dni) : null
     }
 
@@ -652,10 +665,25 @@ Deno.serve(async (req: Request) => {
      * no baja jamás retrasa ni tumba el registro de la guía — sin él, el botón
      * abre la hoja de guía de la app, que es el respaldo de siempre.
      */
-    /** La guía formal en PDF, si se pudo bajar ahora. Si no, `reponerPdfDeGuia`
-     *  lo vuelve a intentar desde el rastreo (`_shared/guia.ts`). */
-    const guardarPdfDeGuia = (oseId: string | null, numero: string | null) =>
-      descargarPdfDeGuia({ sessionId, storeId, oseId, numero, auth })
+    /**
+     * La guía formal en PDF, si se pudo bajar ahora. Si no, `reponerPdfDeGuia`
+     * lo vuelve a intentar desde el rastreo (`_shared/guia.ts`).
+     *
+     * ⚠️ `function` y no `const`, y lee `cabeceras` y no `auth`. Las dos cosas
+     * son la misma lección, que costó dos guías reales de Mono Shop (07-set-2026,
+     * `95027848 / KPK3` y `95026737 / NTTM`): esto era un arrow declarado DESPUÉS
+     * de todos los `return await guardar(...)`, así que cuando `guardar` lo
+     * llamaba seguía en su ZONA MUERTA. Cada emisión buena moría acá con
+     * `ReferenceError: Cannot access 'guardarPdfDeGuia' before initialization`,
+     * o sea que Shalom cobraba la guía y Kross no registraba ninguna. Una
+     * `function` se inicializa al entrar al scope, pase lo que pase con el orden.
+     * Y `auth` tenía el mismo defecto un nivel más abajo: se declara en la 422 y
+     * la contingencia por falta de llave llama a `guardar` desde la 416.
+     */
+    async function guardarPdfDeGuia(oseId: string | null, numero: string | null) {
+      if (!cabeceras) return null
+      return await descargarPdfDeGuia({ sessionId, storeId, oseId, numero, auth: cabeceras })
+    }
 
     /** Escribe la guía en el pedido. La clave de retiro se guarda en la fila y
      *  NO viaja a ningún chat: en Kross se entrega contra el saldo pagado. */

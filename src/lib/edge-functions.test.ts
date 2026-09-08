@@ -32,6 +32,11 @@ const fuentes = import.meta.glob('../../supabase/functions/**/*.ts', {
 const enElRepo = (ruta: string) => ruta.replace(/^.*\/supabase\//, 'supabase/')
 const archivos = Object.keys(fuentes).sort()
 
+/** Todo lo que tiene cuerpo propio y por tanto su propio alcance. */
+const esFuncion = (n: ts.Node) =>
+  ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) ||
+  ts.isArrowFunction(n) || ts.isMethodDeclaration(n)
+
 describe('las Edge Functions', () => {
   it('son todas parseables: nada llega roto al deploy', () => {
     const rotos: string[] = []
@@ -144,6 +149,147 @@ describe('las Edge Functions', () => {
       recorrer(sf, new Map())
     }
     expect(choques).toEqual([])
+  })
+
+  // ─── Que nada corra ANTES de que exista lo que usa (zona muerta) ──────────
+  //
+  // Una `function` anidada se puede llamar desde arriba de donde está escrita
+  // —se iza y queda lista al entrar al alcance—, pero los `const`/`let` que su
+  // cuerpo lee NO: hasta su línea están en la ZONA MUERTA TEMPORAL y leerlos
+  // lanza «Cannot access 'x' before initialization». Ni el parser ni el binder
+  // lo ven: es de ejecución, y solo en el camino que llega ahí.
+  //
+  // Costó las dos primeras guías reales de Shalom (07-set-2026, Mono Shop). El
+  // ayudante del PDF era un `const` arrow declarado DESPUÉS de todos los
+  // `return await guardar(...)`, así que TODA emisión buena moría justo después
+  // de que el proveedor cobrara la guía: Shalom con la orden creada
+  // (`95027848 / KPK3`, `95026737 / NTTM`) y el pedido sin nada. El expediente
+  // decía «error inesperado» y la guía automática, que parecía construida,
+  // nunca había funcionado de punta a punta ni una vez.
+  //
+  // Lo que se mira, por alcance: para cada `function` anidada se busca la
+  // primera sentencia del cuerpo que la puede disparar (propagando por quién
+  // llama a quién) y se compara contra dónde se declara cada `const`/`let` que
+  // esa función lee. Si puede correr antes, se marca. No cuentan los nombres
+  // que la función declara ella misma (los tapa) ni los que solo NOMBRA sin
+  // leer (`{ auth: x }`, `x.auth`). Es conservador a propósito: prefiere callar
+  // a inventar, y aun así ataja la forma exacta que ya se escapó dos veces.
+  it('ninguna función anidada usa un const declarado después de poder correr', () => {
+    const hallazgos: string[] = []
+    for (const ruta of archivos) {
+      const sf = ts.createSourceFile(enElRepo(ruta), fuentes[ruta], ts.ScriptTarget.ESNext, true)
+      const linea = (n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1
+
+      const analizar = (cuerpo: ts.NodeArray<ts.Statement>) => {
+        const funcs = new Map<string, ts.FunctionDeclaration>()
+        const bindings = new Map<string, number>()   // const/let → índice de sentencia
+        const lineaDe = new Map<string, number>()
+        cuerpo.forEach((st, i) => {
+          if (ts.isFunctionDeclaration(st) && st.name) funcs.set(st.name.text, st)
+          if (ts.isVariableStatement(st) && (st.declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))) {
+            for (const d of st.declarationList.declarations) {
+              if (ts.isIdentifier(d.name)) { bindings.set(d.name.text, i); lineaDe.set(d.name.text, linea(d)) }
+            }
+          }
+        })
+        if (!funcs.size || !bindings.size) return
+
+        // Un identificador es una REFERENCIA solo si no es el nombre de algo:
+        // `{ auth: cabeceras }` menciona `auth` sin leerlo, y `x.auth` tampoco.
+        const esReferencia = (id: ts.Identifier): boolean => {
+          const p = id.parent
+          if (!p) return true
+          if (ts.isPropertyAccessExpression(p) && p.name === id) return false
+          if (ts.isPropertyAssignment(p) && p.name === id) return false
+          if (ts.isBindingElement(p) && p.propertyName === id) return false
+          if (ts.isQualifiedName(p) && p.right === id) return false
+          if (ts.isImportSpecifier(p) || ts.isExportSpecifier(p)) return false
+          if (ts.isPropertySignature(p) || ts.isPropertyDeclaration(p) || ts.isMethodSignature(p)) return p.name !== id
+          if ((ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isFunctionDeclaration(p)) && p.name === id) return false
+          return true
+        }
+        // Nombres que la propia función declara: parámetros, const/let/var,
+        // funciones anidadas. Un nombre así NO es el de afuera — lo tapa.
+        const propios = (f: ts.FunctionDeclaration): Set<string> => {
+          const out = new Set<string>()
+          const nombres = (b: ts.BindingName) => {
+            if (ts.isIdentifier(b)) { out.add(b.text); return }
+            for (const el of b.elements) if (ts.isBindingElement(el)) nombres(el.name)
+          }
+          for (const par of f.parameters) nombres(par.name)
+          const baja = (n: ts.Node) => {
+            if (ts.isVariableDeclaration(n)) nombres(n.name)
+            if (ts.isFunctionDeclaration(n) && n.name) out.add(n.name.text)
+            if (ts.isParameter(n)) nombres(n.name)
+            if (ts.isCatchClause(n) && n.variableDeclaration) nombres(n.variableDeclaration.name)
+            ts.forEachChild(n, baja)
+          }
+          if (f.body) baja(f.body)
+          return out
+        }
+        // Identificadores que una sentencia usa AHORA (sin entrar a closures:
+        // lo que está dentro de un arrow corre después, no en esta línea).
+        const usaAhora = (n: ts.Node, out: Set<string>) => {
+          ts.forEachChild(n, h => {
+            if (esFuncion(h)) return
+            if (ts.isIdentifier(h)) { if (esReferencia(h)) out.add(h.text); return }
+            usaAhora(h, out)
+          })
+        }
+        // Todo lo que el cuerpo de una función toca al correr (closures dentro).
+        const usaAlCorrer = (n: ts.Node, out: Set<string>) => {
+          ts.forEachChild(n, h => {
+            if (ts.isIdentifier(h)) { if (esReferencia(h)) out.add(h.text); return }
+            usaAlCorrer(h, out)
+          })
+        }
+
+        const primerUso = new Map<string, number>()
+        cuerpo.forEach((st, i) => {
+          if (ts.isFunctionDeclaration(st)) return
+          const usa = new Set<string>()
+          usaAhora(st, usa)
+          for (const f of funcs.keys()) if (usa.has(f) && !primerUso.has(f)) primerUso.set(f, i)
+        })
+
+        const tocan = new Map<string, Set<string>>()
+        for (const [n, f] of funcs) {
+          const s = new Set<string>()
+          if (f.body) usaAlCorrer(f.body, s)
+          for (const propio of propios(f)) s.delete(propio)
+          tocan.set(n, s)
+        }
+
+        for (let vuelta = 0; vuelta < funcs.size + 1; vuelta++) {
+          for (const [n, s] of tocan) {
+            const u = primerUso.get(n); if (u === undefined) continue
+            for (const otra of s) {
+              if (!funcs.has(otra)) continue
+              const v = primerUso.get(otra)
+              if (v === undefined || u < v) primerUso.set(otra, u)
+            }
+          }
+        }
+
+        for (const [n, s] of tocan) {
+          const u = primerUso.get(n); if (u === undefined) continue
+          for (const name of s) {
+            const d = bindings.get(name)
+            if (d !== undefined && u < d) {
+              hallazgos.push(`${enElRepo(ruta)}:${linea(funcs.get(n)!)} — '${n}' puede correr desde la sentencia ${u} y usa '${name}', declarado recién en la línea ${lineaDe.get(name)}`)
+            }
+          }
+        }
+      }
+
+      const recorrer = (n: ts.Node) => {
+        if (esFuncion(n) && n.body && ts.isBlock(n.body)) analizar(n.body.statements)
+        ts.forEachChild(n, recorrer)
+      }
+      analizar(sf.statements)
+      recorrer(sf)
+    }
+    expect(hallazgos).toEqual([])
   })
 
   // ─── Que toda cabecera propia que el panel manda esté PERMITIDA por CORS ──
