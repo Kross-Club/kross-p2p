@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 07-sep-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 08-set-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -33,6 +33,57 @@ fecha de arriba.
 
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
+
+### Shalom emitió dos guías reales y Kross no registró ninguna · 2 funciones, sin SQL (08-set-2026)
+
+**Qué se vio.** Dos pedidos reales de Mono Shop, pagados y verificados. En **pro.shalom.pe** las
+dos órdenes están creadas y cobradas (`95027848 / KPK3` y `95026737 / NTTM`, con sus
+destinatarios correctos). En Kross, ninguna de las dos tiene guía: la pantalla de pedido se queda
+en *Guía de envío emitida* en naranja y el chat sin tarjeta. Para el comprador es idéntico a que
+no se hubiera emitido nada — solo que el paquete ya está comprometido y la plata gastada.
+
+**Lo que decía el expediente.** `shalom_order_status = FAILED`, razón **«error inesperado al
+generar la guía»** — el `catch` de arriba, sin una palabra más. Y en *Conexiones* solo un
+`persona.buscar` **404** a las 20:18 (que es lo NORMAL para un comprador nuevo: significa
+«mándame sus nombres»), ningún `guia.emitir`. `shalom_pickup_code` y `shalom_order_provider` en
+NULL, o sea que la escritura de la guía no llegó a empezar.
+
+Tres fallos encima del mismo pedido, y los tres son de evidencia:
+
+1. **La razón era una constante, no el error.** «Error inesperado» no permite diagnosticar nada.
+2. **El cuerpo de la emisión no se guardaba en ningún lado.** `llamar()` anota lo que falla; una
+   respuesta `2xx` que no se deja leer no falla para nadie. La única llamada que **cuesta plata**
+   era la única sin evidencia consultable.
+3. **Se rendía sin preguntar.** Con la consulta de reconciliación (`GET /v1/orders`) ahí al lado,
+   ya escrita para el timeout.
+
+**Qué hace ahora.** Rescata antes de rendirse (`ordenYaCreada()` — solo consulta, no emite, y vive
+en un solo sitio que comparten el timeout, el reintento por `5xx` y el rescate); anota el cuerpo
+crudo en `api_events` con `detailMax: 3000` (el corte normal de `sanear` son 600, que alcanzan para
+un mensaje de error y no para reconstruir una respuesta); y el `catch` guarda **el error real** en
+`shalom_order_reason` y en Conexiones. Además ya **no degrada un `CREATED` a `FAILED`**: `FAILED`
+es el único estado que el reintento a mano vuelve a tomar, así que degradar una guía ya registrada
+era el camino directo a emitir —y pagar— una segunda.
+
+Detalle en [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md) § *La sexta defensa*. Las cuatro
+invariantes están en pruebas (`src/lib/checkout/shalom-order.test.ts`), leídas del fuente.
+
+⚠️ **Sigue abierto: el presupuesto de tiempo.** `TIMEOUT_MS` son 145 s **por llamada** y el login
+del proveedor tarda ~90 s, pero la invocación entera tiene el límite de wall-clock de Supabase. Un
+login lento se come el presupuesto y el POST —el que cuesta plata— aterriza sin tiempo para
+registrarse. Es la hipótesis principal de estos dos pedidos; la confirma la línea
+`[shalom-order] error inesperado` en los logs de la función. Con este cambio, el próximo caso se
+lee del expediente sin ir a los logs.
+
+**Los dos pedidos del 07-set se arreglan a mano**, no reintentando: en cada uno, *Corregir* con su
+número y su código. Desde ahí engancha igual que si hubiera nacido por API — se suscribe al
+webhook, el rastreo mueve las fases y el comprador recibe su tarjeta.
+
+```
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
+(`_shared/api-eventos.ts` cambió también: se redespliega con cualquier función que lo importe.)
 
 ### `upsert` era lo que impedía subir los logos · **SQL** + 1 función (08-set-2026)
 
@@ -2041,27 +2092,34 @@ sin tocar credenciales de pago, porque Kross Club es *partner* y cada marca es u
 bajo esa cuenta. Ver [`06-360PAY.md`](./06-360PAY.md) y
 [`07-CONTRATO-360PAY.md`](./07-CONTRATO-360PAY.md).
 
-## Guía automática de Shalom — encendida en ninguna marca todavía
+## Guía automática de Shalom — estrenada en Mono Shop (07-set-2026)
 
-El generador de envíos existe (ver [`02-SMART-LOGISTICS.md`](./02-SMART-LOGISTICS.md)
-§ *Generador de guías Shalom*), pero **`stores.shalom_auto_guide_enabled` arranca en
-`false` para todas**: un pedido de agencia Shalom con el adelanto verificado arma su
-envío completo y lo deja como **ensayo** en el chat de vendedores, sin emitir nada.
+**Ya emitió guías reales.** Mono Shop tiene la cuenta Shalom Pro conectada
+(`shalom_pro_status = CONNECTED`) y el interruptor encendido
+(`stores.shalom_auto_guide_enabled = true`), y el 07-set el generador creó dos órdenes
+de verdad en pro.shalom.pe. **El resto de marcas sigue en `false`**: ahí un pedido de
+agencia Shalom con el adelanto verificado arma su envío completo y lo deja como
+**ensayo** en el chat de vendedores (`status = SIMULADO`), sin emitir nada.
 
-El contrato de `POST /v1/orders` ya está **verificado contra la doc del proveedor**
-(25-ago-2026). Para encenderlo en una marca quedan dos cosas, en este orden:
+Lo que el estreno enseñó: el contrato de `POST /v1/orders` funciona —las dos órdenes
+salieron bien y con los datos correctos— y lo que falló fue **el registro de vuelta**,
+no la emisión (ver la entrada del 08-set en *Deploys pendientes*). Antes de encender
+otra marca conviene tener ese arreglo desplegado, porque es el que convierte «no salió
+la guía» en una razón consultable.
+
+Para encender una marca nueva, en este orden:
 
 1. **Configurar cada producto**: agencia de origen, tamaño y contenido declarado
    (Panel → Productos → el producto → Envío). El panel marca los que faltan.
-2. **Prender el interruptor** en Panel → Mi marca → Envíos, después de mirar uno o
-   dos ensayos completos en el chat.
+2. **Conectar la cuenta Shalom Pro** de la marca (Panel → Mi marca → Envíos) y
+   esperar el semáforo en *Conectado*.
+3. **Prender el interruptor**, después de mirar uno o dos ensayos completos en el chat.
 
-Nada de esto se probó todavía contra la API real: la primera guía emitida es el
-verdadero estreno, y conviene mirarla de cerca (y borrarla con
-`DELETE /v1/orders/{id}` si sale mal, mientras no la reciban en agencia).
+Los primeros pedidos se miran de cerca: una guía que salga mal se borra con
+`DELETE /v1/orders/{id}` mientras no la reciban en agencia.
 
-Mientras tanto la guía se registra a mano como siempre y **nada se rompe**: el
-generador avisa a Logística cuándo no aplicó y por qué.
+Con el interruptor apagado la guía se registra a mano como siempre y **nada se rompe**:
+el generador avisa a Logística cuándo no aplicó y por qué.
 
 ## Deuda técnica conocida
 

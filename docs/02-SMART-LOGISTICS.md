@@ -1259,6 +1259,62 @@ titular respondió, y repetir lo inválido en el otro proveedor no lo vuelve
 válido. Detalle completo en § *Los dos proveedores de Shalom*; el expediente
 guarda quién emitió en `shalom_order_provider`.
 
+### La sexta defensa: que una guía cobrada nunca quede sin registrar (08-set-2026)
+
+Las cinco de arriba protegen contra **emitir de más**. Faltaba la simétrica, que
+es la que dolió: Shalom emite, cobra, y Kross **no lo registra**. Para el
+comprador es idéntico a que no se hubiera emitido nada — su pantalla de pedido
+se queda en *Guía de envío emitida* en naranja y su chat sin tarjeta— salvo que
+esta vez el paquete sí está comprometido y la plata gastada.
+
+Pasó con dos pedidos reales de Mono Shop el 07-set-2026: Shalom creó las órdenes
+`95027848 / KPK3` y `95026737 / NTTM` y el expediente de los dos quedó en
+`FAILED` con la razón **«error inesperado al generar la guía»** — el `catch` de
+arriba, sin una palabra más. Tres cosas fallaron a la vez:
+
+1. **El motivo no se guardaba.** La razón era una constante, no el error. Sin el
+   mensaje real no había forma de saber qué pasó sin entrar a pro.shalom.pe a
+   comparar pedido por pedido.
+2. **El cuerpo de la respuesta no se guardaba en ningún lado.** `llamar()` anota
+   en `api_events` lo que falla; una emisión `2xx` cuyo cuerpo no se deja leer
+   no falla para nadie y no dejaba rastro. Justo la única llamada que **cuesta
+   plata** era la única sin evidencia.
+3. **Se rendía sin preguntar.** Si la respuesta no traía guía rastreable, el
+   pedido se cerraba en `CREATED` y a Logística a registrarla a mano — teniendo
+   al lado la consulta (`GET /v1/orders`) que ya existía para el timeout y que
+   habría encontrado la orden con sus campos completos.
+
+Lo que hace ahora, por ese orden:
+
+- **Rescata antes de rendirse.** Respuesta ilegible o guía con formato raro →
+  `ordenYaCreada()` pregunta por los envíos de la cuenta y registra la que
+  encuentre. Es una consulta: no emite, no cuesta una guía, no cae a la
+  contingencia. Vive en **un solo sitio** —lo comparten el timeout, el reintento
+  por `5xx` y este rescate— porque tres copias del mismo GET se desincronizan.
+- **Anota el cuerpo crudo.** Con `detailMax: 3000` (el corte normal de `sanear`
+  son 600, que alcanzan para un mensaje de error y no para reconstruir una
+  respuesta). Sale en *Panel → Conexiones → Shalom PE* con su `KX-…`. El saneado
+  de secretos es el mismo de siempre. El cuerpo se parsea **entero** y solo se
+  recorta la copia que se anota: recortar antes de parsear rompería toda
+  respuesta larga y leería como fallida una emisión perfecta.
+- **El `catch` dice cuál fue el error**, en `shalom_order_reason` y en
+  `api_events`, y **no degrada un `CREATED` a `FAILED`** (`cerrar(..., 'PENDING')`).
+  Esto último importa más de lo que parece: `FAILED` es el único estado que el
+  reintento a mano vuelve a tomar, así que degradar una guía ya registrada era
+  el camino directo a emitir —y pagar— una segunda.
+
+Las cuatro invariantes están cubiertas en `src/lib/checkout/shalom-order.test.ts`
+(§ *la emisión no puede perder una guía ya cobrada*), leídas del fuente: la
+función es de Deno y no hay módulo puro donde vivan.
+
+> ⚠️ **Sigue abierto: el presupuesto de tiempo.** `TIMEOUT_MS` son 145 s **por
+> llamada** y el login del proveedor tarda ~90 s, pero la invocación entera tiene
+> el límite de wall-clock de Supabase. Un login lento se come el presupuesto y el
+> POST —el que cuesta plata— aterriza sin tiempo para registrarse. Es la
+> hipótesis principal de los dos pedidos del 07-set; lo confirma la línea
+> `[shalom-order] error inesperado` en los logs de la función. Con el cambio de
+> arriba, el próximo caso se lee del expediente sin ir a los logs.
+
 ### Lo que hace falta configurar
 
 | Dónde | Qué | Sin eso |

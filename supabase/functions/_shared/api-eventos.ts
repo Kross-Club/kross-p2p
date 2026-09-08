@@ -38,6 +38,13 @@ interface Anotacion extends Contexto {
   httpStatus?: number | null
   errorCode?: string | null
   detail?: unknown
+  /** Cuánto del detalle se guarda. El corte de `sanear` (600) alcanza para un
+   *  mensaje de error; NO para el cuerpo con el que hay que reconstruir qué
+   *  devolvió el proveedor por algo que ya cobró. Solo se sube donde ese cuerpo
+   *  ES la evidencia (emisión de guías), no como costumbre: la tabla se lee
+   *  entera en el panel. Pase lo que pase, el saneado de secretos es el mismo.
+   */
+  detailMax?: number
   providerRef?: string | null
   duracionMs?: number | null
 }
@@ -57,7 +64,7 @@ export async function anotar(a: Anotacion): Promise<string | null> {
       outcome: a.outcome,
       http_status: a.httpStatus ?? null,
       error_code: a.errorCode ? sanear(a.errorCode, 80) : null,
-      detail: a.detail === undefined || a.detail === null ? null : sanear(a.detail),
+      detail: a.detail === undefined || a.detail === null ? null : sanear(a.detail, a.detailMax ?? 600),
       provider_ref: a.providerRef ?? null,
       store_id: a.storeId ?? null,
       session_id: a.sessionId ?? null,
