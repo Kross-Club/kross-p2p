@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { hostConSlug } from './enlaces'
 import { supabase } from './supabase'
 
 export interface Store {
@@ -80,13 +81,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { data: mudada } = await supabase.from('stores').select(CAMPOS)
             .eq('slug_anterior', slug).eq('active', true).maybeSingle()
           const destino = (mudada as Store | null)?.slug
-          if (destino && destino !== slug) {
-            const host = window.location.hostname.replace(/^[^.]+/, destino)
-            if (host !== window.location.hostname) {
-              const { protocol, pathname, search, hash } = window.location
-              window.location.replace(`${protocol}//${host}${pathname}${search}${hash}`)
-              return
-            }
+          const host = destino ? hostConSlug(window.location.hostname, destino) : null
+          if (host) {
+            const { protocol, pathname, search, hash } = window.location
+            window.location.replace(`${protocol}//${host}${pathname}${search}${hash}`)
+            return
           }
         }
         const s = (data as Store) ?? DEFAULT_STORE

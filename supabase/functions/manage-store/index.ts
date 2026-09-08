@@ -36,6 +36,25 @@ function cleanSlug(raw: string): string {
 
 const RESERVED = new Set(['www', 'app', 'api', 'admin', 'kross', 'krossclub', 'mail', 'assets'])
 
+/**
+ * ¿Este subdominio ya lo usa alguien? Cuenta el ACTUAL y el ANTERIOR (§47).
+ *
+ * El anterior también queda tomado porque los enlaces ya mandados por SMS y
+ * WhatsApp lo llevan: si otra tienda pudiera quedárselo, el comprador que abre
+ * su pedido viejo aterrizaría en la marca equivocada — peor que un enlace roto,
+ * porque parece que funcionó.
+ *
+ * Vive acá y no duplicada en cada camino: alta y cambio de subdominio tienen
+ * que decidir con la MISMA regla, y una copia que se olvida es exactamente el
+ * agujero que esto tapa.
+ */
+async function slugTomado(slug: string, exceptoId?: string): Promise<boolean> {
+  let q = supabase.from('stores').select('id').or(`slug.eq.${slug},slug_anterior.eq.${slug}`)
+  if (exceptoId) q = q.neq('id', exceptoId)
+  const { data } = await q.maybeSingle()
+  return !!data
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -394,11 +413,7 @@ Deno.serve(async (req) => {
     if (isSuper && typeof body.slug === 'string' && body.slug.trim()) {
       const slug = cleanSlug(body.slug)
       if (!slug || RESERVED.has(slug)) return json({ error: 'slug_reservado' }, 400)
-      // Choca con el subdominio actual de otra tienda O con el anterior de
-      // cualquiera (§47): un enlace ya enviado no puede volverse ambiguo.
-      const { data: clash } = await supabase.from('stores')
-        .select('id').or(`slug.eq.${slug},slug_anterior.eq.${slug}`).neq('id', targetId).maybeSingle()
-      if (clash) return json({ error: 'slug_en_uso' }, 400)
+      if (await slugTomado(slug, targetId)) return json({ error: 'slug_en_uso' }, 400)
 
       // El subdominio que se deja atrás se guarda para que los enlaces ya
       // mandados por SMS y WhatsApp sigan llevando a su tienda: `store-context`
@@ -746,8 +761,9 @@ Deno.serve(async (req) => {
 
     const slug = cleanSlug(body.slug)
     if (!slug || RESERVED.has(slug)) return json({ error: 'slug_reservado' }, 400)
-    const { data: clash } = await supabase.from('stores').select('id').eq('slug', slug).maybeSingle()
-    if (clash) return json({ error: 'slug_en_uso' }, 400)
+    // También contra los subdominios ANTERIORES (§47): una tienda nueva no
+    // puede quedarse con los enlaces viejos de otra. Miraba solo el actual.
+    if (await slugTomado(slug)) return json({ error: 'slug_en_uso' }, 400)
 
     const storeId = `st_${slug}_${Date.now().toString(36)}`
     const { error: sErr } = await supabase.from('stores').insert({

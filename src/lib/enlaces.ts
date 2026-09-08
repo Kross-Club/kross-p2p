@@ -15,3 +15,20 @@
 export const enlaceDeMiPedido = (token: string): string => `/pedido/${encodeURIComponent(token)}`
 
 export const enlaceDelChat = (token: string): string => `/p/${encodeURIComponent(token)}`
+
+/**
+ * El mismo host con OTRO subdominio, para mudar a quien llegó por un enlace
+ * viejo (§47). Devuelve `null` cuando no hay subdominio que cambiar — y ese
+ * `null` es la parte importante: en `krossclub.app` (sin subdominio) reemplazar
+ * "la primera etiqueta" convertiría el dominio en `marca.app`, que es de otro.
+ *
+ * `<slug>.localhost` sí cuenta: es el desarrollo con subdominio.
+ */
+export function hostConSlug(hostname: string, slug: string): string | null {
+  if (!hostname || !slug) return null
+  const partes = hostname.split('.')
+  const tieneSubdominio = partes.length >= 3 || (partes.length === 2 && partes[1] === 'localhost')
+  if (!tieneSubdominio) return null
+  if (partes[0] === slug) return null
+  return [slug, ...partes.slice(1)].join('.')
+}

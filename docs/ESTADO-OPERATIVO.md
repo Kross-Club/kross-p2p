@@ -57,6 +57,18 @@ comentario y todo, y nunca se aplicó acá.
 
 ### El subdominio se puede cambiar sin romper lo ya enviado · §47 (08-set-2026)
 
+> **Y el subdominio viejo queda TOMADO, también para tiendas nuevas (08-set, después).** El alta de
+> marca comprobaba solo el subdominio actual, así que un ecom nuevo podía quedarse con el anterior
+> de otro — y entonces el comprador que abre su pedido viejo aterriza en **la marca equivocada**,
+> que es peor que un enlace roto porque parece que funcionó. La regla vive ahora en un solo sitio
+> (`slugTomado`) y la usan el alta y el cambio: una copia que se olvida es justo el agujero que
+> esto tapa.
+>
+> El reescrito del host es una función pura con pruebas (`hostConSlug`), y lo que prueba de verdad
+> es cuándo **no** redirige: en `krossclub.app` —sin subdominio— reemplazar «la primera etiqueta»
+> convertiría el dominio en `marca.app`, que es de otro.
+
+
 Cambiar el subdominio **no rompe los pedidos** —van por `store_id`, no por el slug— pero sí rompía
 todo lo que ya salió a la calle: cada enlace mandado por SMS y WhatsApp lleva `<slug>.krossclub.app`,
 y el comprador que lo abría caía en un subdominio sin tienda. La página cargaba igual (la llave es
