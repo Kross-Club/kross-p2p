@@ -387,7 +387,7 @@ export const COPY = {
   doneInstallReady: '¡Listo! Ya tienes la app',
   doneInstallFind: (tienda: string) => `Búscala en tu celular con este ícono: ${tienda}.`,
   // iPhone no deja instalar con un clic; se enseñan los dos toques.
-  doneInstallIos: 'En iPhone se instala en dos toques:',
+  doneInstallIos: 'En iPhone se instala desde el menú de Safari:',
   doneInstallDesktop: 'Abre esta página desde tu celular para instalar la app.',
   // El camino del menú de Chrome. La ETIQUETA la pinta `AndroidSteps` con las
   // palabras exactas que Chrome usa hoy ("Instalar y crear acceso directo"):

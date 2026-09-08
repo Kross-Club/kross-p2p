@@ -99,7 +99,18 @@ const aLogistica = (sessionId: string, body: string) => chatMessage(sessionId, b
  *  hubo ninguna (timeout o red), que es un caso MUY distinto de un rechazo.
  *  Lo que no sirvió queda anotado en `api_events` con su referencia (§42): un
  *  proveedor al que hay que reclamarle se le reclama con datos. */
-async function llamar(op: string, sessionId: string, url: string, init: RequestInit): Promise<Response | null> {
+async function llamar(
+  op: string,
+  sessionId: string,
+  url: string,
+  init: RequestInit,
+  /** Status que NO son un fallo aunque el HTTP diga que sí. `persona.buscar`
+   *  contesta 404 cada vez que el comprador es nuevo en la cuenta —que es lo
+   *  normal, y significa «mándame sus nombres»—; anotarlo dejaba Shalom PE en
+   *  «Con fallos» de forma permanente y escondía los fallos de verdad
+   *  (08-set-2026). Lo que no es un problema no se cuenta como problema. */
+  normales: number[] = [],
+): Promise<Response | null> {
   const ctx = { proveedor: 'SHALOM_PE' as const, op, sessionId }
   const inicio = Date.now()
   const ctrl = new AbortController()
@@ -108,7 +119,7 @@ async function llamar(op: string, sessionId: string, url: string, init: RequestI
     const res = await fetch(url, { ...init, signal: ctrl.signal })
     // El cuerpo NO se consume acá: quien llama lo lee después. Solo se anota
     // qué status devolvió, que es lo que arma la línea de tiempo.
-    if (!res.ok) {
+    if (!res.ok && !normales.includes(res.status)) {
       await anotar({
         ...ctx,
         outcome: res.status >= 500 ? 'FALLO' : 'RECHAZO',
@@ -448,7 +459,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const persona = /^\d{8}$/.test(dni)
-      ? await llamar('persona.buscar', sessionId, `${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth })
+      ? await llamar('persona.buscar', sessionId, `${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth }, [404])
       : null
 
     if (productos?.status === 401 || persona?.status === 401) {
@@ -540,7 +551,7 @@ Deno.serve(async (req: Request) => {
     // 409 = ya hay una persona con ese documento. La orden NO se creó, así que
     // reintentar es seguro: se busca su id y se manda ese en vez de los nombres.
     if (res.status === 409 && !personId) {
-      const p = await llamar('persona.buscar', sessionId, `${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth })
+      const p = await llamar('persona.buscar', sessionId, `${SHALOM_API_BASE}/v1/persons/search?document=${dni}&type=DNI`, { headers: auth }, [404])
       const id = p?.ok ? Number((await leerJson(p) as { id?: unknown })?.id) || null : null
       if (id) {
         const receiver = armado.body.receiver as Record<string, unknown>
