@@ -254,9 +254,19 @@ cobrar deja al comprador con un pedido y sin forma de pagarlo.
   S/3.72. Es a propósito: re-rutear por cobro obligaba a que `pay360-coupon`/`pay360-webhook`
   aceptaran pedidos con `payment_provider='FLOW'`, y el invariante del cupón más antiguo se
   razona por pedido. **Deuda abierta**, con un precio conocido (~S/2 por saldo grande).
-- **Con Flow no hay `AWAITING`.** El comprador no está en la PWA mientras paga; la fase queda en
-  `ISSUING` mientras el navegador navega, y el modal desaparece. La vuelta es a `/p/<token>`,
-  no al modal.
+- **Con Flow no hay `AWAITING`, así que `ISSUING` ES la espera** (08-set-2026). El comprador no
+  está en la PWA mientras paga y la fase se queda en `ISSUING` mientras el navegador navega —
+  pero eso NO puede significar «no consultar nada», que es como estaba y por lo que la primera
+  compra real terminó con el pago cruzado y la pantalla en el spinner. `ISSUING` con riel FLOW
+  consulta igual que `AWAITING`, y dispara al instante con `visibilitychange` y `pageshow`.
+  Lo mismo hace `/p/<token>` al volver: el `cobros_update` del canal solo sirve si el canal está
+  vivo cuando entra el cobro, y con Flow la pantalla estaba desmontada.
+
+  **La vuelta NO se puede delegar en Flow.** `waitYapeOneShot.php` es una página de ESPERA que
+  hace su propio polling y recién ahí dispara el POST a `urlReturn`; como el comprador se va a la
+  app de Yape a aprobar, Android congela ese JS y el retorno no ocurre. `flow-return` sigue
+  existiendo y sirve cuando el comprador sí se queda, pero la vuelta que se cumple siempre es la
+  que ve nuestra propia pantalla.
 - **Un adelanto rechazado deja al comprador sin botón** en `/p/<token>`: `PagarSaldo` solo
   cobra saldos. Hoy vuelve por el "retomar pedido" de la landing (`saveLastOrder`), igual que
   con 360pay. Deuda compartida por los dos rieles.
@@ -330,6 +340,25 @@ se convierte en una liquidación manual entre las dos.
 El nombre del comercio es lo único que delata de quién son las llaves —no vuelven al panel a
 propósito—, así que **la pantalla de Flow es el sitio donde se verifica**, en el primer cobro de
 cada marca que se conecte.
+
+### El token de `waitYapeOneShot.php` NO es el nuestro (08-set-2026)
+
+Se intentó poner en el botón del checkout la URL a la que lleva «Solicitar aprobación», para
+saltarse un paso. **No se puede, y está medido.** Para `ORD-1788900938194`:
+
+```
+payment/create  →  752991F72F22E8A6213020AF4B903008280B13EF   (nuestro flow_token)
+el botón        →  5be65555-ddaf-4d0b-82c7-e9f945a441f6       (un UUID distinto)
+```
+
+La cadena real es `pay.php?token=<flowToken>` → `sendMedio.php` (sin selector, por el
+`paymentMethod` 170) → al tocar el botón Flow **acuña un UUID nuevo** → `waitYapeOneShot.php`
+→ abre Yape. Ese UUID es un token de sesión de ESA página y no existe hasta que el comprador
+toca: no hay forma de construirlo desde el servidor.
+
+La única vía sería que nuestro backend postee a `sendMedio.php`, parsee el HTML y saque el UUID
+— scrapear su PHP. Se descarta: se rompe cuando Flow cambie una etiqueta, y el síntoma sería
+otra vez un cobro que no sale.
 
 ### No se puede saltar la pantalla de Flow
 

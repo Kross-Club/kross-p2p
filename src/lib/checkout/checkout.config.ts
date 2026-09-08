@@ -342,7 +342,12 @@ export const COPY = {
   // Flow: el comprador SALE de la PWA a la página de pago. Se le dice antes de
   // que la pantalla cambie sola, y sin nombrar el motor — para él es Yape.
   flowRedirecting: 'Te llevamos a pagar con Yape…',
-  flowRedirectingHint: 'Se abre la página de pago. Ahí ingresas tu celular y tu código de aprobación de Yape, y vuelves solo a tu pedido.',
+  // Los pasos REALES, verificados en la primera compra (08-set-2026): celular →
+  // «Solicitar aprobación» → se abre Yape y ahí se aprueba. **No hay ningún
+  // código que teclear en la página de Flow**, y decir que sí lo hay mandaba al
+  // comprador a buscar en Yape algo que no existe. Y termina pidiéndole que
+  // vuelva, porque volver es lo que dispara la confirmación en esta pantalla.
+  flowRedirectingHint: 'Se abre la página de pago: ingresas tu celular, tocas “Solicitar aprobación” y apruebas la compra en tu app de Yape. Después vuelve acá — esta pantalla se actualiza sola.',
 
   submit: 'Terminar mi pedido',
   submitting: 'Registrando tu pedido…',
