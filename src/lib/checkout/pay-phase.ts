@@ -45,9 +45,13 @@ export interface CouponRef {
    *  identificadores del servicio: el cupón sigue siendo pagable tecleando el
    *  código, así que esto oculta el botón, no rompe el cobro. */
   deeplink: string | null
-  /** Código de pago, para tipearlo a mano si el enlace no abre (desktop). */
-  consumerCode: string
+  /** Código de pago, para tipearlo a mano si el enlace no abre (desktop).
+   *  Es de 360pay: con Flow no existe un código, y va `null`. */
+  consumerCode: string | null
   amountPen: number
+  /** Flow: la página de pago oficial, como respaldo del deeplink. Si la app de
+   *  Yape no se abre, el comprador sigue teniendo dónde pagar. */
+  payUrl?: string
 }
 
 export type PayPhase =

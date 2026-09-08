@@ -3,6 +3,7 @@ import { Wallet, ExternalLink, Check } from 'lucide-react'
 import { puedePagarSaldo, saldoDelPedido, soles } from '../lib/order-money'
 import { etiquetaDePago, MORADO_YAPE } from '../lib/cobro-por-chat'
 import { createFlowOrder, goToFlow } from '../lib/checkout/services/FlowService'
+import { esMovil } from '../lib/checkout/yape-link'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -74,6 +75,15 @@ export function BotonPagarSaldo({ pedido, cobro }: {
           return
         }
         if (r.alreadyPaid) return
+        // Con el deeplink y en un celular, directo a la app de Yape: es la
+        // misma navegación que hace la página de espera de Flow con su JS, y
+        // la que hace 360pay dos ramas más abajo. Esta pantalla se queda en el
+        // historial y se refresca sola al volver (OrderChatPage). En PC el
+        // deeplink no cobra: sigue la página oficial.
+        if (r.yapeDeeplink && esMovil(navigator.userAgent)) {
+          window.location.href = r.yapeDeeplink
+          return
+        }
         goToFlow(r.payUrl)
       } finally {
         setPidiendo(false)

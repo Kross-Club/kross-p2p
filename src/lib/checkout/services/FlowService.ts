@@ -8,6 +8,8 @@
 // Nunca lanza. Un fallo al emitir y una red caída piden cosas distintas de la
 // UI, y un catch genérico las aplana.
 
+import { esDeeplinkDeYape } from '../../../../supabase/functions/_shared/flow-yape-deeplink.ts'
+
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
@@ -18,6 +20,14 @@ export interface FlowOrderIssued {
   amountPen: number
   /** El cobro ya estaba pagado (reapertura del modal, o el webhook ganó). */
   alreadyPaid?: boolean
+  /**
+   * El enlace que abre la app de Yape con la compra lista, sin pasar por la
+   * página de Flow. Viene solo cuando el servidor pudo sacarlo (ver
+   * `_shared/flow-yape-deeplink.ts`) y solo vale en un celular: en escritorio
+   * abre la web de Yape, que no cobra. El front decide; `payUrl` sigue siendo
+   * el camino oficial y siempre viene.
+   */
+  yapeDeeplink?: string
 }
 
 export interface FlowOrderFailed {
@@ -63,11 +73,16 @@ export async function createFlowOrder(input: {
     // a la nada, que es peor que no navegar.
     const payUrl = typeof body.pay_url === 'string' && body.pay_url.startsWith('https://') ? body.pay_url : ''
     if (!payUrl && body.already_paid !== true) return { ok: false, stage: 'order', code: 'no_pay_url' }
+    // El deeplink pasa por el mismo filtro que en el servidor: es una URL que
+    // vino de un HTML ajeno y se va a entregar al teléfono del comprador.
+    const yapeDeeplink = typeof body.yape_deeplink === 'string' && esDeeplinkDeYape(body.yape_deeplink)
+      ? body.yape_deeplink : undefined
     return {
       ok: true,
       payUrl,
       amountPen: typeof body.amount_pen === 'number' ? body.amount_pen : 0,
       alreadyPaid: body.already_paid === true || undefined,
+      yapeDeeplink,
     }
   }
 

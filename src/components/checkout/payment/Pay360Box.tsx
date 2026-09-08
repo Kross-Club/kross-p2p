@@ -51,6 +51,7 @@ export default function Pay360Box({ coupon }: { coupon: CouponRef }) {
   }, [copied])
 
   const copy = async () => {
+    if (!coupon.consumerCode) return
     try {
       await navigator.clipboard.writeText(coupon.consumerCode)
       setCopied(true)

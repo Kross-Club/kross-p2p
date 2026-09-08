@@ -31,6 +31,16 @@ export function isAndroid(userAgent: string): boolean {
 }
 
 /**
+ * ¿Es un teléfono? Es lo que decide si un deeplink de Yape sirve: en Android
+ * e iOS abre la app; en una PC abre la web de Yape, que no cobra nada. Ahí el
+ * camino correcto es la página oficial de Flow, que pide el celular y manda la
+ * aprobación al teléfono.
+ */
+export function esMovil(userAgent: string): boolean {
+  return isAndroid(userAgent) || /iphone|ipad|ipod/i.test(userAgent)
+}
+
+/**
  * El `href` del botón de pago según el dispositivo.
  *
  * Android → `intent://` apuntado al package de Yape, con el universal link
