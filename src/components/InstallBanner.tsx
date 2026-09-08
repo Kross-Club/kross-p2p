@@ -9,46 +9,93 @@ export function isInstalled() {
     (navigator as any).standalone === true
 }
 
-// Small step-by-step illustration for iOS (no programmatic install there).
-// Exportado: la pantalla de pedido confirmado lo enseña con su propio botón.
-export function IOSSteps({ dark }: { dark?: boolean }) {
-  const fg = dark ? 'rgba(255,255,255,0.85)' : '#374151'
-  const chip = dark ? 'rgba(255,255,255,0.12)' : 'var(--brand)'
+// ─── Cómo se instala, contado como una RECETA y no como botones ─────────────
+//
+// Estos pasos NO se pueden tocar: son el camino por el menú del navegador, que
+// solo el comprador puede recorrer. Hasta el 08-set-2026 se dibujaban como
+// pastillas rellenas con el color de la marca —idénticas al botón «Instalar»
+// que tienen justo encima—, así que en iPhone la gente les daba clic y no
+// pasaba nada. Una etiqueta que parece un botón y no lo es es peor que no
+// tener ayuda: promete y falla.
+//
+// Ahora son una lista numerada. El número dice «paso», no «tócame»; el fondo
+// es neutro; lo único destacado es la PALABRA EXACTA que hay que buscar en el
+// menú, en negrita y con el ícono que la acompaña en pantalla.
+
+/** Un paso de la receta: su número, y el texto con la palabra que se busca. */
+function Paso({ n, dark, children }: { n: number; dark?: boolean; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 mt-2">
-      <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold"
-        style={{ background: chip, color: dark ? '#fff' : '#fff' }}>
-        <Share size={13} /> Compartir
+    <li className="flex items-start gap-2 text-left">
+      <span
+        className="shrink-0 w-[18px] h-[18px] rounded-full grid place-items-center text-[10px] font-black mt-px"
+        style={{
+          background: dark ? 'rgba(255,255,255,0.16)' : '#E5E7EB',
+          color: dark ? 'rgba(255,255,255,0.9)' : '#374151',
+        }}
+      >
+        {n}
       </span>
-      <span style={{ color: fg }} className="text-xs font-black">→</span>
-      <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold"
-        style={{ background: chip, color: '#fff' }}>
-        <Plus size={13} /> Agregar a inicio
+      <span className="text-[11px] leading-snug" style={{ color: dark ? 'rgba(255,255,255,0.85)' : '#4B5563' }}>
+        {children}
       </span>
-    </div>
+    </li>
   )
 }
 
-// Cómo se instala en Android, con las PALABRAS que el comprador va a ver.
-// Chrome no dice "Instalar app" en el menú: dice **"Instalar y crear acceso
-// directo"** (07-set-2026). Enseñar una etiqueta que no existe manda a buscar
-// algo que no está, y quien no vive en apps abandona ahí. Se enseña el ⋮ y la
-// opción tal cual, como los dos toques del iPhone.
-export function AndroidSteps({ dark }: { dark?: boolean }) {
-  const fg = dark ? 'rgba(255,255,255,0.85)' : '#374151'
-  const chip = dark ? 'rgba(255,255,255,0.12)' : 'var(--brand)'
+/** La palabra tal cual sale en el menú de Safari o de Chrome, con su ícono.
+ *  `whitespace-nowrap`: el ícono nunca se queda solo al final de un renglón. */
+function Opcion({ icono, children, dark }: { icono?: React.ReactNode; children: React.ReactNode; dark?: boolean }) {
   return (
-    <div className="flex items-center gap-2 mt-2 flex-wrap">
-      <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold"
-        style={{ background: chip, color: '#fff' }}>
-        <EllipsisVertical size={13} /> Menú
-      </span>
-      <span style={{ color: fg }} className="text-xs font-black">→</span>
-      <span className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold"
-        style={{ background: chip, color: '#fff' }}>
-        <ArrowDownToLine size={13} /> Instalar y crear acceso directo
-      </span>
-    </div>
+    <span className="inline-flex items-center gap-1 font-bold whitespace-nowrap"
+      style={{ color: dark ? '#fff' : '#111827', verticalAlign: '-0.15em' }}>
+      {icono}{children}
+    </span>
+  )
+}
+
+/**
+ * iPhone. En Safari no hay instalación programática: el camino es el menú, y
+ * son CUATRO toques, no dos (08-set-2026, verificado en iOS 18). La versión
+ * anterior decía «Compartir → Agregar a inicio» y se saltaba las dos que la
+ * gente no adivina: que hoy Compartir vive dentro del `···` de la barra de
+ * abajo, y que «Agregar a inicio» está más abajo en la hoja, a veces detrás de
+ * «Ver más».
+ */
+export function IOSSteps({ dark }: { dark?: boolean }) {
+  return (
+    <ol className="mt-2 space-y-1.5 mx-auto max-w-[248px]">
+      <Paso n={1} dark={dark}>
+        Toca <Opcion dark={dark}>···</Opcion> en la barra de abajo
+      </Paso>
+      <Paso n={2} dark={dark}>
+        Elige <Opcion dark={dark} icono={<Share size={12} />}>Compartir</Opcion>
+      </Paso>
+      <Paso n={3} dark={dark}>
+        Baja y toca <Opcion dark={dark} icono={<Plus size={12} />}>Agregar a inicio</Opcion>
+      </Paso>
+      <Paso n={4} dark={dark}>
+        Confirma con <Opcion dark={dark}>Agregar</Opcion>
+      </Paso>
+    </ol>
+  )
+}
+
+/**
+ * Android, cuando Chrome no dio el aviso de instalar. Con las PALABRAS que el
+ * comprador va a ver: Chrome no dice «Instalar app», dice **«Instalar y crear
+ * acceso directo»** (07-set-2026). Enseñar una etiqueta que no existe manda a
+ * buscar algo que no está, y quien no vive en apps abandona ahí.
+ */
+export function AndroidSteps({ dark }: { dark?: boolean }) {
+  return (
+    <ol className="mt-2 space-y-1.5 mx-auto max-w-[248px]">
+      <Paso n={1} dark={dark}>
+        Toca <Opcion dark={dark} icono={<EllipsisVertical size={12} />}>Menú</Opcion> arriba a la derecha
+      </Paso>
+      <Paso n={2} dark={dark}>
+        Elige <Opcion dark={dark} icono={<ArrowDownToLine size={12} />}>Instalar y crear acceso directo</Opcion>
+      </Paso>
+    </ol>
   )
 }
 

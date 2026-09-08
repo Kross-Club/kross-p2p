@@ -34,6 +34,44 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La guía automática ya emite de verdad · 1 función + frontend (08-set-2026)
+
+**Estrenada.** Un pedido de prueba de Mono Shop salió completo: guía emitida sola en Shalom,
+tarjeta en el chat del comprador y la línea de tiempo con el check verde. Es la primera vez que el
+camino entero funciona (ver la entrada de abajo: nunca había funcionado por una zona muerta).
+
+Tres arreglos que salieron de mirarlo funcionando:
+
+**1. «Con fallos» mentía.** *Panel → Conexiones* pintaba Shalom PE en amarillo permanente por UN
+evento: un `persona.buscar` **404**, que es la respuesta NORMAL cuando el comprador es nuevo en la
+cuenta — significa «mándame sus nombres», y pasa en cada primer pedido de cada cliente. Un semáforo
+que está siempre en amarillo no avisa de nada y esconde los fallos de verdad. `llamar()` ahora
+acepta qué status no son un problema, y `persona.buscar` pasa `[404]`.
+
+> El rótulo, para leerlo bien: **«Con fallos» cuenta los fallos de las últimas 24 h**, no el estado
+> de ahora. El estado de ahora es el chequeo en vivo — el que dice «API operativa» en verde en
+> *Mi marca → Envíos*. Se puede estar operativa y con fallos en la ventana a la vez.
+
+**2. El logo del pie de `/pedido/:token`,** fuera: el bloque de instalar ya enseña el ícono grande
+en la pantalla del celular dibujado, y repetirlo cuatro renglones abajo en miniatura, pegado al
+nombre, ensuciaba. Queda solo el nombre de la marca.
+
+**3. Los pasos para instalar en iPhone parecían botones y no lo eran.** Eran pastillas rellenas con
+el color de la marca —idénticas al botón «Instalar» de arriba—, así que la gente les daba clic y no
+pasaba nada. Y además decían mal el camino: «Compartir → Agregar a inicio», dos toques, cuando en
+iOS 18 son **cuatro** y los dos que faltaban son justo los que nadie adivina (que *Compartir* vive
+dentro del `···` de la barra de abajo, y que *Agregar a inicio* está más abajo en la hoja). Ahora
+es una lista numerada: el número dice «paso», no «tócame»; el fondo es neutro; lo único destacado es
+la palabra exacta que hay que buscar. Android va igual — mismo defecto, misma cura.
+
+**Qué desplegar.**
+
+```
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Lo demás es frontend. Sin SQL.
+
 ### Shalom emitió dos guías reales y Kross no registró ninguna · 2 funciones, sin SQL (08-set-2026)
 
 **Qué se vio.** Dos pedidos reales de Mono Shop, pagados y verificados. En **pro.shalom.pe** las
