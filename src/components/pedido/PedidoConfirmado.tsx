@@ -29,10 +29,11 @@
 //      instala—.
 
 import { useEffect, useState } from 'react'
-import { Camera, Check, Download, ExternalLink, Phone, Smartphone, Wallet } from 'lucide-react'
+import { Check, Download, ExternalLink, Phone, Smartphone, Wallet } from 'lucide-react'
 import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
 import { useStore } from '../../lib/store-context'
+import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { subscribePush } from '../../lib/push'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { AndroidSteps, IOSSteps, isInstalled } from '../InstallBanner'
@@ -42,35 +43,49 @@ interface Props {
    *  desde la fila del pedido. Esta pantalla no consulta nada. */
   ticket: Ticket
   orderCode: string
-  /** ¿El adelanto cruzó? Solo pinta de verde la primera frase. */
-  paid: boolean
   /** Id del pedido: a él se suscribe el push cuando el comprador instala. */
   sessionId?: string | null
 }
 
-export default function PedidoConfirmado({ ticket, orderCode, paid, sessionId }: Props) {
+export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props) {
   const { store } = useStore()
   const phone = store.wa_display_phone?.trim() || null
 
+  // El color de la marca manda en la cabecera, y el texto se elige por
+  // CONTRASTE contra él: el comerciante puede poner un naranja, un amarillo o
+  // un azul casi negro, y el título —que es su nombre y la frase del dinero—
+  // tiene que leerse en los tres. Ver `lib/contraste.ts`.
+  const marca = store.color_primary || '#55C8F5'
+  const tinta = textoSobre(marca)
+  const tintaSuave = textoSuaveSobre(marca)
+
   return (
-    <div className="py-4">
-      <div className="text-center mb-4">
-        <div
-          className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3"
-          style={{ background: '#DCFCE7' }}
-        >
-          <Check size={28} strokeWidth={3} style={{ color: '#16A34A' }} />
+    <div>
+      {/* ── La cabecera de la marca ──
+          El color llega hasta DEBAJO del ticket y ahí corta: la boleta se
+          queda en su rectángulo blanco, recortada contra el color, y lo que
+          viene después respira en blanco. */}
+      <div className="px-5 pt-5 pb-5 -mx-5" style={{ background: marca }}>
+        <div className="flex justify-center mb-4">
+          <FirmaDeMarca nombre={store.nombre} ancho={store.logo_wide_url} cuadrado={store.logo_url} tinta={tinta} />
         </div>
-        <h2 className="text-xl font-black text-gray-900 mb-1">{COPY.doneTitle}</h2>
-        {/* La primera frase es el dinero: es lo que acaba de soltar y lo que
-            va a buscar en la captura. */}
-        <p className="text-sm font-bold px-4" style={{ color: paid ? '#15803D' : '#374151' }}>
-          {ticket.payment}
-        </p>
-      </div>
+
+        <div className="text-center mb-4">
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3"
+            style={{ background: '#DCFCE7' }}
+          >
+            <Check size={28} strokeWidth={3} style={{ color: '#16A34A' }} />
+          </div>
+          <h2 className="text-xl font-black mb-1" style={{ color: tinta }}>{COPY.doneTitle}</h2>
+          {/* La primera frase es el dinero: es lo que acaba de soltar. */}
+          <p className="text-sm font-bold px-4" style={{ color: tintaSuave }}>
+            {ticket.payment}
+          </p>
+        </div>
 
       {/* ── El ticket ── */}
-      <div className="rounded-2xl border-2 border-gray-900 overflow-hidden mb-3">
+      <div className="rounded-2xl border-2 border-gray-900 overflow-hidden bg-white">
         <div className="flex items-center justify-between px-4 py-2.5 bg-gray-900 text-white">
           <span className="text-[11px] font-bold uppercase tracking-wide opacity-80">
             {store.nombre || 'Tu pedido'}
@@ -131,20 +146,38 @@ export default function PedidoConfirmado({ ticket, orderCode, paid, sessionId }:
           )}
         </dl>
       </div>
-
-      {/* La captura es la persistencia de quien no va a volver. Se le dice con
-          todas sus letras: no es obvio para quien no vive en apps. */}
-      <p className="flex items-center justify-center gap-1.5 text-xs text-gray-500 mb-5 px-4">
-        <Camera size={14} className="flex-shrink-0" />
-        {COPY.doneScreenshotHint}
-      </p>
+      </div>
 
       {/* ── El recorrido ── */}
-      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2 px-1">{COPY.doneTimelineTitle}</p>
+      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mt-5 mb-2 px-1">{COPY.doneTimelineTitle}</p>
       <Recorrido pasos={ticket.pasos} />
 
       {/* ── La app ── */}
       <InstalarApp sessionId={sessionId} nombre={store.nombre} logo={store.logo_url} />
+    </div>
+  )
+}
+
+/**
+ * La marca encabezando su propia pantalla.
+ *
+ * Con logo APAISADO va él solo: un lockup ya trae el nombre dibujado como la
+ * marca quiere que se lea, y repetirlo al lado lo dice dos veces y peor —la
+ * misma regla que `BrandMark` en el panel—. Sin él, el cuadrado y el nombre
+ * escrito con la tinta que contrasta.
+ */
+function FirmaDeMarca({ nombre, ancho, cuadrado, tinta }: {
+  nombre: string; ancho?: string | null; cuadrado: string | null; tinta: string
+}) {
+  if (ancho) {
+    return <img src={ancho} alt={nombre} className="h-9 max-w-[200px] object-contain" />
+  }
+  return (
+    <div className="flex items-center gap-2">
+      {cuadrado && (
+        <img src={cuadrado} alt="" aria-hidden className="w-8 h-8 rounded-xl object-contain bg-white/90 p-0.5" />
+      )}
+      <span className="text-base font-black tracking-tight" style={{ color: tinta }}>{nombre}</span>
     </div>
   )
 }

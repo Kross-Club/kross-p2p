@@ -148,7 +148,6 @@ export default function MiPedidoPage() {
         <PedidoConfirmado
           ticket={ticket}
           orderCode={pedido.order_id}
-          paid={pagadoDelPedido(pedido)}
           sessionId={pedido.id}
         />
         {/* La marca cierra la página, con su logo: en una pantalla que se

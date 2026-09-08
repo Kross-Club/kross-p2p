@@ -522,6 +522,21 @@ El contenido lo arma `src/lib/checkout/ticket.ts` (puro, con tests en
 
 #### La pantalla final deja de ser una ventana: `/pedido/:token` ✅ (07-set-2026)
 
+> **La marca encabeza su propia pantalla (08-set-2026).** El logo APAISADO va arriba sobre el color
+> primario de la tienda, y ese color **corta justo debajo del ticket**: la boleta se queda en su
+> rectángulo blanco, recortada contra el color, y el recorrido y la app respiran en blanco. Sin
+> logo apaisado sale el cuadrado con el nombre al lado.
+>
+> El texto de la cabecera se elige por **contraste** (`lib/contraste.ts`, luminancia relativa de la
+> WCAG): el comerciante puede poner un naranja, un amarillo o un azul casi negro, y el título —que
+> es su marca y la frase del dinero— tiene que leerse en los tres. Escribir siempre en blanco deja
+> ilegible la mitad de las marcas. No es un gusto, es aritmética, y tiene pruebas.
+>
+> Se fue el «Toma una captura de esta pantalla»: nació cuando la pantalla vivía dentro del modal y
+> desaparecía al cerrarlo. Con URL propia, recargable y reenviable, pedir una captura es pedirle al
+> comprador que resuelva un problema que ya no existe.
+
+
 > **«La persona que recoge», con su DNI (mismo día).** «A nombre de» describía la factura; lo que
 > importa es **quién va al mostrador**, que puede no ser quien compró — el ticket se reenvía. Ahora
 > la línea nombra la acción y lleva el documento **al costado del nombre**, porque allí se leen
