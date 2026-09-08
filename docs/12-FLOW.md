@@ -1,8 +1,11 @@
 # 12 · FLOW PAGOS, EL SEGUNDO RIEL
 
-> Estado: **🟡 construido, sin una sola orden emitida contra Flow.** El código está entero —contrato,
-> emisión, webhook, vuelta, panel y ruteo— y la suite lo cubre; lo que falta no es técnico:
-> que cada marca pegue sus llaves de Flow y una prueba con S/5. Ver §7.
+> Estado: **🟡 emite órdenes; falta que una se pague.** La primera orden real salió el 08-set-2026
+> (`flowOrder` 180750690, S/6) después de arreglar el `upsert` de `cobros` que nunca dejó emitir
+> ninguna — ver §7. Con ella quedaron resueltas las tres incógnitas que bloqueaban el riel: el
+> `amount` va en soles, el `paymentMethod` del portal sirve, y el checkout no le enseña al
+> comprador el email del pagador. Falta **cruzar un pago a MATCHED** y que cada marca pegue
+> **sus** llaves: hoy Mono Shop cobra con las de Kross.
 > Leer junto con `07-CONTRATO-360PAY.md` §9 (la tarifa y el corte de S/90) y
 > `06-360PAY.md` (el otro riel, con el que este comparte casi todo).
 
@@ -286,17 +289,69 @@ integrador.
 
 | Paso | Estado |
 |---|---|
-| Correr **§41** y pegar las llaves de la marca en *Marca → Cobros* (salen de Flow → *Configuración → Datos de integración*). **No** van a `supabase secrets set`: son de la marca, no de la plataforma | ⏳ |
+| Correr **§41** y pegar las llaves de la marca en *Marca → Cobros* (salen de Flow → *Configuración → Datos de integración*). **No** van a `supabase secrets set`: son de la marca, no de la plataforma | ✅ 08-set-2026 |
+| ⚠️ **Reemplazar en Mono Shop las llaves de Kross por las SUYAS.** El checkout dice «pago a Kross Club»: hoy su plata caería en la cuenta de Kross (§41). Bloquea cobrarle a un comprador real | ⏳ **bloquea producción** |
 | Correr §40 en el SQL Editor de `ofdjghntvmrdfjhazfvz` | ✅ 02-sep-2026 |
 | Desplegar `flow-order`, `flow-confirm --no-verify-jwt`, `flow-return --no-verify-jwt`, `register-buyer`, `manage-store`, `get-session`, `get-store-sessions` | ✅ 02-sep-2026 |
 | ~~Conectar la marca como comercio asociado~~ — **no aplica**: la cuenta de Kross no es integrador (§2) | ✅ resuelto 02-sep-2026 |
-| **Resolver la unidad de `amount`**: crear una orden de S/10 y mirar cuánto muestra el checkout de Flow **antes de confirmar el pago** | ⏳ bloquea cobrar |
-| Pagar de verdad ese S/10 —las llaves son de producción, no hay tarjeta de prueba— y ver que `flow-confirm` lo cruza a MATCHED | ⏳ |
+| ~~**Resolver la unidad de `amount`**~~ — **soles con decimales, confirmado**: la orden de S/6 muestra «Monto: S/ 6.00 PEN» en el checkout (08-set-2026). `montoParaFlow()` se queda como está | ✅ |
+| Pagar de verdad un adelanto —las llaves son de producción, no hay tarjeta de prueba— y ver que `flow-confirm` lo cruza a MATCHED | ⏳ **el siguiente paso** |
 | **ID del medio** (portal → *Medios de pago*, columna `Id`). Flow aprobó el **one-shot: `170`, Billetera, 5.50% + 0.00** (08-set-2026). Cargado en Mono Shop | ✅ |
-| **Mirar si el checkout de Flow le enseña al comprador el `email` del pagador.** Es uno solo para todos (`EMAIL_DEL_PAGADOR`); si se ve en pantalla, hay que volver a sintetizarlo por comprador | ⏳ |
+| ~~**Mirar si el checkout le enseña al comprador el `email` del pagador**~~ — **no lo enseña**: la pantalla muestra comercio, monto, Nº de orden y concepto, nada más. `EMAIL_DEL_PAGADOR` puede seguir siendo uno solo | ✅ |
 | Punta a punta desde la PWA instalada en Android: que el POST de vuelta llegue a la pestaña del pedido | ⏳ |
 | Encender el toggle en Kross Shop con un adelanto de S/5 | ⏳ |
 | Primera liquidación: `fixed` debe ser 0 | ⏳ |
+
+### La primera orden emitida, y lo que enseñó (08-set-2026)
+
+Con el `upsert` arreglado, la primera orden salió: **`flowOrder` 180750690, S/6, ORD-1788883965064**.
+La pantalla de Flow resolvió tres incógnitas que estaban abiertas desde que se escribió el riel:
+
+- **`amount` va en soles con decimales.** El checkout dice «Monto: **S/ 6.00 PEN**». `montoParaFlow()`
+  estaba bien y no se toca. Era lo único que podía cobrar de menos.
+- **El `paymentMethod` del portal SÍ es el de la API.** Con `170` el comprador cae **directo en la
+  pantalla de Yape**, sin selector — que es exactamente lo que promete la doc.
+- **El checkout NO le enseña el email del pagador.** Muestra comercio, monto, Nº de orden y
+  concepto. `EMAIL_DEL_PAGADOR` puede seguir siendo uno solo sin que el comprador vea una
+  dirección que no es suya.
+
+Y el `subject` se lee bien en pantalla: «Concepto: Adelanto ORD-1788883965064». Es el hilo para
+rastrear la transacción en el portal, que es justo para lo que se armó así.
+
+#### ⚠️ La pantalla dice «Estás realizando un pago a **Kross Club**»
+
+O sea que **las llaves cargadas en Mono Shop son las de la cuenta de Flow de Kross**, no las de
+Mono Shop. Para una prueba da igual —la plata va y vuelve entre cuentas de casa—, pero es
+literalmente el escenario que §41 advierte: *«las llaves equivocadas no fallan, cobran — y el
+dinero entra a la cuenta de Flow de otra marca»*. **Antes de que Mono Shop cobre a un comprador
+real hay que reemplazarlas por las suyas**, o la plata de sus ventas cae en la cuenta de Kross y
+se convierte en una liquidación manual entre las dos.
+
+El nombre del comercio es lo único que delata de quién son las llaves —no vuelven al panel a
+propósito—, así que **la pantalla de Flow es el sitio donde se verifica**, en el primer cobro de
+cada marca que se conecte.
+
+### No se puede saltar la pantalla de Flow
+
+Su API no expone la solicitud de aprobación de Yape: `payment/create` devuelve `url` + `token` y
+ahí se acaba la superficie. `paymentMethod` ya se manda, y lo que ahorra es **el selector de
+medios**, no esta página — el comprador cae directo en la de Yape, que es lo más profundo que
+llega la API. Es el costo del riel, anotado desde §2: *«el recorrido del comprador es más largo
+que el deeplink de 360pay»*.
+
+Las salidas, si algún día el tap de más pesa:
+
+- **360pay** (el otro riel) sí abre la app de Yape con un deeplink: un toque. Cuesta S/3.72
+  planos contra los ~S/0.29 que cuesta Flow en un adelanto de S/6 — que es exactamente por lo que
+  se eligió Flow para los montos bajos.
+- **Yape Pagos Recurrentes** (`167` en el portal, *Cargo automático*, hoy inactivo) es el único
+  producto de Flow que cobra sin página, y se pide por correo a `operaciones@flow.cl`. Pero es
+  cargo recurrente: exige afiliar antes al pagador, así que **el primer cobro pasa por una página
+  igual**. Vale preguntarle a Flow si existe cargo directo de un solo tiro para Yape; hasta que
+  respondan, no hay nada que construir.
+
+Lo que sí está en nuestras manos es que el salto no sorprenda: decirle al comprador, antes de
+mandarlo, que va a la página de Flow y que ahí toca **«Solicitar aprobación»**.
 
 ### El primer intento rebotó: cómo se lee por qué (08-set-2026)
 

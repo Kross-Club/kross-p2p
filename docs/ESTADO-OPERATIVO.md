@@ -34,6 +34,27 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Flow emitió su primera orden · sin código pendiente (08-set-2026)
+
+Con `flow-order` desplegado, el reintento del pedido `ORD-1788883965064` salió: **`flowOrder`
+180750690, S/6**, y el comprador aterrizó en la pantalla de Yape de Flow. Es la primera orden que
+este riel emite. Lo que enseñó, y que estaba abierto desde que se escribió:
+
+- **`amount` va en soles con decimales** — el checkout dice «Monto: S/ 6.00 PEN». No se toca nada.
+- **El `Id` del portal SÍ es el `paymentMethod` de la API** — con `170` cae directo en Yape, sin
+  selector.
+- **El checkout no le enseña el email del pagador** al comprador.
+
+**⚠️ Y una que no se buscaba: la pantalla dice «Estás realizando un pago a Kross Club».** Las
+llaves cargadas en Mono Shop son las de la cuenta de Flow de **Kross**, no las suyas. Es el
+escenario exacto que advierte §41 —*«las llaves equivocadas no fallan, cobran»*— y hay que
+cambiarlas **antes de que Mono Shop le cobre a un comprador real**, o su plata cae en la cuenta de
+Kross. El nombre del comercio en esa pantalla es lo único que delata de quién son las llaves (no
+vuelven al panel a propósito): **se verifica ahí, en el primer cobro de cada marca**.
+
+**Lo que falta ya no es código:** pagar de verdad ese adelanto y ver que `flow-confirm` lo cruza a
+MATCHED.
+
 ### Flow nunca emitió una orden: el `upsert` de `cobros` no podía funcionar · 1 función (08-set-2026)
 
 **Qué pasó.** Los tres intentos de Mono Shop dejaron la misma huella: `advance_charge_attempts`
