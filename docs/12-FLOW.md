@@ -318,6 +318,55 @@ S/90, o la marca tiene los dos rieles y ganó el otro), `store_not_configured` (
 llaves en la tienda de **origen**), `amount_mismatch` (el adelanto de la fila no coincide con el
 derivado), `too_many_attempts` (seis emisiones). Las cuatro dejan su `payment_reason`.
 
+### Por qué nunca emitió: el `upsert` de `cobros` no podía funcionar (08-set-2026)
+
+Los tres intentos de Mono Shop dejaron la misma huella: **`advance_charge_attempts` subió** (1, 3
+y 3) y **`payment_reason` quedó en `null`**. O sea que `flow-order` corrió, pasó el gate de
+config —riel encendido, llaves cargadas, `flow_env = 'live'`, medio `170`— y murió en una de las
+dos únicas salidas que gastan un intento sin escribir motivo. Las dos están **antes** de llamar a
+Flow, que es por lo que Conexiones tampoco tenía nada que enseñar.
+
+La culpable es la creación de la fila del cobro:
+
+```ts
+.upsert({ session_id, store_id, tipo, monto, estado: 'PENDING' },
+        { onConflict: 'session_id,tipo' })
+```
+
+El único índice único de `(session_id, tipo)` es **parcial** —`WHERE tipo IN ('adelanto',
+'saldo')`, porque los `extra` sí pueden ser varios (§36)— y **Postgres solo infiere un índice
+parcial si el `ON CONFLICT` repite su predicado**. PostgREST manda nada más la lista de columnas,
+así que el servidor contesta `42P10` *«there is no unique or exclusion constraint matching the ON
+CONFLICT specification»* y la fila no se crea. `filaId` queda `null` → `no_cobro_row` → 500 →
+«No pudimos generar tu pago», sin que Flow se entere de nada.
+
+**Por qué esto no se veía en 360pay.** Ahí el error se descartaba sin mirarlo (`await` sin
+`error`) y las columnas espejo de `order_sessions` (`columnasDe`) tapaban el hueco: el panel
+pinta el adelanto desde el pedido, no desde la fila. Flow **no tiene espejo** —`flow_token` y
+`flow_pay_url` viven SOLO en la fila (§39.b)—, así que es el primer riel donde esa fila es
+obligatoria, y el primero donde el defecto se vuelve fatal.
+
+**El arreglo** es no inferir nada: `flow-order` inserta y, si choca con el índice (doble tap),
+relee la fila que ganó. Y las dos salidas mudas —`no_cobro_row` y `network_after`— ahora dejan su
+`payment_reason`.
+
+**⚠️ Queda por comprobar si 360pay tiene el mismo hueco a la vista.** Si sus cobros de adelanto
+tampoco tienen fila, el que lo paga es el **comprobante** (`get-comprobante` busca por fila) y la
+tarjeta de desglose de comisión. Una consulta lo dice:
+
+```sql
+select o.payment_provider, count(*) as pedidos,
+       count(c.id) as con_fila_de_cobro
+from order_sessions o
+left join cobros c on c.session_id = o.id and c.tipo = 'adelanto'
+where o.advance_amount > 0 and o.created_at > now() - interval '30 days'
+group by 1;
+```
+
+Si `con_fila_de_cobro` < `pedidos` en `360PAY`, hay que darle a `pay360-coupon` y al respaldo de
+`pay360-webhook` el mismo trato. **No se tocaron en este cambio a propósito**: es el riel que está
+cobrando plata real y la hipótesis se verifica antes de moverlo.
+
 ### El ambiente se guardaba a medias, y el panel lo tapaba (08-set-2026)
 
 **El selector de *Ambiente* está encima de los dos inputs de llaves, pero «Guardar llaves» no lo

@@ -34,6 +34,42 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Flow nunca emitió una orden: el `upsert` de `cobros` no podía funcionar · 1 función (08-set-2026)
+
+**Qué pasó.** Los tres intentos de Mono Shop dejaron la misma huella: `advance_charge_attempts`
+subió y `payment_reason` quedó `null`. `flow-order` corrió y pasó el gate de config —riel
+encendido, llaves cargadas, `flow_env = 'live'`, medio `170`— y murió **antes de llamar a Flow**.
+Por eso tampoco había nada en *Panel → Conexiones*.
+
+**La causa.** `flow-order` creaba la fila del cobro con
+`upsert(..., { onConflict: 'session_id,tipo' })`, pero el único índice único de esas dos columnas
+es **parcial** (`WHERE tipo IN ('adelanto','saldo')`, porque los `extra` pueden ser varios), y
+Postgres solo infiere un índice parcial si el `ON CONFLICT` repite su predicado. PostgREST manda
+nada más las columnas → `42P10` → la fila no se crea → `no_cobro_row` → 500.
+
+En 360pay eso no dolía: el error se descartaba y las columnas espejo de `order_sessions` tapaban
+el hueco. **Flow no tiene espejo** —`flow_token` y `flow_pay_url` viven solo en la fila (§39.b)—,
+así que es el primer riel donde esa fila es obligatoria.
+
+**El arreglo.** Insertar y, si choca, releer la fila que ganó la carrera. Y las dos salidas que
+gastaban un intento sin escribir nada —`no_cobro_row` y `network_after`— ahora dejan motivo.
+
+```
+supabase functions deploy flow-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**⚠️ Comprobar si 360pay tiene el mismo hueco** (no se tocó: es el riel que cobra plata real y la
+hipótesis se verifica antes de moverlo). Lo que se rompería ahí es el comprobante y el desglose de
+comisión, no el cobro:
+
+```sql
+select o.payment_provider, count(*) as pedidos, count(c.id) as con_fila_de_cobro
+from order_sessions o
+left join cobros c on c.session_id = o.id and c.tipo = 'adelanto'
+where o.advance_amount > 0 and o.created_at > now() - interval '30 days'
+group by 1;
+```
+
 ### Flow: el ambiente no se guardaba con las llaves · 1 función + frontend (08-set-2026)
 
 **Qué pasó.** Mono Shop quedó configurada para cobrar por Flow —llaves de producción cargadas,
