@@ -70,12 +70,15 @@ supabase functions deploy flow-order --project-ref ofdjghntvmrdfjhazfvz
 
 Sin SQL. El front sale con Vercel al mergear.
 
-**Qué mirar en la primera compra por este camino:**
+**✅ Verificado el mismo día con una compra real** — `ORD-1788909847019` (Diego Llanos, Mono
+Shop): el comprador vio la caja morada y nunca la página de Flow, aprobó en Yape, y
+`flow-confirm` cruzó el adelanto de S/6 a MATCHED (`Op. 180786897`, 06:24 p.m.); la guía de
+Shalom (`95150937 · J3J9`) salió sola a las 06:25. La duda que quedaba —si el `consentId` del
+deeplink seguía atado a nuestro `commerceOrder` y el webhook llegaba igual— queda cerrada.
 
-- Que el webhook siga llegando y `flow-confirm` cruce a MATCHED — el `consentId` del deeplink
-  debería seguir atado a nuestro `commerceOrder`, pero se comprueba, no se supone.
-- Que en *Panel → Conexiones* no aparezca `yape.deeplink`: si aparece, el checkout cayó a la
-  página oficial (funciona igual) y ahí dice qué cambió Flow.
+**Lo que hay que seguir mirando**, ahora que está vivo: que en *Panel → Conexiones* no aparezca
+`FLOW · yape.deeplink`. Si aparece, Flow cambió una página; el checkout cayó a la página oficial
+—funciona igual, un tap más— y el `detail` dice dónde se cortó.
 
 ### Flow cobró de verdad, y la vuelta era la que faltaba · frontend (08-set-2026)
 

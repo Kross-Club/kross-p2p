@@ -5,8 +5,9 @@
 > compra quedaron resueltas las incógnitas del riel —`amount` en soles, el `paymentMethod` del
 > portal sirve, el checkout no enseña el email del pagador— y arreglada la vuelta (§5). Y desde
 > ese mismo día el checkout **salta la página de Flow en el celular** con un deeplink a Yape
-> sacado por scraping, con red (§7). Queda que cada marca pegue **sus** llaves: hoy Mono Shop
-> cobra con las de Kross.
+> sacado por scraping, con red (§7) — **verificado con la segunda compra real**
+> (`ORD-1788909847019`: caja morada, sin Flow, MATCHED, guía sola). Queda que cada marca pegue
+> **sus** llaves: hoy Mono Shop cobra con las de Kross.
 > Leer junto con `07-CONTRATO-360PAY.md` §9 (la tarifa y el corte de S/90) y
 > `06-360PAY.md` (el otro riel, con el que este comparte casi todo).
 
@@ -409,9 +410,12 @@ página oficial de Flow, que pide el celular y manda la aprobación al teléfono
 Lo que se mide: `flow_order_created` lleva `via: 'deeplink' | 'page'`. Cuando la proporción de
 `page` suba sola, Flow cambió la página — y Conexiones dirá dónde.
 
-**Lo que hay que verificar en la primera compra por deeplink:** que el webhook siga llegando. El
-`consentId` es de esa transacción y debería seguir atado a nuestro `commerceOrder`, pero eso se
-comprueba con un pago cruzado a MATCHED, no se supone.
+**Verificado con una compra real (08-set-2026, `ORD-1788909847019`).** La duda era si el webhook
+seguiría llegando: el `consentId` es de esa transacción y no sabíamos si quedaba atado a nuestro
+`commerceOrder`. Queda: el comprador vio la caja morada y nunca la página de Flow, aprobó en
+Yape, `flow-confirm` cruzó el adelanto a MATCHED (`Op. 180786897`, 23:24:55 UTC) y la guía de
+Shalom salió sola un minuto después. `costo_pasarela_pen` en NULL, como se esperaba: es la deuda
+del fee que no viene en `getStatus`, no de este camino.
 
 Las alternativas si algún día esto deja de funcionar y Flow no lo repone siguen siendo las de
 siempre: **360pay** (deeplink oficial, S/3.72 planos) o **Yape Pagos Recurrentes** (`167`, cargo
