@@ -1307,13 +1307,55 @@ Las cuatro invariantes están cubiertas en `src/lib/checkout/shalom-order.test.t
 (§ *la emisión no puede perder una guía ya cobrada*), leídas del fuente: la
 función es de Deno y no hay módulo puro donde vivan.
 
-> ⚠️ **Sigue abierto: el presupuesto de tiempo.** `TIMEOUT_MS` son 145 s **por
-> llamada** y el login del proveedor tarda ~90 s, pero la invocación entera tiene
-> el límite de wall-clock de Supabase. Un login lento se come el presupuesto y el
-> POST —el que cuesta plata— aterriza sin tiempo para registrarse. Es la
-> hipótesis principal de los dos pedidos del 07-set; lo confirma la línea
-> `[shalom-order] error inesperado` en los logs de la función. Con el cambio de
-> arriba, el próximo caso se lee del expediente sin ir a los logs.
+### La causa, con el log a la vista: una zona muerta (08-set-2026)
+
+El expediente ya decía «error inesperado» con el mensaje real, pero los dos
+pedidos del 07-set son anteriores al cambio. El log de la función los tenía:
+
+```
+[shalom-order] error inesperado <id> ReferenceError:
+    Cannot access 'guardarPdfDeGuia' before initialization
+    at guardar (index.ts:655)
+    at generar (index.ts:574)
+```
+
+`guardarPdfDeGuia` era un **`const` arrow declarado en la línea 657** — después
+de TODOS los `return await guardar(...)` (387, 567, 610, 627). Una `function`
+anidada se iza y queda lista al entrar al alcance; un `const`, no: hasta su línea
+está en la **zona muerta temporal** y leerlo lanza. Así que `generar()` llamaba a
+`guardar`, salía por un `return` y **nunca llegaba a inicializar el const que
+`guardar` necesitaba**. Toda emisión buena moría exactamente ahí, justo después
+de que el proveedor cobrara la guía.
+
+O sea: **la guía automática nunca funcionó de punta a punta ni una vez.** Todo lo
+anterior estaba bien —el payload, el catálogo, el 409, el candado, la
+contingencia— y el único camino que importaba se caía en la última curva. Ni el
+parser ni el binder lo ven: es de ejecución, y solo en el camino que llega ahí.
+
+Arreglado en dos sitios, porque el defecto era el mismo dos veces:
+
+- `guardarPdfDeGuia` pasa a ser una **`function`** (se inicializa al entrar al
+  alcance, pase lo que pase con el orden).
+- Deja de capturar `auth` —declarado en la 429— y usa **`cabeceras`**, un `let`
+  declarado al principio de `generar` con `null`. Hacía falta: la contingencia
+  por falta de llave llama a `guardar` desde la 416, antes de que `auth` exista,
+  y un `const` sin inicializar no se puede ni leer para preguntar si está.
+  `ordenYaCreada` tenía el mismo defecto y va igual.
+
+**Y queda una red que lo ataja antes del deploy.** `src/lib/edge-functions.test.ts`
+§ *ninguna función anidada usa un const declarado después de poder correr*:
+por cada `function` anidada busca la primera sentencia que la puede disparar
+—propagando por quién llama a quién— y la compara con dónde se declara cada
+`const`/`let` que su cuerpo lee. No cuentan los nombres que la función declara
+ella misma ni los que solo nombra sin leer (`{ auth: x }`, `x.auth`). Corre sobre
+las 45 funciones sin un solo falso positivo, y contra el código de antes señala
+las dos.
+
+> **Nota.** La primera hipótesis fue el wall-clock de Supabase (`TIMEOUT_MS` son
+> 145 s por llamada y el login del proveedor tarda ~90 s). Era plausible y era
+> falsa; el log la descartó en una línea. Vale como recordatorio de que la
+> evidencia se busca antes de arreglar — y de por qué el expediente ahora guarda
+> el error de verdad.
 
 ### Lo que hace falta configurar
 
