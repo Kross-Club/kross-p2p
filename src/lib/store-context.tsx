@@ -7,6 +7,9 @@ export interface Store {
   slug: string | null
   nombre: string
   logo_url: string | null
+  /** El apaisado (§47 del esquema): encabeza la pantalla del pedido. Si falta,
+   *  se cae al cuadrado con el nombre escrito al lado. */
+  logo_wide_url?: string | null
   color_primary: string
   color_dark: string
   /** Número visible de la marca (`stores.wa_display_phone`). La pantalla final
@@ -69,7 +72,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyBranding(initial)
     if (!slug) { setLoading(false); return }
-    const CAMPOS = 'id, slug, nombre, logo_url, color_primary, color_dark, wa_display_phone'
+    const CAMPOS = 'id, slug, nombre, logo_url, logo_wide_url, color_primary, color_dark, wa_display_phone'
     supabase.from('stores').select(CAMPOS).eq('slug', slug).eq('active', true).maybeSingle()
       .then(async ({ data }) => {
         // El subdominio no resuelve a ninguna tienda: puede ser uno VIEJO, de

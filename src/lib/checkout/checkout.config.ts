@@ -356,7 +356,6 @@ export const COPY = {
   // Todo lo que va a necesitar el día del recojo tiene que caber en una
   // pantalla, en su idioma. El contenido lo arma `lib/checkout/ticket.ts`; aquí
   // solo van los rótulos fijos.
-  doneScreenshotHint: 'Toma una captura de esta pantalla para tenerla a la mano.',
   // El teléfono de la tienda es el respaldo de quien no va a volver a esta
   // app: para una persona mayor, un número al que llamar cierra lo que ningún
   // mensaje cierra. Solo se muestra si la marca lo configuró.
