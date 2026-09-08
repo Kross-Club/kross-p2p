@@ -36,7 +36,7 @@ import { useStore } from '../../lib/store-context'
 import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { subscribePush } from '../../lib/push'
 import { useIsDesktop } from '../../lib/use-desktop'
-import { AndroidSteps, IOSSteps, isInstalled } from '../InstallBanner'
+import { AndroidSteps, IOSInstallVideo, isInstalled } from '../InstallBanner'
 
 interface Props {
   /** Ya armado por quien llama: el checkout desde el formulario, la página
@@ -325,9 +325,12 @@ function InstalarApp({ sessionId, nombre, logo }: {
       <p className="text-sm text-gray-600 leading-snug mt-1 px-2">{COPY.doneInstallBody(nombre)}</p>
 
       {isIOS ? (
+        // El video en vez de la lista: los cuatro toques se entienden viéndolos
+        // y no leyéndolos. Solo acá, al final de la confirmación, donde hay
+        // sitio y el comprador acaba de terminar y está mirando.
         <div className="mt-3 flex flex-col items-center">
           <p className="text-xs text-gray-500 mb-1">{COPY.doneInstallIos}</p>
-          <IOSSteps />
+          <IOSInstallVideo />
         </div>
       ) : (
         <>

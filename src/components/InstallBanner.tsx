@@ -81,6 +81,36 @@ export function IOSSteps({ dark }: { dark?: boolean }) {
 }
 
 /**
+ * iPhone, en la confirmación del pedido: el VIDEO de los cuatro toques en vez
+ * de la lista (08-set-2026). Grabado en un iPhone real, enseña lo que la lista
+ * solo describía: dónde está el `···`, cómo se ve la hoja de Compartir y hasta
+ * dónde hay que bajar para «Agregar a inicio». La lista sigue viva en
+ * `IOSSteps` para la barra del panel y la tarjeta del chat, donde un video no
+ * cabe, y acá en el `aria-label` para quien no lo ve.
+ *
+ * Por qué está armado así, y ninguna es opcional en iOS:
+ *   · **H.264, no WebM/AV1**: Safari en iOS no reproduce otra cosa en <video>.
+ *   · **`muted` + `playsInline` + `autoPlay`**: la única combinación con la que
+ *     iOS arranca solo, sin abrir el reproductor a pantalla completa.
+ *   · **`loop`**: quien se pierde a mitad lo vuelve a ver sin tocar nada.
+ *   · **600×600 a CRF 28, `faststart`**: 340 KB —un tercio del original— con
+ *     el índice al frente para que empiece antes de bajar entero. Solo se
+ *     carga en iPhone, porque solo ahí se pinta.
+ */
+export function IOSInstallVideo() {
+  return (
+    <video
+      src="/guia-instalar-iphone.mp4"
+      poster="/guia-instalar-iphone.jpg"
+      autoPlay muted loop playsInline preload="metadata"
+      disablePictureInPicture disableRemotePlayback
+      aria-label="Cómo instalar la app en iPhone: toca los tres puntos en la barra de abajo, elige Compartir, baja y toca Agregar a inicio, y confirma con Agregar."
+      className="mt-2 mx-auto block w-full max-w-[260px] rounded-2xl border border-gray-200"
+    />
+  )
+}
+
+/**
  * Android, cuando Chrome no dio el aviso de instalar. Con las PALABRAS que el
  * comprador va a ver: Chrome no dice «Instalar app», dice **«Instalar y crear
  * acceso directo»** (07-set-2026). Enseñar una etiqueta que no existe manda a

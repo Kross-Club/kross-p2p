@@ -34,6 +34,22 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Instalar en iPhone: un video en vez de la lista · solo frontend (08-set-2026)
+
+En la confirmación del pedido, el bloque «¿te avisamos cuando llegue?» en iPhone ya no enseña
+los cuatro pasos como texto: enseña **un video** de los cuatro toques (`IOSInstallVideo`, en
+`InstallBanner.tsx`), grabado sobre un iPhone dibujado con la pantalla de «Pedido confirmado».
+Los pasos se entienden viéndolos —dónde está el `···`, cómo se ve la hoja de Compartir, hasta
+dónde bajar— y no leyéndolos.
+
+`public/guia-instalar-iphone.mp4`: H.264 600×600 a CRF 28 con `faststart`, **341 KB** (el
+original pesaba 1.07 MB), sin audio, más un póster JPG de 11 KB. `muted` + `playsInline` +
+`autoPlay` + `loop` — la única combinación con la que iOS lo arranca solo sin abrir el
+reproductor. Solo se carga en iPhone, porque solo ahí se pinta. La lista `IOSSteps` sigue viva en
+la barra del panel y en la tarjeta del chat, donde un video no cabe.
+
+Sale con Vercel al mergear. Sin funciones ni SQL.
+
 ### Flow salta su página en el celular: deeplink a Yape por scraping · 1 función + frontend (08-set-2026)
 
 **Qué entra.** El checkout con riel Flow, en un celular, ya no manda al comprador a la página de
