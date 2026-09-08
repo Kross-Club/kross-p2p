@@ -127,6 +127,11 @@ Deno.serve(async (req) => {
     return json({ ok: false, stage: 'validation', code: 'cancelled', user_message: 'Este pedido ya no está activo.' }, 409)
   }
   if (session.payment_provider !== 'FLOW') {
+    // Deja rastro: sin él, un pedido ruteado a 360pay que igual llamó acá se
+    // queda SIN motivo en la pantalla del vendedor —el único sitio donde se
+    // mira por qué un cobro no salió— y el fallo se ve idéntico a un rechazo
+    // de Flow, que es el diagnóstico contrario.
+    await notePaymentFailure(session, `El pedido cobra por ${session.payment_provider ?? 'ningún riel en línea'}, no por Flow — revisar qué rieles tiene encendidos la marca`)
     return json({ ok: false, stage: 'config', code: 'not_flow_order' }, 409)
   }
   if ((session.advance_charge_attempts ?? 0) >= MAX_ISSUES) {
@@ -220,7 +225,10 @@ Deno.serve(async (req) => {
       .select('id').maybeSingle()
     filaId = creada?.id ?? filaId
   }
-  if (!filaId) return json({ ok: false, stage: 'config', code: 'no_cobro_row', user_message: NO_PUDIMOS }, 500)
+  if (!filaId) {
+    await notePaymentFailure(session, 'No se pudo crear la fila del cobro — la orden no se emitió')
+    return json({ ok: false, stage: 'config', code: 'no_cobro_row', user_message: NO_PUDIMOS }, 500)
+  }
 
   // ─── Emitir ────────────────────────────────────────────────────────────────
   const venceEl = orderExpiryFrom(Date.now())

@@ -292,11 +292,44 @@ integrador.
 | ~~Conectar la marca como comercio asociado~~ — **no aplica**: la cuenta de Kross no es integrador (§2) | ✅ resuelto 02-sep-2026 |
 | **Resolver la unidad de `amount`**: crear una orden de S/10 y mirar cuánto muestra el checkout de Flow **antes de confirmar el pago** | ⏳ bloquea cobrar |
 | Pagar de verdad ese S/10 —las llaves son de producción, no hay tarjeta de prueba— y ver que `flow-confirm` lo cruza a MATCHED | ⏳ |
-| **ID del medio** (portal → *Medios de pago*, columna `Id`). El del **one-shot llega cuando Flow lo apruebe** —el `152` activo no es ese—; entretanto, **vacío**: Flow muestra el selector con los medios activos y se ve qué elige la gente | ⏳ |
+| **ID del medio** (portal → *Medios de pago*, columna `Id`). Flow aprobó el **one-shot: `170`, Billetera, 5.50% + 0.00** (08-set-2026). Cargado en Mono Shop | ✅ |
 | **Mirar si el checkout de Flow le enseña al comprador el `email` del pagador.** Es uno solo para todos (`EMAIL_DEL_PAGADOR`); si se ve en pantalla, hay que volver a sintetizarlo por comprador | ⏳ |
 | Punta a punta desde la PWA instalada en Android: que el POST de vuelta llegue a la pestaña del pedido | ⏳ |
 | Encender el toggle en Kross Shop con un adelanto de S/5 | ⏳ |
 | Primera liquidación: `fixed` debe ser 0 | ⏳ |
+
+### El primer intento rebotó: cómo se lee por qué (08-set-2026)
+
+Mono Shop quedó configurada —llaves de producción cargadas, riel encendido, medio `170`— y el
+primer checkout devolvió **«No pudimos generar tu pago»**. Esa pantalla es la MISMA para los dos
+rieles y para las seis causas distintas de `flow-order`, así que no dice nada por sí sola. El
+motivo sí está guardado, en dos sitios, y se leen en este orden:
+
+1. **El pedido en el panel** (*Pedidos → el pedido → arriba del cobro*). `payment_reason` lleva
+   `No se pudo generar la orden de pago (<el mensaje literal de Flow>)`. **Ahí está la causa**, y
+   es lo único que hace falta el 90% de las veces.
+2. **Panel → Conexiones**, fila `Flow Pagos · orden.crear`, con su `KX-…` para reclamarle a Flow.
+   ⚠️ **Hoy no aparece nada ahí**: `flow-order` está desplegada del 02-set y la instrumentación
+   de Conexiones entró el 04-set (`487a9cd`). Está en la lista de deploys pendientes.
+
+Y las causas que NO llegan a Flow —y que por eso nunca dejan fila en Conexiones—, en el orden en
+que `flow-order` las descarta: `not_flow_order` (el pedido se ruteó a 360pay: el adelanto llegó a
+S/90, o la marca tiene los dos rieles y ganó el otro), `store_not_configured` (riel apagado o sin
+llaves en la tienda de **origen**), `amount_mismatch` (el adelanto de la fila no coincide con el
+derivado), `too_many_attempts` (seis emisiones). Las cuatro dejan su `payment_reason`.
+
+### El ambiente se guardaba a medias, y el panel lo tapaba (08-set-2026)
+
+**El selector de *Ambiente* está encima de los dos inputs de llaves, pero «Guardar llaves» no lo
+mandaba.** Elegir «Producción», pegar las llaves reales y guardar dejaba `stores.flow_env` en su
+default, `sandbox` — y `flow-order` mandaba esas llaves a `sandbox.flow.cl`, donde la cuenta no
+existe. Flow rechaza la orden con un mensaje que se parece al de una firma mal armada, que es
+justo el aviso que el propio código del panel tenía escrito al lado del selector.
+
+Lo tapaba el rótulo de al lado: **«Ambiente: producción» se pintaba desde el estado del selector,
+no desde lo guardado**, así que decía producción con `sandbox` en la base. Arreglado: el botón
+manda `flow_env` junto con las llaves, el rótulo lee `store.flow_env`, y con `sandbox` guardado
+sale un aviso en amarillo diciendo contra qué host se está cobrando.
 
 ### Probar el `amount` con llaves de producción
 

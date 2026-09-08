@@ -603,6 +603,14 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     setFlowKeysBusy(true); setErr('')
     const { ok, data } = await call({
       action: 'update', admin_auth_id: adminId, store_id: store.id,
+      // El AMBIENTE viaja con las llaves, y no puede no hacerlo: el selector
+      // está justo encima de los dos inputs, así que quien lo mueve da por
+      // guardado lo que eligió. Sin esta línea, elegir «Producción» y pegar
+      // llaves de producción dejaba `flow_env` en su default —`sandbox`— y
+      // `flow-order` mandaba esas llaves a `sandbox.flow.cl`, donde la cuenta
+      // no existe: Flow rechaza la orden con un mensaje que parece de firma mal
+      // armada y el comprador ve «No pudimos generar tu pago».
+      flow_env: flowEnv,
       flow_keys: { api_key: flowApiKey.trim(), secret_key: flowSecretKey },
     })
     setFlowKeysBusy(false)
@@ -932,10 +940,23 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
                     ? ` · ${new Date(store.flow_secrets_updated_at).toLocaleDateString('es-PE')}`
                     : ''}
                 </p>
+                {/* Lee lo GUARDADO (`store.flow_env`), no el estado del selector:
+                    esa línea es lo único que le dice al operador contra qué host
+                    va a cobrar, y pintándola desde el estado local decía
+                    «producción» mientras la base tenía `sandbox`. Un rótulo que
+                    miente sobre el ambiente cuesta media hora larga, porque el
+                    rechazo de Flow no menciona el ambiente. */}
                 <p className="text-[10px] text-gray-500 mt-0.5">
-                  Ambiente: <strong>{flowEnv === 'live' ? 'producción' : 'pruebas'}</strong>.
+                  Ambiente: <strong>{store.flow_env === 'live' ? 'producción' : 'pruebas (sandbox)'}</strong>.
                   La plata de esta marca cae en <strong>su</strong> cuenta de Flow.
                 </p>
+                {store.flow_env !== 'live' && (
+                  <p className="text-[10px] font-black mt-0.5" style={{ color: 'var(--warn-fg)' }}>
+                    ⚠️ Las llaves se están usando contra <strong>sandbox.flow.cl</strong>. Si son de
+                    la cuenta real, Flow rechaza cada orden: toca «Cambiar llaves», elige
+                    Producción y vuelve a pegarlas.
+                  </p>
+                )}
                 <div className="flex gap-2 mt-1.5">
                   <button onClick={() => { setFlowKeysEditing(true); setFlowApiKey(''); setFlowSecretKey('') }}
                     className="text-[10px] font-black underline" style={{ color: 'var(--violet-fg)' }}>
