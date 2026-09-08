@@ -23,8 +23,15 @@ const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 /** La firma de la marca en el panel: el apaisado si lo tiene, y el cuadrado
- *  de respaldo (ver `BrandMark`). */
-interface Marca { nombre: string; logo_url: string | null; logo_wide_url?: string | null }
+ *  de respaldo (ver `BrandMark`). `color_primary` NO pinta el panel —eso sigue
+ *  siendo ink+lima del manual—: es el relleno de la placa del logo, para que
+ *  un logo con aire propio no deje huecos oscuros alrededor. */
+interface Marca {
+  nombre: string
+  logo_url: string | null
+  logo_wide_url?: string | null
+  color_primary?: string | null
+}
 
 export default function Layout() {
   const { real, effective, impersonating, stopActing } = useSeller()
@@ -52,7 +59,7 @@ export default function Layout() {
     if (!effective) return
     if (administraLaPlataforma(effective)) { setBrand({ nombre: 'Kross', logo_url: null }); return }
     if (!effective.store_id) return
-    supabase.from('stores').select('nombre, logo_url, logo_wide_url').eq('id', effective.store_id).maybeSingle()
+    supabase.from('stores').select('nombre, logo_url, logo_wide_url, color_primary').eq('id', effective.store_id).maybeSingle()
       .then(({ data }) => { if (data) setBrand(data as Marca) })
   }, [effective?.store_id, effective?.is_admin, effective?.is_super_admin])
 

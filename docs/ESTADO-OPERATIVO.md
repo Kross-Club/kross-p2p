@@ -132,6 +132,28 @@ el mensaje literal de Flow solo se ve ahí.
 supabase functions deploy flow-order --project-ref ofdjghntvmrdfjhazfvz
 ```
 
+### El logo de la marca se veía encogido en el panel · solo frontend (08-set-2026)
+
+**Qué se ve.** Arriba del menú lateral —desplegado con el logo apaisado, plegado con el
+cuadrado— el logo quedaba pequeño dentro de su casilla, con oscuridad alrededor.
+
+**Por qué.** `object-contain`, que es lo correcto: recortar el logo de una marca para que llene su
+caja es lo último que se debe hacer con un logo. Pero un logo se sube con el aire que su diseñador
+le dio —márgenes transparentes, una caja que no es exactamente cuadrada— y contra el panel oscuro
+ese aire se lee como hueco.
+
+**Qué hace ahora.** El aire se rellena con `color_primary` de la marca: una PLACA detrás del logo.
+El logo sigue entero y sin recortar, y su casilla se ve maciza. Un logo que ya trae su propio fondo
+del mismo color —el caso normal— encaja al ras y ni se nota que hay placa. El apaisado además
+estira su placa hasta el ancho útil del menú (tope 168 px) con el logo centrado, así la firma es
+una pieza sólida de lado a lado.
+
+> El panel **sigue siendo ink + lima**. `color_primary` no pinta nada más: es el relleno de esa
+> casilla, para que la identidad de la marca se lea de un vistazo. Y si la marca no tiene color
+> elegido, no hay placa — nunca se inventa un color.
+
+Hizo falta traer `color_primary` en la consulta de marca de `Layout`, que solo pedía nombre y logos.
+
 ### La guía automática ya emite de verdad · 1 función + frontend (08-set-2026)
 
 **Estrenada.** Un pedido de prueba de Mono Shop salió completo: guía emitida sola en Shalom,
