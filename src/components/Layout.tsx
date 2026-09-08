@@ -92,13 +92,21 @@ export default function Layout() {
     setUploading(true)
     try {
       const ext = file.name.split('.').pop() || 'jpg'
-      const path = `${who.auth_user_id}.${ext}`
+      // Ruta ÚNICA y sin `upsert` (07-set-2026). La ruta fija obligaba a
+      // reemplazar, y reemplazar hace que Storage resuelva el camino de UPDATE,
+      // que necesita LEER la fila para ver si ya existe. Los buckets de este
+      // proyecto no tienen política de SELECT a propósito, así que la segunda
+      // foto de un mismo vendedor moría con «new row violates row-level
+      // security policy» — un error de lectura disfrazado de escritura. Es
+      // exactamente lo que tuvo los logos sin poder subirse. La URL guardada
+      // lleva la ruta completa, así que las fotos viejas siguen resolviendo.
+      const path = `${who.auth_user_id}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`
       const { error: upErr } = await supabase.storage
         .from('avatars')
-        .upload(path, file, { upsert: true, contentType: file.type })
+        .upload(path, file, { contentType: file.type })
       if (upErr) throw upErr
       const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
-      const url = `${pub.publicUrl}?v=${Date.now()}`
+      const url = pub.publicUrl
       if (impersonating) {
         // RLS blocks updating another seller's row from the client → go through the
         // admin edge function (authorized because the caller is an admin).

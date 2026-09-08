@@ -271,9 +271,24 @@ async function uploadLogo(file: File, adminId: string): Promise<{ url: string } 
   // 5 MB: un logo no pesa más, y el límite del bucket devuelve un error feo.
   if (file.size > 5 * 1024 * 1024) return { error: 'La imagen pesa más de 5 MB. Súbela más liviana.' }
 
+  // La sesión, antes de salir a la red: vencida, Storage responde con un error
+  // de permisos que no dice "vuelve a entrar", que es lo único que hay que
+  // hacer. Mismo chequeo que la subida de fotos de producto.
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { error: 'Tu sesión venció. Vuelve a entrar y reintenta: la imagen no se subió.' }
+
   const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '')
   const path = `${adminId}/${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext || 'png'}`
-  const { error } = await supabase.storage.from('branding').upload(path, file, { contentType: file.type, upsert: true })
+  // ⚠️ SIN `upsert`. La ruta ya es única (timestamp + aleatorio), así que nunca
+  // hay nada que reemplazar — y pedirlo obliga a Storage a resolver además el
+  // camino de UPDATE, que necesita LEER la fila para ver si hay conflicto. El
+  // bucket `branding` no tiene política de SELECT a propósito (nada de listado
+  // público), así que la lectura se deniega y el error que sale es «new row
+  // violates row-level security policy»: parece un permiso de escritura y es
+  // uno de lectura. Eso tuvo el logo sin poder subirse (07-set-2026), con las
+  // políticas de INSERT y UPDATE puestas y correctas. La misma nota vive en
+  // `ProductosPage`, donde ya se había aprendido y no se aplicó acá.
+  const { error } = await supabase.storage.from('branding').upload(path, file, { contentType: file.type })
   if (error) {
     console.error('[marca] no se pudo subir el logo', error)
     // El texto del proveedor tal cual: "Bucket not found" y "new row violates

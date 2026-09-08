@@ -394,8 +394,19 @@ Deno.serve(async (req) => {
     if (isSuper && typeof body.slug === 'string' && body.slug.trim()) {
       const slug = cleanSlug(body.slug)
       if (!slug || RESERVED.has(slug)) return json({ error: 'slug_reservado' }, 400)
-      const { data: clash } = await supabase.from('stores').select('id').eq('slug', slug).neq('id', targetId).maybeSingle()
+      // Choca con el subdominio actual de otra tienda O con el anterior de
+      // cualquiera (§47): un enlace ya enviado no puede volverse ambiguo.
+      const { data: clash } = await supabase.from('stores')
+        .select('id').or(`slug.eq.${slug},slug_anterior.eq.${slug}`).neq('id', targetId).maybeSingle()
       if (clash) return json({ error: 'slug_en_uso' }, 400)
+
+      // El subdominio que se deja atrás se guarda para que los enlaces ya
+      // mandados por SMS y WhatsApp sigan llevando a su tienda: `store-context`
+      // los redirige al nuevo conservando la ruta. Solo si de verdad cambia —
+      // guardar el mismo valor perdería el anterior de verdad.
+      const { data: actual } = await supabase.from('stores').select('slug').eq('id', targetId).maybeSingle()
+      const antes = String(actual?.slug ?? '')
+      if (antes && antes !== slug) patch.slug_anterior = antes
       patch.slug = slug
     }
 

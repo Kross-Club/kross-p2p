@@ -2199,3 +2199,29 @@ ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS chat_messages_type_check;
 -- índice sirve para encontrar Y para ordenar, sin pasar por el disco.
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session
   ON chat_messages(session_id, created_at);
+
+
+-- §47 · EL SUBDOMINIO ANTERIOR DE UNA MARCA  (08-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Cambiar el subdominio de una tienda no rompe sus pedidos —van por `store_id`,
+-- no por el slug— pero sí rompe todo lo que YA salió a la calle: cada enlace
+-- mandado por SMS y WhatsApp lleva `<slug>.krossclub.app`, y el comprador que
+-- lo abre cae en un subdominio que ya no resuelve a ninguna tienda. La página
+-- carga igual (la llave es el token del pedido), pero con la marca genérica de
+-- Kross en vez de la suya: nombre, colores y logo por defecto.
+--
+-- Con esta columna el subdominio viejo sigue sirviendo: `store-context` lo
+-- busca acá cuando el actual no encuentra tienda, y manda al comprador al nuevo
+-- conservando su ruta. El enlace viejo no muere, se muda.
+--
+-- ⚠️ Guarda UNO solo: el inmediatamente anterior. Dos cambios seguidos dejan
+-- huérfano al primero. Es a propósito —una marca no se renombra dos veces— y si
+-- alguna vez hace falta, esto se convierte en una tabla `store_slugs`.
+--
+-- `manage-store` la escribe sola al cambiar el slug, y rechaza un slug nuevo
+-- que choque con el actual O con el anterior de cualquier tienda: un enlace
+-- viejo no puede volverse ambiguo.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS slug_anterior text;
+CREATE INDEX IF NOT EXISTS idx_stores_slug_anterior
+  ON stores(slug_anterior) WHERE slug_anterior IS NOT NULL;
