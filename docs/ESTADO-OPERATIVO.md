@@ -34,6 +34,55 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### `upsert` era lo que impedía subir los logos · **SQL** + 1 función (08-set-2026)
+
+**La causa, con el error a la vista.** Con las políticas de `branding` puestas y correctas —
+`branding_upload` (INSERT) y `branding_update` (UPDATE)— subir seguía dando **«new row violates
+row-level security policy»**. No era un permiso de escritura: era uno de **lectura**.
+
+`uploadLogo` pedía `upsert: true`. Eso obliga a Storage a resolver también el camino de UPDATE, que
+necesita **LEER** la fila para ver si hay conflicto — y los buckets de este proyecto **no tienen
+política de SELECT a propósito** (`branding_read` se dropea y no se recrea: nada de listado
+público). La lectura se deniega y el error sale disfrazado de escritura.
+
+Y `upsert` no servía para nada: la ruta ya es única (`adminId/timestamp-aleatorio.ext`), así que
+nunca hay nada que reemplazar. **La lección ya estaba aprendida en `ProductosPage`**, con su
+comentario y todo, y nunca se aplicó acá.
+
+- `uploadLogo` sube sin `upsert`, y comprueba la sesión antes de salir a la red (vencida, Storage
+  responde un error de permisos que no dice «vuelve a entrar», que es lo único que hay que hacer).
+- **El avatar tenía el mismo defecto latente**: ruta FIJA (`<auth_user_id>.ext`) + `upsert`, o sea
+  que la SEGUNDA foto de un mismo vendedor moría igual. Ahora usa ruta única y sin `upsert`; la URL
+  guardada lleva la ruta completa, así que las fotos viejas siguen resolviendo.
+
+### El subdominio se puede cambiar sin romper lo ya enviado · §47 (08-set-2026)
+
+Cambiar el subdominio **no rompe los pedidos** —van por `store_id`, no por el slug— pero sí rompía
+todo lo que ya salió a la calle: cada enlace mandado por SMS y WhatsApp lleva `<slug>.krossclub.app`,
+y el comprador que lo abría caía en un subdominio sin tienda. La página cargaba igual (la llave es
+el token), pero con la **marca genérica de Kross**: nombre, colores y logo por defecto.
+
+Ahora `stores.slug_anterior` guarda el subdominio que se deja atrás. Cuando el actual no encuentra
+tienda, `store-context` lo busca ahí y **manda al comprador al nuevo conservando su ruta** — su
+pedido, su guía, lo que estuviera abriendo. El enlace viejo no muere: se muda. Y `manage-store`
+rechaza un slug nuevo que choque con el actual **o con el anterior** de cualquier tienda, para que
+un enlace ya enviado no pueda volverse ambiguo.
+
+⚠️ Guarda **uno solo**, el inmediatamente anterior: dos cambios seguidos dejan huérfano al primero.
+Y lo que no se puede salvar es la **app ya instalada**: vive anclada al origen viejo, así que el
+comprador cae en el navegador y tendría que instalarla de nuevo desde el subdominio nuevo.
+
+**Qué correr y desplegar.**
+
+```sql
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS slug_anterior text;
+CREATE INDEX IF NOT EXISTS idx_stores_slug_anterior ON stores(slug_anterior) WHERE slug_anterior IS NOT NULL;
+```
+
+```
+supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
+```
+
 ### Subir un logo no decía por qué fallaba · solo frontend (07-sep-2026)
 
 **Qué se ve.** *Panel → Mi marca → Subir* un logo: el botón dice «Subiendo…», vuelve a su sitio, y

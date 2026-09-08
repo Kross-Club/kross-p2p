@@ -68,8 +68,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyBranding(initial)
     if (!slug) { setLoading(false); return }
-    supabase.from('stores').select('id, slug, nombre, logo_url, color_primary, color_dark, wa_display_phone').eq('slug', slug).eq('active', true).maybeSingle()
-      .then(({ data }) => {
+    const CAMPOS = 'id, slug, nombre, logo_url, color_primary, color_dark, wa_display_phone'
+    supabase.from('stores').select(CAMPOS).eq('slug', slug).eq('active', true).maybeSingle()
+      .then(async ({ data }) => {
+        // El subdominio no resuelve a ninguna tienda: puede ser uno VIEJO, de
+        // antes de que la marca se mudara (§47). Los enlaces ya mandados por
+        // SMS y WhatsApp lo llevan, así que en vez de enseñarle al comprador la
+        // marca genérica de Kross, se le lleva al subdominio nuevo con su misma
+        // ruta — su pedido, su guía, lo que estuviera abriendo.
+        if (!data) {
+          const { data: mudada } = await supabase.from('stores').select(CAMPOS)
+            .eq('slug_anterior', slug).eq('active', true).maybeSingle()
+          const destino = (mudada as Store | null)?.slug
+          if (destino && destino !== slug) {
+            const host = window.location.hostname.replace(/^[^.]+/, destino)
+            if (host !== window.location.hostname) {
+              const { protocol, pathname, search, hash } = window.location
+              window.location.replace(`${protocol}//${host}${pathname}${search}${hash}`)
+              return
+            }
+          }
+        }
         const s = (data as Store) ?? DEFAULT_STORE
         setStore(s); applyBranding(s)
         setLoading(false)
