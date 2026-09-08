@@ -34,6 +34,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { advanceForServer } from '../_shared/advance.ts'
 import { columnasDe } from '../_shared/cobros.ts'
 import { anotarResultado } from '../_shared/api-eventos.ts'
+import { derivarDeeplinkYape } from '../_shared/flow-yape-deeplink.ts'
 import {
   checkoutUrl, crearOrden, EMAIL_DEL_PAGADOR, esFinalSinPago, esPagada, estadoPorToken,
   flowBaseUrl, llavesDeTienda, montoParaFlow, orderExpiryFrom, ORDER_TTL_S, type FlowEnv,
@@ -205,7 +206,11 @@ Deno.serve(async (req) => {
       return json({ ok: true, already_paid: true, amount_pen: rowAmount })
     }
     if (prev.ok && !esFinalSinPago(prev.data) && fila.flow_pay_url) {
-      return json({ ok: true, tipo, amount_pen: rowAmount, pay_url: fila.flow_pay_url, reused: true })
+      // El deeplink NO se guarda: Flow acuña un consentimiento nuevo en cada
+      // recorrido y no se sabe cuánto vive el anterior. Rehacerlo cuesta lo
+      // mismo que la primera vez y siempre está fresco.
+      const yape = await conDeeplink(String(fila.flow_pay_url), store.flow_payment_method, { storeId: originStoreId, sessionId: session.id })
+      return json({ ok: true, tipo, amount_pen: rowAmount, pay_url: fila.flow_pay_url, reused: true, ...yape })
     }
     // Un 4xx al consultar (token que Flow ya no reconoce) cae a emitir otra:
     // la vieja no se puede pagar de todos modos.
@@ -322,6 +327,12 @@ Deno.serve(async (req) => {
     }).eq('id', session.id)
   }
 
+  // ─── El enlace directo a Yape, si se puede ────────────────────────────────
+  // Va DESPUÉS de guardar la fila y las columnas: la orden ya existe, ya tiene
+  // quien la conozca, y lo que sigue solo puede mejorar el recorrido, nunca
+  // dejar un cobro sin fila. Ver `_shared/flow-yape-deeplink.ts`.
+  const yape = await conDeeplink(payUrl, store.flow_payment_method, { storeId: originStoreId, sessionId: session.id })
+
   return json({
     ok: true,
     tipo,
@@ -329,8 +340,35 @@ Deno.serve(async (req) => {
     expires_at: venceEl,
     // El enlace lo arma el SERVIDOR. El front solo navega.
     pay_url: payUrl,
+    // Y, cuando salió, el deeplink que abre la app de Yape sin pasar por la
+    // página de Flow. El front decide si lo usa (solo en un celular).
+    ...yape,
   })
 })
+
+/**
+ * Intenta sacar el deeplink de Yape de las páginas de Flow. Devuelve
+ * `{ yape_deeplink }` o `{}`: el que llama lo esparce en la respuesta y sigue.
+ *
+ * Solo con un medio de pago fijado —sin `paymentMethod` Flow muestra el
+ * selector y la cadena no llega a Yape— y siempre dentro de su propio
+ * presupuesto de tiempo. Un fallo se anota en Conexiones con la página donde
+ * se cortó: es el aviso de que Flow cambió algo, y llega por el panel y no
+ * por la caída de conversión.
+ */
+async function conDeeplink(
+  payUrl: string, paymentMethod: unknown, ctx: { storeId: string; sessionId: string },
+): Promise<{ yape_deeplink?: string }> {
+  if (typeof paymentMethod !== 'number') return {}
+  const r = await derivarDeeplinkYape({ payUrl })
+  if (r.ok) return { yape_deeplink: r.deeplink }
+  const sinRespuesta = r.motivo === 'sin respuesta' || r.motivo === 'presupuesto agotado'
+  await anotarResultado(
+    { proveedor: 'FLOW', op: 'yape.deeplink', storeId: ctx.storeId, sessionId: ctx.sessionId },
+    { status: 0, error: `${r.paso}: ${r.motivo}`, network: sinRespuesta || undefined },
+  )
+  return {}
+}
 
 /** Deja el motivo en la fila y, la PRIMERA vez, avisa a Ventas por el chat. */
 async function notePaymentFailure(

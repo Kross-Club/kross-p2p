@@ -34,6 +34,33 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Flow salta su página en el celular: deeplink a Yape por scraping · 1 función + frontend (08-set-2026)
+
+**Qué entra.** El checkout con riel Flow, en un celular, ya no manda al comprador a la página de
+Flow: `flow-order` saca de las páginas web de Flow el deeplink de Yape (`_shared/flow-yape-
+deeplink.ts`) y el modal se queda en `AWAITING` con una caja propia (`FlowYapeBox`), como 360pay.
+El comprador toca «Pagar con Yape», aprueba en la app, vuelve y ve su pedido confirmado. En
+escritorio no cambia nada: sigue la página oficial de Flow.
+
+**Es scraping, y está construido para que no pueda romper un cobro:** va después de emitir y
+guardar; la respuesta lleva siempre `pay_url` y `yape_deeplink` solo cuando salió; presupuesto
+de 8 s para las cuatro llamadas; el enlace se descarta si no es de `yape.com.pe`; y un fallo deja
+fila en *Panel → Conexiones* como `FLOW · yape.deeplink` con la página donde se cortó. Detalle en
+`docs/12-FLOW.md` §7.
+
+```
+supabase functions deploy flow-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL. El front sale con Vercel al mergear.
+
+**Qué mirar en la primera compra por este camino:**
+
+- Que el webhook siga llegando y `flow-confirm` cruce a MATCHED — el `consentId` del deeplink
+  debería seguir atado a nuestro `commerceOrder`, pero se comprueba, no se supone.
+- Que en *Panel → Conexiones* no aparezca `yape.deeplink`: si aparece, el checkout cayó a la
+  página oficial (funciona igual) y ahí dice qué cambió Flow.
+
 ### Flow cobró de verdad, y la vuelta era la que faltaba · frontend (08-set-2026)
 
 **El riel funcionó completo.** `ORD-1788900938194`: adelanto de S/6 pagado con Yape One Shot

@@ -1,11 +1,12 @@
 # 12 · FLOW PAGOS, EL SEGUNDO RIEL
 
-> Estado: **🟡 emite órdenes; falta que una se pague.** La primera orden real salió el 08-set-2026
-> (`flowOrder` 180750690, S/6) después de arreglar el `upsert` de `cobros` que nunca dejó emitir
-> ninguna — ver §7. Con ella quedaron resueltas las tres incógnitas que bloqueaban el riel: el
-> `amount` va en soles, el `paymentMethod` del portal sirve, y el checkout no le enseña al
-> comprador el email del pagador. Falta **cruzar un pago a MATCHED** y que cada marca pegue
-> **sus** llaves: hoy Mono Shop cobra con las de Kross.
+> Estado: **✅ cobra de punta a punta** (08-set-2026). `ORD-1788900938194`: adelanto de S/6 con
+> Yape One Shot, cruzado a MATCHED por `flow-confirm`, comprobante y guía de Shalom sola. Con esa
+> compra quedaron resueltas las incógnitas del riel —`amount` en soles, el `paymentMethod` del
+> portal sirve, el checkout no enseña el email del pagador— y arreglada la vuelta (§5). Y desde
+> ese mismo día el checkout **salta la página de Flow en el celular** con un deeplink a Yape
+> sacado por scraping, con red (§7). Queda que cada marca pegue **sus** llaves: hoy Mono Shop
+> cobra con las de Kross.
 > Leer junto con `07-CONTRATO-360PAY.md` §9 (la tarifa y el corte de S/90) y
 > `06-360PAY.md` (el otro riel, con el que este comparte casi todo).
 
@@ -360,27 +361,61 @@ La única vía sería que nuestro backend postee a `sendMedio.php`, parsee el HT
 — scrapear su PHP. Se descarta: se rompe cuando Flow cambie una etiqueta, y el síntoma sería
 otra vez un cobro que no sale.
 
-### No se puede saltar la pantalla de Flow
+### La página de Flow se salta por scraping, con red (08-set-2026)
 
-Su API no expone la solicitud de aprobación de Yape: `payment/create` devuelve `url` + `token` y
-ahí se acaba la superficie. `paymentMethod` ya se manda, y lo que ahorra es **el selector de
-medios**, no esta página — el comprador cae directo en la de Yape, que es lo más profundo que
-llega la API. Es el costo del riel, anotado desde §2: *«el recorrido del comprador es más largo
-que el deeplink de 360pay»*.
+La API no lo permite —`payment/create` devuelve `url` + `token` y ahí se acaba la superficie— pero
+las páginas web de Flow sí lo dejan **deducir**: un cliente de Flow lo hace y compartió cómo. En
+móvil, `sendMedio.php` no pide ningún dato —solo el botón— y detrás del botón hay un deeplink
+`https://www.yape.com.pe/app/checkout/oneshotpayment?…&consentId=<uuid>&partnerCode=PEX005` que
+abre la app de Yape directo. `_shared/flow-yape-deeplink.ts` recorre la cadena y lo saca:
 
-Las salidas, si algún día el tap de más pesa:
+```
+GET  pay.php?token=<el nuestro>     → formulario oculto        ┐
+POST sendMedio.php (esos campos)    → formulario oculto        │ User-Agent MÓVIL en las cuatro:
+POST sendYapeOneShot.php (campos)   → href a waitYapeOneShot   │ con uno de PC, sendMedio pide
+GET  waitYapeOneShot.php?token=uuid → `deepLink: 'https://…'`  ┘ el celular y no se llega a Yape
+```
 
-- **360pay** (el otro riel) sí abre la app de Yape con un deeplink: un toque. Cuesta S/3.72
-  planos contra los ~S/0.29 que cuesta Flow en un adelanto de S/6 — que es exactamente por lo que
-  se eligió Flow para los montos bajos.
-- **Yape Pagos Recurrentes** (`167` en el portal, *Cargo automático*, hoy inactivo) es el único
-  producto de Flow que cobra sin página, y se pide por correo a `operaciones@flow.cl`. Pero es
-  cargo recurrente: exige afiliar antes al pagador, así que **el primer cobro pasa por una página
-  igual**. Vale preguntarle a Flow si existe cargo directo de un solo tiro para Yape; hasta que
-  respondan, no hay nada que construir.
+**Lo que cambia para el comprador es más que un tap.** Con el deeplink va de nuestra pantalla a
+la app de Yape, y **nuestra pantalla no se navega a ninguna parte**: se queda en `AWAITING` con
+la caja `FlowYapeBox` y el polling de siempre, exactamente como 360pay. Desaparecen la página
+intermedia, la página de espera que Android congela (§5) y el «Estás realizando un pago a Kross
+Club». En **escritorio no se usa**: ahí el deeplink abre la web de Yape, que no cobra, y sigue la
+página oficial de Flow, que pide el celular y manda la aprobación al teléfono (`esMovil()`).
 
-Lo que sí está en nuestras manos es que el salto no sorprenda: decirle al comprador, antes de
-mandarlo, que va a la página de Flow y que ahí toca **«Solicitar aprobación»**.
+**Por qué no puede romper un cobro**, y son reglas, no intenciones:
+
+- **Va DESPUÉS de emitir y guardar.** `flow-order` crea la orden, escribe la fila y las columnas,
+  y recién entonces intenta el deeplink. La respuesta lleva **siempre** `pay_url` (el oficial) y
+  además `yape_deeplink` cuando salió. Esto solo puede fallar en optimizar, nunca en cobrar.
+- **Nunca lanza, y tiene presupuesto propio:** `PRESUPUESTO_MS` = 8 s para las cuatro llamadas
+  juntas, un solo `AbortSignal`. Son cuatro viajes más en el camino crítico; se cortan antes de
+  que el spinner se note.
+- **El enlace solo vale si es de `yape.com.pe`**, y se filtra dos veces —en el servidor y en
+  `FlowService`—: es una URL sacada de un HTML ajeno que se le entrega al teléfono del comprador.
+- **Un fallo deja fila en Conexiones** (`FLOW · yape.deeplink`, con la página donde se cortó:
+  `sendYapeOneShot.php: sin enlace a waitYapeOneShot`). Es el aviso de que Flow cambió algo, y
+  llega por el panel, no por la caída de conversión. El checkout mientras tanto sigue por la
+  página oficial sin que nadie lo note.
+- **No se guarda.** Flow acuña un `consentId` nuevo en cada recorrido y no se sabe cuánto vive
+  el anterior; al reutilizar una orden pendiente se rehace, que cuesta lo mismo.
+- **El botón es un `<a>` con `yapeHref()`** (`intent://` en Android, sin `target="_blank"`), no
+  un `location.href` automático: Chrome no entrega un intent a la app si sale de un script sin
+  gesto del usuario. Es la misma lección de `Pay360Box`. Y debajo, discreto, el enlace a la
+  página oficial por si la app no se abrió.
+- **`amount` NO se toca.** El snippet compartido mandaba `Math.round(monto)`, que cobraría S/7
+  por un adelanto de S/6.50. `montoParaFlow()` está verificado contra el checkout real.
+
+Lo que se mide: `flow_order_created` lleva `via: 'deeplink' | 'page'`. Cuando la proporción de
+`page` suba sola, Flow cambió la página — y Conexiones dirá dónde.
+
+**Lo que hay que verificar en la primera compra por deeplink:** que el webhook siga llegando. El
+`consentId` es de esa transacción y debería seguir atado a nuestro `commerceOrder`, pero eso se
+comprueba con un pago cruzado a MATCHED, no se supone.
+
+Las alternativas si algún día esto deja de funcionar y Flow no lo repone siguen siendo las de
+siempre: **360pay** (deeplink oficial, S/3.72 planos) o **Yape Pagos Recurrentes** (`167`, cargo
+recurrente: exige afiliar al pagador y el primer cobro pasa por una página igual).
 
 ### El primer intento rebotó: cómo se lee por qué (08-set-2026)
 

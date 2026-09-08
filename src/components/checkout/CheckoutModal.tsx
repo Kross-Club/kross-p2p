@@ -22,6 +22,8 @@ import { fetchPaymentVerification, submitOrder } from '../../lib/checkout/servic
 import { issueCoupon } from '../../lib/checkout/services/Pay360Service'
 import { createFlowOrder, goToFlow } from '../../lib/checkout/services/FlowService'
 import Pay360Box from './payment/Pay360Box'
+import FlowYapeBox from './payment/FlowYapeBox'
+import { esMovil } from '../../lib/checkout/yape-link'
 import { saveLastOrder } from '../../lib/checkout/persistence'
 import { orderRegistered, payPhaseReducer } from '../../lib/checkout/pay-phase'
 import type { SubmitContext } from '../../lib/checkout/services/OrderService'
@@ -200,7 +202,19 @@ export default function CheckoutModal({
           phaseDispatch({ type: 'PAID' })
           return
         }
-        trackEvent({ name: 'flow_order_created', orderId: state.orderId })
+        // Con el deeplink y en un celular, el comprador va de ESTA pantalla a
+        // la app de Yape y esta pantalla se queda esperando: el recorrido de
+        // 360pay, con la vuelta que ya funciona. En escritorio el deeplink no
+        // cobra (abre la web de Yape), así que ahí sigue la página oficial de
+        // Flow, que pide el celular y manda la aprobación al teléfono.
+        if (res.yapeDeeplink && esMovil(navigator.userAgent)) {
+          trackEvent({ name: 'flow_order_created', orderId: state.orderId, via: 'deeplink' })
+          phaseDispatch({ type: 'COUPON_ISSUED', coupon: {
+            deeplink: res.yapeDeeplink, consumerCode: null, amountPen: res.amountPen, payUrl: res.payUrl,
+          } })
+          return
+        }
+        trackEvent({ name: 'flow_order_created', orderId: state.orderId, via: 'page' })
         goToFlow(res.payUrl)
         return
       }
@@ -477,7 +491,9 @@ export default function CheckoutModal({
               funcione. */}
           {phase.k === 'AWAITING' && (
             <div className="py-2">
-              <Pay360Box coupon={phase.coupon} />
+              {phase.rail === 'FLOW'
+                ? <FlowYapeBox coupon={phase.coupon} />
+                : <Pay360Box coupon={phase.coupon} />}
               <div className="mt-4 flex items-center justify-center gap-2 text-center">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#742284]" />
                 <p className="text-lg font-black text-gray-900">{COPY.pay360Waiting}</p>

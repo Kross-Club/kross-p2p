@@ -59,7 +59,10 @@ export type CheckoutEvent =
   // puede no volver nunca a esta pantalla.
   | { name: 'pay360_coupon_issued'; orderId: string }
   | { name: 'pay360_issue_failed'; orderId: string; stage: string; code?: string }
-  | { name: 'flow_order_created'; orderId: string }
+  // `via` dice por dónde se fue a pagar: `deeplink` = de esta pantalla a la
+  // app de Yape (el servidor sacó el enlace directo); `page` = a la página de
+  // Flow. Es la cifra que dice cuánto vale el scraping, y cuándo se rompió.
+  | { name: 'flow_order_created'; orderId: string; via?: 'deeplink' | 'page' }
   | { name: 'flow_issue_failed'; orderId: string; stage: string; code?: string }
   | { name: 'checkout_abandoned'; lastStep: CheckoutStepId }
 

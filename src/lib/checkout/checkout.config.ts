@@ -348,6 +348,15 @@ export const COPY = {
   // comprador a buscar en Yape algo que no existe. Y termina pidiéndole que
   // vuelva, porque volver es lo que dispara la confirmación en esta pantalla.
   flowRedirectingHint: 'Se abre la página de pago: ingresas tu celular, tocas “Solicitar aprobación” y apruebas la compra en tu app de Yape. Después vuelve acá — esta pantalla se actualiza sola.',
+  // Flow con el deeplink: el comprador va de ESTA pantalla a la app de Yape, y
+  // esta pantalla se queda esperando — el mismo recorrido que 360pay. La única
+  // diferencia que se le cuenta es que en Yape lo que hace es APROBAR una
+  // compra que ya está armada, no pagar un servicio con un código.
+  flowYapeTitle: 'Paga tu adelanto con Yape',
+  flowYapeIntro: 'Toca el botón y se abre tu Yape con la compra lista para aprobar. No tienes que escribir el monto ni ningún número.',
+  flowYapeCta: 'Pagar con Yape',
+  flowYapeFallback: '¿No se abrió Yape? Paga desde la página de pago',
+  flowYapeAfterHint: 'Aprueba la compra en Yape y regresa a esta ventana: tu pago se valida solo y aquí verás el detalle de tu pedido.',
 
   submit: 'Terminar mi pedido',
   submitting: 'Registrando tu pedido…',
