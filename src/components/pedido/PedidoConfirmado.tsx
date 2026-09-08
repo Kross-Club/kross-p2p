@@ -229,13 +229,18 @@ function Recorrido({ pasos }: { pasos: TicketStep[] }) {
   )
 }
 
-/** Que ya la instaló, recordado entre visitas. `isInstalled()` solo sabe si la
- *  página se está viendo DENTRO de la app; en la pestaña del navegador —que es
- *  donde está el comprador cuando la instala— vuelve `false` para siempre, y
- *  sin esto el botón le seguiría ofreciendo instalar lo que ya tiene. */
-const YA_INSTALADA = 'kross-app-instalada'
-const recordarInstalada = () => { try { localStorage.setItem(YA_INSTALADA, '1') } catch { /* modo privado */ } }
-const seInstalo = () => { try { return localStorage.getItem(YA_INSTALADA) === '1' } catch { return false } }
+// El «¡Listo! Ya tienes la app» es el ACUSE del toque que acaba de dar, no un
+// estado guardado (08-set-2026). Se recordaba en `localStorage` y sobrevivía a
+// todo, así que quien recargaba la página —o volvía días después a mirar su
+// envío— se encontraba con una tarjeta que solo dice «búscala en tu celular» y
+// ningún botón. Eso es un callejón sin salida, y por partida doble: nada
+// avisa cuando el comprador DESINSTALA la app, así que el recuerdo podía ser
+// falso y no había forma de volver a ofrecérsela nunca más.
+//
+// Ahora vive en el estado del componente y se va con la recarga: mientras la
+// página siga abierta se ve la confirmación, y la siguiente carga vuelve a
+// ofrecer el botón. Ofrecer de más no cuesta nada —quien ya la tiene lo sabe y
+// lo ignora—; ofrecer de menos cuesta un comprador que se queda sin avisos.
 
 /**
  * "¿Te avisamos cuando llegue?" y el botón de la app. Reusa el aviso de
@@ -260,7 +265,8 @@ function InstalarApp({ sessionId, nombre, logo }: {
   // Dentro de la app no hay nada que ofrecer; en el navegador, lo que se
   // recordó de una instalación anterior.
   const dentroDeLaApp = typeof window !== 'undefined' && isInstalled()
-  const [instalada, setInstalada] = useState(() => typeof window !== 'undefined' && seInstalo())
+  // Arranca en falso SIEMPRE: es el acuse de esta visita, no un estado guardado.
+  const [instalada, setInstalada] = useState(false)
   const [ayuda, setAyuda] = useState(false)
   const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
 
@@ -268,7 +274,7 @@ function InstalarApp({ sessionId, nombre, logo }: {
     const ready = () => setPrompt((window as { __deferredInstallPrompt?: never }).__deferredInstallPrompt ?? null)
     // Android confirma la instalación por su cuenta, la haya pedido este botón
     // o el menú del navegador.
-    const installed = () => { recordarInstalada(); setInstalada(true) }
+    const installed = () => setInstalada(true)
     window.addEventListener('install-prompt-ready', ready)
     window.addEventListener('appinstalled', installed)
     return () => {
@@ -286,7 +292,6 @@ function InstalarApp({ sessionId, nombre, logo }: {
     if (outcome !== 'accepted') return
     // Los avisos son la razón por la que instaló: se piden en el mismo gesto.
     if (sessionId) await subscribePush({ sessionId, role: 'buyer' }).catch(() => {})
-    recordarInstalada()
     setInstalada(true)
   }
 
