@@ -16,6 +16,9 @@ import { idsDeGuia, mensajeDeClave, mensajeDeGuia, mensajeDeOrigen } from '../..
 // El fuente del panel como texto (vite `?raw`): la última prueba compara las
 // dos listas de tamaños, no el render.
 import panelSource from '../../pages/vendedor/ProductosPage.tsx?raw'
+// Y el del generador: las invariantes de "no perder una guía cobrada" viven en
+// esa función de Deno y en ningún módulo puro (última sección).
+import generadorSource from '../../../supabase/functions/shalom-order/index.ts?raw'
 import { mensajePanel } from '../panel-errors'
 import { pickupBranchIdOf } from '../session'
 
@@ -407,5 +410,43 @@ describe('el voucher se reconoce como PDF', () => {
 
   it('un cuerpo vacío nunca es un PDF, diga lo que diga la cabecera', () => {
     expect(esPdf('application/pdf', new Uint8Array(0))).toBe(false)
+  })
+})
+
+// ─── Lo que pasa DESPUÉS de que la guía ya se pagó ───────────────────────────
+// Estas cuatro son invariantes del generador, no del payload, y las cuatro se
+// rompen sin que nadie lo note: el pedido simplemente se queda sin guía y el
+// expediente dice "error inesperado". Se leen del fuente porque el fuente es el
+// único sitio donde viven — `shalom-order` es una función de Deno, no un módulo
+// puro. Nacieron de dos pedidos reales de Mono Shop (07-set-2026) que Shalom
+// creó y cobró (95027848 / KPK3 y 95026737 / NTTM) y que Kross nunca registró.
+describe('la emisión no puede perder una guía ya cobrada', () => {
+  it('parsea el cuerpo ENTERO y recorta solo la copia que anota', () => {
+    // Recortar antes de parsear rompería toda respuesta larga: el JSON queda a
+    // medias, no parsea, y una emisión perfecta se lee como fallida.
+    expect(generadorSource).toContain("const crudo = await res.text().catch(() => '')")
+    expect(generadorSource).toMatch(/parseOrderResponse\(safeJson\(crudo\)\)/)
+    expect(generadorSource).toMatch(/crudo: crudo\.slice\(0, \d+\)/)
+  })
+
+  it('el error inesperado dice cuál fue, en la fila y en Conexiones', () => {
+    // "error inesperado al generar la guía" a secas no permite diagnosticar
+    // nada: había que entrar a pro.shalom.pe a comparar a mano.
+    expect(generadorSource).toMatch(/error inesperado al generar la guía: \$\{detalle\}/)
+    expect(generadorSource).toContain('error de Kross: ${detalle}')
+  })
+
+  it('ese cierre NUNCA degrada un CREATED a FAILED', () => {
+    // FAILED es el único estado que el reintento a mano vuelve a tomar, así que
+    // degradar una guía ya registrada manda a emitir —y pagar— una segunda.
+    expect(generadorSource).toMatch(/cerrar\(sessionId, 'FAILED', `error inesperado[^`]*`, \{\}, 'PENDING'\)/)
+  })
+
+  it('pregunta por los envíos de la cuenta en un solo sitio', () => {
+    // Tres copias del mismo GET se desincronizan: una aprende a rescatar y las
+    // otras no. `ordenYaCreada` solo consulta — nunca emite ni cae a LAT.
+    const gets = generadorSource.match(/\/v1\/orders\?page=1/g) ?? []
+    expect(gets).toHaveLength(1)
+    expect(generadorSource).toContain('async function ordenYaCreada()')
   })
 })

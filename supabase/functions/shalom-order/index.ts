@@ -66,14 +66,27 @@ const SESSION_COLUMNS =
   'agency_branch_id, delivery_reference, tracking_numero, tracking_ose_id, shalom_order_status'
 
 /** Cierra el expediente del pedido. `status` es también el candado: una vez
- *  escrito, ninguna corrida futura vuelve a tomar este pedido sola. */
-async function cerrar(sessionId: string, status: string, reason: string | null, extra: Record<string, unknown> = {}) {
-  await supabase.from('order_sessions').update({
+ *  escrito, ninguna corrida futura vuelve a tomar este pedido sola.
+ *
+ *  `soloDesde` limita el cierre a un estado de partida. Lo usa el `catch` de
+ *  arriba: un error DESPUÉS de que la guía quedó registrada (`CREATED`) no
+ *  puede reescribir la fila a `FAILED` — `FAILED` es justo el único estado que
+ *  el reintento a mano vuelve a tomar, así que degradarlo mandaría a emitir una
+ *  SEGUNDA guía de un envío que ya existe y ya se pagó. */
+async function cerrar(
+  sessionId: string,
+  status: string,
+  reason: string | null,
+  extra: Record<string, unknown> = {},
+  soloDesde?: string,
+) {
+  const q = supabase.from('order_sessions').update({
     shalom_order_status: status,
     shalom_order_reason: reason,
     shalom_order_at: new Date().toISOString(),
     ...extra,
   }).eq('id', sessionId)
+  await (soloDesde ? q.eq('shalom_order_status', soloDesde) : q)
 }
 
 /** Aviso a Logística. Nunca al comprador: para él la guía aparece igual que
@@ -113,10 +126,12 @@ async function llamar(op: string, sessionId: string, url: string, init: RequestI
   }
 }
 
-const leerJson = async (r: Response): Promise<unknown> => {
-  const raw = await r.text().catch(() => '')
+const safeJson = (raw: string): unknown => {
   try { return JSON.parse(raw || 'null') } catch { return null }
 }
+
+const leerJson = async (r: Response): Promise<unknown> =>
+  safeJson(await r.text().catch(() => ''))
 
 /**
  * Nombres y apellidos de RENIEC. Solo hacen falta cuando el destinatario aún NO
@@ -202,6 +217,11 @@ Deno.serve(async (req: Request) => {
     .select('id')
   if (!claimed?.length) return json({ skipped: 'otra corrida ya lo tomó' })
 
+  // La marca dueña del pedido. Vive acá arriba —y no dentro de `generar`—
+  // porque el `catch` también anota, y una anotación sin tienda no aparece en
+  // Panel → Conexiones, que es donde se va a mirar.
+  const storeId = String(session.origin_store_id ?? session.store_id ?? '')
+
   // A partir de acá el pedido YA está reclamado: pase lo que pase, tiene que
   // quedar cerrado. Un throw suelto lo dejaría en PENDING para siempre —sin
   // guía, sin aviso y sin que nadie lo vuelva a mirar—, que es peor que
@@ -209,17 +229,29 @@ Deno.serve(async (req: Request) => {
   try {
     return await generar()
   } catch (e) {
+    // El MOTIVO viaja a la fila y a `api_events`, no solo a los logs. Decir
+    // "error inesperado" y nada más dejaba el peor de los casos —una guía que
+    // Shalom cobró y el pedido no registró— sin una sola pista consultable:
+    // había que entrar a pro.shalom.pe a comparar a mano para saber siquiera si
+    // el envío existía (07-set-2026, dos pedidos reales de Mono Shop).
+    const detalle = String(e instanceof Error ? e.message : e).slice(0, 300)
     console.error('[shalom-order] error inesperado', sessionId, e)
-    await cerrar(sessionId, 'FAILED', 'error inesperado al generar la guía')
+    await anotar({
+      proveedor: 'SHALOM_PE', op: 'guia.emitir', outcome: 'RECHAZO',
+      sessionId, storeId, detail: `error de Kross: ${detalle}`,
+    })
+    // `soloDesde: 'PENDING'`: si la guía ya había quedado en CREATED, este
+    // cierre NO la pisa. Ver `cerrar`.
+    await cerrar(sessionId, 'FAILED', `error inesperado al generar la guía: ${detalle}`, {}, 'PENDING')
     await aLogistica(sessionId,
       '⚠️ La guía automática falló por un error de Kross. Revisa en pro.shalom.pe si el envío '
-      + 'llegó a crearse ANTES de emitir otro; si no está, regístrala a mano al despachar.')
+      + 'llegó a crearse ANTES de emitir otro; si no está, regístrala a mano al despachar. '
+      + 'El motivo quedó en Panel → Conexiones → Shalom PE.')
     return json({ error: 'inesperado' }, 500)
   }
 
   async function generar(): Promise<Response> {
     // ─── La config: marca, producto, comprador ───────────────────────────────
-    const storeId = String(session.origin_store_id ?? session.store_id ?? '')
     const [{ data: store }, { data: secrets }, { data: product }, { data: buyer }] = await Promise.all([
       supabase.from('stores').select('nombre, shalom_auto_guide_enabled').eq('id', storeId).maybeSingle(),
       supabase.from('store_secrets')
@@ -352,7 +384,7 @@ Deno.serve(async (req: Request) => {
             + 'Verifica en pro.shalom.pe que la guía corresponda a este pedido.'
           : '📦 Guía generada por la vía de contingencia (el proveedor de siempre no respondió). '
             + 'El comprador ya la tiene en su chat.'
-        return await guardar(r.guia, pickupCode, null, 'LAT', aviso)
+        return await guardar(r.guia, pickupCode, { proveedor: 'LAT', aviso })
       }
 
       if (r.clase === 'config' && r.motivo.includes('credenciales')) {
@@ -529,11 +561,10 @@ Deno.serve(async (req: Request) => {
     let intentos = 1
     while (!res.ok && res.status >= 500 && intentos < 3) {
       console.warn('[shalom-order] error del proveedor', sessionId, res.status, `intento ${intentos}`)
-      const r = await llamar('guia.reconciliar', sessionId, `${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
-      const encontrada = r?.ok ? buscarOrdenPorDni(await leerJson(r), dni) : null
+      const encontrada = await ordenYaCreada()
       if (encontrada) {
         console.log('[shalom-order] la orden sí existía pese al error', sessionId, encontrada.numero)
-        return await guardar(encontrada, pickupCode, encontrada.orderId)
+        return await guardar(encontrada, pickupCode, { orderId: encontrada.orderId, yaReconciliado: true })
       }
       await new Promise(listo => setTimeout(listo, 2000 * intentos))
       const otra = await post()
@@ -570,16 +601,30 @@ Deno.serve(async (req: Request) => {
     }
 
     // De acá para abajo, LA GUÍA EXISTE. Cualquier problema es de lectura o de
-    // escritura nuestra, nunca motivo para volver a emitir.
-    return await guardar(parseOrderResponse(await leerJson(res)), pickupCode)
+    // escritura nuestra, nunca motivo para volver a emitir. El cuerpo se guarda
+    // CRUDO y se parsea aparte: si el parseo no encuentra la guía, ese texto es
+    // la única prueba de lo que Shalom devolvió por un envío ya cobrado.
+    // Se parsea el cuerpo ENTERO y se recorta solo la copia que se anota: leer
+    // una respuesta truncada es inventarse un fallo que no existe.
+    const crudo = await res.text().catch(() => '')
+    return await guardar(parseOrderResponse(safeJson(crudo)), pickupCode, { crudo: crudo.slice(0, 4000) })
+
+    /** Le pregunta a Shalom si la orden de este DNI ya existe. SOLO consulta:
+     *  nunca emite, nunca cae a la contingencia. Es la respuesta a la
+     *  advertencia más seria de la doc (no hay clave de idempotencia), y la
+     *  comparten los tres que la necesitan: el timeout, el reintento por 5xx y
+     *  la respuesta que no se deja leer. */
+    async function ordenYaCreada() {
+      const r = await llamar('guia.reconciliar', sessionId, `${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
+      return r?.ok ? buscarOrdenPorDni(await leerJson(r), dni) : null
+    }
 
     /** Sin respuesta del proveedor: preguntar si la guía ya se creó. */
     async function reconciliar(): Promise<Response> {
-      const r = await llamar('guia.reconciliar', sessionId, `${SHALOM_API_BASE}/v1/orders?page=1&per_page=20`, { headers: auth })
-      const encontrada = r?.ok ? buscarOrdenPorDni(await leerJson(r), dni) : null
+      const encontrada = await ordenYaCreada()
       if (encontrada) {
         console.log('[shalom-order] reconciliada tras timeout', sessionId, encontrada.numero)
-        return await guardar(encontrada, pickupCode, encontrada.orderId)
+        return await guardar(encontrada, pickupCode, { orderId: encontrada.orderId, yaReconciliado: true })
       }
       // El titular no contestó y su propia reconciliación tampoco: la
       // contingencia vuelve a preguntar por la MISMA cuenta (sus pendientes ven
@@ -617,23 +662,58 @@ Deno.serve(async (req: Request) => {
     async function guardar(
       guia: ReturnType<typeof parseOrderResponse>,
       code: string,
-      orderId: string | null = null,
-      /** Quién la emitió: el titular (Shalom PE) o la contingencia (Shalom LAT).
-       *  Queda en el expediente porque es lo primero que se pregunta cuando una
-       *  guía sale distinta a las demás. */
-      proveedor: 'PE' | 'LAT' = 'PE',
-      /** El aviso a Logística, si esta vía tiene el suyo. */
-      aviso: string | null = null,
+      opts: {
+        orderId?: string | null
+        /** Quién la emitió: el titular (Shalom PE) o la contingencia (Shalom
+         *  LAT). Queda en el expediente porque es lo primero que se pregunta
+         *  cuando una guía sale distinta a las demás. */
+        proveedor?: 'PE' | 'LAT'
+        /** El aviso a Logística, si esta vía tiene el suyo. */
+        aviso?: string | null
+        /** El cuerpo CRUDO de la respuesta que emitió, para dejarlo anotado si
+         *  no se deja leer. Solo lo trae la emisión del titular. */
+        crudo?: string
+        /** Esta guía YA vino de preguntar por los envíos de la cuenta: no tiene
+         *  sentido volver a preguntar lo mismo si tampoco se deja leer. */
+        yaReconciliado?: boolean
+      } = {},
     ): Promise<Response> {
+      const { orderId = null, proveedor = 'PE', aviso = null, crudo, yaReconciliado = false } = opts
       const extra = { shalom_pickup_code: code, shalom_order_id: orderId, shalom_order_provider: proveedor }
       const emisor = proveedor === 'PE' ? 'Shalom' : 'Shalom (vía de contingencia)'
 
+      /**
+       * La respuesta no se dejó leer, pero el envío está creado y COBRADO.
+       * Antes de rendirse se pregunta por los envíos de la cuenta —la misma
+       * consulta del timeout, que no emite ni cuesta una guía—: casi siempre la
+       * orden está ahí, con sus campos completos, y el pedido se salva solo.
+       * Y pase lo que pase queda anotado el cuerpo crudo: sin él, "Shalom cobró
+       * y Kross no registró" no tiene ninguna prueba consultable y el
+       * diagnóstico depende de entrar a pro.shalom.pe a comparar a mano.
+       */
+      async function rescatar(motivo: string, visto: string): Promise<Response | null> {
+        await anotar({
+          proveedor: proveedor === 'PE' ? 'SHALOM_PE' : 'SHALOM_LAT',
+          op: 'guia.emitir', outcome: 'FALLO', sessionId, storeId,
+          detail: `${motivo} · leído: ${visto}${crudo ? ` · respuesta: ${crudo}` : ''}`,
+          detailMax: 3000,
+        })
+        if (yaReconciliado) return null
+        const encontrada = await ordenYaCreada()
+        if (!encontrada) return null
+        console.log('[shalom-order] rescatada de los envíos de la cuenta', sessionId, encontrada.numero)
+        return await guardar(encontrada, code, { orderId: encontrada.orderId, proveedor, aviso, yaReconciliado: true })
+      }
+
       if (!esRastreable(guia)) {
-        console.error('[shalom-order] respuesta sin guía rastreable', sessionId)
+        console.error('[shalom-order] respuesta sin guía rastreable', sessionId, crudo ?? '')
+        const rescate = await rescatar('la respuesta no trajo guía rastreable', JSON.stringify(guia))
+        if (rescate) return rescate
         await cerrar(sessionId, 'CREATED', 'guía emitida, sin datos rastreables en la respuesta', extra)
         await aLogistica(sessionId,
           `⚠️ El envío se creó en ${emisor} pero la respuesta no trajo la guía. `
-          + 'Búscala en pro.shalom.pe y regístrala acá con el botón de siempre — NO generes otra.')
+          + 'Búscala en pro.shalom.pe y regístrala acá con el botón de siempre — NO generes otra. '
+          + 'Lo que devolvió el proveedor quedó en Panel → Conexiones.')
         return json({ created: true, sinGuia: true })
       }
 
@@ -643,10 +723,13 @@ Deno.serve(async (req: Request) => {
       )
       if (!g.ok) {
         console.error('[shalom-order] guía con formato inesperado', sessionId, JSON.stringify(guia))
+        const rescate = await rescatar('la guía no tiene el formato esperado', JSON.stringify(guia))
+        if (rescate) return rescate
         await cerrar(sessionId, 'CREATED', 'guía emitida con formato inesperado', extra)
         await aLogistica(sessionId,
           `⚠️ El envío se creó en ${emisor} pero su guía no tiene el formato esperado. `
-          + 'Regístrala a mano desde el comprobante — NO generes otra.')
+          + 'Regístrala a mano desde el comprobante — NO generes otra. '
+          + 'Lo que devolvió el proveedor quedó en Panel → Conexiones.')
         return json({ created: true, formatoRaro: true })
       }
 

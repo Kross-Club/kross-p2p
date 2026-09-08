@@ -114,6 +114,15 @@ describe('sanear lo que se guarda', () => {
     expect(sanear(null)).toBe('')
     expect(sanear(undefined)).toBe('')
   })
+
+  // El corte a medida existe por UN caso: el cuerpo con el que se reconstruye
+  // qué devolvió Shalom por una guía que ya cobró. 600 alcanza para un mensaje
+  // de error y no para eso; el saneado de secretos es el mismo en los dos.
+  it('acepta un corte más largo sin dejar de tapar secretos', () => {
+    expect(sanear('x'.repeat(4000), 3000).length).toBeLessThanOrEqual(3001)
+    const largo = `${'x'.repeat(1200)} {"password":"laClaveDelCliente"}`
+    expect(sanear(largo, 3000)).not.toContain('laClaveDelCliente')
+  })
 })
 
 describe('el id de request del proveedor', () => {
