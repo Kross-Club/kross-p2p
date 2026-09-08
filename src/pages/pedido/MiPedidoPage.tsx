@@ -26,7 +26,6 @@ import { AgencyService } from '../../lib/checkout/services/AgencyService'
 import { pickupBranchIdOf } from '../../lib/session'
 import { isPickupDispatch } from '../../../supabase/functions/_shared/despacho.ts'
 import { enlaceDeGuia } from '../../lib/hoja-de-guia'
-import { useStore } from '../../lib/store-context'
 import type { AgencyBranch } from '../../lib/checkout/types'
 import PedidoConfirmado from '../../components/pedido/PedidoConfirmado'
 
@@ -39,7 +38,6 @@ const SONDEO_MAX = 30
 
 export default function MiPedidoPage() {
   const { token = '' } = useParams()
-  const { store } = useStore()
   const [pedido, setPedido] = useState<OrderSession | null>(null)
   const [mensajes, setMensajes] = useState<OrderMessage[]>([])
   const [estado, setEstado] = useState<'cargando' | 'listo' | 'no-existe' | 'error'>('cargando')
@@ -150,13 +148,11 @@ export default function MiPedidoPage() {
           orderCode={pedido.order_id}
           sessionId={pedido.id}
         />
-        {/* La marca cierra la página. SIN logo (08-set-2026): el bloque de
-            instalar ya enseña el ícono —grande, en la pantalla del celular
-            dibujado— y repetirlo cuatro renglones abajo, en miniatura y pegado
-            al nombre, lo ensuciaba. Acá basta con firmar de quién es. */}
-        <div className="flex items-center justify-center pb-8">
-          <span className="text-[11px] text-gray-400">{store.nombre}</span>
-        </div>
+        {/* Sin pie de página (08-set-2026). Llevaba el logo y el nombre de la
+            marca, y los dos sobran: el bloque de instalar que tiene justo
+            encima ya enseña el ícono grande y dice el nombre dos veces. Una
+            firma repetida no firma nada — solo aprieta el final de la página. */}
+        <div className="pb-8" />
       </div>
     </div>
   )
