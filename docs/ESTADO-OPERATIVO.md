@@ -34,6 +34,83 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Flow nunca emitió una orden: el `upsert` de `cobros` no podía funcionar · 1 función (08-set-2026)
+
+**Qué pasó.** Los tres intentos de Mono Shop dejaron la misma huella: `advance_charge_attempts`
+subió y `payment_reason` quedó `null`. `flow-order` corrió y pasó el gate de config —riel
+encendido, llaves cargadas, `flow_env = 'live'`, medio `170`— y murió **antes de llamar a Flow**.
+Por eso tampoco había nada en *Panel → Conexiones*.
+
+**La causa.** `flow-order` creaba la fila del cobro con
+`upsert(..., { onConflict: 'session_id,tipo' })`, pero el único índice único de esas dos columnas
+es **parcial** (`WHERE tipo IN ('adelanto','saldo')`, porque los `extra` pueden ser varios), y
+Postgres solo infiere un índice parcial si el `ON CONFLICT` repite su predicado. PostgREST manda
+nada más las columnas → `42P10` → la fila no se crea → `no_cobro_row` → 500.
+
+En 360pay eso no dolía: el error se descartaba y las columnas espejo de `order_sessions` tapaban
+el hueco. **Flow no tiene espejo** —`flow_token` y `flow_pay_url` viven solo en la fila (§39.b)—,
+así que es el primer riel donde esa fila es obligatoria.
+
+**El arreglo.** Insertar y, si choca, releer la fila que ganó la carrera. Y las dos salidas que
+gastaban un intento sin escribir nada —`no_cobro_row` y `network_after`— ahora dejan motivo.
+
+```
+supabase functions deploy flow-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**⚠️ Comprobar si 360pay tiene el mismo hueco** (no se tocó: es el riel que cobra plata real y la
+hipótesis se verifica antes de moverlo). Lo que se rompería ahí es el comprobante y el desglose de
+comisión, no el cobro:
+
+```sql
+select o.payment_provider, count(*) as pedidos, count(c.id) as con_fila_de_cobro
+from order_sessions o
+left join cobros c on c.session_id = o.id and c.tipo = 'adelanto'
+where o.advance_amount > 0 and o.created_at > now() - interval '30 days'
+group by 1;
+```
+
+### Flow: el ambiente no se guardaba con las llaves · 1 función + frontend (08-set-2026)
+
+**Qué pasó.** Mono Shop quedó configurada para cobrar por Flow —llaves de producción cargadas,
+riel encendido, y el ID del medio **`170`**, que es el Yape one-shot que Flow acaba de aprobar
+(Billetera, 5.50% + 0.00)— y el primer checkout devolvió **«No pudimos generar tu pago»**.
+
+**El defecto que salió de mirarlo.** El selector de *Ambiente* de *Marca → Cobros* está justo
+encima de los dos inputs de llaves, pero el botón **«Guardar llaves» no lo mandaba**: elegir
+«Producción» y pegar las llaves reales dejaba `stores.flow_env` en su default (`sandbox`), y
+`flow-order` mandaba esas llaves a `sandbox.flow.cl`, donde la cuenta no existe. Flow rechaza la
+orden con un mensaje que se parece al de una firma mal armada.
+
+Y lo tapaba el rótulo de al lado: **«Ambiente: producción» se pintaba desde el estado del
+selector, no desde lo guardado.** Decía producción con `sandbox` en la base.
+
+**El arreglo.** El botón manda `flow_env` con las llaves; el rótulo lee `store.flow_env`; con
+`sandbox` guardado sale un aviso en amarillo con el host contra el que se cobra. Y `flow-order`
+deja `payment_reason` también en `not_flow_order` y `no_cobro_row`, que eran las dos únicas
+salidas que no dejaban rastro en la pantalla del vendedor.
+
+**Cómo comprobar el ambiente sin adivinar** (SQL Editor de `ofdjghntvmrdfjhazfvz`):
+
+```sql
+select s.slug, s.flow_enabled, s.flow_env, s.flow_payment_method,
+       (sec.flow_api_key is not null and sec.flow_secret_key is not null) as llaves
+from stores s left join store_secrets sec on sec.store_id = s.id
+where s.flow_enabled;
+```
+
+Si sale `sandbox` con llaves de producción, es esto. Se corrige desde el panel («Cambiar llaves»
+→ Producción → volver a pegarlas) o con `update stores set flow_env = 'live' where slug = '…';`.
+
+**Y el que falta desplegar desde el 03-set:** `flow-order` sigue en la versión del 02-set, o sea
+**sin la instrumentación de Conexiones** (`487a9cd`). Por eso un rechazo de Flow no deja fila en
+*Panel → Conexiones* y hay que ir a leer el `payment_reason` del pedido. Mientras no se despliegue,
+el mensaje literal de Flow solo se ve ahí.
+
+```
+supabase functions deploy flow-order --project-ref ofdjghntvmrdfjhazfvz
+```
+
 ### La guía automática ya emite de verdad · 1 función + frontend (08-set-2026)
 
 **Estrenada.** Un pedido de prueba de Mono Shop salió completo: guía emitida sola en Shalom,

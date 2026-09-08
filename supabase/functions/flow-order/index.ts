@@ -127,6 +127,11 @@ Deno.serve(async (req) => {
     return json({ ok: false, stage: 'validation', code: 'cancelled', user_message: 'Este pedido ya no está activo.' }, 409)
   }
   if (session.payment_provider !== 'FLOW') {
+    // Deja rastro: sin él, un pedido ruteado a 360pay que igual llamó acá se
+    // queda SIN motivo en la pantalla del vendedor —el único sitio donde se
+    // mira por qué un cobro no salió— y el fallo se ve idéntico a un rechazo
+    // de Flow, que es el diagnóstico contrario.
+    await notePaymentFailure(session, `El pedido cobra por ${session.payment_provider ?? 'ningún riel en línea'}, no por Flow — revisar qué rieles tiene encendidos la marca`)
     return json({ ok: false, stage: 'config', code: 'not_flow_order' }, 409)
   }
   if ((session.advance_charge_attempts ?? 0) >= MAX_ISSUES) {
@@ -210,17 +215,50 @@ Deno.serve(async (req) => {
   // Un pedido tiene N cobros y cada uno es su propia orden en Flow, así que la
   // llave de la orden es la fila, no la sesión. Y existir antes de emitir es lo
   // que garantiza que una orden emitida nunca quede sin fila que la conozca.
+  //
+  // ⚠️ NO se usa `upsert(..., { onConflict: 'session_id,tipo' })`, y esa era la
+  // razón por la que este riel NUNCA llegó a emitir una orden. El único índice
+  // único de `(session_id, tipo)` es PARCIAL —`WHERE tipo IN ('adelanto',
+  // 'saldo')`, porque los `extra` sí pueden ser varios— y Postgres solo INFIERE
+  // un índice parcial si el `ON CONFLICT` repite su predicado. PostgREST manda
+  // nada más la lista de columnas, así que el servidor contesta 42P10 («there
+  // is no unique or exclusion constraint matching the ON CONFLICT
+  // specification») y la fila no se crea.
+  //
+  // En 360pay eso llevaba años sin doler: el error se descartaba sin mirarlo y
+  // las columnas espejo de `order_sessions` (`columnasDe`) tapaban el hueco.
+  // Flow no tiene espejo —el token y el enlace viven SOLO en la fila (§39.b)—,
+  // así que acá el cobro moría en `no_cobro_row` **sin haber llamado a Flow**:
+  // por eso ningún intento dejó rastro en Conexiones y el `payment_reason`
+  // salía vacío.
+  //
+  // Insertar, y si choca con el índice volver a leer: no hay nada que inferir.
   let filaId: string | null = fila?.id ?? null
+  let motivoFila: string | null = null
   if (!esExtra) {
-    const { data: creada } = await supabase.from('cobros')
-      .upsert(
-        { session_id: session.id, store_id: session.store_id ?? null, tipo, monto: rowAmount, estado: 'PENDING' },
-        { onConflict: 'session_id,tipo' },
-      )
-      .select('id').maybeSingle()
-    filaId = creada?.id ?? filaId
+    if (fila?.id) {
+      await supabase.from('cobros')
+        .update({ monto: rowAmount, estado: 'PENDING' }).eq('id', fila.id)
+    } else {
+      const { data: creada, error: errFila } = await supabase.from('cobros')
+        .insert({ session_id: session.id, store_id: session.store_id ?? null, tipo, monto: rowAmount, estado: 'PENDING' })
+        .select('id').maybeSingle()
+      if (creada?.id) {
+        filaId = creada.id
+      } else {
+        // Doble tap del mismo comprador: el índice hizo su trabajo y la fila
+        // que ganó la carrera es la buena. Se relee en vez de darlo por fallo.
+        const { data: ya } = await supabase.from('cobros')
+          .select('id').eq('session_id', session.id).eq('tipo', tipo).maybeSingle()
+        filaId = ya?.id ?? null
+        motivoFila = errFila?.message ?? null
+      }
+    }
   }
-  if (!filaId) return json({ ok: false, stage: 'config', code: 'no_cobro_row', user_message: NO_PUDIMOS }, 500)
+  if (!filaId) {
+    await notePaymentFailure(session, `No se pudo crear la fila del cobro${motivoFila ? ` (${motivoFila})` : ''} — la orden no se emitió`)
+    return json({ ok: false, stage: 'config', code: 'no_cobro_row', user_message: NO_PUDIMOS }, 500)
+  }
 
   // ─── Emitir ────────────────────────────────────────────────────────────────
   const venceEl = orderExpiryFrom(Date.now())
@@ -252,6 +290,11 @@ Deno.serve(async (req) => {
       // token que no conocemos. No se reintenta a ciegas: el siguiente intento
       // vuelve a pasar por acá y, sin token guardado, emite otra — la vieja no
       // tiene fila y nadie puede pagarla porque nadie tiene su enlace.
+      //
+      // Deja motivo igual que el rechazo: era la única salida que gastaba un
+      // intento sin escribir nada, y desde la pantalla del vendedor se veía
+      // idéntica a que no hubiera pasado nada.
+      await notePaymentFailure(session, 'Flow no respondió al crear la orden — reintentar en un momento')
       return json({ ok: false, stage: 'network_after' }, 502)
     }
     await notePaymentFailure(session, `No se pudo generar la orden de pago${orden.error ? ` (${orden.error})` : ''}`)
