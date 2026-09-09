@@ -9,6 +9,7 @@ import { vistaDeTiendas, estorboParaBorrar } from '../../lib/vista-de-tiendas'
 import { useDemo, setDemo } from '../../lib/demo/modo-demo'
 import { PEDIDOS_POR_DIA } from '../../lib/demo/tienda-demo'
 import { ESTILOS_DE_DEGRADADO, estiloValido, fondoDeMarca, imagenesDeAcceso } from '../../lib/degradado'
+import { normalizarDominio } from '../../lib/dominio'
 import type { EstiloDeDegradado } from '../../lib/degradado'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -28,6 +29,8 @@ interface StoreRow {
   color_dark: string
   gradient_style?: string | null
   login_images?: string[] | null
+  custom_domain?: string | null
+  custom_domain_verified?: boolean | null
   active: boolean
   created_at?: string
   wa_enabled?: boolean
@@ -405,6 +408,12 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [cp, setCp] = useState(store.color_primary || '#55C8F5')
   const [cd, setCd] = useState(store.color_dark || '#060C1A')
   const [gradiente, setGradiente] = useState<EstiloDeDegradado>(estiloValido(store.gradient_style))
+  // El dominio propio (§50). `verificado` es del SERVIDOR: escribirlo no lo
+  // verifica, lo verifica la prueba de que ese host abre esta tienda.
+  const [dominio, setDominio] = useState(store.custom_domain ?? '')
+  const [verificado, setVerificado] = useState(!!store.custom_domain_verified)
+  const [probandoDominio, setProbandoDominio] = useState(false)
+  const [avisoDominio, setAvisoDominio] = useState<{ ok: boolean; texto: string } | null>(null)
   // Tres huecos fijos: el sitio de cada imagen lo decide la pantalla del
   // acceso, así que el orden de acá es el orden de allá.
   const [loginImgs, setLoginImgs] = useState<(string | null)[]>(() => {
@@ -547,6 +556,26 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     e => setErrLogin(s => s.map((x, j) => (j === i ? e : x))),
   )
 
+  /** La prueba de punta a punta: que abrir ese dominio traiga ESTA tienda. La
+   *  hace el servidor —desde el navegador del vendedor la respuesta sería
+   *  opaca por CORS— y de ahí sale `custom_domain_verified`. */
+  const comprobarDominio = async () => {
+    setProbandoDominio(true); setAvisoDominio(null)
+    const { ok, data } = await call({ action: 'verify_domain', admin_auth_id: adminId, store_id: store.id })
+    setProbandoDominio(false)
+    if (!ok) {
+      setAvisoDominio({ ok: false, texto: mensajePanel(data?.error, 'No se pudo comprobar el dominio.') })
+      return
+    }
+    setVerificado(!!data?.ok)
+    setAvisoDominio({
+      ok: !!data?.ok,
+      texto: data?.ok
+        ? `Listo: ${data.dominio} ya abre esta tienda, y los enlaces que se manden saldrán con él.`
+        : String(data?.detalle ?? 'Todavía no.'),
+    })
+  }
+
   const borrar = async () => {
     setBorrando(true); setErr('')
     const { ok, data } = await call({ action: 'delete', admin_auth_id: adminId, store_id: store.id, confirmar })
@@ -591,6 +620,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     }
     if (isSuper) {
       payload.slug = slug; payload.active = active
+      payload.custom_domain = dominio.trim()
       payload.wa_enabled = waEnabled
       payload.home_delivery_enabled = homeDelivery
       payload.wa_phone_number_id = waPhoneId.trim()
@@ -798,6 +828,70 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               <input value={slug} onChange={e => setSlug(e.target.value)}
                 className="flex-1 bg-transparent text-sm outline-none font-mono" />
               <span className="text-xs text-gray-400">.{APEX}</span>
+            </div>
+
+            {/* El dominio propio (§50). Va al lado del subdominio y es de la
+                plataforma por lo mismo: sin dar el dominio de alta en el
+                hosting no existe su certificado, y ese paso no lo puede hacer
+                el admin de la marca. El subdominio NO se jubila — los enlaces
+                ya mandados lo llevan—, así que esto es una opción y no un
+                reemplazo. */}
+            <label className="text-xs font-bold text-gray-500 mb-1 block">Dominio propio (opcional)</label>
+            <div className="flex items-center bg-gray-100 rounded-2xl px-4 py-3 mb-1">
+              <input value={dominio} placeholder="monoshop.pe"
+                onChange={e => { setDominio(e.target.value); setAvisoDominio(null) }}
+                onBlur={() => {
+                  const d = dominio.trim()
+                  if (!d) { setDominio(''); return }
+                  const r = normalizarDominio(d)
+                  // Se limpia lo que se pegó (`https://…/`, mayúsculas) para
+                  // que se guarde el host y no la URL; si no se entiende, se
+                  // deja tal cual y el aviso dice por qué.
+                  if (r.ok) setDominio(r.dominio)
+                  else setAvisoDominio({ ok: false, texto: r.motivo })
+                }}
+                className="flex-1 bg-transparent text-sm outline-none font-mono" />
+              {dominio.trim() && (
+                <span className="text-[10px] font-black px-2 py-1 rounded-lg"
+                  style={verificado
+                    ? { background: '#DCFCE7', color: '#166534' }
+                    : { background: '#FEF3C7', color: '#92400E' }}>
+                  {verificado ? 'Verificado' : 'Sin verificar'}
+                </span>
+              )}
+            </div>
+
+            {dominio.trim() && (
+              <div className="mb-3">
+                <button type="button" onClick={comprobarDominio} disabled={probandoDominio}
+                  className="text-xs font-black px-3 py-2 rounded-xl disabled:opacity-50"
+                  style={{ background: 'var(--surface-2)', color: 'var(--text)' }}>
+                  {probandoDominio ? 'Comprobando…' : 'Comprobar dominio'}
+                </button>
+                {avisoDominio && (
+                  <p className="text-[11px] mt-1.5 leading-snug font-semibold"
+                    style={{ color: avisoDominio.ok ? '#166534' : '#B45309' }}>{avisoDominio.texto}</p>
+                )}
+              </div>
+            )}
+
+            <div className="mb-4 rounded-xl px-3 py-2.5 text-[10px] leading-relaxed"
+              style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+              <b>Cómo se enciende, en dos pasos.</b> Guarda el dominio acá y, en el DNS del cliente:
+              <ul className="mt-1 space-y-0.5 list-disc pl-4">
+                <li>Un subdominio (<span className="font-mono">tienda.sumarca.pe</span>): <b>CNAME</b> → <span className="font-mono">cname.vercel-dns.com</span></li>
+                <li>El dominio raíz (<span className="font-mono">sumarca.pe</span>): <b>A</b> → <span className="font-mono">76.76.21.21</span></li>
+              </ul>
+              <p className="mt-1.5">
+                Después hay que <b>dar el dominio de alta en el proyecto del hosting</b>, que es lo que
+                emite su certificado. Sin ese paso el navegador enseña una advertencia de seguridad
+                antes de cualquier página, así que <b>Comprobar</b> no lo da por bueno.
+              </p>
+              <p className="mt-1.5">
+                Hasta que diga <b>Verificado</b>, los enlaces que se manden por WhatsApp y SMS siguen
+                saliendo con <span className="font-mono">{slug}.{APEX}</span>, que nunca deja de atender.
+                El subdominio sigue funcionando siempre.
+              </p>
             </div>
           </>
         )}

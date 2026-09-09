@@ -171,7 +171,7 @@ async function onTransition(row: TrackedRow, phase: Phase) {
     try {
       const tienda = await tiendaParaSms(row.store_id)
       const r = await enviarSms({ storeId: row.store_id, sessionId: row.id }, row.buyer_phone, smsLlegoAgencia({
-        tienda: tienda.nombre, agencia, saldo, link: enlaceDelPedido(tienda.slug, row.token),
+        tienda: tienda.nombre, agencia, saldo, link: enlaceDelPedido(tienda, row.token),
       }))
       await supabase.from('notifications_log').insert({
         store_id: row.store_id, session_id: row.id, kind: 'status', push_count: 0,

@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { hostConSlug } from './enlaces'
 import { supabase } from './supabase'
 import { textoSobre } from './contraste'
+import { comoResolver } from './dominio'
+import type { Resolucion } from './dominio'
 
 export interface Store {
   id: string | null
@@ -19,6 +21,11 @@ export interface Store {
   gradient_style?: string | null
   /** Hasta tres PNG que flotan en `/acceso`. */
   login_images?: string[] | null
+  /** El dominio propio de la marca (§50), si lo tiene. */
+  custom_domain?: string | null
+  /** Verificado = probado de punta a punta. Solo entonces se escriben enlaces
+   *  con él; ver `lib/dominio.ts`. */
+  custom_domain_verified?: boolean | null
   /** Número visible de la marca (`stores.wa_display_phone`). La pantalla final
    *  del checkout lo ofrece como "llama a" — un teléfono es el respaldo de quien
    *  no va a volver a la app. Opcional: la caché por slug de antes no lo trae. */
@@ -39,40 +46,33 @@ const NEUTRAL_STORE: Store = {
   color_primary: '#55C8F5', color_dark: '#060C1A',
 }
 
-function cachedStore(slug: string): Store | null {
+function cachedStore(clave: string | null): Store | null {
+  if (!clave) return null
   try {
-    const raw = localStorage.getItem(`store:${slug}`)
+    const raw = localStorage.getItem(clave)
     return raw ? (JSON.parse(raw) as Store) : null
   } catch { return null }
 }
 
 const StoreContext = createContext<{ store: Store; loading: boolean }>({ store: DEFAULT_STORE, loading: true })
 
-// Resolve the tenant slug from the host: marca.kross.app → "marca".
-// Main/preview/localhost hosts return null → Kross default branding.
-function resolveSlug(): string | null {
+// De la dirección del navegador a la forma de encontrar la marca: por su slug
+// —`marca.krossclub.app`— o por su DOMINIO PROPIO (§50). Las reglas de qué es
+// nuestro, qué es un slug y qué es de alguien más viven en `lib/dominio.ts`,
+// puras y con pruebas. `?store=` sigue mandando, para el desarrollo.
+function resolucionActual(): Resolucion {
   if (typeof window === 'undefined') return null
-  // allow ?store=slug for local testing — must run before the localhost
-  // short-circuit or it's unreachable on http://localhost:5173
   const q = new URLSearchParams(window.location.search).get('store')
-  if (q) return q
-  const host = window.location.hostname
-  if (host === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(host)) return null
-  // <slug>.localhost → dev con subdominio (Chrome resuelve *.localhost solo)
-  if (host.endsWith('.localhost')) return host.split('.')[0]
-  const parts = host.split('.')
-  // <slug>.kross.app  → 3 parts, first is the slug (skip www / vercel previews)
-  if (parts.length >= 3 && !['www', 'app', 'kross-p2p'].includes(parts[0])) {
-    // ignore *.vercel.app previews
-    if (host.endsWith('vercel.app')) return null
-    return parts[0]
-  }
-  return null
+  return comoResolver(window.location.hostname, q)
 }
+
+/** La clave del caché por dispositivo. Lleva el CÓMO además del valor: un slug
+ *  y un dominio pueden llamarse igual y no son la misma tienda. */
+const claveDeCache = (r: Resolucion) => (r ? `store:${r.por}:${r.valor}` : null)
 
 // Las columnas de siempre y las del bloque §49, aparte.
 const CAMPOS = 'id, slug, nombre, logo_url, logo_wide_url, color_primary, color_dark, wa_display_phone'
-const CAMPOS_49 = 'gradient_style, login_images'
+const CAMPOS_49 = 'gradient_style, login_images, custom_domain, custom_domain_verified'
 
 /**
  * La tienda de un subdominio, pidiendo primero las columnas nuevas.
@@ -84,9 +84,9 @@ const CAMPOS_49 = 'gradient_style, login_images'
  * Kross, que es peor que no tener el degradado. Así el orden deja de importar:
  * mientras falte el SQL se ve como antes, y el día que se corra aparece.
  */
-async function traerTienda(columna: 'slug' | 'slug_anterior', slug: string): Promise<Store | null> {
+async function traerTienda(columna: 'slug' | 'slug_anterior' | 'custom_domain', valor: string): Promise<Store | null> {
   const pedir = (campos: string) =>
-    supabase.from('stores').select(campos).eq(columna, slug).eq('active', true).maybeSingle()
+    supabase.from('stores').select(campos).eq(columna, valor).eq('active', true).maybeSingle()
   const conNuevas = await pedir(`${CAMPOS}, ${CAMPOS_49}`)
   if (!conNuevas.error) return (conNuevas.data as unknown as Store) ?? null
   const { data } = await pedir(CAMPOS)
@@ -94,23 +94,26 @@ async function traerTienda(columna: 'slug' | 'slug_anterior', slug: string): Pro
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const slug = resolveSlug()
-  const initial = slug ? (cachedStore(slug) ?? NEUTRAL_STORE) : DEFAULT_STORE
+  const donde = resolucionActual()
+  const clave = claveDeCache(donde)
+  const initial = donde ? (cachedStore(clave) ?? NEUTRAL_STORE) : DEFAULT_STORE
   const [store, setStore] = useState<Store>(initial)
-  const [loading, setLoading] = useState(!!slug && !cachedStore(slug))
+  const [loading, setLoading] = useState(!!donde && !cachedStore(clave))
 
   useEffect(() => {
     applyBranding(initial)
-    if (!slug) { setLoading(false); return }
-    traerTienda('slug', slug)
+    if (!donde) { setLoading(false); return }
+    traerTienda(donde.por === 'dominio' ? 'custom_domain' : 'slug', donde.valor)
       .then(async data => {
         // El subdominio no resuelve a ninguna tienda: puede ser uno VIEJO, de
         // antes de que la marca se mudara (§47). Los enlaces ya mandados por
         // SMS y WhatsApp lo llevan, así que en vez de enseñarle al comprador la
         // marca genérica de Kross, se le lleva al subdominio nuevo con su misma
         // ruta — su pedido, su guía, lo que estuviera abriendo.
-        if (!data) {
-          const destino = (await traerTienda('slug_anterior', slug))?.slug
+        // Un dominio propio que no resuelve a nadie no tiene «anterior» que
+        // mirar: la mudanza de subdominio (§47) es de nuestro espacio.
+        if (!data && donde.por === 'slug') {
+          const destino = (await traerTienda('slug_anterior', donde.valor))?.slug
           const host = destino ? hostConSlug(window.location.hostname, destino) : null
           if (host) {
             const { protocol, pathname, search, hash } = window.location
@@ -121,7 +124,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const s = data ?? DEFAULT_STORE
         setStore(s); applyBranding(s)
         setLoading(false)
-        try { localStorage.setItem(`store:${slug}`, JSON.stringify(s)) } catch { /* ignore */ }
+        try { if (clave) localStorage.setItem(clave, JSON.stringify(s)) } catch { /* ignore */ }
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -175,5 +178,5 @@ export const useStore = () => useContext(StoreContext)
 // True on the platform host (krossclub.app / main / localhost) — i.e. NOT a brand
 // subdomain. Used to keep brand buyers/admins off the platform host.
 export function isPlatformHost(): boolean {
-  return resolveSlug() === null
+  return resolucionActual() === null
 }

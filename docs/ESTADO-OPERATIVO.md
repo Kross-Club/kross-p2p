@@ -133,6 +133,63 @@ desplegar.
 La quinta —la curva hacia abajo de las cuatro pantallas del comprador, la app ofrecida
 detrás de «¿Cuándo llega?» y «¿Cuánto saldo debo?»— también es solo front.
 
+### El dominio propio de una marca · SQL + funciones + frontend (09-set-2026)
+
+Una tienda puede tener su propio dominio además de `<slug>.krossclub.app`. Diseño en
+[`00-CORE-ARCHITECTURE.md` § El dominio propio](./00-CORE-ARCHITECTURE.md).
+
+**El SQL** (esto, tal cual, en el SQL Editor de `ofdjghntvmrdfjhazfvz`):
+
+```sql
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS custom_domain          text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS custom_domain_verified boolean DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS stores_custom_domain_key
+  ON stores (custom_domain) WHERE custom_domain IS NOT NULL;
+```
+
+Comprobar que quedaron (tienen que salir **dos filas**):
+
+```sql
+select column_name from information_schema.columns
+where table_name = 'stores' and column_name in ('custom_domain', 'custom_domain_verified');
+```
+
+**Las funciones.** `manage-store` guarda y comprueba el dominio; las demás cambian porque el enlace
+del comprador ya no se deduce del slug (`baseDeLaTienda`), y ese código viaja dentro de ellas:
+
+```
+supabase functions deploy manage-store          --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy seller-send-message   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy seller-call-token     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook        --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy get-session           --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage          --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy integraciones         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy send-wa-template      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pickup-reminders      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order          --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-tracking-sync  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-webhook        --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy olva-order            --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking-sync    --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-lat-webhook      --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+**Nada rompe si el SQL no está.** Todo lo que pide las columnas nuevas reintenta sin ellas: el
+frontend, `manage-store`, `tiendaParaSms` y `pay360-webhook`. Mientras falte, cada marca vive en su
+subdominio como hoy.
+
+**Y lo que el código NO puede hacer, por marca que quiera dominio propio:**
+
+1. Poner el DNS: **CNAME** a `cname.vercel-dns.com` para un subdominio, o **A** a `76.76.21.21` para
+   el dominio raíz.
+2. **Dar el dominio de alta en el proyecto de Vercel.** Es lo que emite el certificado. Sin este
+   paso el navegador enseña una advertencia de seguridad antes de cualquier página, y por eso
+   *Comprobar dominio* no lo da por bueno.
+3. Recién entonces, *Comprobar dominio* en el panel deja la marca en **Verificado** y los enlaces
+   empiezan a salir con él.
+
 ### El secundario, el degradado y las imágenes del acceso · SQL + 1 función + frontend (09-set-2026)
 
 El «fondo oscuro» de una marca pasa a ser su **SECUNDARIO** y hace degradado con el primario:

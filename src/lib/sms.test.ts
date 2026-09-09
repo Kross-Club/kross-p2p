@@ -8,7 +8,7 @@ import {
   smsLlegoAgencia, smsPagoRecibido, smsSaldoRecibido, SMS_MAX, SMS_SEGMENTO, textoSms,
 } from '../../supabase/functions/_shared/sms-texto.ts'
 
-const LINK = enlaceDelPedido('gadicaf', 'tok123')!
+const LINK = enlaceDelPedido({ slug: 'gadicaf' }, 'tok123')!
 
 describe('celularPeru', () => {
   it('acepta lo que la gente escribe y devuelve E.164', () => {
@@ -48,7 +48,19 @@ describe('enlaceDelPedido', () => {
   it('va al subdominio de la marca, o a la plataforma sin slug', () => {
     expect(LINK).toBe('https://gadicaf.krossclub.app/p/tok123')
     expect(enlaceDelPedido(null, 'tok')).toBe('https://krossclub.app/p/tok')
-    expect(enlaceDelPedido('x', null)).toBeNull()
+    expect(enlaceDelPedido({ slug: 'x' }, null)).toBeNull()
+  })
+
+  it('con dominio propio VERIFICADO, el enlace sale con él (§50)', () => {
+    expect(enlaceDelPedido({ slug: 'gadicaf', custom_domain: 'gadicaf.pe', custom_domain_verified: true }, 'tok123'))
+      .toBe('https://gadicaf.pe/p/tok123')
+  })
+
+  it('escrito pero sin verificar, sigue el subdominio', () => {
+    // Este SMS se abre horas después: mandarlo a un DNS que todavía no
+    // resuelve pierde al comprador, y el subdominio nunca deja de atender.
+    expect(enlaceDelPedido({ slug: 'gadicaf', custom_domain: 'gadicaf.pe' }, 'tok123'))
+      .toBe('https://gadicaf.krossclub.app/p/tok123')
   })
 })
 

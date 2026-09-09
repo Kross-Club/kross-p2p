@@ -12,7 +12,7 @@ import {
   enlaceDelPedido, smsRecordatorioRecojo, smsUltimoAvisoRecojo, SMS_MAX,
 } from '../../supabase/functions/_shared/sms-texto.ts'
 
-const LINK = enlaceDelPedido('gadicaf', 'tok123')!
+const LINK = enlaceDelPedido({ slug: 'gadicaf' }, 'tok123')!
 
 describe('pasoDebido', () => {
   it('no molesta antes del día 2', () => {

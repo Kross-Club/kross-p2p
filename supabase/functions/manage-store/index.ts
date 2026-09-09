@@ -5,6 +5,7 @@ import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
 import { asegurarSesionLat } from '../_shared/shalom-lat-emisor.ts'
 import { olvaLatApiKey, validateAtLat } from '../_shared/olva-lat-api.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
+import { normalizarDominio } from '../_shared/tienda-url.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -37,7 +38,7 @@ function cleanSlug(raw: string): string {
 const RESERVED = new Set(['www', 'app', 'api', 'admin', 'kross', 'krossclub', 'mail', 'assets'])
 
 /**
- * Las columnas del bloque §49. Están apartadas por una razón operativa: esta
+ * Las columnas de los bloques §49 y §50. Están apartadas por una razón operativa: esta
  * función se despliega A MANO y el SQL se corre A MANO, así que hay una ventana
  * —minutos u horas— en la que la función nueva le habla a una base vieja.
  *
@@ -47,7 +48,7 @@ const RESERVED = new Set(['www', 'app', 'api', 'admin', 'kross', 'krossclub', 'm
  * (09-set-2026). De ahí `faltaColumna` y los dos reintentos de abajo: mientras
  * el SQL no esté, el panel funciona como antes y estos dos campos no existen.
  */
-const CAMPOS_49 = ['gradient_style', 'login_images'] as const
+const CAMPOS_49 = ['gradient_style', 'login_images', 'custom_domain', 'custom_domain_verified'] as const
 
 /** ¿El error es «esa columna no existe»? (Postgres 42703.) */
 function faltaColumna(error: { code?: string; message?: string } | null): boolean {
@@ -103,7 +104,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status' | 'olva_lat_status'
+    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status' | 'olva_lat_status' | 'verify_domain'
     home_delivery_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
@@ -125,6 +126,8 @@ Deno.serve(async (req) => {
     gradient_style?: string
     /** Hasta tres PNG que flotan en `/acceso`. URLs del bucket `branding`. */
     login_images?: unknown
+    /** El dominio propio de la marca (§50). Cadena vacía = quitarlo. */
+    custom_domain?: string | null
     active?: boolean
     /** delete: el `slug` de la tienda, tecleado por quien borra. Ver la acción. */
     confirmar?: string
@@ -429,6 +432,69 @@ Deno.serve(async (req) => {
   // ─── UPDATE BRANDING ─────────────────────────────────────────────────────────
   // Any admin may update their own store. Super admin may update any store and
   // may change the slug (subdomain). A store admin cannot repoint their subdomain.
+  // ─── ¿EL DOMINIO PROPIO YA FUNCIONA? (§50) ─────────────────────────────────
+  //
+  // No se comprueba el CNAME: se comprueba lo ÚNICO que importa, que es que al
+  // abrir ese dominio salga ESTA marca. Se pide su `/api/manifest` —el
+  // endpoint que ya resuelve la tienda por el Host— y se compara el nombre.
+  //
+  // Mirar solo el registro DNS diría «sí» en el caso que más se da y que más
+  // duele: el CNAME puesto y el dominio SIN dar de alta en el hosting, donde no
+  // hay certificado y el navegador enseña una advertencia de seguridad antes de
+  // cualquier página. Una comprobación que aprueba eso es peor que ninguna.
+  if (body.action === 'verify_domain') {
+    const targetId = isSuper ? (body.store_id || me.store_id) : me.store_id
+    if (!targetId) return json({ error: 'no_store' }, 400)
+    const { data: tienda } = await supabase.from('stores')
+      .select('nombre, custom_domain').eq('id', targetId).maybeSingle()
+    const dominio = String(tienda?.custom_domain ?? '').trim()
+    if (!dominio) return json({ error: 'sin_dominio' }, 400)
+
+    const marcar = async (ok: boolean) => {
+      await supabase.from('stores').update({ custom_domain_verified: ok }).eq('id', targetId)
+    }
+    const ctrl = new AbortController()
+    const alarma = setTimeout(() => ctrl.abort(), 8000)
+    try {
+      const r = await fetch(`https://${dominio}/api/manifest`, {
+        signal: ctrl.signal,
+        headers: { 'Cache-Control': 'no-cache' },
+        redirect: 'follow',
+      })
+      if (!r.ok) {
+        await marcar(false)
+        return json({
+          ok: false, dominio, estado: 'no_es_nuestro',
+          detalle: `El dominio responde ${r.status}. Suele ser que todavía no está dado de alta en el hosting: agrégalo al proyecto y vuelve a probar.`,
+        })
+      }
+      const manifiesto = await r.json().catch(() => null) as { name?: string } | null
+      const nombre = String(tienda?.nombre ?? '').trim()
+      if (!manifiesto?.name || manifiesto.name.trim() !== nombre) {
+        await marcar(false)
+        return json({
+          ok: false, dominio, estado: 'otra_marca',
+          detalle: `Ese dominio llega hasta nosotros, pero responde como «${manifiesto?.name ?? 'Kross'}» y no como «${nombre}». Revisa que el dominio esté guardado en esta tienda.`,
+        })
+      }
+      await marcar(true)
+      return json({ ok: true, dominio, estado: 'listo' })
+    } catch (e) {
+      await marcar(false)
+      // Un `fetch` que no llega no distingue «no resuelve» de «el certificado
+      // no existe todavía», y las dos se arreglan igual: esperar o dar de alta
+      // el dominio. Se dice eso en vez de inventar un diagnóstico.
+      const msg = e instanceof Error ? e.message : String(e)
+      return json({
+        ok: false, dominio, estado: 'no_responde',
+        detalle: 'Todavía no se puede abrir ese dominio. Revisa que el CNAME esté puesto y que el dominio esté dado de alta en el hosting; el DNS puede tardar hasta unas horas.',
+        tecnico: msg.slice(0, 200),
+      })
+    } finally {
+      clearTimeout(alarma)
+    }
+  }
+
   if (body.action === 'update') {
     const targetId = isSuper ? (body.store_id || me.store_id) : me.store_id
     if (!targetId) return json({ error: 'no_store' }, 400)
@@ -464,6 +530,31 @@ Deno.serve(async (req) => {
     // tocando otra vez**, así que no hace falta más ceremonia: el operador
     // también apaga (ver §30). Lo que no se deshace es BORRAR, y eso tiene su
     // propia acción con sus propios seguros, más abajo.
+    // El DOMINIO PROPIO (§50) es de quien administra la plataforma, igual que
+    // el subdominio: sin darlo de alta en el hosting no existe su certificado,
+    // así que ofrecérselo al admin de una marca sería prometerle algo que él no
+    // puede terminar. Se valida acá aunque el panel ya valide: el panel es una
+    // cortesía, el servidor es la regla.
+    if (isSuper && body.custom_domain !== undefined) {
+      const crudo = String(body.custom_domain ?? '').trim()
+      if (!crudo) {
+        patch.custom_domain = null
+        patch.custom_domain_verified = false
+      } else {
+        const d = normalizarDominio(crudo)
+        if (!d.ok) return json({ error: 'dominio_invalido', detalle: d.motivo }, 400)
+        // Dos marcas no pueden reclamar el mismo host: la segunda se llevaría
+        // los compradores de la primera. El índice único lo impide igual; esto
+        // es para contestar con un motivo y no con un error crudo de Postgres.
+        const { data: duena } = await supabase.from('stores')
+          .select('id, nombre').eq('custom_domain', d.dominio).neq('id', targetId).maybeSingle()
+        if (duena) return json({ error: 'dominio_tomado', detalle: `Ese dominio ya es de ${duena.nombre}.` }, 400)
+        patch.custom_domain = d.dominio
+        // Recién escrito NO está verificado: lo que decide es la prueba de
+        // punta a punta (`verify_domain`), no que alguien lo teclee.
+        patch.custom_domain_verified = false
+      }
+    }
     if (isSuper && typeof body.active === 'boolean') patch.active = body.active
     // ¿Reparte a domicilio, o solo recojo en agencia? Es super-admin only a
     // propósito: depende de si la marca tiene operación de última milla

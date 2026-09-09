@@ -92,6 +92,17 @@ async function avisar(sessionId: string, acuse: unknown) {
   await broadcast(sessionId, 'cobros_update', {})
 }
 
+/** Lo que el acuse necesita de la tienda: cómo se llama, con qué ícono se
+ *  anuncia y —desde el §50— en qué dirección vive, para escribir el enlace. */
+interface TiendaDelAcuse {
+  nombre?: string | null
+  slug?: string | null
+  notif_icon_url?: string | null
+  logo_url?: string | null
+  custom_domain?: string | null
+  custom_domain_verified?: boolean | null
+}
+
 /**
  * Y el PUSH, para el comprador que no tiene la app abierta — que es casi
  * siempre: acaba de pagar en Yape y está en Yape. Es la mejor notificación que
@@ -104,7 +115,7 @@ async function avisar(sessionId: string, acuse: unknown) {
 async function empujarAcuse(s: {
   sesion: { id: string; token?: string | null; buyer_id?: string | null; buyer_name?: string | null
             store_id?: string | null; product_name?: string | null; order_id?: string | null }
-  tienda: { nombre?: string | null; slug?: string | null; notif_icon_url?: string | null; logo_url?: string | null } | null
+  tienda: TiendaDelAcuse | null
   cuerpo: string
   /** El recibo por SMS (`sms-texto.ts`). Es EL comprobante de quien no volverá
    *  a abrir nada: va SIEMPRE, con o sin push. `null` = un cobro extra, que
@@ -114,7 +125,7 @@ async function empujarAcuse(s: {
   try {
     const icono = s.tienda?.notif_icon_url ?? s.tienda?.logo_url ?? null
     const tienda = s.tienda?.nombre?.trim() || 'Kross'
-    const link = enlaceDelPedido(s.tienda?.slug, s.sesion.token)
+    const link = enlaceDelPedido(s.tienda, s.sesion.token)
     const smsBody = !s.sms ? undefined
       : s.sms.tipo === 'saldo'
         ? smsSaldoRecibido({ tienda, monto: s.sms.pagado, codigo: s.sesion.order_id, link })
@@ -284,8 +295,15 @@ Deno.serve(async (req) => {
   if (!id) return await ignore(storeId, dedupeKey, 'evento sin cupón identificable')
 
   const originStoreId = String(session.origin_store_id ?? session.store_id)
-  const { data: store } = await supabase.from('stores')
-    .select('pay360_env, meta_pixel_id, tiktok_pixel_id, nombre, slug, notif_icon_url, logo_url').eq('id', originStoreId).maybeSingle()
+  // El dominio propio (§50) va en el enlace del acuse. Si el proyecto todavía no
+  // corrió ese SQL se pide sin esas dos columnas y el enlace sale al subdominio.
+  const CAMPOS_TIENDA = 'pay360_env, meta_pixel_id, tiktok_pixel_id, nombre, slug, notif_icon_url, logo_url'
+  const pedirTienda = (campos: string) => supabase.from('stores').select(campos).eq('id', originStoreId).maybeSingle()
+  let rTienda = await pedirTienda(`${CAMPOS_TIENDA}, custom_domain, custom_domain_verified`) as {
+    data: Record<string, unknown> | null; error: { code?: string; message?: string } | null
+  }
+  if (rTienda.error) rTienda = await pedirTienda(CAMPOS_TIENDA) as typeof rTienda
+  const store = rTienda.data as (TiendaDelAcuse & { pay360_env?: string | null; meta_pixel_id?: string | null; tiktok_pixel_id?: string | null }) | null
   const env = (store?.pay360_env === 'live' ? 'live' : 'sandbox') as Pay360Env
 
   const coupon = await getCoupon(pay360BaseUrl(env, 'partner'),

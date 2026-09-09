@@ -518,6 +518,61 @@ puerta del vendedor** («¿Eres vendedor? Ingresar aquí»): quien vende entra p
 > `order_sessions` buscando por teléfono se retiró. No la llamaba nadie —el
 > frontend nunca manda `phone`— y era de antes de que `buyers` existiera.
 
+## El dominio propio de una marca ✅ (09-set-2026)
+
+Una tienda vive en `<slug>.krossclub.app`. Ahora puede **además** tener el suyo —`monoshop.pe`—
+apuntando su DNS a nuestro hosting. Es una **opción**, no un reemplazo: el subdominio de siempre
+sigue atendiendo, porque los enlaces ya mandados por WhatsApp y SMS lo llevan y no se pueden
+reescribir.
+
+| Columna | Qué es |
+|---|---|
+| `custom_domain` | El host de la marca, normalizado (sin protocolo, sin barra, en minúsculas). Único |
+| `custom_domain_verified` | Que se probó de punta a punta. Lo escribe el servidor, nunca el formulario |
+
+### La asimetría que manda en todo
+
+- **Para RESOLVER la marca basta con que el dominio esté escrito.** Si alguien llegó a ese host, el
+  DNS ya lo trajo: hay que atenderlo.
+- **Para ESCRIBIR un enlace hace falta que esté verificado.** Un enlace es una promesa que viaja por
+  WhatsApp y se abre horas después; mandarlo a un DNS que todavía no resuelve pierde al comprador, y
+  eso es peor que no ofrecer la función. Mientras tanto se escribe el subdominio, que nunca falla.
+
+Las dos reglas están en `supabase/functions/_shared/tienda-url.ts` —puras y con pruebas— y
+`src/lib/dominio.ts` las **reexporta**. Viven en `_shared` y no en `src` a propósito: el panel valida
+lo que se teclea, pero quien enforza es `manage-store`, y dos copias que se desincronizaran dejarían
+entrar por el servidor lo que el panel rechaza. Mismo patrón que `alcance.ts`.
+
+### Las cuatro puertas que hubo que enseñar a resolver por dominio
+
+| Dónde | Qué cambió |
+|---|---|
+| `src/lib/store-context.tsx` | `comoResolver(host)` decide si la marca se busca por `slug` o por `custom_domain`. El caché por dispositivo lleva el cómo en su clave |
+| `api/manifest.js` | El manifiesto de la PWA. Sin esto, la app instalada desde el dominio propio se llamaría «Kross» y llevaría nuestro ícono — la instalación es justo donde una marca blanca no puede filtrarse |
+| `_shared/sms-texto.ts` | `enlaceDelPedido` toma la TIENDA y no el slug suelto: la dirección ya no se deduce del slug |
+| `seller-send-message` · `seller-call-token` | El enlace del aviso al comprador sale de `baseDeLaTienda` |
+
+Y `hostConSlug` (la mudanza de subdominio, §47) ahora **solo actúa dentro de nuestro espacio**: veía
+`tienda.monoshop.pe` como «un subdominio» y devolvía `otramarca.monoshop.pe`, un host de otra
+empresa inventado por nosotros.
+
+### Verificar es abrir el dominio, no leer el DNS
+
+`manage-store` (acción `verify_domain`) pide `https://<dominio>/api/manifest` y compara el nombre
+con el de la tienda. No mira el registro CNAME **a propósito**: mirarlo diría «sí» en el caso que
+más se da y que más duele —el CNAME puesto y el dominio sin dar de alta en el hosting, donde no hay
+certificado y el navegador enseña una advertencia de seguridad antes de cualquier página—. Una
+comprobación que aprueba eso es peor que ninguna.
+
+### Lo que NO hace el código
+
+- **Dar el dominio de alta en el hosting.** El CNAME por sí solo no alcanza: sin el alta no existe el
+  certificado. Es un paso de plataforma, y por eso el campo es de super admin, igual que el
+  subdominio: ofrecérselo al admin de una marca sería prometerle algo que él no puede terminar.
+- **La recuperación de contraseña del panel desde el dominio propio.** Supabase Auth solo redirige a
+  los orígenes de su lista (`https://*.krossclub.app/**`); un dominio nuevo hay que agregarlo ahí. El
+  panel se sigue usando por el subdominio, que es lo que el equipo tiene guardado.
+
 ## Modelo de datos (núcleo) ✅
 
 - `stores` — una marca por fila: branding, slug, `active`, config WhatsApp (`wa_*`),

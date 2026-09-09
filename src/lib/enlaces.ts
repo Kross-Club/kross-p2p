@@ -12,6 +12,8 @@
 // salen con esa marca sin que nadie tenga que pasar el dominio. La llave es el
 // TOKEN — quien tiene el enlace de su pedido tiene su pedido.
 
+import { APEX } from './dominio'
+
 export const enlaceDeMiPedido = (token: string): string => `/pedido/${encodeURIComponent(token)}`
 
 export const enlaceDelChat = (token: string): string => `/p/${encodeURIComponent(token)}`
@@ -26,9 +28,14 @@ export const enlaceDelChat = (token: string): string => `/p/${encodeURIComponent
  */
 export function hostConSlug(hostname: string, slug: string): string | null {
   if (!hostname || !slug) return null
-  const partes = hostname.split('.')
-  const tieneSubdominio = partes.length >= 3 || (partes.length === 2 && partes[1] === 'localhost')
-  if (!tieneSubdominio) return null
+  const host = hostname.toLowerCase()
+  // Solo dentro de NUESTRO espacio (09-set-2026). Con dominios propios
+  // (§50) esta función veía `tienda.monoshop.pe` como «un subdominio» y
+  // devolvía `otramarca.monoshop.pe`: un host de otra empresa, inventado por
+  // nosotros. El slug solo manda donde el slug significa algo.
+  const enPlataforma = host.endsWith(`.${APEX}`) || host.endsWith('.localhost')
+  if (!enPlataforma) return null
+  const partes = host.split('.')
   if (partes[0] === slug) return null
   return [slug, ...partes.slice(1)].join('.')
 }
