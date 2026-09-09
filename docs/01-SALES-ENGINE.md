@@ -294,13 +294,18 @@ agencia**: ahí el saldo se paga por la app, que es lo que suelta la clave de re
 el mostrador (`advanceHeadsUpShortPickup`).
 
 - Hoy son **seis en dos filas de tres**, en `TRUST_BADGES` (`checkout.config.ts`): la
-  primera fila contesta lo del dinero —*se paga un adelanto*, *se descuenta del total*,
-  *pagas con Yape*—, la segunda lo de si llega y lo de sus datos —*todo el Perú*, *sigues
-  tu pedido*, *datos seguros*.
+  primera habla del **pedido** —*pagas un adelanto*, *entrega rápida*, *envío todo el
+  Perú*—, la segunda de **con quién está tratando** —*pagas con Yape*, *datos seguros*,
+  *tienda verificada*.
 - **Cada frase tiene que ser verdad en TODOS los caminos**, porque el comprador todavía no
   eligió domicilio ni agencia. Yape lo es: es el riel de los tres —360pay, Flow y el cobro
   que coordina un asesor por el chat—, así que no promete pasarela a la marca que no la
-  tiene.
+  tiene. *Tienda verificada* también: la marca no se autoregistra —la da de alta la
+  plataforma— y para cobrar en línea su identidad pasa por el contrato de recaudación
+  (`07-CONTRATO-360PAY.md`).
+- **"Entrega rápida" va sin plazo a propósito.** El plazo lo pone el courier y cambia con
+  el destino, que en el paso 1 todavía no existe: una cifra ahí sería una promesa nuestra
+  sobre un camión ajeno.
 - La segunda fila **no empuja el CTA**: vive en el pie fijo del modal, fuera del scroll del
   paso. Verificado a 360 px y 390 px con el checkout de revisión.
 

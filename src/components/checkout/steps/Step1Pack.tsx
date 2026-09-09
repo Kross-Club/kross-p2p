@@ -130,9 +130,8 @@ export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPa
           pantalla; no lo empujan — el CTA vive en el pie fijo del modal, fuera
           de este scroll (`CheckoutModal`), así que la segunda fila la paga el
           contenido y no el botón. Son seis en dos filas de tres porque el
-          miedo del que compra por un anuncio tiene más de tres formas: la
-          primera fila contesta lo del dinero, la segunda lo de si llega y lo
-          de sus datos.
+          miedo del que compra por un anuncio tiene más de tres formas; qué
+          dice cada una y por qué se sostiene está en `TRUST_BADGES`.
           La rejilla mantiene las dos filas alineadas aunque una frase ocupe
           dos líneas en un equipo angosto; ahí el texto se parte antes que
           desbordar, que es lo que evitaba `whitespace-nowrap`. El texto y las

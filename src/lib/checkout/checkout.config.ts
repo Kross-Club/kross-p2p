@@ -135,30 +135,40 @@ export const BEST_PACK_BADGE = '⭐ MÁS ELEGIDO · MEJOR PRECIO'
 export const SHOW_PACK_SAVINGS = true
 
 /**
- * Señales de confianza del paso 1. Son SEIS, en dos filas de tres.
+ * Señales de confianza del paso 1. Son SEIS, en dos filas de tres, y el orden
+ * es el que se lee: la primera fila habla del PEDIDO —qué se paga ahora, cuándo
+ * llega, hasta dónde—, la segunda de CON QUIÉN está tratando —cómo paga, qué
+ * pasa con sus datos, quién es la tienda.
  *
  * El comprador llega de un anuncio y de una marca que no conoce: lo que decide
- * la venta es cuánto miedo le queda, no cuánto sabe del producto. Cada frase
- * tiene que ser verdad en TODOS los caminos —todavía no eligió domicilio ni
- * agencia—, porque una que el paso 3 desmienta hace más daño que su ausencia:
+ * la venta es cuánto miedo le queda, no cuánto sabe del producto. Por eso cada
+ * frase tiene que ser verdad en TODOS los caminos —todavía no eligió domicilio
+ * ni agencia—, porque una que el paso 3 desmienta hace más daño que su ausencia:
  *
- *  · **"Se paga un adelanto"** reemplaza a *"Pagas el resto al recibir"*, que
- *    era falso en agencia: ahí el saldo se paga por la app y es lo que suelta
- *    la clave de recojo, no se paga en el mostrador
+ *  · **"Pagas un adelanto"** reemplaza a *"Pagas el resto al recibir"*, que era
+ *    falso en agencia: ahí el saldo se paga por la app y es lo que suelta la
+ *    clave de recojo, no se paga en el mostrador
  *    (`advanceHeadsUpShortPickup`).
- *  · **"Se descuenta del total"** contesta la pregunta que frena el tap: si el
- *    adelanto es plata encima del precio. No lo es.
+ *  · **"Entrega rápida" va SIN plazo a propósito.** El plazo lo pone el courier
+ *    y cambia con el destino, que en este paso todavía no existe. Una cifra acá
+ *    —"24 h", "48 h"— sería una promesa nuestra sobre un camión ajeno, y el
+ *    reclamo llega el día que no se cumple.
  *  · **Yape** es el riel de los tres caminos —360pay, Flow y el cobro que
- *    coordina un asesor por el chat—, así que nombrarlo no promete nada que
- *    una marca sin pasarela no pueda cumplir.
+ *    coordina un asesor por el chat—, así que nombrarlo no promete nada que una
+ *    marca sin pasarela no pueda cumplir.
+ *  · **"Tienda verificada"** no es un sello decorativo: la marca no se
+ *    autoregistra, la da de alta la plataforma, y para cobrar en línea su
+ *    identidad pasa por el contrato de recaudación
+ *    (`07-CONTRATO-360PAY.md`). Si eso dejara de ser cierto para alguna marca,
+ *    esta línea se cae de la lista.
  */
 export const TRUST_BADGES: readonly string[] = [
-  '✅ Se paga un adelanto',
-  '💸 Se descuenta del total',
+  '💵 Pagas un adelanto',
+  '⚡ Entrega rápida',
+  '🚚 Envío todo el Perú',
   '📲 Pagas con Yape',
-  '🚚 Todo el Perú',
-  '📍 Sigues tu pedido',
   '🔒 Datos seguros',
+  '✅ Tienda verificada',
 ]
 
 // ─── Descuento de retención ──────────────────────────────────────────────────
