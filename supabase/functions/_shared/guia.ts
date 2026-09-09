@@ -175,7 +175,7 @@ export async function registrarGuia(
     if (s) {
       const tienda = await tiendaParaSms(s.store_id)
       const r = await enviarSms({ storeId: s.store_id, sessionId: session.id }, s.buyer_phone, smsGuia({
-        tienda: tienda.nombre, courier: g.courier, ids: g.ids, link: enlaceDelPedido(tienda.slug, s.token),
+        tienda: tienda.nombre, courier: g.courier, ids: g.ids, link: enlaceDelPedido(tienda, s.token),
       }))
       await supabase.from('notifications_log').insert({
         store_id: s.store_id, session_id: session.id, kind: 'status', push_count: 0,

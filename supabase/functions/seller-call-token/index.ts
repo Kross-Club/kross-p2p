@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { AccessToken } from 'npm:livekit-server-sdk@2'
 import webpush from 'npm:web-push'
 import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
+import { baseDeLaTienda, type TiendaConDominio } from '../_shared/tienda-url.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -138,17 +139,24 @@ Deno.serve(async (req) => {
   // Brand notification icon + logo + slug (buyer order link for the WhatsApp fallback)
   let storeLogo: string | null = null
   let storeIcon: string | null = null
-  let storeSlug: string | null = null
+  let tienda: TiendaConDominio | null = null
   if (session.store_id) {
-    const { data: store } = await supabase.from('stores').select('logo_url, notif_icon_url, slug').eq('id', session.store_id).maybeSingle()
+    // El dominio propio (§50) decide la dirección del enlace del comprador. Se
+    // pide con las columnas nuevas y, si el proyecto no corrió ese SQL, sin
+    // ellas: el enlace sale al subdominio, que es lo que hacía antes.
+    const CAMPOS = 'logo_url, notif_icon_url, slug'
+    const pedir = (campos: string) => supabase.from('stores').select(campos).eq('id', session.store_id).maybeSingle()
+    let r = await pedir(`${CAMPOS}, custom_domain, custom_domain_verified`) as {
+      data: Record<string, unknown> | null; error: { code?: string; message?: string } | null
+    }
+    if (r.error) r = await pedir(CAMPOS) as typeof r
+    const store = r.data as (TiendaConDominio & { logo_url?: string | null; notif_icon_url?: string | null }) | null
     storeLogo = store?.logo_url ?? null
     storeIcon = store?.notif_icon_url ?? store?.logo_url ?? null
-    storeSlug = store?.slug ?? null
+    tienda = store
   }
   const buyerFirst = (session.buyer_name ?? 'Hola').split(' ')[0]
-  const orderLink = storeSlug
-    ? `https://${storeSlug}.krossclub.app/p/${session.token}`
-    : `https://krossclub.app/p/${session.token}`
+  const orderLink = `${baseDeLaTienda(tienda)}/p/${session.token}`
 
   // La llamada del vendedor no dejaba NADA en el hilo: solo una fila en
   // `call_recordings`, visible en otra pantalla. Así, la llamada donde el

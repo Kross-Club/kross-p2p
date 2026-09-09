@@ -21,6 +21,7 @@
 import { supabase } from './tracking.ts'
 import { anotar, anotarSinRespuesta } from './api-eventos.ts'
 import { celularPeru, segmentosSms, textoSms } from './sms-texto.ts'
+import type { TiendaConDominio } from './tienda-url.ts'
 
 export type ResultadoSms = 'sent' | 'failed' | 'skipped' | 'not_configured' | 'no_phone'
 
@@ -102,16 +103,38 @@ export async function chequearTwilio(): Promise<boolean | null> {
   }
 }
 
-/** Nombre y slug de la marca, cacheados por invocación: cada SMS los necesita
- *  y una función que manda diez avisos no debe preguntar diez veces. */
-const tiendas = new Map<string, { nombre: string; slug: string | null }>()
-export async function tiendaParaSms(storeId: string | null | undefined): Promise<{ nombre: string; slug: string | null }> {
+/** La tienda, con lo que hace falta para escribir un enlace suyo: su nombre,
+ *  su slug y —desde el §50— su dominio propio. */
+export interface TiendaParaSms extends TiendaConDominio {
+  nombre: string
+  slug: string | null
+}
+
+/** Cacheada por invocación: cada SMS la necesita y una función que manda diez
+ *  avisos no debe preguntar diez veces. */
+const tiendas = new Map<string, TiendaParaSms>()
+
+export async function tiendaParaSms(storeId: string | null | undefined): Promise<TiendaParaSms> {
   const id = String(storeId ?? '')
   if (!id) return { nombre: 'Kross', slug: null }
   const hit = tiendas.get(id)
   if (hit) return hit
-  const { data } = await supabase.from('stores').select('nombre, slug').eq('id', id).maybeSingle()
-  const t = { nombre: (data?.nombre as string | undefined)?.trim() || 'Kross', slug: (data?.slug as string | null | undefined) ?? null }
+  // El dominio propio (§50) viaja con la tienda porque de acá salen los
+  // enlaces que se mandan por SMS y WhatsApp. Si el proyecto todavía no corrió
+  // ese SQL, se vuelve a pedir sin esas columnas y todo sigue como antes.
+  const CAMPOS = 'nombre, slug'
+  const pedir = (campos: string) => supabase.from('stores').select(campos).eq('id', id).maybeSingle()
+  let r = await pedir(`${CAMPOS}, custom_domain, custom_domain_verified`) as {
+    data: Record<string, unknown> | null; error: { code?: string; message?: string } | null
+  }
+  if (r.error) r = await pedir(CAMPOS) as typeof r
+  const data = r.data
+  const t: TiendaParaSms = {
+    nombre: (data?.nombre as string | undefined)?.trim() || 'Kross',
+    slug: (data?.slug as string | null | undefined) ?? null,
+    custom_domain: (data?.custom_domain as string | null | undefined) ?? null,
+    custom_domain_verified: (data?.custom_domain_verified as boolean | undefined) ?? false,
+  }
   tiendas.set(id, t)
   return t
 }

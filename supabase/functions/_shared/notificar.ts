@@ -131,7 +131,7 @@ export async function notifyBuyer(n: NotifyInput): Promise<void> {
       const tienda = await tiendaParaSms(n.storeId)
       const body = n.smsBody ?? smsGenerico({
         tienda: tienda.nombre, cuerpo: n.body,
-        link: n.url.startsWith('/p/') ? enlaceDelPedido(tienda.slug, n.url.slice(3)) : null,
+        link: n.url.startsWith('/p/') ? enlaceDelPedido(tienda, n.url.slice(3)) : null,
       })
       const r = await enviarSms({ storeId: n.storeId, sessionId: n.sessionId }, phone, body)
       sms = r.result

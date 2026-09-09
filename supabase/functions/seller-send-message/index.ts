@@ -4,6 +4,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 // pago, y dos copias de cómo se notifica es como se llega a que una avise y
 // la otra no.
 import { notifyBuyer } from '../_shared/notificar.ts'
+import { baseDeLaTienda, type TiendaConDominio } from '../_shared/tienda-url.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -118,21 +119,28 @@ Deno.serve(async (req) => {
   // Brand notification icon + logo + slug (to build the buyer's order link)
   let storeLogo: string | null = null
   let storeIcon: string | null = null
-  let storeSlug: string | null = null
+  let tienda: TiendaConDominio | null = null
   if (sessionRow?.store_id) {
-    const { data: store } = await supabase.from('stores').select('logo_url, notif_icon_url, slug').eq('id', sessionRow.store_id).maybeSingle()
+    // El dominio propio (§50) decide la dirección del enlace del comprador. Se
+    // pide con las columnas nuevas y, si el proyecto no corrió ese SQL, sin
+    // ellas: el enlace sale al subdominio, que es lo que hacía antes.
+    const CAMPOS = 'logo_url, notif_icon_url, slug'
+    const pedir = (campos: string) => supabase.from('stores').select(campos).eq('id', sessionRow.store_id).maybeSingle()
+    let r = await pedir(`${CAMPOS}, custom_domain, custom_domain_verified`) as {
+      data: Record<string, unknown> | null; error: { code?: string; message?: string } | null
+    }
+    if (r.error) r = await pedir(CAMPOS) as typeof r
+    const store = r.data as (TiendaConDominio & { logo_url?: string | null; notif_icon_url?: string | null }) | null
     storeLogo = store?.logo_url ?? null
     storeIcon = store?.notif_icon_url ?? store?.logo_url ?? null
-    storeSlug = store?.slug ?? null
+    tienda = store
   }
 
   if (sessionRow) {
     const displayName = seller_name || 'Kross'
     const preview = type === 'text' ? body.slice(0, 80) : '🎵 Mensaje de audio'
     const buyerFirst = (sessionRow.buyer_name ?? 'Hola').split(' ')[0]
-    const orderLink = storeSlug
-      ? `https://${storeSlug}.krossclub.app/p/${sessionRow.token}`
-      : `https://krossclub.app/p/${sessionRow.token}`
+    const orderLink = `${baseDeLaTienda(tienda)}/p/${sessionRow.token}`
     // Push first; falls back to WhatsApp if the buyer has no reachable push.
     await notifyBuyer({
       buyerId: sessionRow.buyer_id,

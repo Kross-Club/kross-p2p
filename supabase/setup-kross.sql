@@ -2312,3 +2312,33 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS gradient_style text DEFAULT 'diagona
 -- (`SITIOS_FLOTANTES`), no quien las sube — de eso depende que se vea un diseño
 -- y no un collage. La segunda es la única que pasa por detrás de la tarjeta.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS login_images jsonb DEFAULT '[]'::jsonb;
+
+-- ============================================================================
+-- §50 · EL DOMINIO PROPIO DE UNA MARCA  (09-set-2026)
+-- ============================================================================
+-- Una tienda vive en `<slug>.krossclub.app`. Ahora puede ADEMÁS tener el suyo
+-- —`monoshop.pe`— apuntando un CNAME a nuestro hosting. Es una opción, no un
+-- reemplazo: el subdominio de siempre sigue atendiendo, porque los enlaces ya
+-- mandados por WhatsApp y SMS lo llevan y no se pueden reescribir.
+--
+-- Las reglas viven en `src/lib/dominio.ts` (puro, con pruebas). Las dos que
+-- explican estas columnas:
+--
+--   · Para RESOLVER la marca basta con que el dominio esté escrito: si alguien
+--     llegó a ese host, el DNS ya lo trajo y hay que atenderlo.
+--   · Para ESCRIBIR un enlace hace falta `custom_domain_verified`. Un enlace es
+--     una promesa que se abre horas después; mandarlo a un DNS que todavía no
+--     resuelve pierde al comprador, y eso es peor que no ofrecer la función.
+--
+-- ⚠️ El CNAME por sí solo NO alcanza: el dominio tiene que estar dado de alta
+-- en el proyecto del hosting para que exista su certificado. Mientras no lo
+-- esté, `manage-store` (acción `verify_domain`) lo deja sin verificar y el
+-- panel dice por qué.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS custom_domain          text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS custom_domain_verified boolean DEFAULT false;
+
+-- Único, y por eso mismo el índice: dos marcas no pueden reclamar el mismo
+-- host —la segunda se llevaría los compradores de la primera—. Parcial, porque
+-- casi todas las filas tienen NULL y NULL no colisiona consigo mismo.
+CREATE UNIQUE INDEX IF NOT EXISTS stores_custom_domain_key
+  ON stores (custom_domain) WHERE custom_domain IS NOT NULL;

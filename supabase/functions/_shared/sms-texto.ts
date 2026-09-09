@@ -26,6 +26,9 @@
 
 /** Un segmento GSM-7. Pasar de 160 cuesta un segundo segmento; se acepta hasta
  *  dos (306 útiles) porque un aviso con enlace no siempre cabe en uno. */
+import { baseDeLaTienda } from './tienda-url.ts'
+import type { TiendaConDominio } from './tienda-url.ts'
+
 export const SMS_SEGMENTO = 160
 export const SMS_MAX = 306
 
@@ -81,11 +84,19 @@ export function recortarSms(t: string, max = SMS_MAX): string {
   return `${cuerpo.slice(0, Math.max(0, cabe)).trimEnd()}... ${enlace}`
 }
 
-/** El enlace del pedido en el subdominio de la marca: es el camino de regreso
- *  de quien no instaló nada. Sin slug cae al host de la plataforma. */
-export function enlaceDelPedido(slug: string | null | undefined, token: string | null | undefined): string | null {
+/**
+ * El enlace del pedido en la dirección de la marca: es el camino de regreso de
+ * quien no instaló nada.
+ *
+ * Toma la TIENDA y no el slug suelto porque desde el §50 la dirección no se
+ * deduce del slug: una marca puede tener su dominio propio, y `baseDeLaTienda`
+ * es quien decide cuál de los dos se escribe —el propio solo si está
+ * verificado—. Pasarle el slug a secas volvería a atar el enlace al subdominio
+ * en cinco sitios distintos.
+ */
+export function enlaceDelPedido(tienda: TiendaConDominio | null | undefined, token: string | null | undefined): string | null {
   if (!token) return null
-  return slug ? `https://${slug}.krossclub.app/p/${token}` : `https://krossclub.app/p/${token}`
+  return `${baseDeLaTienda(tienda)}/p/${token}`
 }
 
 const soles = (n: number) => `S/${Math.max(0, Math.round(n))}`
