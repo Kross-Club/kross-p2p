@@ -36,6 +36,25 @@ function cleanSlug(raw: string): string {
 
 const RESERVED = new Set(['www', 'app', 'api', 'admin', 'kross', 'krossclub', 'mail', 'assets'])
 
+/**
+ * Las columnas del bloque §49. Están apartadas por una razón operativa: esta
+ * función se despliega A MANO y el SQL se corre A MANO, así que hay una ventana
+ * —minutos u horas— en la que la función nueva le habla a una base vieja.
+ *
+ * Sin respaldo, esa ventana no degrada: ROMPE. PostgREST no devuelve la fila
+ * sin la columna que falta, devuelve un error, así que el listado de tiendas
+ * del panel se queda vacío y un admin deja de ver sus propias marcas. Pasó
+ * (09-set-2026). De ahí `faltaColumna` y los dos reintentos de abajo: mientras
+ * el SQL no esté, el panel funciona como antes y estos dos campos no existen.
+ */
+const CAMPOS_49 = ['gradient_style', 'login_images'] as const
+
+/** ¿El error es «esa columna no existe»? (Postgres 42703.) */
+function faltaColumna(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  return error.code === '42703' || /column .* does not exist/i.test(error.message ?? '')
+}
+
 /** Los cuatro estilos de degradado que existen (§49). Si llega otro, se ignora:
  *  un valor inventado pinta un `linear-gradient` roto en la cara del comprador. */
 const ESTILOS_DE_DEGRADADO = ['vertical', 'horizontal', 'diagonal', 'aleatorio']
@@ -196,11 +215,17 @@ Deno.serve(async (req) => {
   // ─── LIST STORES ───────────────────────────────────────────────────────────
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
-    const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, gradient_style, login_images, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
-      .order('created_at', { ascending: true })
-    if (!isSuper) q.eq('id', me.store_id)
-    const { data, error } = await q
+    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone'
+    type Respuesta = { data: Record<string, unknown>[] | null; error: { code?: string; message?: string } | null }
+    const pedir = async (campos: string): Promise<Respuesta> => {
+      const q = supabase.from('stores').select(campos).order('created_at', { ascending: true })
+      if (!isSuper) q.eq('id', me.store_id)
+      return await q as unknown as Respuesta
+    }
+    // Con las columnas del §49 y, si la base todavía no las tiene, sin ellas.
+    let r = await pedir(`${CAMPOS}, ${CAMPOS_49.join(', ')}`)
+    if (faltaColumna(r.error)) r = await pedir(CAMPOS)
+    const { data, error } = r
     if (error) return json({ error: error.message }, 400)
 
     // Estado de la cuenta Shalom Pro de cada marca. Vive en `store_secrets`
@@ -794,7 +819,19 @@ Deno.serve(async (req) => {
 
     if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom && !wroteAdsCapi && !wroteSecretsFlow) return json({ error: 'nada_que_guardar' }, 400)
     if (Object.keys(patch).length > 0) {
-      const { error } = await supabase.from('stores').update(patch).eq('id', targetId)
+      const guardar = async (p: Record<string, unknown>): Promise<{ code?: string; message?: string } | null> => {
+        const { error } = await supabase.from('stores').update(p).eq('id', targetId)
+        return error as { code?: string; message?: string } | null
+      }
+      let error = await guardar(patch)
+      // Igual que el listado: sin el SQL del §49 estos dos campos no se pueden
+      // guardar, pero todo lo demás del formulario sí — y perder el nombre y
+      // los colores por un degradado sería un mal negocio.
+      if (faltaColumna(error) && CAMPOS_49.some(c => c in patch)) {
+        const sin49: Record<string, unknown> = { ...patch }
+        for (const c of CAMPOS_49) delete sin49[c]
+        error = Object.keys(sin49).length > 0 ? await guardar(sin49) : null
+      }
       if (error) return json({ error: error.message }, 400)
     }
     return json({ ok: true })
