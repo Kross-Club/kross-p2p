@@ -139,15 +139,29 @@ El «fondo oscuro» de una marca pasa a ser su **SECUNDARIO** y hace degradado c
 es lo que pinta `/acceso`, con la tarjeta de vidrio y hasta tres PNG de la marca flotando
 detrás. Diseño en [`00-CORE-ARCHITECTURE.md` § Los dos colores](./00-CORE-ARCHITECTURE.md).
 
-**Orden del despliegue** (el SQL primero, como siempre):
+**Orden del despliegue** (el SQL primero, como siempre). Es esto, tal cual, en el
+SQL Editor de `ofdjghntvmrdfjhazfvz` — no la línea que lo describe:
 
 ```sql
--- SQL Editor de ofdjghntvmrdfjhazfvz: el bloque §49 de supabase/setup-kross.sql
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS gradient_style text DEFAULT 'diagonal';
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS login_images jsonb DEFAULT '[]'::jsonb;
 ```
 
 ```
 supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
 ```
+
+⚠️ **«Success. No rows returned» con cero filas y sin tocar nada** es lo que
+responde el editor cuando lo que se pegó era **el comentario** y no el bloque.
+Un `ALTER TABLE` que sí corrió también dice «Success», así que la comprobación
+de verdad es preguntar por las columnas:
+
+```sql
+select column_name from information_schema.columns
+where table_name = 'stores' and column_name in ('gradient_style', 'login_images');
+```
+
+Tienen que salir **dos filas**.
 
 **Qué pasa si el front sale antes que el SQL:** nada. `store-context` pide las columnas nuevas
 y, si el proyecto todavía no las tiene, vuelve a pedir sin ellas — cada marca se ve como hoy y el
@@ -155,7 +169,13 @@ degradado aparece el día que se corra el bloque. Sin ese respaldo, un despliegu
 dejaba a TODAS las tiendas con el celeste genérico de Kross.
 
 **Sin el deploy de `manage-store`**, el panel enseña el selector de degradado y los tres huecos de
-imagen, pero al guardar el servidor ignora esos tres campos: se ven, no se pegan.
+imagen, pero al guardar el servidor ignora esos campos: se ven, no se pegan.
+
+**Y al revés —la función desplegada contra una base sin el §49— tampoco rompe, desde el
+09-set-2026.** Rompía: el listado de tiendas del panel pedía las dos columnas nuevas, PostgREST
+respondía error en vez de la fila, y un admin dejaba de ver sus propias marcas. Ahora `manage-store`
+reintenta sin esas columnas, tanto al listar como al guardar. Pasó en producción y por eso está
+escrito acá.
 
 ### Instalar en iPhone: un video en vez de la lista · solo frontend (08-set-2026)
 
