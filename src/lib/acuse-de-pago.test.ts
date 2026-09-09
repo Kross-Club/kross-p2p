@@ -8,40 +8,38 @@ import { acuseDePago } from '../../supabase/functions/_shared/acuse-de-pago.ts'
 // cambia, esta prueba lo obliga a mirar qué está cambiando y para quién.
 
 describe('acuseDePago', () => {
-  // Quien adelantó la mitad y recoge en agencia: lo que necesita saber a
-  // continuación es DÓNDE paga el saldo, porque el counter no cobra.
-  it('adelanto con saldo, en agencia: el saldo se paga con Yape desde el enlace del pedido', () => {
-    expect(acuseDePago({ tipo: 'adelanto', pagado: 75, total: 150, esRecojo: true })).toBe(
-      '✅ ¡Recibimos tu adelanto de S/75! Te queda un saldo de S/75'
-      + ' que nos pagas con Yape desde este mismo enlace de tu pedido —no en la agencia— cuando te enviemos la guía'
-      + ' de tu envío. Apenas lo pagues te entregamos tu clave de recojo.'
-      + ' Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.',
-    )
+  // Corto a propósito: entró la plata y qué sigue. Cuánto falta y dónde se paga
+  // lo dice la tarjeta del pedido, con la cifra de hoy.
+  it('adelanto con saldo, en agencia: confirma y no repite el saldo', () => {
+    const m = acuseDePago({ tipo: 'adelanto', pagado: 75, total: 150, esRecojo: true })
+    expect(m).toBe('✅ ¡Recibimos tu adelanto de S/75! Ya estamos preparando tu pedido y te avisamos por aquí cuando salga.')
+    expect(m).not.toMatch(/saldo|agencia|Yape/)
   })
 
-  it('adelanto con saldo, a domicilio: el saldo se paga al recibir', () => {
+  it('adelanto con saldo, a domicilio: la misma frase', () => {
     expect(acuseDePago({ tipo: 'adelanto', pagado: 75, total: 150, esRecojo: false })).toBe(
-      '✅ ¡Recibimos tu adelanto de S/75! Te queda un saldo de S/75'
-      + ' que pagas al recibir tu pedido.'
-      + ' Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.',
+      '✅ ¡Recibimos tu adelanto de S/75! Ya estamos preparando tu pedido y te avisamos por aquí cuando salga.',
     )
   })
 
-  // El saldo va DERIVADO del pedido, no asumido: decirle "tu adelanto" a quien
-  // pagó todo suena a que aún falta plata.
+  // "adelanto" o "pago completo" DERIVADO del pedido, no asumido: decirle "tu
+  // adelanto" a quien pagó todo suena a que aún falta plata.
   it('quien pagó el total no oye hablar de adelantos', () => {
     expect(acuseDePago({ tipo: 'adelanto', pagado: 150, total: 150, esRecojo: true })).toBe(
-      '✅ ¡Recibimos tu pago completo de S/150! No te queda ningún saldo pendiente.'
-      + ' Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.',
+      '✅ ¡Recibimos tu pago completo de S/150! Ya estamos preparando tu pedido y te avisamos por aquí cuando salga.',
     )
   })
 
-  // Al pagar el saldo lo que espera es su clave, no un "estamos preparando": su
-  // pedido ya está en la agencia.
-  it('el saldo promete la clave de recojo, no la preparación', () => {
+  // Al pagar el saldo en agencia lo que espera es su clave.
+  it('el saldo en agencia promete la clave de recojo', () => {
     expect(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: true })).toBe(
-      '✅ ¡Recibimos tu saldo de S/75! Ya no te queda nada pendiente.'
-      + ' Te enviamos tu clave de recojo por acá.',
+      '✅ ¡Recibimos tu saldo de S/75! Tu clave de recojo te llega por aquí.',
+    )
+  })
+
+  it('el saldo a domicilio no habla de claves', () => {
+    expect(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: false })).toBe(
+      '✅ ¡Recibimos tu saldo de S/75! Tu pedido queda pagado por completo.',
     )
   })
 
@@ -57,10 +55,16 @@ describe('acuseDePago', () => {
       .toBe('✅ ¡Recibimos tu pago de S/20! Gracias.')
   })
 
-  // Un pago por MÁS del precio no puede dejar un saldo negativo escrito en el
-  // chat del comprador.
+  // Un pago por MÁS del precio es un pago completo, nunca un saldo negativo.
   it('nunca se anuncia un saldo negativo', () => {
     expect(acuseDePago({ tipo: 'adelanto', pagado: 200, total: 150, esRecojo: false }))
-      .toContain('No te queda ningún saldo pendiente')
+      .toContain('pago completo de S/200')
+  })
+
+  // Los arranques que `cobroDelAviso` reconoce no cambian.
+  it('conserva los arranques que el hilo reconoce', () => {
+    expect(acuseDePago({ tipo: 'adelanto', pagado: 75, total: 150, esRecojo: true })).toMatch(/^✅ ¡Recibimos tu adelanto de S\/75!/)
+    expect(acuseDePago({ tipo: 'adelanto', pagado: 150, total: 150, esRecojo: true })).toMatch(/^✅ ¡Recibimos tu pago completo de S\/150!/)
+    expect(acuseDePago({ tipo: 'saldo', pagado: 75, total: 150, esRecojo: true })).toMatch(/^✅ ¡Recibimos tu saldo de S\/75!/)
   })
 })

@@ -138,7 +138,7 @@ export async function registrarGuia(
 
   const aviso = await chatMessage(
     session.id,
-    mensajeDeGuia(g.courier, g.ids, saldo),
+    mensajeDeGuia(g.courier, g.ids),
     'all',
     // `guia` con su PDF: es lo que el chat pinta como tarjeta con el botón
     // "Ver mi guía de Shalom". Sin PDF —la guía registrada a mano no lo trae—

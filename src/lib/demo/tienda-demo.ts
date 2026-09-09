@@ -288,7 +288,7 @@ function conversacion(
       // Los mismos ids que el mensaje real (`idsDeGuia`): en Shalom, el nro. de
       // orden y el código del voucher — la clave NO va aquí.
       mensajeDeGuia(envio.courier,
-        idsDeGuia(envio.courier, { numero: envio.numero, codigo: envio.codigo }), envio.saldo),
+        idsDeGuia(envio.courier, { numero: envio.numero, codigo: envio.codigo })),
       // La guía de muestra (PDF real de Shalom, autorizado por el dueño): lo
       // que en una tienda real es el voucher subido por `shalom-order`.
       { media_url: envio.courier === 'SHALOM' ? GUIA_DEMO_PDF : null })

@@ -596,7 +596,7 @@ function anunciarGuiaEnDemo(
     type: 'guia', visibility: 'all',
     // Los mismos ids que el mensaje real (`idsDeGuia`): en Shalom, el nro. de
     // orden y el código del voucher — la clave NO va aquí.
-    body: mensajeDeGuia(courier, idsDeGuia(courier, ids), saldo),
+    body: mensajeDeGuia(courier, idsDeGuia(courier, ids)),
     media_url: pdf && courier === 'SHALOM' ? GUIA_DEMO_PDF : null,
     created_at: ahora,
   })

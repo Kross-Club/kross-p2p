@@ -550,9 +550,9 @@ describe('la clave de recojo en los hilos del generador', () => {
   // por los 4 dígitos sueltos: aparecen por coincidencia en montos y
   // operaciones — lo que revela la clave es el mensaje que la entrega.
   it('el que todavía debe el saldo que la guía le cobró NO tiene la clave', () => {
-    const deben = shalomConGuia().filter(p =>
-      p.saldo_verification !== 'MATCHED'
-      && (p.chat_messages ?? []).some(m => m.type === 'guia' && (m.body ?? '').includes('Tu saldo de S/')))
+    // El saldo de la guía se calcula con el precio final (el upsell viaja EN el
+    // paquete), así que "debía al registrar" es "debe hoy" mientras no cruce.
+    const deben = shalomConGuia().filter(p => p.saldo_verification !== 'MATCHED' && saldoDelPedido(p) > 0)
     expect(deben.length).toBeGreaterThan(0)
     for (const p of deben) {
       expect((p.chat_messages ?? []).some(m => (m.body ?? '').includes('Tu clave de recojo es'))).toBe(false)
@@ -577,8 +577,9 @@ describe('la tarjeta del saldo que manda el tracking, en los hilos', () => {
       const msgs = p.chat_messages ?? []
       const courier = String(p.tracking_courier).toUpperCase() === 'OLVA' ? 'OLVA' as const : 'SHALOM' as const
       expect(msgs.some(m => m.body === mensajeDeOrigen(courier))).toBe(true)
-      // La guía dice si al registrarse había deuda; la tarjeta va solo entonces.
-      const debia = msgs.some(m => m.type === 'guia' && (m.body ?? '').includes('Tu saldo de S/'))
+      // Si al registrarse había deuda: la que cruzó después la tuvo, y la que
+      // no cruzó la tiene hoy. La tarjeta va solo entonces.
+      const debia = p.saldo_verification === 'MATCHED' || saldoDelPedido(p) > 0
       expect(msgs.some(m => m.type === 'cobro' && m.sender_role === 'system')).toBe(debia)
     }
   })
@@ -589,8 +590,8 @@ describe('la tarjeta del saldo que manda el tracking, en los hilos', () => {
     const p = pasaronPorOrigen().find(x =>
       (x.chat_messages ?? []).some(m => m.type === 'cobro' && m.sender_role === 'system'))
     const tarjeta = (p?.chat_messages ?? []).find(m => m.type === 'cobro')
-    const guia = (p?.chat_messages ?? []).find(m => m.type === 'guia')
-    const saldo = Number(/Tu saldo de S\/(\d+)/.exec(guia?.body ?? '')?.[1])
+    // El saldo de ese momento: el del cupón si se emitió o pagó, si no el de hoy.
+    const saldo = p?.saldo_amount != null ? Number(p.saldo_amount) : saldoDelPedido(p!)
     expect(tarjeta?.body).toBe(textoDeCobro(soles(saldo)))
   })
 

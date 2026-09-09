@@ -704,6 +704,40 @@ Lo que cambió alrededor:
   productos, cancelar) queda sin uso y se limpia aparte. Quitar un producto ya no
   lo hace el comprador solo —lo pide por el chat y lo hace el vendedor—.
 
+**Segunda vuelta, mirándolo con un pedido real (09-set-2026).** Cinco cosas:
+
+1. **La cabecera lleva el logo de la marca**, no la mascota de Kross, cuando no
+   hay asesor con foto. Igual en la pantalla de llamada.
+2. **Las copys del acuse y de la guía se acortaron a lo que importa.** El acuse
+   dice que entró la plata y qué sigue; la guía dice que existe, sus ids en su
+   propia línea y qué sigue. Fuera la pre-guía, el "nunca en la agencia" y el
+   saldo restante: la pre-guía vive en «Ver pedido», el saldo en el botón de la
+   tarjeta y dónde se paga en las preguntas rápidas. Los arranques que
+   `cobroDelAviso` reconoce no cambian (`_shared/acuse-de-pago.ts`,
+   `_shared/mensaje-de-guia.ts`, con sus pruebas).
+3. **Instalar la app ya no se ofrece solo al abrir el chat.** Un aviso que
+   aparece de entrada se cierra sin leerse y distrae de lo que queremos
+   posicionar: que desde aquí se conversa rápido. Lo ofrece el vendedor cuando
+   toca el ícono del celular en el panel (`request_push_permission`), y la copy
+   en recojo habla de los avisos del envío, no de "cuando salga a tu puerta".
+4. **Las preguntas rápidas son tres preguntas CON respuesta**
+   (`lib/preguntas-rapidas.ts`, puro y con pruebas), apiladas encima del campo
+   y siempre a la vista —también después de escribir o de tocar una—. Cuándo
+   llega, dónde lo recoge y cuánto le falta (o su clave, si ya pagó); a
+   domicilio, cuándo llega, cuánto paga al recibir y cambiar la dirección;
+   entregado, cambios, volver a pedir y un problema. Se contestan con el pedido
+   de HOY —los mismos `pasos` del ticket— y entran al hilo las dos:
+   `send-message` escribe la respuesta como mensaje del sistema etiquetado
+   «Respuesta automática» y la devuelve en `auto_reply`, para que el vendedor
+   vea qué se le contestó (su push dice «respondido automáticamente»). Si la
+   función no está desplegada, la respuesta se ve igual en el chat del
+   comprador, solo que no queda guardada.
+5. **El campo de escribir en iPhone.** La pantalla medía `100vh`, que en Safari
+   no se achica con el teclado: el campo y su botón de enviar quedaban debajo.
+   Ahora se mide con `visualViewport` cuando el teclado está abierto
+   (`lib/use-alto-visible.ts`), el texto va a 16 px para que iOS no haga zoom,
+   y el teclado ofrece «Enviar» (`enterKeyHint`).
+
 ## El checkout multi-paso es el default
 
 Desde este cambio, la landing abre el checkout de 3 pasos. El viejo (`CheckoutQuiz`)
@@ -791,6 +825,10 @@ del orden: estaba copiado en seis archivos). Ventas sí ve `validando` siempre,
 porque necesita distinguir un pedido que espera cruce de uno recién creado.
 
 ## Respuestas rápidas en el chat
+
+> **Desde el 09-set-2026 son preguntas CON respuesta**, tres y siempre a la vista. Lo de
+> abajo describe las fichas de antes; el diseño vigente está en *El chat del comprador,
+> en tres cosas → Segunda vuelta*.
 
 Fichas tocables encima del campo de texto, al estilo de las plantillas de
 WhatsApp. Hacen dos cosas a la vez: **bajan el costo de la primera
