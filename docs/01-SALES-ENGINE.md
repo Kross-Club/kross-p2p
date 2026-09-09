@@ -58,7 +58,7 @@
 |---|---|
 | `CheckoutModal.tsx` | Shell: progreso, trap de foco, Esc con confirmación, CTA sticky en el safe area |
 | `ExitOffer.tsx` | Diálogo centrado de retención al intentar salir (oferta o confirmación seca) |
-| `steps/Step1Pack.tsx` | Packs con precio por unidad, ahorro explícito y badge `×N` de cantidad |
+| `steps/Step1Pack.tsx` | Packs con la descripción que escribe la marca, ahorro explícito, badge `×N` de cantidad y las seis señales de confianza |
 | `steps/Step2Delivery.tsx` | WhatsApp → DNI → nombre → **distrito** (orden de compromiso creciente). El selector de distrito es UNO solo, con los 483 del país |
 | `steps/Step3Confirm.tsx` | Resumen del pedido + cuánto adelanta. No pide nada más |
 | `steps/OrderDone.tsx` | Pedido confirmado. Llegar aquí ES el KPI del refactor |
@@ -270,6 +270,39 @@ desde **Productos → editar → "+ Foto del pack"** (`ProductosPage.tsx`, bucke
   subida no. El mismo helper sirve para el comprobante de Yape en Fase 3.
 - `/checkout-demo` trae tres SVG inline de 1, 2 y 3 frascos para poder revisar el patrón
   sin cargar nada.
+
+**i) Lo que va debajo del título lo escribe la marca ✅ (09-set-2026).** La segunda línea
+de cada pack era `S/N por unidad · descripción`, y ese `S/N` se calculaba con las unidades
+**deducidas del nombre** (`unitsOf`).
+
+- **Deducía mal en cuanto el nombre no llevaba número.** "Pack Mono Loco" son dos frascos
+  y contaba como uno: la fila publicaba S/20 por unidad al lado de un "Pack Mono Cool" de
+  S/12 por unidad, o sea que el pack grande se leía **más caro por unidad que el chico** —
+  justo al revés de lo que el paso 1 le está pidiendo que crea, y en la pantalla donde se
+  decide cuánto llevar.
+- **Ahora esa línea es la `descripción corta` del pack, y nada más.** La escribe quien sí
+  sabe qué trae cada uno, en *Productos → editar → Packs*. Vacía, debajo del título no va
+  nada: mejor una fila limpia que un dato inventado.
+- **El número del nombre sigue sirviendo**, pero solo para el badge `×N` y el ahorro, que
+  **desaparecen** cuando la deducción falla (unidades = 1 → sin badge, ahorro 0). Callan en
+  vez de mentir, y por eso se pueden dejar. El editor del panel ahora lo dice: el número va
+  en el **nombre**, la frase en la **descripción**.
+
+**j) Seis señales de confianza, en dos filas ✅ (09-set-2026).** Eran tres en una sola línea
+—*"Pagas el resto al recibir · Todo el Perú · Datos seguros"*— y la primera era **falsa en
+agencia**: ahí el saldo se paga por la app, que es lo que suelta la clave de recojo, y no en
+el mostrador (`advanceHeadsUpShortPickup`).
+
+- Hoy son **seis en dos filas de tres**, en `TRUST_BADGES` (`checkout.config.ts`): la
+  primera fila contesta lo del dinero —*se paga un adelanto*, *se descuenta del total*,
+  *pagas con Yape*—, la segunda lo de si llega y lo de sus datos —*todo el Perú*, *sigues
+  tu pedido*, *datos seguros*.
+- **Cada frase tiene que ser verdad en TODOS los caminos**, porque el comprador todavía no
+  eligió domicilio ni agencia. Yape lo es: es el riel de los tres —360pay, Flow y el cobro
+  que coordina un asesor por el chat—, así que no promete pasarela a la marca que no la
+  tiene.
+- La segunda fila **no empuja el CTA**: vive en el pie fijo del modal, fuera del scroll del
+  paso. Verificado a 360 px y 390 px con el checkout de revisión.
 
 ### 2. Checkout CRO ultra-rápido ✅
 - **Validación DNI con Decolecta (RENIEC)** → autocompleta el nombre y reduce campos:

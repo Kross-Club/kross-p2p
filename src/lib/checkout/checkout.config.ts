@@ -134,6 +134,33 @@ export const BEST_PACK_BADGE = '⭐ MÁS ELEGIDO · MEJOR PRECIO'
 /** Muestra el ahorro explícito vs. comprar N unidades sueltas. */
 export const SHOW_PACK_SAVINGS = true
 
+/**
+ * Señales de confianza del paso 1. Son SEIS, en dos filas de tres.
+ *
+ * El comprador llega de un anuncio y de una marca que no conoce: lo que decide
+ * la venta es cuánto miedo le queda, no cuánto sabe del producto. Cada frase
+ * tiene que ser verdad en TODOS los caminos —todavía no eligió domicilio ni
+ * agencia—, porque una que el paso 3 desmienta hace más daño que su ausencia:
+ *
+ *  · **"Se paga un adelanto"** reemplaza a *"Pagas el resto al recibir"*, que
+ *    era falso en agencia: ahí el saldo se paga por la app y es lo que suelta
+ *    la clave de recojo, no se paga en el mostrador
+ *    (`advanceHeadsUpShortPickup`).
+ *  · **"Se descuenta del total"** contesta la pregunta que frena el tap: si el
+ *    adelanto es plata encima del precio. No lo es.
+ *  · **Yape** es el riel de los tres caminos —360pay, Flow y el cobro que
+ *    coordina un asesor por el chat—, así que nombrarlo no promete nada que
+ *    una marca sin pasarela no pueda cumplir.
+ */
+export const TRUST_BADGES: readonly string[] = [
+  '✅ Se paga un adelanto',
+  '💸 Se descuenta del total',
+  '📲 Pagas con Yape',
+  '🚚 Todo el Perú',
+  '📍 Sigues tu pedido',
+  '🔒 Datos seguros',
+]
+
 // ─── Descuento de retención ──────────────────────────────────────────────────
 
 /**

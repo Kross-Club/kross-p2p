@@ -1,9 +1,10 @@
 // ─── PASO 1 · Selección de pack ──────────────────────────────────────────────
 // El ahorro explícito es lo que mueve el ticket promedio, así que cada tarjeta
-// muestra precio por unidad y cuánto se ahorra frente a comprar sueltas.
+// enseña cuánto se ahorra frente a comprar sueltas y un badge `×N` con la
+// cantidad. Lo que va debajo del título lo escribe la MARCA.
 // El CTA nunca está deshabilitado aquí: el pack viene preseleccionado.
 
-import { BEST_PACK_BADGE, SHOW_PACK_SAVINGS } from '../../../lib/checkout/checkout.config'
+import { BEST_PACK_BADGE, SHOW_PACK_SAVINGS, TRUST_BADGES } from '../../../lib/checkout/checkout.config'
 import { effectivePrice } from '../../../lib/checkout/product-packs'
 
 export interface PackOption {
@@ -39,7 +40,6 @@ export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPa
           const active = selected === pack.id
           const isBest = pack.id === bestPackId
           const precio = effectivePrice(pack.precio, discountPen)
-          const perUnit = pack.unidades > 0 ? precio / pack.unidades : precio
           // El ahorro mide SOLO el volumen, sobre el precio de lista: si se
           // midiera contra el precio ya descontado, el pack de 1 unidad —que no
           // ahorra nada— mostraría el descuento de retención como si fuera
@@ -92,10 +92,19 @@ export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPa
                 <span className={`block text-sm font-black ${active ? 'text-green-800' : 'text-gray-800'}`}>
                   {pack.nombre}
                 </span>
-                <span className="block text-[11px] text-gray-500">
-                  S/{perUnit.toFixed(0)} por unidad
-                  {pack.descripcion ? ` · ${pack.descripcion}` : ''}
-                </span>
+                {/* Debajo del título va la descripción corta de la marca, y
+                    nada más. Aquí se calculaba antes un "S/N por unidad" con
+                    las unidades deducidas del NOMBRE (`unitsOf`): un nombre sin
+                    número —"Pack Mono Loco", que trae dos frascos— cuenta como
+                    una unidad, y la línea publicaba el precio del pack como si
+                    fuera el unitario. El pack de dos salía más caro por unidad
+                    que el de uno, o sea justo al revés de lo que se le está
+                    pidiendo que crea. Un precio deducido mal en la pantalla
+                    donde se decide cuánto llevar cuesta la venta, así que esa
+                    línea la escribe quien sí sabe qué trae cada pack. */}
+                {pack.descripcion && (
+                  <span className="block text-[11px] text-gray-500">{pack.descripcion}</span>
+                )}
                 {SHOW_PACK_SAVINGS && savings > 0 && (
                   <span className="inline-block mt-1 text-[10px] font-black text-green-700 bg-green-100 rounded-full px-2 py-0.5">
                     Ahorras S/{savings.toFixed(0)}
@@ -117,16 +126,23 @@ export default function Step1Pack({ packs, unitPrice, selected, onSelect, bestPa
       </div>
 
       {/* Señales de confianza: lo que quita el miedo a comprar por un anuncio.
-          Van en UNA sola línea: en dos ocupaban el doble de alto empujando el
-          CTA fuera de pantalla en equipos chicos, y tres frases apiladas se
-          leen como letra chica legal en vez de como tranquilidad.
-          `whitespace-nowrap` en cada ítem impide que una frase se parta a la
-          mitad; el texto se encoge en pantallas angostas antes que romperse. */}
-      <ul className="mt-4 flex items-center justify-between gap-2
+          Eran tres en una sola línea por miedo a empujar el CTA fuera de
+          pantalla; no lo empujan — el CTA vive en el pie fijo del modal, fuera
+          de este scroll (`CheckoutModal`), así que la segunda fila la paga el
+          contenido y no el botón. Son seis en dos filas de tres porque el
+          miedo del que compra por un anuncio tiene más de tres formas: la
+          primera fila contesta lo del dinero, la segunda lo de si llega y lo
+          de sus datos.
+          La rejilla mantiene las dos filas alineadas aunque una frase ocupe
+          dos líneas en un equipo angosto; ahí el texto se parte antes que
+          desbordar, que es lo que evitaba `whitespace-nowrap`. El texto y las
+          frases se mantienen cortos: esto tiene que leerse de un vistazo, no
+          como letra chica legal. */}
+      <ul className="mt-4 grid grid-cols-3 gap-x-2 gap-y-1.5
         text-[10px] min-[380px]:text-[11px] text-gray-500">
-        <li className="whitespace-nowrap">✅ Pagas el resto al recibir</li>
-        <li className="whitespace-nowrap">🚚 Todo el Perú</li>
-        <li className="whitespace-nowrap">🔒 Datos seguros</li>
+        {TRUST_BADGES.map(badge => (
+          <li key={badge} className="text-center leading-tight">{badge}</li>
+        ))}
       </ul>
     </>
   )

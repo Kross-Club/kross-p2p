@@ -398,7 +398,11 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
                 <input value={String(p.precio || '')} onChange={e => setPack(i, { precio: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })} inputMode="decimal" placeholder="S/" className="w-20 bg-white rounded-lg px-3 py-2 text-xs outline-none border" />
                 <button onClick={() => removePack(i)} className="p-2 rounded-lg bg-white border"><Trash2 size={13} className="text-red-500" /></button>
               </div>
-              <input value={p.descripcion ?? ''} onChange={e => setPack(i, { descripcion: e.target.value })} placeholder="Descripción corta" className="w-full bg-white rounded-lg px-3 py-2 text-xs outline-none border" />
+              {/* Es TODO lo que el comprador lee debajo del título del pack en
+                  el checkout: el "S/N por unidad" que se calculaba solo se fue
+                  porque deducía las unidades del nombre y mentía en cuanto el
+                  nombre no llevaba número. Vacía, debajo del título no va nada. */}
+              <input value={p.descripcion ?? ''} onChange={e => setPack(i, { descripcion: e.target.value })} placeholder="Descripción corta (lo que sale bajo el título)" className="w-full bg-white rounded-lg px-3 py-2 text-xs outline-none border" />
 
               {/* Foto del pack: la que se ve en el paso 1 del checkout. */}
               <div className="flex items-center gap-2">
@@ -422,13 +426,16 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
           ))}
           <input ref={packFileRef} type="file" accept="image/*" className="hidden" onChange={uploadPackImage} />
 
-          {/* La regla que decide si la foto vende o solo pesa. */}
+          {/* Las dos reglas que el vendedor necesita acá: qué controla la
+              descripción, y cuándo la foto vende en vez de solo pesar. */}
           {packs.length > 0 && (
             <p className="text-[11px] text-gray-400 leading-snug">
-              La foto sale en el paso 1 del checkout. Sirve <b>solo si cada pack muestra su
-              cantidad real</b> (1 frasco, 2 frascos, 3 frascos). Si subes la misma foto en
-              todos, mejor no subas ninguna: no distingue nada y pesa en 4G. Sin foto propia
-              se usa la primera imagen de la landing.
+              La <b>descripción corta es todo lo que sale debajo del título</b> del pack en el
+              checkout: escríbela tú, y si la dejas vacía no sale nada. Pon el número de
+              unidades en el <b>nombre</b> (“2 unidades”, “Pack x3”) para que salgan el badge
+              <b> ×N</b> y el ahorro. La foto también sale ahí: sirve solo si cada pack muestra
+              su cantidad real —con la misma en todos, mejor ninguna—; sin foto propia se usa
+              la primera imagen de la landing.
             </p>
           )}
         </div>
