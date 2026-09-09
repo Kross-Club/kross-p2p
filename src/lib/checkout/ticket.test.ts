@@ -45,6 +45,31 @@ function domicilioLima(over: Partial<CheckoutState> = {}): CheckoutState {
 const GUIA = { courier: 'SHALOM', numero: '80574902', codigo: 'CJTW', oseId: null, href: '/guia/tok' }
 const etiquetas = (t: ReturnType<typeof buildTicket>) => t.pasos.map(p => `${p.estado}:${p.label}`)
 
+// ─── La miniatura de «TU PEDIDO» ─────────────────────────────────────────────
+//
+// El ticket se reenvía por WhatsApp a quien va a recoger, y la foto es lo que
+// le dice qué va a levantar del mostrador. Por eso la regla es dura: la foto
+// del PACK que compró, y si ese pack no tiene, el logo de la marca — nunca la
+// del producto suelto, que enseñaría una cantidad distinta a la que pagó.
+describe('ticket · la miniatura del pedido', () => {
+  const linea = (extra: Partial<Parameters<typeof buildTicket>[0]>) =>
+    buildTicket({ state: agencia(), price: 189, packName: 'Pack x2', paid: true, unpaid: false, branch: SEDE, ...extra })
+      .lines.find(l => l.label === 'Tu pedido')!
+
+  it('es la foto del pack cuando la marca la cargó', () => {
+    expect(linea({ packImage: 'https://cdn/pack-2.png', storeLogo: 'https://cdn/logo.png' }).image)
+      .toBe('https://cdn/pack-2.png')
+  })
+
+  it('sin foto de pack, el logo cuadrado de la marca', () => {
+    expect(linea({ packImage: null, storeLogo: 'https://cdn/logo.png' }).image).toBe('https://cdn/logo.png')
+  })
+
+  it('sin ninguna de las dos, ninguna: el ticket sabe callarse', () => {
+    expect(linea({ packImage: null, storeLogo: null }).image).toBeNull()
+  })
+})
+
 describe('ticket · agencia con adelanto pagado', () => {
   const t = buildTicket({ state: agencia(), price: 189, packName: 'Pack x2', paid: true, unpaid: false, branch: SEDE })
 

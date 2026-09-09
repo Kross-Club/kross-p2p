@@ -29,6 +29,10 @@ export interface TicketInput {
    *  frasco genérico. La elige el servidor al crear el pedido y viaja en
    *  `items[0].image` (`_shared/packs.ts`). */
   packImage?: string | null
+  /** El logo CUADRADO de la marca. Es el respaldo de la miniatura cuando ese
+   *  pack no tiene foto: no promete ninguna cantidad, y deja el ticket con la
+   *  cara de la tienda en vez de un hueco gris. */
+  storeLogo?: string | null
   /** true cuando el webhook ya confirmó el adelanto. */
   paid: boolean
   /** El comprador pidió que un asesor coordine el adelanto en vez de pagar. */
@@ -120,7 +124,10 @@ export function buildTicket(i: TicketInput): Ticket {
   const lines: TicketLine[] = []
   const agencia = s.pickup.agency ? nombreAgencia(s.pickup.agency) : 'la agencia'
 
-  lines.push({ label: 'Tu pedido', value: i.packName ?? 'Tu pack', image: i.packImage ?? null })
+  // La miniatura: la foto del pack, y si ese pack no tiene, el logo cuadrado de
+  // la marca. NO la primera foto del producto — esa es la del frasco suelto y
+  // al que compró tres le enseñaría uno.
+  lines.push({ label: 'Tu pedido', value: i.packName ?? 'Tu pack', image: i.packImage ?? i.storeLogo ?? null })
 
   let destino: string
   if (isAgency) {

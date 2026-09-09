@@ -14,6 +14,7 @@ import { AgencyService } from '../../lib/checkout/services/AgencyService'
 import type { AgencyBranch } from '../../lib/checkout/types'
 import { pickupBranchIdOf } from '../../lib/session'
 import { enlaceDeGuia } from '../../lib/hoja-de-guia'
+import { useStore } from '../../lib/store-context'
 import type { OrderMessage, OrderSession } from '../../lib/order-api'
 
 /** Cómo se NOMBRA el pedido en una línea: el pack, o el primer producto y
@@ -33,6 +34,7 @@ export function useTicketDelPedido(
   const agencia = pedido?.agency_name === 'SHALOM' || pedido?.agency_name === 'OLVA'
     ? pedido.agency_name
     : null
+  const { store } = useStore()
   const branchId = pedido ? pickupBranchIdOf(pedido) : null
   const [sede, setSede] = useState<AgencyBranch | null>(null)
   useEffect(() => {
@@ -65,13 +67,15 @@ export function useTicketDelPedido(
       packName: nombreDelPedido(pedido),
       // La miniatura del ticket: la foto del pack que compró, elegida por el
       // servidor al crear el pedido (`_shared/packs.ts`). Con varios productos
-      // es la del primero, que es justo el que nombra la línea.
+      // es la del primero, que es justo el que nombra la línea. Sin foto de
+      // pack, el logo cuadrado de la marca.
       packImage: pedido.items?.[0]?.image ?? null,
+      storeLogo: store.logo_url,
       paid: pagadoDelPedido(pedido),
       unpaid: coordinadoDelPedido(pedido),
       branch: sede,
       guide,
       fase: pedido.tracking_phase,
     })
-  }, [pedido, pdf, sede, token])
+  }, [pedido, pdf, sede, token, store.logo_url])
 }

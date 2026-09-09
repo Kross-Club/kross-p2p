@@ -21,13 +21,11 @@ describe('imagenDelPack', () => {
     expect(imagenDelPack(PACKS, '2 unidades', IMAGENES)).toBe('https://cdn/dos.png')
   })
 
-  it('cae a la primera del producto cuando ese pack no tiene foto', () => {
-    expect(imagenDelPack(PACKS, '3 unidades', IMAGENES)).toBe('https://cdn/producto-1.png')
-  })
-
-  it('cae a la primera del producto cuando el pack ya no existe', () => {
-    // El nombre viajó en el pedido y la marca renombró sus packs después.
-    expect(imagenDelPack(PACKS, 'Pack Mono Loco', IMAGENES)).toBe('https://cdn/producto-1.png')
+  // El pack elegido manda: su foto, o ninguna. La del producto es la del frasco
+  // suelto, así que al que compró tres le enseñaría uno — el mismo error que
+  // esto vino a arreglar. Sin foto, quien pinta pone el logo de la marca.
+  it('devuelve null cuando ese pack existe y no tiene foto', () => {
+    expect(imagenDelPack(PACKS, '3 unidades', IMAGENES)).toBeNull()
   })
 
   it('sin pack elegido, la primera del producto', () => {
@@ -41,9 +39,15 @@ describe('imagenDelPack', () => {
     expect(imagenDelPack(null, 'x', null)).toBeNull()
   })
 
+  // Un pack renombrado después de la venta no deja al ticket sin nada que
+  // enseñar: ahí la del producto es la que corresponde, porque ya no hay
+  // cantidad que pueda contradecir.
+  it('con un pack que ya no existe, la primera del producto', () => {
+    expect(imagenDelPack(PACKS, 'Pack Mono Loco', IMAGENES)).toBe('https://cdn/producto-1.png')
+  })
+
   it('descarta cadenas vacías, que la base sí guarda', () => {
-    expect(imagenDelPack([{ nombre: 'x', precio: 10, image: '   ' }], 'x', ['https://cdn/p.png']))
-      .toBe('https://cdn/p.png')
+    expect(imagenDelPack([{ nombre: 'x', precio: 10, image: '   ' }], 'x', ['https://cdn/p.png'])).toBeNull()
     expect(imagenDelPack([], null, ['  '])).toBeNull()
   })
 })
