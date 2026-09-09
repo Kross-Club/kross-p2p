@@ -166,16 +166,19 @@ export function TicketDelPedido({ ticket, orderCode }: { ticket: Ticket; orderCo
               </dd>
               {l.detail && <dd className="text-sm text-gray-600 leading-snug mt-0.5">{l.detail}</dd>}
             </div>
-            {/* La foto del pack que compró, al costado de su nombre
-                (09-set-2026). Un ticket que se manda por WhatsApp para que
-                alguien más lo recoja se entiende mejor con la foto de lo que
-                va a recoger que con «Pack Mono Loco».
+            {/* La foto del PACK que compró, al costado de su nombre
+                (09-set-2026), y si ese pack no tiene, el logo cuadrado de la
+                marca — lo decide `buildTicket`. Un ticket que se manda por
+                WhatsApp para que alguien más lo recoja se entiende mejor con la
+                foto de lo que va a recoger que con «Pack Mono Loco».
 
                 `object-contain` y NO `cover`: la gracia de la foto de un pack
                 es que se vean las tres unidades, y recortar para llenar el
-                cuadrado le corta una — enseñaría menos de lo que compró. Si la
-                URL muere se esconde sola: esta pantalla se guarda como captura
-                y el ícono de imagen rota se guardaría con ella. */}
+                cuadrado le corta una — enseñaría menos de lo que compró. Y un
+                logo recortado a un cuadrado sale corrido, que es lo mismo que
+                ya sabía la pantalla de instalar. Si la URL muere se esconde
+                sola: esto se guarda como captura y el ícono de imagen rota se
+                guardaría con ella. */}
             {l.image && (
               <img
                 src={l.image} alt="" aria-hidden

@@ -853,10 +853,16 @@ Lo que cambió alrededor:
   más. Ahora lleva su miniatura al costado, que es lo que hace entendible un ticket
   reenviado por WhatsApp a quien va a recoger: reconoce lo que va a levantar del mostrador
   aunque el nombre del pack no le diga nada.
-  - La elige el SERVIDOR al crear el pedido (`_shared/packs.ts`, `imagenDelPack`) con la
-    misma regla del paso 1: la foto propia del pack, y si ese pack no tiene, la primera del
-    producto. Antes se guardaba siempre la primera del producto, así que el pack de tres
-    enseñaba la foto de uno.
+  - La elige el SERVIDOR al crear el pedido (`_shared/packs.ts`, `imagenDelPack`): **el pack
+    elegido manda su foto, y punto**. Antes se guardaba siempre la primera del producto, así
+    que el pack de tres enseñaba la foto de uno.
+  - **Si ese pack no tiene foto, va el logo cuadrado de la marca**, no la primera del
+    producto: esa es la del frasco suelto y volvería a enseñar una cantidad distinta a la que
+    pagó, que es el error que esto vino a arreglar. El logo no promete ninguna cantidad y
+    deja el ticket con la cara de la tienda en vez de un hueco gris. Lo decide `buildTicket`
+    (`packImage ?? storeLogo`), así que se prueba sin pintar nada.
+  - La foto del producto sí es la correcta cuando **no hubo pack** —un producto suelto, o un
+    pack que la marca renombró después de la venta—: ahí no hay cantidad que contradecir.
   - Va `object-contain` y no `cover`: la gracia de la foto de un pack es que se vean las
     tres unidades, y recortar para llenar el cuadrado corta una — enseñaría menos de lo que
     compró. Si la URL muere, la miniatura se esconde sola: esta pantalla se guarda como
