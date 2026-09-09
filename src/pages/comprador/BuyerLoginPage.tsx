@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { KrossIcon } from '../../components/KrossLogo'
+import Flotante from '../../components/Flotante'
 import { useStore, isPlatformHost } from '../../lib/store-context'
 import { guardarSesion } from '../../lib/sesion-comprador'
 import { textoSobre } from '../../lib/contraste'
 import {
-  ESCENARIO, SITIOS_FLOTANTES, estiloValido, fondoDeMarca, imagenesDeAcceso, vidrioDeMarca,
+  ESCENARIO, SITIOS_FLOTANTES, estiloValido, fondoDeMarca, imagenesPorSitio, vidrioDeMarca,
 } from '../../lib/degradado'
-import type { SitioFlotante } from '../../lib/degradado'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -176,7 +176,8 @@ export default function BuyerLoginPage() {
   // ángulo «aleatorio» es el id de la tienda, así que es el mismo siempre.
   const fondo = fondoDeMarca(marca, store.color_dark || marca, estiloValido(store.gradient_style), store.id ?? store.slug ?? '')
   const vidrio = vidrioDeMarca(marca, store.color_dark || marca)
-  const flotantes = imagenesDeAcceso(store.login_images)
+  // Cada casilla en SU sitio: el hueco no corre a la siguiente imagen.
+  const flotantes = imagenesPorSitio(store.login_images)
   // Una sombra apenas perceptible: despega el PNG del degradado sin dibujarle
   // el rectángulo que se acaba de quitar. Más marcada sobre un fondo oscuro,
   // donde un logo de tinta clara se funde antes.
@@ -198,10 +199,10 @@ export default function BuyerLoginPage() {
           composición en vez de estirarse hasta los bordes.
           `pointer-events: none`: una imagen que flota no puede comerse el toque
           de un botón. */}
-      {flotantes.length > 0 && (
+      {flotantes.some(Boolean) && (
         <div className="absolute inset-0 m-auto w-full h-full pointer-events-none"
           style={{ maxWidth: ESCENARIO.ancho, maxHeight: ESCENARIO.alto }}>
-          {flotantes.map((src, i) => <Flotante key={src} src={src} sitio={SITIOS_FLOTANTES[i]} />)}
+          {flotantes.map((src, i) => src && <Flotante key={i} src={src} sitio={SITIOS_FLOTANTES[i]} />)}
         </div>
       )}
 
@@ -313,41 +314,5 @@ export default function BuyerLoginPage() {
         </div>
       </div>
     </div>
-  )
-}
-
-/**
- * Uno de los productos que la marca subió, meciéndose en bucle.
- *
- * El sitio y el ritmo salen de `SITIOS_FLOTANTES`, no de quien sube la imagen:
- * de eso depende que la pantalla se lea como un diseño y no como tres PNG
- * apoyados en el aire. El del costado va DEBAJO de la tarjeta y es el que se ve
- * a través del vidrio; los otros dos pasan por delante, mordiendo el borde de
- * la pantalla, que es lo que da la sensación de profundidad.
- *
- * `aria-hidden` y `alt` vacío: son decoración. Un lector de pantalla leyendo
- * «imagen» tres veces antes del campo del DNI estorba y no informa de nada.
- */
-function Flotante({ src, sitio }: { src: string; sitio: SitioFlotante }) {
-  return (
-    <img
-      src={src}
-      alt=""
-      aria-hidden
-      loading="lazy"
-      className="k-flota absolute select-none"
-      style={{
-        ...sitio.estilo,
-        zIndex: sitio.detras ? 1 : 3,
-        pointerEvents: 'none',
-        // El filtro le da peso al producto sobre el color: sin sombra, un PNG
-        // recortado se ve pegado encima y no flotando.
-        filter: 'drop-shadow(0 18px 28px rgba(0,0,0,0.28))',
-        ['--ritmo' as string]: `${sitio.ritmo}s`,
-        ['--altura' as string]: `${sitio.altura}px`,
-        ['--deriva' as string]: `${sitio.deriva}px`,
-        ['--giro' as string]: `${sitio.giro}deg`,
-      }}
-    />
   )
 }

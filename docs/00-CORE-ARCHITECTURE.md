@@ -815,7 +815,7 @@ primario, que es lo que pinta el acceso del comprador.
 | `color_primary` | El color de la marca | Encabeza todas las pantallas del comprador, los botones, y ahora el `theme-color` del navegador |
 | `color_dark` | El **secundario** (el nombre de la columna es el viejo) | El otro extremo del degradado, y el botón de la web pública |
 | `gradient_style` | `vertical` · `horizontal` · `diagonal` · `aleatorio` | Cómo se inclina ese degradado |
-| `login_images` | Hasta tres PNG | Los productos que flotan en `/acceso` |
+| `login_images` | Tres casillas, **por posición** | Flotan en `/acceso`; la **segunda** es «tu caja» y enmarca el pedido confirmado |
 
 ⚠️ **La columna no se renombró a propósito.** Renombrarla obligaría a correr el SQL y desplegar las
 funciones en el mismo minuto, y entre una cosa y la otra cada marca se quedaría sin color. Lo que
@@ -846,6 +846,12 @@ de su tienda; en la primera pantalla de una app white-label eso es justo lo que 
   Los sitios los decide la pantalla (`SITIOS_FLOTANTES`) y no quien sube las imágenes — de eso
   depende que se lea un diseño y no tres PNG apoyados en el aire. Sin imágenes la pantalla queda
   igual de bien, solo más sobria: no se inventa ninguna.
+- **Las tres casillas son POSICIONALES** (09-set-2026, segunda pasada). Se guardaban filtrando los
+  huecos, y con eso el sitio de cada imagen dependía de cuántas hubiera: quien llenaba solo la
+  segunda la veía salir en el sitio de la primera. Ahora el índice **es** la casilla, en el editor,
+  en `manage-store` —que vacía lo que no es una URL de nuestro bucket en vez de saltárselo, y
+  recorta los huecos del final— y en `imagenesPorSitio`. Lo guardado antes ya venía compactado y se
+  lee tal cual: de qué casilla salió cada imagen no se puede adivinar.
 - **El vaivén es solo `transform`**, que resuelve el compositor, y se apaga con
   `prefers-reduced-motion`.
 - Las imágenes se guardan **solo si su URL es del bucket `branding` de este proyecto**
@@ -858,6 +864,27 @@ antes ni después: enseñarlo confirmaría que esa persona le compra a la marca 
 **El logo va SIN placa.** El fondo ya es el color de la marca, así que el rectángulo de atrás solo
 recortaba un bloque plano sobre su propio color — justo el borde que un logo en PNG viene a no
 tener. Queda una sombra muy suave, que despega el PNG del degradado sin dibujarle una caja.
+
+### La pantalla del pedido, con el mismo fondo
+
+La confirmación (`/pedido/:token`) y su hermana «Ver pedido» del chat encabezaban con el color
+primario PLANO. Desde el 09-set-2026 llevan el **mismo degradado** del acceso: los dos colores de
+la marca con su inclinación, y la tinta decidida por contraste contra la mezcla
+(`tintaSobreDegradado`). Un color plano en una pantalla y un degradado en la otra eran dos marcas
+distintas dentro de la misma app.
+
+- **La segunda imagen de la marca enmarca las dos esquinas de arriba** de la confirmación,
+  meciéndose igual que en el acceso (`ESQUINAS_DEL_PEDIDO`). Es la misma foto repetida y **volteada**
+  de un lado, con otro ritmo: sin espejo se lee como un archivo puesto dos veces. Por eso el editor
+  la pide como «tu caja» — el empaque con el que llega el pedido es lo que tiene sentido enmarcando
+  la pantalla del que acaba de comprar; un frasco suelto repetido en una esquina, no.
+- **Solo la confirmación las lleva**, no la hoja «Ver pedido»: aquella es la celebración de quien
+  acaba de pagar, esta es la consulta de quien vino a mirar cómo va su envío.
+- El vaivén es el mismo componente en las dos pantallas (`components/Flotante`): dos copias del
+  mismo movimiento se despegan a la primera corrección.
+- **«Mis pedidos» y la cabecera del chat siguen planas.** Son barras de 56 px: un degradado ahí se
+  ve como un color, y el de «Mis pedidos» ya se había quitado por terminar siempre en un morado que
+  no era de nadie.
 
 ### El menú lateral del vendedor, con el degradado de su tienda
 

@@ -8,7 +8,7 @@ import { puedeAdministrar } from '../../lib/permisos'
 import { vistaDeTiendas, estorboParaBorrar } from '../../lib/vista-de-tiendas'
 import { useDemo, setDemo } from '../../lib/demo/modo-demo'
 import { PEDIDOS_POR_DIA } from '../../lib/demo/tienda-demo'
-import { ESTILOS_DE_DEGRADADO, estiloValido, fondoDeMarca, imagenesDeAcceso } from '../../lib/degradado'
+import { ESTILOS_DE_DEGRADADO, estiloValido, fondoDeMarca, imagenesPorSitio } from '../../lib/degradado'
 import { normalizarDominio } from '../../lib/dominio'
 import type { EstiloDeDegradado } from '../../lib/degradado'
 
@@ -416,10 +416,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [avisoDominio, setAvisoDominio] = useState<{ ok: boolean; texto: string } | null>(null)
   // Tres huecos fijos: el sitio de cada imagen lo decide la pantalla del
   // acceso, así que el orden de acá es el orden de allá.
-  const [loginImgs, setLoginImgs] = useState<(string | null)[]>(() => {
-    const guardadas = imagenesDeAcceso(store.login_images)
-    return [0, 1, 2].map(i => guardadas[i] ?? null)
-  })
+  const [loginImgs, setLoginImgs] = useState<(string | null)[]>(() => imagenesPorSitio(store.login_images))
   const [active, setActive] = useState(store.active)
   const [waEnabled, setWaEnabled] = useState(!!store.wa_enabled)
   // `?? true` y no `!!`: una marca cargada antes de que existiera la columna
@@ -608,7 +605,10 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
       nombre: nombre.trim(), logo_url: logo, notif_icon_url: notifIcon, logo_wide_url: logoWide, color_primary: cp, color_dark: cd,
       gradient_style: gradiente,
       // Los huecos vacíos no viajan: la lista es lo que hay, en orden.
-      login_images: loginImgs.filter((u): u is string => !!u),
+      // Con los HUECOS: el índice es la casilla, y la segunda significa «tu
+      // caja». Compactar acá le movía la imagen de sitio a quien deja una
+      // casilla vacía, y el servidor respeta el mismo orden.
+      login_images: loginImgs.map(u => u ?? null),
       // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
       // verificado para estos campos — redirigen dinero, no un logo).
       pay360_enabled: pay360On, pay360_env: pay360Env,
@@ -948,19 +948,28 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
 
         {/* Los productos que flotan en el acceso. El sitio de cada uno lo decide
             la pantalla y no quien sube: de eso depende que se lea como un diseño
-            y no como tres PNG apoyados en el aire. */}
-        <label className="text-xs font-bold text-gray-500 mb-1 block">Imágenes del acceso</label>
+            y no como tres PNG apoyados en el aire.
+
+            La SEGUNDA se pide como «tu caja» porque tiene dos trabajos: pasa por
+            detrás del vidrio del acceso y enmarca las esquinas del pedido
+            confirmado (`ESQUINAS_DEL_PEDIDO`). Una caja es lo que tiene sentido
+            enmarcando la pantalla del que acaba de comprar; un frasco suelto
+            repetido en una esquina, no. */}
+        <label className="text-xs font-bold text-gray-500 mb-1 block">Imágenes de tu marca</label>
         <p className="text-[10px] text-gray-400 mb-2">
-          Hasta tres PNG con fondo transparente —tus productos— que flotan detrás del formulario para entrar.
-          La <b>segunda</b> es la que pasa por detrás de la tarjeta, así que ponle la que mejor se vea a medias.
-          Sin ninguna, el acceso queda igual de bien y más sobrio.
+          Hasta tres PNG con fondo transparente que flotan detrás del formulario para entrar.
+          En la <b>segunda</b> va tu caja o empaque: además de pasar por detrás de la tarjeta,
+          es la que enmarca las dos esquinas del pedido confirmado. Sin ninguna, todo queda
+          igual de bien y más sobrio.
         </p>
         <div className="space-y-3 mb-4">
           {[0, 1, 2].map(i => (
             <LogoPicker key={i} logo={loginImgs[i]} uploading={subiendoLogin[i]} onPick={pickLogin(i)}
               wide error={errLogin[i]}
               onClear={loginImgs[i] ? () => setLoginImgs(s => s.map((x, j) => (j === i ? null : x))) : undefined}
-              help={i === 1 ? 'La del costado: se ve a través del vidrio.' : i === 0 ? 'Arriba a la izquierda.' : 'Abajo a la izquierda.'} />
+              help={i === 1
+                ? 'Tu caja: pasa por detrás de la tarjeta y enmarca el pedido confirmado.'
+                : i === 0 ? 'Arriba a la izquierda.' : 'Abajo a la izquierda.'} />
           ))}
         </div>
 

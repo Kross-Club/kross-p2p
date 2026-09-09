@@ -34,6 +34,29 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La pantalla del pedido con la cara de la marca · 2 funciones + frontend (09-set-2026)
+
+Tres cosas en la pantalla que ve el comprador al terminar de pagar (`/pedido/:token`), y todas
+se ven **sin desplegar nada**; lo que el deploy cambia está dicho en cada una. Diseño en
+[`01-SALES-ENGINE.md` § Sexta vuelta](./01-SALES-ENGINE.md).
+
+```
+supabase functions deploy register-buyer --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store   --project-ref ofdjghntvmrdfjhazfvz
+```
+
+1. **La foto del pack, en el ticket.** `register-buyer` guarda la foto propia del pack elegido y
+   no siempre la primera del producto. **Sin el deploy**, la miniatura sale igual pero con la
+   imagen genérica del producto: el pack de tres enseña la foto de uno. No hay que tocar los
+   pedidos viejos — los que ya existen conservan la que se les guardó.
+2. **El fondo pasa a ser el degradado de la marca**, el mismo del acceso. Solo frontend.
+3. **La segunda imagen de la marca enmarca las esquinas.** Las tres casillas de
+   `stores.login_images` pasan a ser **posicionales** —el hueco ya no corre a la imagen que
+   viene detrás—, y eso lo tiene que respetar el servidor: **sin el deploy de `manage-store`**,
+   quien guarde su marca con una casilla vacía la ve compactarse otra vez, y la caja termina
+   en el sitio de arriba a la izquierda en vez de las esquinas del pedido. Lo ya guardado no se
+   toca ni se migra: venía compactado y de qué casilla salió cada imagen no se puede adivinar.
+
 ### Entrar con código por WhatsApp · SQL + 4 funciones + frontend (09-set-2026)
 
 Cierra el agujero de entrar con el DNI a secas: cualquiera que supiera un DNI

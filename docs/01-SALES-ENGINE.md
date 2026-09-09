@@ -847,6 +847,44 @@ Lo que cambió alrededor:
   antes la caja daba 135 y se cortaba con puntos suspensivos. A 320 px, un tamaño de teléfono ya
   raro, las dos más largas se recortan y se leen igual.
 
+**Sexta vuelta (09-set-2026), la pantalla del pedido con la cara de la marca.**
+
+- **La foto del pack que compró, en el ticket.** «TU PEDIDO» decía «Pack Mono Loco» y nada
+  más. Ahora lleva su miniatura al costado, que es lo que hace entendible un ticket
+  reenviado por WhatsApp a quien va a recoger: reconoce lo que va a levantar del mostrador
+  aunque el nombre del pack no le diga nada.
+  - La elige el SERVIDOR al crear el pedido (`_shared/packs.ts`, `imagenDelPack`) con la
+    misma regla del paso 1: la foto propia del pack, y si ese pack no tiene, la primera del
+    producto. Antes se guardaba siempre la primera del producto, así que el pack de tres
+    enseñaba la foto de uno.
+  - Va `object-contain` y no `cover`: la gracia de la foto de un pack es que se vean las
+    tres unidades, y recortar para llenar el cuadrado corta una — enseñaría menos de lo que
+    compró. Si la URL muere, la miniatura se esconde sola: esta pantalla se guarda como
+    captura y el ícono de imagen rota se guardaría con ella.
+  - **Pide desplegar `register-buyer`.** Sin eso los pedidos nuevos siguen guardando la
+    primera del producto y la miniatura sale igual, solo que genérica.
+- **El fondo es el degradado de la marca, no un color plano.** La confirmación y su hermana
+  «Ver pedido» del chat llevan los DOS colores con la inclinación que la marca eligió en el
+  panel (`fondoDeMarca`), el mismo fondo del acceso y del menú de su vendedor. La tinta se
+  decide por contraste contra la MEZCLA de los dos (`tintaSobreDegradado`), que es lo que
+  acierta en el medio, donde está casi todo el texto. «Mis pedidos» y la cabecera del chat
+  siguen planas: son barras, y un degradado de 56 px de alto se ve como un color.
+- **La caja de la marca enmarca las dos esquinas de arriba**, meciéndose en bucle como en el
+  acceso (`ESQUINAS_DEL_PEDIDO`, `components/Flotante`). Es la MISMA imagen repetida y
+  volteada de un lado, con otro ritmo: sin espejo se lee como un archivo puesto dos veces.
+  Van muy salidas del borde y debajo de todo lo demás —el ticket es lo que manda—, y sin esa
+  imagen no se pinta nada.
+- **Las tres casillas de imágenes ahora son POSICIONALES.** Se guardaban filtrando los
+  huecos, así que quien llenaba solo la segunda la veía salir en el sitio de la primera y el
+  editor —que promete «arriba a la izquierda», «la del costado», «abajo a la izquierda»— le
+  mentía. Daba igual mientras las tres fueran producto suelto; dejó de dar igual cuando la
+  **segunda pasó a significar «tu caja»**. Ahora el índice es la casilla en los tres sitios
+  donde importa: el editor (`MarcaPage`), el servidor (`manage-store`, que además vacía lo
+  que no es una URL nuestra en vez de saltárselo) y el lector (`imagenesPorSitio`). Lo
+  guardado antes ya venía compactado y se lee tal cual: no hay forma de adivinar de qué
+  casilla salió cada imagen, y correrlas a ciegas sería inventar.
+  ⚠️ **Pide desplegar `manage-store`** para que el hueco sobreviva al guardar.
+
 ## El checkout multi-paso es el default
 
 Desde este cambio, la landing abre el checkout de 3 pasos. El viejo (`CheckoutQuiz`)

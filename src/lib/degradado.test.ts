@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ESTILOS_DE_DEGRADADO, SITIOS_FLOTANTES, anguloDeDegradado, estiloValido,
-  fondoDeMarca, imagenesDeAcceso, mezcla, vidrioDeMarca,
+  cajaDeLaMarca, fondoDeMarca, imagenesPorSitio, mezcla, SITIO_DE_LA_CAJA, ESQUINAS_DEL_PEDIDO, vidrioDeMarca,
 } from './degradado'
 
 describe('estiloValido', () => {
@@ -101,12 +101,20 @@ describe('vidrioDeMarca', () => {
   })
 })
 
-describe('imagenesDeAcceso', () => {
-  it('limpia lo que no es una URL y nunca pasa de los sitios que existen', () => {
-    expect(imagenesDeAcceso(['a.png', '', null, 'b.png', 'c.png', 'd.png'])).toEqual(['a.png', 'b.png', 'c.png'])
-    expect(imagenesDeAcceso(null)).toEqual([])
-    expect(imagenesDeAcceso('a.png')).toEqual([])
-    expect(imagenesDeAcceso([])).toEqual([])
+describe('imagenesPorSitio', () => {
+  it('cada casilla en SU sitio, y nunca más sitios de los que existen', () => {
+    expect(imagenesPorSitio(['a.png', 'b.png', 'c.png', 'd.png'])).toEqual(['a.png', 'b.png', 'c.png'])
+    expect(imagenesPorSitio(null)).toEqual([null, null, null])
+    expect(imagenesPorSitio('a.png')).toEqual([null, null, null])
+    expect(imagenesPorSitio([])).toEqual([null, null, null])
+  })
+
+  // Esto es lo que antes se rompía: filtrando los huecos, quien llenaba solo la
+  // segunda casilla la veía salir en el sitio de la primera — y desde que la
+  // segunda significa «tu caja», además la dejaba sin caja en su pedido.
+  it('un HUECO no corre a la imagen que viene detrás', () => {
+    expect(imagenesPorSitio([null, 'caja.png'])).toEqual([null, 'caja.png', null])
+    expect(imagenesPorSitio(['', 'caja.png', '   '])).toEqual([null, 'caja.png', null])
   })
 
   it('hay tres sitios y solo UNO pasa por detrás del vidrio', () => {
@@ -116,5 +124,34 @@ describe('imagenesDeAcceso', () => {
 
   it('los tres flotan a ritmos distintos: a compás se vería un carrusel', () => {
     expect(new Set(SITIOS_FLOTANTES.map(s => s.ritmo)).size).toBe(3)
+  })
+})
+
+describe('cajaDeLaMarca', () => {
+  // La caja es la SEGUNDA casilla, siempre: es lo que el editor le promete al
+  // comerciante y lo que enmarca su pedido confirmado.
+  it('es la segunda casilla, esté sola o acompañada', () => {
+    expect(cajaDeLaMarca(['gorra.png', 'caja.png', 'spray.png'])).toBe('caja.png')
+    expect(cajaDeLaMarca([null, 'caja.png'])).toBe('caja.png')
+    expect(SITIO_DE_LA_CAJA).toBe(1)
+  })
+
+  it('sin esa casilla no se pinta ninguna: no se sustituye por otra', () => {
+    expect(cajaDeLaMarca(['gorra.png'])).toBeNull()
+    expect(cajaDeLaMarca(['gorra.png', '', 'spray.png'])).toBeNull()
+    expect(cajaDeLaMarca(null)).toBeNull()
+  })
+})
+
+describe('ESQUINAS_DEL_PEDIDO', () => {
+  it('son dos, una volteada, y con ritmos distintos', () => {
+    expect(ESQUINAS_DEL_PEDIDO).toHaveLength(2)
+    expect(ESQUINAS_DEL_PEDIDO.filter(e => e.espejo)).toHaveLength(1)
+    expect(new Set(ESQUINAS_DEL_PEDIDO.map(e => e.ritmo)).size).toBe(2)
+  })
+
+  // Van detrás del ticket, nunca delante: la boleta es lo que se captura.
+  it('ninguna se mete detrás del vidrio: eso es cosa del acceso', () => {
+    expect(ESQUINAS_DEL_PEDIDO.every(e => !e.detras)).toBe(true)
   })
 })

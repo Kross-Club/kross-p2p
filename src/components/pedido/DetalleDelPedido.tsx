@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ArrowLeft, Navigation, Package } from 'lucide-react'
 import { useStore } from '../../lib/store-context'
-import { textoSobre } from '../../lib/contraste'
+import { estiloValido, fondoDeMarca, tintaSobreDegradado } from '../../lib/degradado'
 import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket } from '../../lib/checkout/ticket'
 import type { OrderSession } from '../../lib/order-api'
@@ -32,8 +32,14 @@ export default function DetalleDelPedido({ pedido, ticket, onClose, onPatch }: {
   onPatch: (patch: Partial<OrderSession>) => void
 }) {
   const { store } = useStore()
+  // El mismo fondo de la pantalla hermana (`PedidoConfirmado`): el degradado de
+  // los dos colores de la marca con su inclinación. Las dos enseñan el MISMO
+  // ticket del mismo pedido, así que una plana y la otra en degradado se leían
+  // como dos tiendas.
   const marca = store.color_primary || '#55C8F5'
-  const tinta = textoSobre(marca)
+  const secundario = store.color_dark || marca
+  const fondo = fondoDeMarca(marca, secundario, estiloValido(store.gradient_style), store.id ?? store.slug ?? '')
+  const { tinta, velo } = tintaSobreDegradado(marca, secundario)
   const esRecojo = isPickupDispatch(pedido.dispatch_type)
   const items = pedido.items ?? []
   const etapa = stageVigente(pedido.stage)
@@ -43,11 +49,11 @@ export default function DetalleDelPedido({ pedido, ticket, onClose, onPatch }: {
     <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: '#fff' }} role="dialog" aria-modal="true" aria-label="Tu pedido">
       <div className="max-w-[430px] mx-auto min-h-full">
         {/* La marca encabeza, y el color llega hasta debajo del ticket. */}
-        <div className="px-5 pt-4 pb-11" style={{ background: marca }}>
+        <div className="px-5 pt-4 pb-11" style={{ background: fondo }}>
           <div className="flex items-center gap-3 mb-4">
             <button type="button" onClick={onClose} aria-label="Volver al chat"
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'rgba(255,255,255,0.25)' }}>
+              style={{ background: velo }}>
               <ArrowLeft size={18} style={{ color: tinta }} />
             </button>
             <div className="flex-1 flex justify-center pr-12">
