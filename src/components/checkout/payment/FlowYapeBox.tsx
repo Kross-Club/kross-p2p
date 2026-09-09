@@ -75,6 +75,19 @@ export default function FlowYapeBox({ coupon }: { coupon: CouponRef }) {
           {COPY.flowYapeAfterHint}
         </p>
       </div>
+
+      {/* La ATRIBUCIÓN de la pasarela, al pie de la caja y junto a la
+          descripción de la espera. Es lo único de esta pantalla que nombra al
+          recaudador —para el comprador todo lo demás es Yape— y está porque
+          Flow lo pide: aparecer nombrado, con su nombre comercial, donde se
+          paga por su riel. Ver `COPY.flowGateway`.
+
+          Fuera del recuadro verde y en gris: ese recuadro es el sello de
+          confianza, y meterle una marca que el comprador no conoce le quita
+          justo lo que hace. */}
+      <p className="mt-2.5 text-center text-[12px] font-bold text-gray-500">
+        {COPY.flowGateway}
+      </p>
     </div>
   )
 }

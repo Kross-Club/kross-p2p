@@ -15,6 +15,7 @@
 // sobre su propia caja, que es justo el número por el que abre el tablero.
 
 import { cobrosVivos, entro } from '../../supabase/functions/_shared/cobros.ts'
+import { rielDelCobro } from '../../supabase/functions/_shared/cobros.ts'
 import type { FilaDeCobro } from '../../supabase/functions/_shared/cobros.ts'
 import { esRielEnLinea } from '../../supabase/functions/_shared/comision.ts'
 import type { Proveedor } from '../../supabase/functions/_shared/comision.ts'
@@ -184,7 +185,10 @@ function deFila(f: FilaDeCobro, valor: number): Cobro {
     venceEl: f.coupon_expires_at ?? null,
     couponId: f.pay360_coupon_id ?? null,
     paymentCode: f.pay360_consumer_code ?? null,
-    riel: f.flow_token ? 'FLOW' : f.pay360_coupon_id ? '360PAY' : null,
+    // La regla de por qué riel cobró una fila vive en `_shared/cobros.ts`, con
+    // el modelo: acá estaba escrita a mano y el comprobante la escribió una
+    // tercera vez — tres sitios decidiendo lo mismo (09-set-2026).
+    riel: rielDelCobro(f),
     // La fila entera, para poder preguntarle a la REGLA —`sePuedeBorrar`— en
     // vez de reescribirla acá. Es lo único que no se puede reconstruir desde
     // los campos de arriba sin volver a decidir lo que ya decidió el modelo.

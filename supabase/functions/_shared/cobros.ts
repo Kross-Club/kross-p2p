@@ -15,6 +15,8 @@
 //
 // Sin APIs de Deno: se importa también desde vitest y desde el panel.
 
+import type { Proveedor } from './comision.ts'
+
 /** Lo que se guarda. `total` NO está: "pagó todo" es un adelanto que cubre el
  *  precio entero, y eso se decide contra el valor de hoy — un upsell lo
  *  convierte en adelanto sin tocar la fila. Guardarlo sería tener que acordarse
@@ -143,4 +145,28 @@ export function columnasDe(
   if (c.pay360_consumer_code !== undefined) out[p.codigo] = c.pay360_consumer_code
   if (c.coupon_expires_at !== undefined) out[p.vence] = c.coupon_expires_at
   return out
+}
+
+/**
+ * Por qué RIEL cobró esta fila.
+ *
+ * No hay columna que lo diga, y no hace falta inventarla: cada riel deja su
+ * propia marca al emitir, y un cobro tiene **uno de los dos juegos de campos,
+ * nunca ambos** (lo dice `FilaDeCobro` y lo sostiene el que emite). Flow deja
+ * su `flow_token`; 360pay, el cupón y su código.
+ *
+ * Devuelve `null` cuando no hay ninguna de las dos marcas: un cobro emitido
+ * antes de que se guardaran, o uno que no pasó por pasarela. Quien pinta se
+ * calla esa línea en vez de adivinar — decirle al comprador que pagó por una
+ * pasarela que no fue es peor que no nombrar ninguna.
+ *
+ * ⚠️ Se lee de la fila del cobro y NO de `order_sessions.payment_provider`:
+ * aquello es el riel del ADELANTO, y el saldo o un extra del mismo pedido
+ * pueden ir por el otro (el ruteo es por monto, ver `proveedorPara`).
+ */
+export function rielDelCobro(c: Pick<FilaDeCobro, 'flow_token' | 'pay360_coupon_id' | 'pay360_consumer_code'>): Proveedor | null {
+  const hay = (v: unknown) => typeof v === 'string' && v.trim().length > 0
+  if (hay(c?.flow_token)) return 'FLOW'
+  if (hay(c?.pay360_coupon_id) || hay(c?.pay360_consumer_code)) return '360PAY'
+  return null
 }

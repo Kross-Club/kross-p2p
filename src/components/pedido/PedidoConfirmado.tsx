@@ -35,13 +35,14 @@
 //      instala—.
 
 import { useEffect, useState } from 'react'
-import { Check, Download, ExternalLink, Smartphone, Wallet } from 'lucide-react'
+import { Check, Download, ExternalLink, FileText, Smartphone, Wallet } from 'lucide-react'
 import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
 import { useStore } from '../../lib/store-context'
 import BajoLaMarca from './BajoLaMarca'
 import Flotante from '../Flotante'
 import { cajaDeLaMarca, ESQUINAS_DEL_PEDIDO, estiloValido, fondoDeMarca, tintaSobreDegradado } from '../../lib/degradado'
+import { enlaceDeComprobante } from '../../lib/comprobante'
 import { subscribePush } from '../../lib/push'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { AndroidSteps, IOSInstallVideo, isInstalled } from '../InstallBanner'
@@ -72,7 +73,7 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
   const marca = store.color_primary || '#55C8F5'
   const secundario = store.color_dark || marca
   const fondo = fondoDeMarca(marca, secundario, estiloValido(store.gradient_style), store.id ?? store.slug ?? '')
-  const { tinta, suave: tintaSuave } = tintaSobreDegradado(marca, secundario)
+  const { tinta, suave: tintaSuave, velo, borde } = tintaSobreDegradado(marca, secundario)
   // La caja de la marca, si la subió: enmarca las dos esquinas de arriba.
   const caja = cajaDeLaMarca(store.login_images)
 
@@ -115,6 +116,32 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
           <p className="text-sm font-bold px-4" style={{ color: tintaSuave }}>
             {ticket.payment}
           </p>
+
+          {/* Y su constancia, pegada a esa frase (09-set-2026): el comprobante
+              es de ESE pago, así que va debajo de la línea que lo anuncia y no
+              perdido al final de la página.
+
+              Se abre en otra pestaña —igual que desde el chat— porque es una
+              página para enseñar, reenviar y guardar como PDF, no una pantalla
+              de la que haya que salir para volver al pedido. `rel="noopener"`:
+              sin eso la página nueva recibe una referencia a esta y puede
+              navegarla.
+
+              Sin pago cruzado no hay botón (`ticket.receiptCobroId`), y tampoco
+              una explicación de por qué no lo hay: al comprador nunca se le dice
+              que su pago no existe. */}
+          {ticket.receiptCobroId && (
+            <a
+              href={enlaceDeComprobante(ticket.receiptCobroId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-black
+                focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              style={{ background: velo, color: tinta, border: borde }}
+            >
+              <FileText size={14} strokeWidth={2.5} /> {COPY.doneSeeReceipt}
+            </a>
+          )}
         </div>
 
         <div className="relative" style={{ zIndex: 1 }}>

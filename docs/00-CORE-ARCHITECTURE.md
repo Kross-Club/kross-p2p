@@ -128,10 +128,36 @@ un documento tributario que nadie emitió.
 
 La llave es el **uuid del cobro** y nada más —igual que el token del pedido—, para que se abra
 sin iniciar sesión. Por eso la respuesta lleva **lo justo**: pedido, cliente, qué se pagó, cuánto,
-cuándo, el código de pago y la operación bancaria. Nada de teléfono, DNI, dirección ni id de
-cupón: una hoja que se reenvía por WhatsApp no puede llevar más de lo que hace falta para probar
-que se pagó. Y solo si el cobro **entró** — una constancia de un cobro pendiente sería un papel
+cuándo, el código de pago, la operación bancaria y **por qué pasarela entró**. Nada de teléfono,
+DNI, dirección ni id de cupón: una hoja que se reenvía por WhatsApp no puede llevar más de lo que
+hace falta para probar que se pagó. Y solo si el cobro **entró** — una constancia de un cobro pendiente sería un papel
 que dice que se pagó algo que no se pagó, y el comprador la enseñaría de buena fe.
+
+**La PASARELA se nombra, y sale de la fila del cobro** (09-set-2026). La hoja decía
+«Método: Yape · 360pay» **escrito a mano en la página**, y desde que Flow cobra eso era falso en
+cada constancia del otro riel — una constancia que nombra mal a quien recibió la plata manda el
+reclamo a la puerta equivocada. Ahora la línea dice *Pasarela: Flow Pagos* o *Pasarela: 360pay*:
+
+- **De qué riel cobró una fila lo decide `rielDelCobro`** (`_shared/cobros.ts`), y no una columna
+  nueva: cada riel deja su marca al emitir —Flow su `flow_token`, 360pay su cupón y su código— y
+  un cobro tiene uno de los dos juegos, nunca ambos. Esa regla estaba escrita a mano en
+  `order-money.ts` y el comprobante iba a escribirla por tercera vez.
+- **Se lee del COBRO y no de `order_sessions.payment_provider`**: aquello es el riel del
+  adelanto, y el saldo o un extra del mismo pedido pueden ir por el otro — el ruteo es por monto
+  (`proveedorPara`).
+- **Cada pasarela se nombra como pide llamarse** (`NOMBRE_DE_PASARELA`): Flow exige su nombre
+  comercial, «Flow Pagos», donde se le atribuye un cobro. Es otro nombre que el interno
+  (`NOMBRE_RIEL`, el que ve el comercio), a propósito.
+- **Sin saber por dónde entró, no se nombra ninguna.** Un cobro viejo sin marcas deja la línea
+  fuera: inventarla es mandar al que reclama a tocar la puerta de quien nunca recibió su plata.
+
+**El botón «Ver mi comprobante» también está en la pantalla del pedido** (09-set-2026), debajo de
+la frase que anuncia el pago y no perdido al final. Abre la misma página, en otra pestaña, con la
+misma copy que la tarjeta del chat — dos nombres para lo mismo harían pensar que son dos
+documentos. Es la constancia del **adelanto**, que es el pago que esa pantalla anuncia; las del
+saldo y las de un extra llegan por el chat, cada una junto al aviso de su propio pago. Sin pago
+cruzado no hay botón **ni explicación de por qué falta**: al comprador nunca se le dice que su
+pago no existe.
 
 Tres cosas se leen de un solo sitio, y las tres estaban a punto de tener dos versiones:
 

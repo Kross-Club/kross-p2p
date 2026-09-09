@@ -8,6 +8,7 @@ const base: DatosDeComprobante = {
   comprador: 'Ana Quispe', tipo: 'adelanto', concepto: null, monto: 75,
   cobrado_en: '2026-08-30T15:04:00.000Z',
   payment_code: 'KSH34750200669', operation_number: '00912345', bank: 'BCP',
+  pasarela: '360PAY',
   total: 150, pagado: 75, saldo: 75,
 }
 
@@ -55,9 +56,29 @@ describe('nombreDelCobro', () => {
 // cobro.
 
 describe('lineasDelComprobante', () => {
-  it('lleva pedido, cliente, código de pago, operación y fecha', () => {
+  it('lleva pedido, cliente, código de pago, operación, fecha y pasarela', () => {
     expect(lineasDelComprobante(base).map(l => l.etiqueta))
-      .toEqual(['Pedido', 'Cliente', 'Código de pago', 'Op. bancaria', 'Cobrado'])
+      .toEqual(['Pedido', 'Cliente', 'Código de pago', 'Op. bancaria', 'Cobrado', 'Pasarela'])
+  })
+
+  // La línea que el recaudador pide llevar. Decía «Método: Yape · 360pay»
+  // escrita a mano en la página: desde que Flow cobra, eso era falso en cada
+  // constancia del otro riel, y una constancia que nombra mal a quien recibió
+  // la plata manda el reclamo a la puerta equivocada.
+  it('nombra la pasarela con el nombre que esa pasarela usa', () => {
+    const nombre = (d: DatosDeComprobante) =>
+      lineasDelComprobante(d).find(l => l.etiqueta === 'Pasarela')?.valor
+    expect(nombre(base)).toBe('360pay')
+    expect(nombre({ ...base, pasarela: 'FLOW' })).toBe('Flow Pagos')
+  })
+
+  // Sin saber por dónde entró no se nombra ninguna: inventarla es mandar al que
+  // reclama a tocar la puerta de quien nunca recibió su plata.
+  it('sin pasarela conocida, esa línea no existe', () => {
+    for (const p of [null, '', 'CULQI']) {
+      expect(lineasDelComprobante({ ...base, pasarela: p }).map(l => l.etiqueta))
+        .not.toContain('Pasarela')
+    }
   })
 
   // Operación y banco son UN dato: el número sin el banco no se busca en ningún
@@ -70,7 +91,7 @@ describe('lineasDelComprobante', () => {
   // Un campo vacío no se pinta: media línea diciendo "Op. bancaria —" hace dudar
   // de si falta el dato o falló la página.
   it('lo que no existe no se pinta', () => {
-    const sinRastro = { ...base, operation_number: null, bank: null, comprador: null }
+    const sinRastro = { ...base, operation_number: null, bank: null, comprador: null, pasarela: null }
     expect(lineasDelComprobante(sinRastro).map(l => l.etiqueta))
       .toEqual(['Pedido', 'Código de pago', 'Cobrado'])
   })

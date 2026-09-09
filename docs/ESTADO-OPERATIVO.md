@@ -34,6 +34,28 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Lo que pidió Flow: atribución, pasarela en la constancia y el buzón · 2 funciones + frontend (09-set-2026)
+
+Tres cosas que pidió el proveedor de Flow, más el cambio de buzón. Diseño en
+[`12-FLOW.md`](./12-FLOW.md) y [`00-CORE-ARCHITECTURE.md` § El comprobante](./00-CORE-ARCHITECTURE.md).
+
+```
+supabase functions deploy get-comprobante --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy flow-order      --project-ref ofdjghntvmrdfjhazfvz
+```
+
+1. **La pantalla de pago nombra a Flow.** Solo frontend, se ve al desplegar la web.
+2. **La constancia dice la pasarela.** `get-comprobante` es quien sabe por qué riel entró la
+   plata (lee `flow_token` / `pay360_coupon_id` de la fila). **Sin ese deploy** la línea
+   *Pasarela* no sale en ninguna constancia: la página no la inventa. No se rompe nada — la hoja
+   se ve igual que hoy, menos esa línea.
+3. **«Ver mi comprobante» en el pedido confirmado.** Solo frontend.
+4. **El correo del pagador de Flow pasa a `flowpagos@kross.club`.** Lo manda `flow-order` al
+   crear la orden, así que **sin ese deploy las órdenes nuevas siguen saliendo con la dirección
+   personal**. Las órdenes ya creadas no se tocan.
+
+⚠️ Nada de esto pide SQL ni toca el esquema.
+
 ### La pantalla del pedido con la cara de la marca · 2 funciones + frontend (09-set-2026)
 
 Tres cosas en la pantalla que ve el comprador al terminar de pagar (`/pedido/:token`), y todas

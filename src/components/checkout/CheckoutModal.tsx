@@ -477,9 +477,12 @@ export default function CheckoutModal({
                   : volvioDePagar ? COPY.pay360Waiting : COPY.flowRedirecting}
               </p>
               {phase.rail === 'FLOW' && (
-                <p className="mt-1.5 px-4 text-[13px] leading-relaxed text-gray-600">
-                  {volvioDePagar ? COPY.pay360WaitingHint : COPY.flowRedirectingHint}
-                </p>
+                <>
+                  <p className="mt-1.5 px-4 text-[13px] leading-relaxed text-gray-600">
+                    {volvioDePagar ? COPY.pay360WaitingHint : COPY.flowRedirectingHint}
+                  </p>
+                  <p className="mt-2 px-4 text-[12px] font-bold text-gray-500">{COPY.flowGateway}</p>
+                </>
               )}
             </div>
           )}
@@ -499,6 +502,9 @@ export default function CheckoutModal({
                 <p className="text-lg font-black text-gray-900">{COPY.pay360Waiting}</p>
               </div>
               <p className="mt-1.5 px-4 text-center text-[13px] leading-relaxed text-gray-600">{COPY.pay360WaitingHint}</p>
+              {/* La atribución de Flow NO se repite acá: ya va al pie de su
+                  propia caja (`FlowYapeBox`), a un par de píxeles de esta línea.
+                  Dos veces la misma frase en la misma pantalla es ruido. */}
             </div>
           )}
 

@@ -33,6 +33,10 @@ export interface TicketInput {
    *  pack no tiene foto: no promete ninguna cantidad, y deja el ticket con la
    *  cara de la tienda en vez de un hueco gris. */
   storeLogo?: string | null
+  /** El id del cobro PAGADO cuya constancia se le ofrece al comprador. `null`
+   *  cuando todavía no hay ninguno cruzado — y entonces no se ofrece nada: un
+   *  botón que abre «este comprobante no existe» es peor que ningún botón. */
+  receiptCobroId?: string | null
   /** true cuando el webhook ya confirmó el adelanto. */
   paid: boolean
   /** El comprador pidió que un asesor coordine el adelanto en vez de pagar. */
@@ -89,6 +93,11 @@ export interface TicketStep {
 export interface Ticket {
   /** Cómo se pagó, en una frase. Es la primera línea después del título. */
   payment: string
+  /** La constancia de ese pago, si ya hay plata cruzada: el id del cobro, que
+   *  ES la dirección de su página (`enlaceDeComprobante`). El comprador la
+   *  enseña, la reenvía o la guarda como PDF. `null` = no hay pago cruzado
+   *  todavía, y entonces no se ofrece ningún botón. */
+  receiptCobroId: string | null
   /** Producto, entrega y a nombre de quién. */
   lines: TicketLine[]
   /** La guía en el ticket: el NÚMERO es lo que la agencia pregunta, así que va
@@ -265,7 +274,11 @@ export function buildTicket(i: TicketInput): Ticket {
     estado: idx < actual ? 'hecho' : idx === actual ? (completado ? 'hecho' : 'actual') : 'pendiente',
   }))
 
-  return { payment, lines, guide, pasos }
+  // La constancia solo se ofrece si hay plata cruzada. Con el adelanto sin
+  // cobrar no hay página que abrir, y la regla dura del módulo —al comprador
+  // nunca se le dice que su pago no existe— se cumple callándose: no hay botón,
+  // y tampoco una explicación de por qué no lo hay.
+  return { payment, lines, guide, pasos, receiptCobroId: (paid && i.receiptCobroId) || null }
 }
 
 /**
