@@ -312,7 +312,7 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
               style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)', color: 'var(--text-muted)' }}>
               <KeyRound size={12} className="flex-shrink-0 mt-0.5" />
               <span>Clave de recojo <span className="font-black" style={{ color: 'var(--text)' }}>{tracking.shalom_pickup_code}</span>
-                {' '}— solo la ve tu equipo; al cliente le llega sola por el chat cuando paga su saldo.</span>
+                {' '}— solo la ve tu equipo hasta que el cliente pague su saldo; ahí le llega por el chat y la ve en su pedido.</span>
             </p>
           )}
           {/* Línea de fases: la actual y las ya pasadas en marca; el resto gris */}

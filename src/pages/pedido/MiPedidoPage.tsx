@@ -19,15 +19,10 @@ import { useParams } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
 import { getSession } from '../../lib/order-api'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
-import { buildTicket } from '../../lib/checkout/ticket'
-import type { TicketGuide } from '../../lib/checkout/ticket'
-import { coordinadoDelPedido, estadoDesdePedido, pagadoDelPedido } from '../../lib/checkout/ticket-desde-pedido'
-import { AgencyService } from '../../lib/checkout/services/AgencyService'
-import { pickupBranchIdOf } from '../../lib/session'
+import { pagadoDelPedido } from '../../lib/checkout/ticket-desde-pedido'
 import { isPickupDispatch } from '../../../supabase/functions/_shared/despacho.ts'
-import { enlaceDeGuia } from '../../lib/hoja-de-guia'
-import type { AgencyBranch } from '../../lib/checkout/types'
 import PedidoConfirmado from '../../components/pedido/PedidoConfirmado'
+import { useTicketDelPedido } from '../../components/pedido/useTicketDelPedido'
 
 /** Cuánto se sigue preguntando: cada 4 s durante dos minutos. Lo que puede
  *  cambiar mientras mira es el cruce del adelanto y la guía, y las dos cosas
@@ -75,22 +70,10 @@ export default function MiPedidoPage() {
     return () => { vivo = false; if (timer) clearTimeout(timer) }
   }, [token])
 
-  // La sede con su dirección. En esta página NO viene cargada de ningún paso
-  // anterior —se entra por la URL, quizá días después—, así que se pide.
-  const [sede, setSede] = useState<AgencyBranch | null>(null)
-  // Solo los couriers con catálogo de sedes: `OTRO` no tiene nada que pedir.
-  const agencia = pedido?.agency_name === 'SHALOM' || pedido?.agency_name === 'OLVA'
-    ? pedido.agency_name
-    : null
-  const branchId = pedido ? pickupBranchIdOf(pedido) : null
-  useEffect(() => {
-    if (!agencia || !branchId) return
-    let vivo = true
-    AgencyService.getBranch(agencia, branchId)
-      .then(b => { if (vivo) setSede(b) })
-      .catch(() => { /* el ticket cae al distrito */ })
-    return () => { vivo = false }
-  }, [agencia, branchId])
+  // El ticket, armado desde la fila (la sede se pide al catálogo). Es el
+  // mismo hook que usa el chat del pedido, para que las dos pantallas digan
+  // lo mismo del mismo envío.
+  const ticket = useTicketDelPedido(pedido, mensajes, token)
 
   if (estado === 'cargando') {
     return (
@@ -116,29 +99,7 @@ export default function MiPedidoPage() {
     )
   }
 
-  // La guía, como la ve el ticket: el PDF del courier si el chat ya lo trae, y
-  // si no la hoja de guía de la app. Misma regla que la tarjeta del chat.
-  const pdf = mensajes.find(m => m.type === 'guia' && m.media_url)?.media_url ?? null
-  const guide: TicketGuide | null = pedido.tracking_numero || pedido.tracking_ose_id
-    ? {
-        courier: pedido.tracking_courier ?? null,
-        numero: pedido.tracking_numero ?? null,
-        codigo: pedido.tracking_codigo ?? null,
-        oseId: pedido.tracking_ose_id ?? null,
-        href: pdf ?? enlaceDeGuia(token),
-      }
-    : null
-
-  const ticket = buildTicket({
-    state: estadoDesdePedido(pedido),
-    price: Number(pedido.product_price ?? 0),
-    packName: pedido.pack_name ?? pedido.product_name ?? null,
-    paid: pagadoDelPedido(pedido),
-    unpaid: coordinadoDelPedido(pedido),
-    branch: sede,
-    guide,
-    fase: pedido.tracking_phase,
-  })
+  if (!ticket) return null
 
   return (
     <div className="min-h-dvh" style={{ background: '#fff' }}>

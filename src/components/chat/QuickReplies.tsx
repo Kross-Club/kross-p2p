@@ -27,19 +27,23 @@ interface QuickRepliesProps {
    *  0 = pagó todo o es contraentrega puro: en ambos casos la ficha del saldo
    *  sobra, preguntarlo sembraría la duda que el mensaje de bienvenida cerró. */
   saldoPendiente?: number
+  /** La tarjeta del pedido ya enseña el botón de pagar (`puedePagarSaldo`).
+   *  En recojo la ficha «Quiero pagar mi saldo» iniciaba ese mismo pago por
+   *  el chat; con el botón a la vista, ofrecerla es pedir dos veces. */
+  botonDeSaldo?: boolean
   onPick: (text: string) => void
 }
 
 function repliesFor(
   stage: string | null | undefined,
-  ctx: { esRecojo?: boolean; saldoPendiente?: number } = {},
+  ctx: { esRecojo?: boolean; saldoPendiente?: number; botonDeSaldo?: boolean } = {},
 ): string[] {
-  const { esRecojo = false, saldoPendiente = 0 } = ctx
+  const { esRecojo = false, saldoPendiente = 0, botonDeSaldo = false } = ctx
   // Solo para quien de verdad debe. En recojo el saldo se paga POR LA APP —la
   // clave de recojo se entrega contra ese pago—, así que la ficha útil no es
   // preguntar el monto sino INICIAR el pago. A domicilio se paga en la puerta:
   // ahí la duda sí es cuánto llevar.
-  const saldoChip = saldoPendiente > 0
+  const saldoChip = saldoPendiente > 0 && !(esRecojo && botonDeSaldo)
     ? [esRecojo ? 'Quiero pagar mi saldo' : '¿Cuánto me falta pagar?']
     : []
   // La etapa de la BD, traducida al eje vigente: un `preparando` viejo tiene que
@@ -76,9 +80,9 @@ function repliesFor(
   }
 }
 
-export default function QuickReplies({ stage, buyerHasWritten, esRecojo, saldoPendiente, onPick }: QuickRepliesProps) {
+export default function QuickReplies({ stage, buyerHasWritten, esRecojo, saldoPendiente, botonDeSaldo, onPick }: QuickRepliesProps) {
   if (buyerHasWritten) return null
-  const replies = repliesFor(stage, { esRecojo, saldoPendiente })
+  const replies = repliesFor(stage, { esRecojo, saldoPendiente, botonDeSaldo })
   if (replies.length === 0) return null
 
   return (

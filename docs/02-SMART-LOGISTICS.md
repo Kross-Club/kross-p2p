@@ -1434,8 +1434,8 @@ abrir el código:
 
 La orden **la elige Kross**, y con ella el destinatario se lleva el paquete de la
 agencia: quien la tiene, tiene el pedido. Vive en
-`order_sessions.shalom_pickup_code` y sale de ahí por **exactamente dos puertas**
-(01-set-2026):
+`order_sessions.shalom_pickup_code` y sale de ahí por **exactamente tres puertas**
+(dos desde el 01-set-2026, la tercera desde el 09-set-2026):
 
 - **Al equipo**, por `get-session`, detrás del candado FUERTE (`puedeLeerInterno`,
   el mismo de los comentarios internos: JWT verificado contra `sellers`). Nunca
@@ -1452,6 +1452,11 @@ agencia: quien la tiene, tiene el pedido. Vive en
   (01-set-2026): el formulario del panel pide sus TRES datos del comprobante
   físico —nro. de orden, código y clave— y `set_tracking` guarda la clave en el
   pedido; sin ella no hay entrega automática y la manda una persona, como antes.
+- **Al comprador también por `get-session`, solo cuando ya no debe nada**
+  (09-set-2026, `sinSaldo`: la misma cuenta que `saldoOf`). Es lo que deja que la
+  tarjeta de su pedido (`TarjetaDelPedido`) enseñe la clave el día del recojo sin
+  buscarla en el hilo. Con saldo pendiente viaja `undefined`, como antes: la regla
+  no cambió, cambió cuántas pantallas la respetan.
 
 Shalom rechaza claves repetidas (`1111`…`9999`) y consecutivas (`1234`…`6789`);
 el generador también descarta las descendentes — no están en la doc, cuestan 8

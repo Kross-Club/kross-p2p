@@ -298,7 +298,7 @@ function nombreGuia(a: string): string {
   return String(a).toUpperCase() === 'OLVA' ? 'Olva' : 'Shalom'
 }
 
-function nombreAgencia(a: string): string {
+export function nombreAgencia(a: string): string {
   switch (a) {
     case 'SHALOM': return 'Shalom'
     case 'OLVA': return 'Olva'

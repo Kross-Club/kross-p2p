@@ -3,9 +3,7 @@ import { MapPin, Navigation, Copy } from 'lucide-react'
 import { isPickupDispatch } from '../lib/session'
 import { AgencyService } from '../lib/checkout/services/AgencyService'
 import type { AgencyBranch, AgencyName } from '../lib/checkout/types'
-
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+import { mensajeDeGps, verificarDireccionPorGps } from '../lib/gps'
 
 // Delivery address in the chat.
 //  · Buyer: the ONLY one who sets/changes it — one tap captures GPS, reverse-
@@ -32,50 +30,18 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
   const [secs, setSecs] = useState(0)
   const [copied, setCopied] = useState(false)
 
-  // Collect GPS readings for a few seconds and keep the most accurate one, so
-  // the pin lands on the house (not the first, coarse fix on the road). This is
-  // what ride-hailing apps do — let the GPS converge.
-  const getBestFix = () => new Promise<GeolocationCoordinates | null>(resolve => {
-    if (!navigator.geolocation) return resolve(null)
-    let best: GeolocationCoordinates | null = null
-    let done = false
-    const finish = () => { if (done) return; done = true; try { navigator.geolocation.clearWatch(id) } catch { /* */ } resolve(best) }
-    const start = Date.now()
-    const id = navigator.geolocation.watchPosition(
-      p => {
-        if (!best || p.coords.accuracy < best.accuracy) best = p.coords
-        // Stop early only if it's very precise AND we've given GPS a moment to settle
-        if (best.accuracy <= 8 && Date.now() - start > 3500) finish()
-      },
-      () => { if (!best) finish() },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
-    )
-    setTimeout(finish, 10000) // let it converge up to ~10s
-  })
-
+  // La captura vive en `lib/gps.ts`, compartida con la tarjeta del
+  // pedido del comprador: recoge lecturas unos segundos, se queda con la más
+  // precisa, rechaza las imprecisas y guarda como comprador.
   const verifyGps = async () => {
     if (busy) return
     setBusy(true)
     setSecs(10)
     const iv = setInterval(() => setSecs(s => Math.max(0, s - 1)), 1000)
     try {
-      const coords = await getBestFix()
-      if (!coords) { alert('Activa tu ubicación GPS para verificar tu dirección de entrega.'); return }
-      // Reject imprecise fixes (typically a laptop/WiFi location) so no bad pin is saved
-      if (typeof coords.accuracy === 'number' && coords.accuracy > 80) {
-        alert(`Tu ubicación es poco precisa (±${Math.round(coords.accuracy)} m). Sal a un lugar más abierto (o párate en tu puerta) y toca Verificar GPS otra vez. Mejor desde tu celular.`)
-        return
-      }
-      const res = await fetch(`${BASE}/update-address`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, address: address ?? '', lat: coords.latitude, lng: coords.longitude, by: 'buyer' }),
-      })
-      if (!res.ok) throw new Error('failed')
-      const r = await res.json()
+      const r = await verificarDireccionPorGps(sessionId, address)
+      if (!r.ok) { alert(mensajeDeGps(r)); return }
       onUpdated(r.address, r.address_verified, r.address_lat, r.address_lng)
-    } catch {
-      alert('No se pudo verificar la ubicación. Intenta de nuevo.')
     } finally {
       clearInterval(iv)
       setBusy(false)
