@@ -2253,7 +2253,7 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_codigo_template text;
 CREATE TABLE IF NOT EXISTS buyer_login_codes (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   buyer_id   uuid NOT NULL REFERENCES buyers(id) ON DELETE CASCADE,
-  store_id   uuid NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  store_id   text NOT NULL REFERENCES stores(id) ON DELETE CASCADE,  -- stores.id es text
   code_hash  text NOT NULL,
   expires_at timestamptz NOT NULL,
   attempts   integer NOT NULL DEFAULT 0,
@@ -2271,7 +2271,7 @@ CREATE INDEX IF NOT EXISTS idx_buyer_login_codes_buyer
 CREATE TABLE IF NOT EXISTS buyer_sessions (
   token        text PRIMARY KEY,
   buyer_id     uuid NOT NULL REFERENCES buyers(id) ON DELETE CASCADE,
-  store_id     uuid NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  store_id     text NOT NULL REFERENCES stores(id) ON DELETE CASCADE,  -- stores.id es text
   created_at   timestamptz NOT NULL DEFAULT now(),
   expires_at   timestamptz NOT NULL,
   last_seen_at timestamptz
