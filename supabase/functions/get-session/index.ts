@@ -13,6 +13,17 @@ const corsHeaders = {
   'Access-Control-Max-Age': '7200',
 }
 
+/** ¿El pedido ya no debe nada? La misma cuenta que `saldoOf` en
+ *  `_shared/tracking.ts`, replicada para no cargar ese módulo en una lectura. */
+function sinSaldo(row: {
+  product_price?: number | string | null; advance_amount?: number | string | null
+  payment_verification?: string | null; saldo_verification?: string | null
+}): boolean {
+  if (row.saldo_verification === 'MATCHED') return true
+  const pagado = row.payment_verification === 'MATCHED' ? Number(row.advance_amount ?? 0) : 0
+  return Math.max(0, Number(row.product_price ?? 0) - pagado) === 0
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -271,9 +282,12 @@ Deno.serve(async (req) => {
         // ⚠️ La CLAVE DE RETIRO va detrás del candado FUERTE (`puedeLeerInterno`),
         // no del `viewer=seller` de los demás campos internos: `viewer=seller`
         // se escribe con el token del comprador, y quien tiene la clave se
-        // lleva el paquete. Al comprador le llega por el chat —como mensaje—
-        // recién cuando su saldo cruza, nunca por esta vía.
-        shalom_pickup_code: puedeLeerInterno ? session.shalom_pickup_code : undefined,
+        // lleva el paquete. Al COMPRADOR se le manda solo cuando ya no debe
+        // nada (09-set-2026): es la misma regla con la que el webhook y
+        // `registrarGuia` se la escriben en el chat, y lo que deja que la
+        // tarjeta de su pedido la enseñe el día del recojo sin buscarla en el
+        // hilo. Con saldo pendiente sigue retenida.
+        shalom_pickup_code: puedeLeerInterno || sinSaldo(session) ? session.shalom_pickup_code : undefined,
         seller_name: sellerName, seller_role: sellerRole, seller_avatar: sellerAvatar,
         participants, buyer_can_call: buyerCanCall, buyer_document: buyerDocument,
         buyer_contact: buyerContact, payment_trace: paymentTrace, saldo_trace: saldoTrace,

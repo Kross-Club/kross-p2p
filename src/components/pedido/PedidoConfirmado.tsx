@@ -49,7 +49,6 @@ interface Props {
 
 export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props) {
   const { store } = useStore()
-  const phone = store.wa_display_phone?.trim() || null
 
   // El color de la marca manda en la cabecera, y el texto se elige por
   // CONTRASTE contra él: el comerciante puede poner un naranja, un amarillo o
@@ -84,68 +83,7 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
           </p>
         </div>
 
-      {/* ── El ticket ── */}
-      <div className="rounded-2xl border-2 border-gray-900 overflow-hidden bg-white">
-        <div className="flex items-center justify-between px-4 py-2.5 bg-gray-900 text-white">
-          <span className="text-[11px] font-bold uppercase tracking-wide opacity-80">
-            {store.nombre || 'Tu pedido'}
-          </span>
-          <span className="text-base font-black tabular-nums">{orderCode}</span>
-        </div>
-
-        <dl className="divide-y divide-gray-100">
-          {ticket.lines.map(l => (
-            <div key={l.label} className="px-4 py-3">
-              <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{l.label}</dt>
-              {/* `aside` va AL COSTADO del valor —el DNI pegado al nombre—, y
-                  cae debajo solo si no entra: en el mostrador se leen juntos. */}
-              <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="text-[15px] font-bold text-gray-900 leading-snug">{l.value}</span>
-                {l.aside && <span className="text-sm font-bold text-gray-500 tabular-nums">{l.aside}</span>}
-              </dd>
-              {l.detail && <dd className="text-sm text-gray-600 leading-snug mt-0.5">{l.detail}</dd>}
-            </div>
-          ))}
-
-          {/* La guía: el NÚMERO como línea, porque es lo que la agencia
-              pregunta y una captura no tiene botones; el botón debajo. */}
-          {ticket.guide && (
-            <div className="px-4 py-3">
-              <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{ticket.guide.line.label}</dt>
-              <dd className="text-[15px] font-bold text-gray-900 leading-snug tabular-nums">{ticket.guide.line.value}</dd>
-              <dd className="mt-2">
-                <a
-                  href={ticket.guide.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-black
-                    bg-gray-900 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
-                >
-                  {COPY.doneSeeGuide} {ticket.guide.button} <ExternalLink size={13} />
-                </a>
-              </dd>
-            </div>
-          )}
-
-          {phone && (
-            <div className="px-4 py-3">
-              <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
-                {COPY.doneCallStore} {store.nombre}
-              </dt>
-              <dd>
-                <a
-                  href={`tel:${phone.replace(/[^\d+]/g, '')}`}
-                  className="inline-flex items-center gap-2 text-lg font-black text-gray-900 tabular-nums
-                    focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded-md"
-                >
-                  <Phone size={18} strokeWidth={2.5} />
-                  {phone}
-                </a>
-              </dd>
-            </div>
-          )}
-        </dl>
-      </div>
+      <TicketDelPedido ticket={ticket} orderCode={orderCode} />
       </div>
 
       {/* ── El recorrido ── */}
@@ -159,6 +97,80 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
 }
 
 /**
+ * El ticket, suelto: qué pidió, dónde lo recoge o a dónde llega, a nombre de
+ * quién, su guía y el teléfono de la marca. Lo pintan dos pantallas —esta y la
+ * hoja «Ver pedido» del chat (`DetalleDelPedido`)— y por eso vive aparte:
+ * una captura del ticket tiene que decir lo mismo venga de donde venga.
+ */
+export function TicketDelPedido({ ticket, orderCode }: { ticket: Ticket; orderCode: string }) {
+  const { store } = useStore()
+  const phone = store.wa_display_phone?.trim() || null
+  return (
+    <div className="rounded-2xl border-2 border-gray-900 overflow-hidden bg-white">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-900 text-white">
+        <span className="text-[11px] font-bold uppercase tracking-wide opacity-80">
+          {store.nombre || 'Tu pedido'}
+        </span>
+        <span className="text-base font-black tabular-nums">{orderCode}</span>
+      </div>
+
+      <dl className="divide-y divide-gray-100">
+        {ticket.lines.map(l => (
+          <div key={l.label} className="px-4 py-3">
+            <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{l.label}</dt>
+            {/* `aside` va AL COSTADO del valor —el DNI pegado al nombre—, y
+                cae debajo solo si no entra: en el mostrador se leen juntos. */}
+            <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="text-[15px] font-bold text-gray-900 leading-snug">{l.value}</span>
+              {l.aside && <span className="text-sm font-bold text-gray-500 tabular-nums">{l.aside}</span>}
+            </dd>
+            {l.detail && <dd className="text-sm text-gray-600 leading-snug mt-0.5">{l.detail}</dd>}
+          </div>
+        ))}
+
+        {/* La guía: el NÚMERO como línea, porque es lo que la agencia
+            pregunta y una captura no tiene botones; el botón debajo. */}
+        {ticket.guide && (
+          <div className="px-4 py-3">
+            <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{ticket.guide.line.label}</dt>
+            <dd className="text-[15px] font-bold text-gray-900 leading-snug tabular-nums">{ticket.guide.line.value}</dd>
+            <dd className="mt-2">
+              <a
+                href={ticket.guide.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-black
+                  bg-gray-900 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+              >
+                {COPY.doneSeeGuide} {ticket.guide.button} <ExternalLink size={13} />
+              </a>
+            </dd>
+          </div>
+        )}
+
+        {phone && (
+          <div className="px-4 py-3">
+            <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+              {COPY.doneCallStore} {store.nombre}
+            </dt>
+            <dd>
+              <a
+                href={`tel:${phone.replace(/[^\d+]/g, '')}`}
+                className="inline-flex items-center gap-2 text-lg font-black text-gray-900 tabular-nums
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded-md"
+              >
+                <Phone size={18} strokeWidth={2.5} />
+                {phone}
+              </a>
+            </dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  )
+}
+
+/**
  * La marca encabezando su propia pantalla.
  *
  * Con logo APAISADO va él solo: un lockup ya trae el nombre dibujado como la
@@ -166,7 +178,7 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
  * misma regla que `BrandMark` en el panel—. Sin él, el cuadrado y el nombre
  * escrito con la tinta que contrasta.
  */
-function FirmaDeMarca({ nombre, ancho, cuadrado, tinta }: {
+export function FirmaDeMarca({ nombre, ancho, cuadrado, tinta }: {
   nombre: string; ancho?: string | null; cuadrado: string | null; tinta: string
 }) {
   if (ancho) {
@@ -184,7 +196,7 @@ function FirmaDeMarca({ nombre, ancho, cuadrado, tinta }: {
 
 /** La línea vertical de puntos: lo hecho en verde, lo actual con el color de
  *  la marca y latiendo, lo que viene en gris. */
-function Recorrido({ pasos }: { pasos: TicketStep[] }) {
+export function Recorrido({ pasos }: { pasos: TicketStep[] }) {
   return (
     <ol className="relative mb-6 pl-1">
       {pasos.map((p, i) => {

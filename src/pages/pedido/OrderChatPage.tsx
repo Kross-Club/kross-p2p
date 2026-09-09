@@ -1,105 +1,30 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { stagesFor, stageIndex } from '../../lib/order-stages'
-import { isPickupDispatch, pickupBranchIdOf } from '../../lib/session'
+import { isPickupDispatch } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
-import PagarSaldo from '../../components/PagarSaldo'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
 import TarjetaDeGuia from '../../components/TarjetaDeGuia'
 import { TIPO_COBRO, montoDeLaTarjeta, cobroDeLaTarjeta } from '../../lib/cobro-por-chat'
 import { cobroDelAviso } from '../../lib/comprobante'
 import { puedePagarSaldo, saldoDelPedido, cobrosDelPedido } from '../../lib/order-money'
-import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft, ShoppingCart } from 'lucide-react'
+import { Send, Play, Pause, Mic, Phone, PhoneOff, Package, Truck, MicOff, ArrowLeft } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSession, sendMessage, markRead } from '../../lib/order-api'
 import { subscribePush, notifPermission } from '../../lib/push'
 import { startRingtone } from '../../lib/ringtone'
 import { sendCallReject, sendCallCancel, listenCallReject, listenCallCancel } from '../../lib/call-signal'
 import InstallBanner, { isInstalled } from '../../components/InstallBanner'
-import AddressBar from '../../components/AddressBar'
-import TrackingBar from '../../components/TrackingBar'
-import OrderDetailModal from '../../components/OrderDetailModal'
+import TarjetaDelPedido from '../../components/pedido/TarjetaDelPedido'
+import DetalleDelPedido from '../../components/pedido/DetalleDelPedido'
+import { useTicketDelPedido } from '../../components/pedido/useTicketDelPedido'
+import { useStore } from '../../lib/store-context'
 import OfferCard from '../../components/OfferCard'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
-// ─── Tracker ─────────────────────────────────────────────────────────────────
-// Las etapas dependen del pedido: sin adelanto no existe "Validando". Ver
-// `lib/order-stages.ts`, que es la única definición del orden.
-function OrderTracker({ stage, advanceAmount }: { stage: string; advanceAmount?: number | string | null }) {
-  const STAGES = stagesFor(advanceAmount)
-  const currentIdx = stageIndex(stage, STAGES)
-  const ACCENT = 'var(--brand)'
-  const current = STAGES[currentIdx]
-  const pct = STAGES.length > 1 ? (currentIdx / (STAGES.length - 1)) * 100 : 0
-
-  // Cierre en fracaso: la barra de progreso no aplica (no hay avance que
-  // mostrar y pintarla al inicio se leería como "algo se atascó"). Aviso
-  // neutro, sin culpas — el chat sigue abierto para retomar la venta.
-  if (stage === 'no_entregado') {
-    return (
-      <div className="mx-4 mt-3 mb-1 bg-white rounded-2xl px-4 py-3.5 shadow-sm" style={{ border: '1.5px solid #F0F0F0' }}>
-        <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: '#9CA3AF' }}>Estado de tu pedido</p>
-        <p className="text-xs font-bold text-gray-700">📦 Pedido cerrado</p>
-        <p className="text-[11px] text-gray-500 mt-0.5">
-          Este pedido se cerró sin entregarse. Si quieres retomarlo, escríbenos por aquí y lo vemos al toque.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="mx-4 mt-3 mb-1 bg-white rounded-2xl px-4 py-3.5 shadow-sm" style={{ border: '1.5px solid #F0F0F0' }}>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#9CA3AF' }}>Estado de tu pedido</p>
-        <p className="text-[11px] font-black" style={{ color: ACCENT }}>{current?.emoji} {current?.label}</p>
-      </div>
-
-      <div className="relative">
-        {/* connector line (behind the dots) */}
-        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full" style={{ background: '#EEF1F4' }} />
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-[3px] rounded-full transition-all" style={{ background: ACCENT, width: `${pct}%` }} />
-
-        <div className="relative flex items-center justify-between">
-          {STAGES.map((s, i) => {
-            const done = i < currentIdx
-            const isCurrent = i === currentIdx
-            return (
-              <div key={s.key} className="flex flex-col items-center" style={{ width: 20 }}>
-                <div className="rounded-full flex items-center justify-center"
-                  style={isCurrent
-                    ? { width: 20, height: 20, background: ACCENT, boxShadow: `0 0 0 4px ${ACCENT}33` }
-                    : done
-                    ? { width: 16, height: 16, background: ACCENT }
-                    : { width: 16, height: 16, background: '#fff', border: '2px solid #E5E7EB' }
-                  }>
-                  {done && <svg width="9" height="9" viewBox="0 0 24 24"><path d="M5 12l5 5L20 6" stroke="#fff" strokeWidth="3.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                  {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* labels */}
-      <div className="flex items-center justify-between mt-1.5">
-        {STAGES.map((s, i) => {
-          const isCurrent = i === currentIdx
-          return (
-            <p key={s.key} className="text-[8px] font-bold text-center leading-tight" style={{ width: 46, color: isCurrent ? '#111' : i < currentIdx ? ACCENT : '#C4C9CF' }}>
-              {s.label}
-            </p>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
 
 // ─── Audio bubble ─────────────────────────────────────────────────────────────
 function AudioBubble({ durationLabel }: { durationLabel?: string }) {
@@ -557,6 +482,11 @@ export default function OrderChatPage() {
   const [showDetail, setShowDetail] = useState(false)
   const [sellerCalling, setSellerCalling] = useState(false)
   const [sellerTyping, setSellerTyping] = useState(false)
+  const { store } = useStore()
+  // El ticket del pedido —los mismos `pasos` que `/pedido/:token`— alimenta
+  // la tarjeta y la hoja «Ver pedido». Va acá, antes de los retornos
+  // tempranos, porque es un hook.
+  const ticket = useTicketDelPedido(session, messages, token ?? '')
 
   // Auto-open the call when arriving from a global incoming-call notification (?call=1)
   useEffect(() => {
@@ -803,8 +733,8 @@ export default function OrderChatPage() {
     <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
 
       {/* ── Header ── */}
-      <div className="flex-shrink-0 px-4 pt-3 pb-5 text-white"
-        style={{ background: 'var(--brand)', borderRadius: '0 0 32px 32px' }}>
+      <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
+        style={{ background: 'var(--brand)', borderRadius: '0 0 24px 24px' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/mis-pedidos')}
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -847,9 +777,11 @@ export default function OrderChatPage() {
 
           <div className="flex-1 min-w-0">
             <p className="font-black text-white text-base leading-tight">
+              {/* Sin asesor asignado habla la MARCA, no Kross: lo que ve el
+                  comprador es white-label (manual §10). */}
               {session?.seller_name
-                ? `${session.seller_name.split(' ')[0]}${session.seller_role ? ` · ${session.seller_role}` : ' · Kross'}`
-                : 'Kross'}
+                ? `${session.seller_name.split(' ')[0]} · ${session.seller_role ?? store.nombre}`
+                : store.nombre}
             </p>
             <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>
               ¡Hola {firstName}! En línea ahora
@@ -865,93 +797,21 @@ export default function OrderChatPage() {
             </button>
           )}
         </div>
-
-        <button onClick={() => setShowDetail(true)}
-          className="mt-3 w-full rounded-2xl px-2.5 py-2 flex items-center gap-2.5 text-left"
-          style={{ background: 'rgba(255,255,255,0.2)' }}>
-          <div className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0" style={{ background: 'rgba(255,255,255,0.25)' }}>
-            {session.items?.[0]?.image
-              ? <img src={session.items[0].image!} alt="" className="w-full h-full object-cover" />
-              : <ShoppingCart size={16} className="m-auto mt-3 text-white/70" />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
-              <ShoppingCart size={11} /> Ver pedido
-            </p>
-            <p className="text-sm font-black text-white truncate max-w-[180px]">
-              {(session.items && session.items.length > 1)
-                ? `${session.items[0].nombre} +${session.items.length - 1} más`
-                : (session.product_name || 'Producto Kross')}
-            </p>
-          </div>
-          <p className="font-black text-lg text-white flex-shrink-0 ml-1">
-            {session.product_price ? `S/${session.product_price}` : ''}
-          </p>
-        </button>
       </div>
 
-      {/* ── Cancelado ── */}
-      {session.status === 'cancelado' && (
-        <div className="flex-shrink-0 mx-4 mt-2 rounded-2xl px-4 py-2.5 flex items-center gap-2"
-          style={{ background: '#FEE2E2', border: '1.5px solid #FECACA' }}>
-          <span className="text-lg">❌</span>
-          <p className="text-xs font-black" style={{ color: '#DC2626' }}>Pedido cancelado</p>
-        </div>
-      )}
-
-      {/* ── Tracker ── */}
-      {session.status !== 'cancelado' && (
+      {/* ── La tarjeta del pedido ──
+          Qué pedido es, en qué paso va y UNA acción. Reemplaza al tracker, la
+          dirección, el envío y el saldo como bloques fijos (09-set-2026): el
+          chat es para hablar, y esto es lo único que se queda encima de él.
+          Lo demás vive en el hilo o en «Ver pedido». */}
       <div className="flex-shrink-0">
-        <OrderTracker stage={session.stage} advanceAmount={session.advance_amount} />
-      </div>
-      )}
-
-      {/* ── Dirección de entrega ── */}
-      <div className="flex-shrink-0">
-        <AddressBar
-          sessionId={session.id}
-          address={session.address ?? null}
-          verified={!!session.address_verified}
-          lat={session.address_lat}
-          lng={session.address_lng}
-          role="buyer"
-          dispatchType={session.dispatch_type}
-          agencyName={session.agency_name}
-          agencyBranchId={pickupBranchIdOf(session)}
-          onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
+        <TarjetaDelPedido
+          pedido={session}
+          ticket={ticket}
+          onVerPedido={() => setShowDetail(true)}
+          onPatch={patch => setSession(s => s ? { ...s, ...patch } : s)}
         />
       </div>
-
-      {/* ── Tracking del envío por agencia (guía + fase, solo si está registrado) ── */}
-      <div className="flex-shrink-0">
-        <TrackingBar
-          sessionId={session.id}
-          role="buyer"
-          dispatchType={session.dispatch_type}
-          agencyName={session.agency_name}
-          tracking={session}
-          onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
-        />
-      </div>
-
-      {/* ── El saldo, con su botón ── */}
-      {/* Debajo del tracking a propósito: el saldo se le pide cuando ya hay
-          guía, y la guía está justo encima. Se ofrece solo, sin que tenga que
-          escribirle a nadie — que es lo que la bienvenida le prometió desde el
-          primer mensaje. */}
-      <div className="flex-shrink-0">
-        <PagarSaldo pedido={session} />
-      </div>
-
-      {/* ── Instala la app (banner inline, no tapa el input) ── */}
-      {showInstall && (
-        <div className="flex-shrink-0">
-          <InstallBanner inline onInstalled={() => {
-            setShowInstall(false)
-            subscribePush({ sessionId: session.id, role: 'buyer' }).catch(() => {})
-          }} />
-        </div>
-      )}
 
       {/* ── Messages ── */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -962,6 +822,17 @@ export default function OrderChatPage() {
           </div>
         )}
         {messages.map(msg => <MessageBubble key={msg.id} msg={msg} onAcceptOffer={acceptOffer} pedido={session} />)}
+
+        {/* Instalar la app entra al hilo como una tarjeta más, no como bloque
+            fijo: lo fijo le quita pantalla al chat. */}
+        {showInstall && (
+          <div className="-mx-4 mb-3">
+            <InstallBanner inline onInstalled={() => {
+              setShowInstall(false)
+              subscribePush({ sessionId: session.id, role: 'buyer' }).catch(() => {})
+            }} />
+          </div>
+        )}
 
         {/* Typing indicator */}
         {sellerTyping && (
@@ -988,6 +859,7 @@ export default function OrderChatPage() {
           stage={session.stage}
           buyerHasWritten={messages.some(m => m.sender_role === 'buyer')}
           esRecojo={isPickupDispatch(session.dispatch_type)}
+          botonDeSaldo={puedePagarSaldo(session)}
           saldoPendiente={Number(session.advance_amount ?? 0) > 0
             ? Math.max(0, Number(session.product_price ?? 0) - Number(session.advance_amount ?? 0))
             : 0}
@@ -1036,10 +908,10 @@ export default function OrderChatPage() {
         />
       )}
 
-      {showDetail && (
-        <OrderDetailModal
-          session={session}
-          role="buyer"
+      {showDetail && ticket && (
+        <DetalleDelPedido
+          pedido={session}
+          ticket={ticket}
           onClose={() => setShowDetail(false)}
           onPatch={(patch) => setSession(s => s ? { ...s, ...patch } : s)}
         />

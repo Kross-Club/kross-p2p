@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 08-set-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 09-set-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -33,6 +33,25 @@ fecha de arriba.
 
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
+
+### El chat del comprador, en tres cosas · 1 función + frontend (09-set-2026)
+
+**Qué entra.** `/p/:token` deja los seis bloques fijos que aplastaban el hilo y
+queda con una sola tarjeta: qué pedido es, en qué paso va y una acción (GPS, pagar
+el saldo o la clave de recojo). «Ver pedido» abre encima el ticket y el recorrido
+de `/pedido/:token`, con cancelar. Detalle en `01-SALES-ENGINE.md` § *El chat del
+comprador, en tres cosas*.
+
+**La función.** `get-session` manda `shalom_pickup_code` también al comprador
+cuando el pedido ya no debe nada (`sinSaldo`, misma cuenta que `saldoOf`). Sin el
+deploy la tarjeta simplemente no enseña la clave —sigue llegando por el chat— y
+todo lo demás funciona.
+
+```
+supabase functions deploy get-session --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL. El front sale con Vercel al mergear.
 
 ### Instalar en iPhone: un video en vez de la lista · solo frontend (08-set-2026)
 

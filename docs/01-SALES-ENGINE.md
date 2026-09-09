@@ -656,6 +656,54 @@ ver `02-SMART-LOGISTICS.md`).
 La palabra "app" **sí** aparece ahora, pero solo en el bloque de instalar y con su
 beneficio al lado; el ticket y el recorrido siguen sin ella (el test lo vigila).
 
+#### El chat del comprador, en tres cosas ✅ (09-set-2026)
+
+`/p/:token` es para HABLAR, y no se podía: seis bloques fijos antes del hilo —la
+cabecera con «Ver pedido», el tracker de etapas, la dirección, el envío con su
+propia barra y el saldo— dejaban el chat en unos 130 px de un celular, con dos
+barras de progreso que decían casi lo mismo. Ahora encima del hilo queda **una
+sola tarjeta** (`components/pedido/TarjetaDelPedido.tsx`) con tres cosas:
+
+1. **Qué pedido es**, con «Ver pedido» al lado.
+2. **En qué paso va**: una frase y una barra de tramos que sale de los mismos
+   `pasos` de `buildTicket` que pinta «Así va tu pedido» en `/pedido/:token`
+   (`useTicketDelPedido`, compartido por las dos pantallas). Las dos barras de
+   antes eran esta, dicha dos veces.
+3. **Una acción, la que toca ahora** (`lib/tarjeta-del-pedido.ts`, puro y con
+   tests): verificar el GPS si es a domicilio y falta; pagar el saldo
+   (`puedePagarSaldo`); o la **clave de recojo**, cuando ya no debe nada. Nunca
+   dos botones. Cancelado, anulado y cerrado sin entregar se dicen sin barra.
+
+**«Ver pedido» es la página hermana, abierta encima del chat**
+(`DetalleDelPedido.tsx`): el mismo ticket y el mismo recorrido de `/pedido/:token`
+(`TicketDelPedido` y `Recorrido` salieron de `PedidoConfirmado` para poder
+compartirse), sin la celebración de «¡Pedido confirmado!» —no acaba de pagar,
+vino a mirar— y sin el bloque de instalar, que el chat ya ofrece por su cuenta y
+que dentro de la app no existe (`InstalarApp` ya se apaga solo cuando la página
+se ve instalada). Trae lo que el chat le pide al pedido entero: los productos
+cuando son varios, la ubicación a domicilio (verificar o cambiar, ver en Maps) y
+**cancelar** (`CancelarPedido.tsx`, con la advertencia de puntos de siempre). Ahí
+viven la dirección de la agencia, el número y el código de la guía, la pre-guía y
+el DNI: nada se perdió, cambió de sitio.
+
+Lo que cambió alrededor:
+
+- **La clave de recojo llega al comprador por `get-session`** cuando ya no debe
+  nada (`sinSaldo`, la misma cuenta que `saldoOf`): antes solo viajaba en el
+  mensaje del chat, y el día del recojo había que buscarla en el hilo. Con saldo
+  pendiente sigue retenida. Ver `02-SMART-LOGISTICS.md` § *La clave de retiro*.
+- **La captura de GPS salió de `AddressBar` a `lib/gps.ts`**, compartida con la
+  tarjeta y la hoja del pedido. El panel del vendedor sigue usando `AddressBar` y
+  `TrackingBar` tal cual.
+- **La ficha «Quiero pagar mi saldo» no se ofrece** cuando el botón de pagar ya
+  está en la tarjeta (`botonDeSaldo` en `QuickReplies`).
+- **Instalar la app entra al hilo** como una tarjeta más, no como bloque fijo.
+- **Sin asesor asignado la cabecera dice el nombre de la marca**, no «Kross»: lo
+  que ve el comprador es white-label (`10-MANUAL-DE-MARCA.md` §10).
+- El comprador ya no abre `OrderDetailModal`: su rama `role="buyer"` (quitar
+  productos, cancelar) queda sin uso y se limpia aparte. Quitar un producto ya no
+  lo hace el comprador solo —lo pide por el chat y lo hace el vendedor—.
+
 ## El checkout multi-paso es el default
 
 Desde este cambio, la landing abre el checkout de 3 pasos. El viejo (`CheckoutQuiz`)

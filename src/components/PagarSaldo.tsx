@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Wallet, ExternalLink, Check } from 'lucide-react'
-import { puedePagarSaldo, saldoDelPedido, soles } from '../lib/order-money'
+import { ExternalLink, Check } from 'lucide-react'
+import { saldoDelPedido, soles } from '../lib/order-money'
 import { etiquetaDePago, MORADO_YAPE } from '../lib/cobro-por-chat'
 import { createFlowOrder, goToFlow } from '../lib/checkout/services/FlowService'
 import { esMovil } from '../lib/checkout/yape-link'
@@ -42,8 +42,9 @@ export interface PedidoConSaldo {
 /**
  * El botón, suelto del recuadro.
  *
- * Lo usan DOS sitios: la tarjeta permanente del final del chat y la que llega
- * como mensaje cuando el vendedor vuelve a pedir el saldo. Emitir el cupón dos
+ * Lo usan DOS sitios: la tarjeta del pedido del chat (`TarjetaDelPedido`,
+ * mientras el saldo sea la acción que toca) y la que llega como mensaje
+ * cuando el vendedor vuelve a pedir el saldo (`TarjetaDePago`). Emitir el cupón dos
  * veces desde dos copias del mismo código es como se llega a que una pida el
  * saldo viejo y la otra el de hoy.
  */
@@ -134,27 +135,5 @@ export function BotonPagarSaldo({ pedido, cobro }: {
         <p className="text-[11px] mt-1.5" style={{ color: 'var(--danger-fg)' }}>{error}</p>
       )}
     </>
-  )
-}
-
-/** La tarjeta permanente del final del chat: está siempre mientras haya saldo,
- *  para quien entra a la app por su cuenta. El mensaje de cobro es para quien
- *  no entra. */
-export default function PagarSaldo({ pedido }: { pedido: PedidoConSaldo }) {
-  if (!puedePagarSaldo(pedido)) return null
-  const falta = saldoDelPedido(pedido)
-
-  return (
-    <div className="mx-4 mt-2 rounded-2xl px-3 py-3"
-      style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
-      <p className="flex items-center gap-2 text-[12px] font-bold" style={{ color: 'var(--ok-fg)' }}>
-        <Wallet size={14} className="flex-shrink-0" />
-        Te queda un saldo de {soles(falta)}
-      </p>
-      <p className="text-[11px] mt-0.5 mb-2" style={{ color: 'var(--text-muted)' }}>
-        Págalo por aquí y te enviamos tu clave de recojo.
-      </p>
-      <BotonPagarSaldo pedido={pedido} />
-    </div>
   )
 }

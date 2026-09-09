@@ -52,10 +52,11 @@ export interface OrderSession {
   tracking_phase?: string | null
   tracking_phase_at?: string | null
   tracking_demora_at?: string | null
-  /** ⚠️ La clave de retiro de Shalom. `get-session` la manda SOLO al equipo
-   *  probado (mismo candado que los comentarios internos): quien la tiene se
-   *  lleva el paquete. Al comprador le llega como mensaje del chat recién
-   *  cuando paga su saldo — nunca por este campo. */
+  /** ⚠️ La clave de retiro de Shalom. `get-session` la manda al equipo probado
+   *  (mismo candado que los comentarios internos) y al COMPRADOR solo cuando
+   *  ya no debe nada: quien la tiene se lleva el paquete. Con saldo pendiente
+   *  viaja `undefined`; al pagarlo le llega por el chat y la tarjeta de su
+   *  pedido la enseña. */
   shalom_pickup_code?: string | null
   /** Estado del cobro del adelanto. */
   payment_verification?: string | null
