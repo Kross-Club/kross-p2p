@@ -81,6 +81,59 @@ export function mezcla(a: string, b: string): string {
   return `#${ra.map((v, i) => dos((v + rb[i]) / 2)).join('')}`
 }
 
+/**
+ * ¿El degradado de esta marca es OSCURO?
+ *
+ * Se decide sobre la mezcla de los dos colores, no sobre uno: es lo único que
+ * describe el fondo entero. Un degradado que va de un extremo al otro no tiene
+ * una sola respuesta, y la mezcla es la que acierta en el medio, que es donde
+ * está casi todo el texto.
+ */
+function degradadoOscuro(primario: string, secundario: string): boolean {
+  const a = primario || '#55C8F5'
+  return textoSobre(mezcla(a, secundario || a)) === '#FFFFFF'
+}
+
+/** Lo que se necesita para escribir ENCIMA del degradado de una marca. */
+export interface TintaDeDegradado {
+  tinta: string
+  suave: string
+  /** El fondo de lo seleccionado. */
+  velo: string
+  /** El del hover: la mitad, para que pasar por encima no parezca elegir. */
+  veloSuave: string
+  borde: string
+  oscuro: boolean
+}
+
+/**
+ * La tinta del menú del vendedor cuando lleva el degradado de la marca.
+ *
+ * Es la misma decisión que el vidrio del acceso —la mezcla manda—, pero sin
+ * velo de por medio: acá el texto se escribe directo sobre el color, así que
+ * lo único que hay es elegir bien entre blanco e ink.
+ */
+export function tintaSobreDegradado(primario: string, secundario: string): TintaDeDegradado {
+  const oscuro = degradadoOscuro(primario, secundario)
+  return oscuro
+    ? {
+        tinta: '#FFFFFF',
+        suave: 'rgba(255,255,255,0.76)',
+        velo: 'rgba(255,255,255,0.18)',
+        veloSuave: 'rgba(255,255,255,0.09)',
+        borde: '1px solid rgba(255,255,255,0.16)',
+        oscuro,
+      }
+    : {
+        tinta: '#0F1115',
+        suave: 'rgba(15,17,21,0.68)',
+        velo: 'rgba(15,17,21,0.12)',
+        veloSuave: 'rgba(15,17,21,0.06)',
+        borde: '1px solid rgba(15,17,21,0.12)',
+        oscuro,
+      }
+}
+
 /** El vidrio del acceso: la tarjeta translúcida sobre el degradado. */
 export interface Vidrio {
   /** Encima del degradado: es lo que hace que el texto se lea. */
@@ -107,7 +160,7 @@ export interface Vidrio {
  * cualquiera de los dos colores que elija el comerciante.
  */
 export function vidrioDeMarca(primario: string, secundario: string): Vidrio {
-  const claro = textoSobre(mezcla(primario || '#55C8F5', secundario || primario || '#55C8F5')) === '#FFFFFF'
+  const claro = degradadoOscuro(primario, secundario)
   return claro
     ? {
         fondo: 'rgba(12,14,18,0.42)',

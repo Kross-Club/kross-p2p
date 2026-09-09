@@ -27,10 +27,14 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
  *  siendo ink+lima del manual—: es el relleno de la placa del logo, para que
  *  un logo con aire propio no deje huecos oscuros alrededor. */
 interface Marca {
+  id?: string | null
   nombre: string
   logo_url: string | null
   logo_wide_url?: string | null
   color_primary?: string | null
+  /** El SECUNDARIO (§49): con el primario arma el degradado del menú lateral. */
+  color_dark?: string | null
+  gradient_style?: string | null
 }
 
 export default function Layout() {
@@ -59,8 +63,15 @@ export default function Layout() {
     if (!effective) return
     if (administraLaPlataforma(effective)) { setBrand({ nombre: 'Kross', logo_url: null }); return }
     if (!effective.store_id) return
-    supabase.from('stores').select('nombre, logo_url, logo_wide_url, color_primary').eq('id', effective.store_id).maybeSingle()
-      .then(({ data }) => { if (data) setBrand(data as Marca) })
+    // Se piden los colores del degradado (§49) y, si el proyecto todavía no
+    // corrió ese SQL, se vuelve a pedir sin ellos: el menú se queda como estaba
+    // en vez de dejar al vendedor sin firma de marca en la cabecera.
+    const CAMPOS = 'id, nombre, logo_url, logo_wide_url, color_primary'
+    const pedir = (campos: string) =>
+      supabase.from('stores').select(campos).eq('id', effective.store_id!).maybeSingle()
+    pedir(`${CAMPOS}, color_dark, gradient_style`)
+      .then(async r => (r.error ? (await pedir(CAMPOS)).data : r.data))
+      .then(data => { if (data) setBrand(data as unknown as Marca) })
   }, [effective?.store_id, effective?.is_admin, effective?.is_super_admin])
 
   useEffect(() => { setAvatar(effective?.avatar_url ?? null) }, [effective?.avatar_url])

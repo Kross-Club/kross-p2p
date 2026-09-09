@@ -177,9 +177,14 @@ export default function BuyerLoginPage() {
   const fondo = fondoDeMarca(marca, store.color_dark || marca, estiloValido(store.gradient_style), store.id ?? store.slug ?? '')
   const vidrio = vidrioDeMarca(marca, store.color_dark || marca)
   const flotantes = imagenesDeAcceso(store.login_images)
-  // La placa del logo: el primario, con el canto del vidrio para que no se
-  // funda con el arranque del degradado.
-  const placa = { background: marca, border: vidrio.borde, boxShadow: vidrio.sombra }
+  // Una sombra apenas perceptible: despega el PNG del degradado sin dibujarle
+  // el rectángulo que se acaba de quitar. Más marcada sobre un fondo oscuro,
+  // donde un logo de tinta clara se funde antes.
+  const sombraDelLogo = {
+    filter: vidrio.claro
+      ? 'drop-shadow(0 6px 18px rgba(0,0,0,0.35))'
+      : 'drop-shadow(0 6px 16px rgba(15,17,21,0.20))',
+  }
   const etiqueta = { color: vidrio.tintaSuave }
   const campo = { background: vidrio.campo, border: vidrio.bordeCampo, color: vidrio.tinta }
 
@@ -196,21 +201,18 @@ export default function BuyerLoginPage() {
             trae el nombre como la marca quiere que se lea—, si no el cuadrado.
             Sin el nombre escrito debajo: repetirlo lo dice dos veces y peor.
 
-            La placa va del color primario, como en el menú del panel
-            (`BrandMark`): un logo con tinta oscura y fondo transparente se
-            perdería solo sobre el degradado. Y lleva el borde y la sombra del
-            vidrio porque el degradado ARRANCA en ese mismo primario: sin un
-            canto, la placa de una marca amarilla desaparece contra su propio
-            amarillo. */}
+            Y va SIN placa (09-set-2026): el fondo ya es el color de la marca,
+            así que el rectángulo de atrás solo recortaba un bloque plano sobre
+            su propio color — justo el borde que un logo en PNG viene a no
+            tener. Lo único que queda es una sombra muy suave, que es lo que
+            despega un PNG transparente del degradado sin dibujarle una caja. */}
         <div className="flex justify-center mb-8">
           {store.logo_wide_url ? (
-            <div className="w-full max-w-[240px] h-14 rounded-xl overflow-hidden flex items-center justify-center" style={placa}>
-              <img src={store.logo_wide_url} alt={store.nombre} className="w-full h-full object-contain" />
-            </div>
+            <img src={store.logo_wide_url} alt={store.nombre}
+              className="h-14 max-w-[240px] object-contain" style={sombraDelLogo} />
           ) : store.logo_url ? (
-            <div className="w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center" style={placa}>
-              <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-contain" />
-            </div>
+            <img src={store.logo_url} alt={store.nombre}
+              className="w-20 h-20 object-contain" style={sombraDelLogo} />
           ) : (
             <KrossIcon size={64} />
           )}

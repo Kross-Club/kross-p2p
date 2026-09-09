@@ -799,3 +799,24 @@ de su tienda; en la primera pantalla de una app white-label eso es justo lo que 
 
 **El paso del código no dice «tu número».** Dice «revisa tu WhatsApp», sin enseñar el teléfono ni
 antes ni después: enseñarlo confirmaría que esa persona le compra a la marca y regalaría dígitos.
+
+**El logo va SIN placa.** El fondo ya es el color de la marca, así que el rectángulo de atrás solo
+recortaba un bloque plano sobre su propio color — justo el borde que un logo en PNG viene a no
+tener. Queda una sombra muy suave, que despega el PNG del degradado sin dibujarle una caja.
+
+### El menú lateral del vendedor, con el degradado de su tienda
+
+El resto del panel sigue siendo la herramienta de Kross y se pinta con ink y lima del manual. La
+columna del menú no: es lo primero que mira el vendedor al entrar y lo que le dice **en qué tienda
+está parado**, así que la pinta el degradado de esa tienda — los mismos dos colores y el mismo
+ángulo del acceso del comprador.
+
+- **Sin marca, o operando la plataforma, no hay degradado que poner** — Kross no es una tienda — y
+  la barra se queda como estaba.
+- **La tinta no se elige a ojo:** `tintaSobreDegradado` la decide por contraste contra la mezcla de
+  los dos colores, y de ahí salen también la veladura de lo seleccionado y la del hover. El hover no
+  puede ser una clase de Tailwind con un gris fijo (`hover:bg-gray-50` sobre un color de marca es
+  una mancha blanca): va como variables CSS que pinta `.k-nav-marca`.
+- **El indicador de activo va en la tinta y no en lima:** el lima de Kross desaparece sobre la marca
+  que justamente eligió un verde, y ese indicador tiene que verse siempre.
+- **Ahí el logo tampoco lleva placa** (`BrandMark` con `sinPlaca`): el fondo ya es de su color.

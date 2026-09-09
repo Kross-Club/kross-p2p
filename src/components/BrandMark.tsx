@@ -20,6 +20,7 @@ export default function BrandMark({
   brand,
   size = 28,
   soloLogo = false,
+  sinPlaca = false,
 }: {
   brand: {
     nombre: string
@@ -34,12 +35,17 @@ export default function BrandMark({
    *  menú está plegado — y con el símbolo basta para saber dónde estás parado,
    *  que es todo lo que esta firma tiene que responder. */
   soloLogo?: boolean
+  /** Sin la placa de atrás. Se usa donde el FONDO ya es de la marca —el menú
+   *  lateral, desde que lleva su degradado (09-set-2026)—: ahí la placa
+   *  recortaría un rectángulo de color plano sobre el color de la marca, que es
+   *  exactamente el borde que el logo en PNG viene a no tener. */
+  sinPlaca?: boolean
 }) {
   if (!brand || brand.nombre === 'Kross') {
     return soloLogo ? <KrossIcon size={size} /> : <KrossLockup size={size * 0.86} />
   }
 
-  const placa = brand.color_primary || undefined
+  const placa = sinPlaca ? undefined : (brand.color_primary || undefined)
 
   // Con logo APAISADO (07-set-2026) va él solo: un lockup ya trae el nombre
   // dibujado como la marca quiere que se lea, y escribirlo al lado en nuestra

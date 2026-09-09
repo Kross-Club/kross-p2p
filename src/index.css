@@ -524,3 +524,14 @@
     animation: none;
   }
 }
+
+/* ── El menú lateral cuando lleva el degradado de la marca ────────────────────
+   El hover no puede ser una clase de Tailwind con un gris fijo: sobre el color
+   de una tienda, `hover:bg-gray-50` es una mancha blanca. La veladura y la
+   tinta las calcula `SideNav` por contraste y las deja acá como variables, que
+   es lo único que un `:hover` no puede recibir en un `style` de React. */
+.k-nav-marca a:hover,
+.k-nav-marca button:hover {
+  background: var(--nav-velo);
+  color: var(--nav-tinta) !important;
+}
