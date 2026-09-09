@@ -214,6 +214,12 @@ export interface SitioFlotante {
   giro: number
   /** Detrás del vidrio (la del costado) o delante del fondo. */
   detras: boolean
+  /** Volteada horizontalmente. Es lo que convierte a la MISMA foto en una
+   *  pareja cuando se repite en las dos esquinas: sin espejo se lee como un
+   *  archivo puesto dos veces, con espejo como una composición. Va dentro de la
+   *  animación (`--espejo` en `k-flotar`), porque el vaivén también es
+   *  `transform` y el último gana. */
+  espejo?: boolean
 }
 
 /** El escenario donde se posicionan: acotado y centrado sobre la tarjeta. El
@@ -238,10 +244,61 @@ export const SITIOS_FLOTANTES: SitioFlotante[] = [
   { estilo: { bottom: '6%', left: '-8%', width: '38%' }, ritmo: 9, altura: 18, deriva: 10, giro: -3, detras: false },
 ]
 
-/** Las URLs guardadas, limpias y recortadas a los tres sitios que existen. */
-export function imagenesDeAcceso(guardadas: unknown): string[] {
-  if (!Array.isArray(guardadas)) return []
-  return guardadas
-    .filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
-    .slice(0, SITIOS_FLOTANTES.length)
+/**
+ * Las tres casillas, **cada una en su sitio**: la URL guardada o `null`.
+ *
+ * ⚠️ Antes esto FILTRABA los huecos, y con eso el sitio de cada imagen dependía
+ * de cuántas hubiera: quien llenaba solo la segunda casilla la veía salir en el
+ * sitio de la primera, y el editor —que promete «arriba a la izquierda», «la
+ * del costado», «abajo a la izquierda»— le mentía. Daba igual mientras las tres
+ * fueran producto suelto; dejó de dar igual el día que la SEGUNDA pasó a
+ * significar algo concreto («tu caja», la que enmarca el pedido confirmado).
+ *
+ * Ahora el índice es la casilla, y por eso `MarcaPage` guarda los huecos y
+ * `manage-store` los respeta. Lo guardado ANTES de este cambio ya venía
+ * compactado y se lee tal cual: no hay forma de adivinar de qué casilla salió
+ * cada imagen, y correrlas a ciegas sería inventar.
+ */
+export function imagenesPorSitio(guardadas: unknown): (string | null)[] {
+  const arr = Array.isArray(guardadas) ? guardadas : []
+  return SITIOS_FLOTANTES.map((_, i) => {
+    const u = arr[i]
+    return typeof u === 'string' && u.trim().length > 0 ? u : null
+  })
+}
+
+// ─── Las esquinas del pedido confirmado ──────────────────────────────────────
+//
+// La misma imagen que flota al costado del acceso vuelve a salir, y en pareja,
+// enmarcando la cabecera del pedido confirmado (09-set-2026).
+//
+// Es el SEGUNDO sitio a propósito: en el editor de la marca esa casilla se pide
+// como «la caja» —el empaque con el que llega el pedido—, y una caja es
+// justamente lo que tiene sentido enmarcando la pantalla del que acaba de
+// comprar. Las otras dos son producto suelto: repetidas en una esquina no dicen
+// nada.
+//
+// Las dos van ARRIBA y muy salidas del borde, con la mayor parte del archivo
+// fuera de cuadro: lo que entra es una esquina de la caja, no una foto de
+// producto detrás del texto. Debajo del contenido —nunca encima— y sin robar
+// toques; el que manda ahí es el ticket.
+//
+// Si la marca no subió esa imagen no se pinta nada y la pantalla queda como
+// estaba: sobria y con su color. Como en el acceso, no se inventa ninguna.
+
+/** Cuál de las tres imágenes de la marca es «la caja». */
+export const SITIO_DE_LA_CAJA = 1
+
+export const ESQUINAS_DEL_PEDIDO: SitioFlotante[] = [
+  // Izquierda, mordiendo la esquina de arriba.
+  { estilo: { top: '-5%', left: '-17%', width: '40%' }, ritmo: 13, altura: -14, deriva: 6, giro: 5, detras: false },
+  // Derecha, volteada y con otro ritmo: la pareja no puede ir a compás ni
+  // repetir el mismo recorte, o se ve el copiar y pegar.
+  { estilo: { top: '-2%', right: '-19%', width: '34%' }, ritmo: 16, altura: 15, deriva: -7, giro: -4, detras: false, espejo: true },
+]
+
+/** La caja de la marca, si la subió. Las esquinas del pedido pintan ESTA y no
+ *  la primera que haya: ver `SITIO_DE_LA_CAJA`. */
+export function cajaDeLaMarca(guardadas: unknown): string | null {
+  return imagenesPorSitio(guardadas)[SITIO_DE_LA_CAJA] ?? null
 }

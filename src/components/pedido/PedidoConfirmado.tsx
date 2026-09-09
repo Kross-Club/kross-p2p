@@ -40,7 +40,8 @@ import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
 import { useStore } from '../../lib/store-context'
 import BajoLaMarca from './BajoLaMarca'
-import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
+import Flotante from '../Flotante'
+import { cajaDeLaMarca, ESQUINAS_DEL_PEDIDO, estiloValido, fondoDeMarca, tintaSobreDegradado } from '../../lib/degradado'
 import { subscribePush } from '../../lib/push'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { AndroidSteps, IOSInstallVideo, isInstalled } from '../InstallBanner'
@@ -57,26 +58,52 @@ interface Props {
 export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props) {
   const { store } = useStore()
 
-  // El color de la marca manda en la cabecera, y el texto se elige por
-  // CONTRASTE contra él: el comerciante puede poner un naranja, un amarillo o
-  // un azul casi negro, y el título —que es su nombre y la frase del dinero—
-  // tiene que leerse en los tres. Ver `lib/contraste.ts`.
+  // La cabecera lleva el FONDO DE LA MARCA, que no es un color plano: es el
+  // degradado de sus dos colores con la inclinación que eligió en el panel
+  // (09-set-2026), el mismo que pinta su acceso y el menú de su vendedor. Un
+  // color plano acá y un degradado allá eran dos marcas distintas en la misma
+  // app.
+  //
+  // La tinta se elige por CONTRASTE, y contra la MEZCLA de los dos: el
+  // comerciante puede poner un naranja, un amarillo o un azul casi negro, y el
+  // título —su nombre y la frase del dinero— tiene que leerse en los tres. Un
+  // degradado no tiene una sola respuesta, y la mezcla es la que acierta en el
+  // medio, que es donde está casi todo el texto (`lib/degradado.ts`).
   const marca = store.color_primary || '#55C8F5'
-  const tinta = textoSobre(marca)
-  const tintaSuave = textoSuaveSobre(marca)
+  const secundario = store.color_dark || marca
+  const fondo = fondoDeMarca(marca, secundario, estiloValido(store.gradient_style), store.id ?? store.slug ?? '')
+  const { tinta, suave: tintaSuave } = tintaSobreDegradado(marca, secundario)
+  // La caja de la marca, si la subió: enmarca las dos esquinas de arriba.
+  const caja = cajaDeLaMarca(store.login_images)
 
   return (
     <div>
       {/* ── La cabecera de la marca ──
           El color llega hasta DEBAJO del ticket y ahí corta: la boleta se
           queda en su rectángulo blanco, recortada contra el color, y lo que
-          viene después respira en blanco. */}
-      <div className="px-5 pt-5 pb-11 -mx-5" style={{ background: marca }}>
-        <div className="flex justify-center mb-4">
+          viene después respira en blanco.
+
+          `overflow-hidden` es lo que hace que las cajas de las esquinas MUERDAN
+          el borde en vez de desbordar la página: sin él, un PNG saliendo por la
+          derecha estira el ancho del documento y aparece una barra horizontal
+          en el celular. */}
+      <div className="relative overflow-hidden px-5 pt-5 pb-11 -mx-5" style={{ background: fondo }}>
+
+        {/* La caja de la marca, en las dos esquinas de arriba y meciéndose:
+            la misma imagen del acceso, volteada de un lado y con otro ritmo
+            (`ESQUINAS_DEL_PEDIDO`). Va DEBAJO de todo lo demás —el ticket es el
+            que manda acá— y no se pinta nada si la marca no la subió. */}
+        {caja && (
+          <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ zIndex: 0 }}>
+            {ESQUINAS_DEL_PEDIDO.map((sitio, i) => <Flotante key={i} src={caja} sitio={sitio} />)}
+          </div>
+        )}
+
+        <div className="relative flex justify-center mb-4" style={{ zIndex: 1 }}>
           <FirmaDeMarca nombre={store.nombre} ancho={store.logo_wide_url} cuadrado={store.logo_url} tinta={tinta} />
         </div>
 
-        <div className="text-center mb-4">
+        <div className="relative text-center mb-4" style={{ zIndex: 1 }}>
           <div
             className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3"
             style={{ background: '#DCFCE7' }}
@@ -90,7 +117,9 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
           </p>
         </div>
 
-      <TicketDelPedido ticket={ticket} orderCode={orderCode} />
+        <div className="relative" style={{ zIndex: 1 }}>
+          <TicketDelPedido ticket={ticket} orderCode={orderCode} />
+        </div>
       </div>
 
       {/* De la franja de la marca al blanco: la curva hacia abajo, y el `-mx-5`
@@ -126,15 +155,34 @@ export function TicketDelPedido({ ticket, orderCode }: { ticket: Ticket; orderCo
 
       <dl className="divide-y divide-gray-100">
         {ticket.lines.map(l => (
-          <div key={l.label} className="px-4 py-3">
-            <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{l.label}</dt>
-            {/* `aside` va AL COSTADO del valor —el DNI pegado al nombre—, y
-                cae debajo solo si no entra: en el mostrador se leen juntos. */}
-            <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className="text-[15px] font-bold text-gray-900 leading-snug">{l.value}</span>
-              {l.aside && <span className="text-sm font-bold text-gray-500 tabular-nums">{l.aside}</span>}
-            </dd>
-            {l.detail && <dd className="text-sm text-gray-600 leading-snug mt-0.5">{l.detail}</dd>}
+          <div key={l.label} className="px-4 py-3 flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{l.label}</dt>
+              {/* `aside` va AL COSTADO del valor —el DNI pegado al nombre—, y
+                  cae debajo solo si no entra: en el mostrador se leen juntos. */}
+              <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-[15px] font-bold text-gray-900 leading-snug">{l.value}</span>
+                {l.aside && <span className="text-sm font-bold text-gray-500 tabular-nums">{l.aside}</span>}
+              </dd>
+              {l.detail && <dd className="text-sm text-gray-600 leading-snug mt-0.5">{l.detail}</dd>}
+            </div>
+            {/* La foto del pack que compró, al costado de su nombre
+                (09-set-2026). Un ticket que se manda por WhatsApp para que
+                alguien más lo recoja se entiende mejor con la foto de lo que
+                va a recoger que con «Pack Mono Loco».
+
+                `object-contain` y NO `cover`: la gracia de la foto de un pack
+                es que se vean las tres unidades, y recortar para llenar el
+                cuadrado le corta una — enseñaría menos de lo que compró. Si la
+                URL muere se esconde sola: esta pantalla se guarda como captura
+                y el ícono de imagen rota se guardaría con ella. */}
+            {l.image && (
+              <img
+                src={l.image} alt="" aria-hidden
+                onError={e => { e.currentTarget.hidden = true }}
+                className="w-16 h-16 rounded-xl object-contain flex-shrink-0 bg-gray-50 p-1"
+              />
+            )}
           </div>
         ))}
 

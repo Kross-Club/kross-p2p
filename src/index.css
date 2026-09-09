@@ -510,12 +510,17 @@
    comprador. Cada imagen trae su ritmo y su deriva en variables, así que las
    tres nunca van a compás: a compás se vería un carrusel, no algo flotando. */
 @keyframes k-flotar {
-  0%, 100% { transform: translate3d(0, 0, 0) rotate(var(--giro, 0deg)); }
-  50%      { transform: translate3d(var(--deriva, 0px), var(--altura, -20px), 0) rotate(calc(var(--giro, 0deg) * -1)); }
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(var(--giro, 0deg)) scaleX(var(--espejo, 1)); }
+  50%      { transform: translate3d(var(--deriva, 0px), var(--altura, -20px), 0) rotate(calc(var(--giro, 0deg) * -1)) scaleX(var(--espejo, 1)); }
 }
 .k-flota {
   animation: k-flotar var(--ritmo, 10s) ease-in-out infinite;
   will-change: transform;
+  /* El espejo va DENTRO del `transform` de la animación —el último gana—, y
+     repetido acá para cuando no hay animación que lo lleve: voltear es
+     composición, no movimiento, y la pareja de esquinas del pedido tiene que
+     seguir siendo una pareja con `prefers-reduced-motion`. */
+  transform: scaleX(var(--espejo, 1));
 }
 /* Quien pidió menos movimiento no lo pidió solo para las webs bonitas: acá se
    queda la composición quieta, que es lo que se estaba enseñando. */

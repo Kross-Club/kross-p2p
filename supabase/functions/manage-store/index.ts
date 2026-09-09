@@ -517,13 +517,22 @@ Deno.serve(async (req) => {
     if (typeof body.gradient_style === 'string' && ESTILOS_DE_DEGRADADO.includes(body.gradient_style)) {
       patch.gradient_style = body.gradient_style
     }
-    // Las imágenes del acceso: hasta tres URLs, y solo del storage de ESTE
+    // Las imágenes de la marca: hasta tres URLs, y solo del storage de ESTE
     // proyecto. Una URL cualquiera acá es una imagen ajena servida como si
     // fuera de la marca, y un pixel de rastreo en la pantalla de entrar.
+    //
+    // Se guardan CON sus huecos, en el orden que llegan: el índice es la
+    // casilla del editor y la segunda significa «tu caja» —la que enmarca el
+    // pedido confirmado (`ESQUINAS_DEL_PEDIDO`)—. Filtrar los nulos, como se
+    // hacía antes, le corría la imagen de sitio a quien dejara una casilla
+    // vacía. Lo que no es una URL nuestra se vacía, no se salta; y los huecos
+    // del final no se guardan porque no dicen nada.
     if (Array.isArray(body.login_images)) {
-      patch.login_images = body.login_images
-        .filter((u: unknown): u is string => typeof u === 'string' && esUrlDeBranding(u))
+      const sitios = body.login_images
         .slice(0, 3)
+        .map((u: unknown) => (typeof u === 'string' && esUrlDeBranding(u) ? u : null))
+      while (sitios.length > 0 && sitios[sitios.length - 1] === null) sitios.pop()
+      patch.login_images = sitios
     }
     // Apagar una marca detiene su app ese mismo segundo, y por eso es de quien
     // administra la plataforma y no del admin de la marca. Pero **se deshace

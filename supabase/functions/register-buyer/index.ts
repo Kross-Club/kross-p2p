@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push'
 import { esRielEnLinea, rielPara, type Proveedor } from '../_shared/comision.ts'
 import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
+import { imagenDelPack } from '../_shared/packs.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 import { anotarConversion } from '../_shared/api-eventos.ts'
 
@@ -300,10 +301,17 @@ Deno.serve(async (req) => {
   // product_id, producto sin packs) NO se bloquea la venta —el pedido vale más
   // que la comprobación— pero queda registrado, y el adelanto se calcula igual
   // sobre lo verificado cuando existe.
+  //
+  // La misma consulta trae las FOTOS: el ticket del comprador enseña la del
+  // pack que eligió, y las dos cosas —cuánto cuesta y cómo se ve— salen de la
+  // misma fila del producto. Eran dos viajes a la base para leer dos columnas
+  // de la misma fila.
   let verifiedPrice: number | null = null
+  let itemImage: string | null = null
   if (body.product_id) {
-    const { data: prod } = await supabase.from('products').select('packs').eq('id', body.product_id).maybeSingle()
+    const { data: prod } = await supabase.from('products').select('packs, images').eq('id', body.product_id).maybeSingle()
     verifiedPrice = priceFromPacks(prod?.packs, body.product_price, body.pack_name ?? null)
+    itemImage = imagenDelPack(prod?.packs, body.pack_name ?? null, prod?.images)
     if (verifiedPrice === null) {
       console.warn('[register-buyer] precio no verificable contra los packs', JSON.stringify({
         product_id: body.product_id, claimed: body.product_price, pack: body.pack_name ?? null,
@@ -328,13 +336,6 @@ Deno.serve(async (req) => {
         await supabase.from('buyers').update({ puntos: (buyer.puntos ?? 0) - usedPoints }).eq('id', buyer.id)
       }
     }
-  }
-
-  // First product image for the cart thumbnail
-  let firstImage: string | null = null
-  if (body.product_id) {
-    const { data: prod } = await supabase.from('products').select('images').eq('id', body.product_id).maybeSingle()
-    firstImage = (prod?.images as string[] | undefined)?.[0] ?? null
   }
 
   const token = randomToken()
@@ -417,7 +418,7 @@ Deno.serve(async (req) => {
       product_price: finalPrice,
       advance_choice: advanceChoice,
       pack_name: body.pack_name ?? null,
-      items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: finalPrice, unit_price: finalPrice, qty: 1, pack_name: body.pack_name ?? null, image: firstImage }],
+      items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: finalPrice, unit_price: finalPrice, qty: 1, pack_name: body.pack_name ?? null, image: itemImage }],
       status: 'active',
       // Con adelanto arranca en `validando`: el comprador acaba de pagar y su
       // barra TIENE que moverse, o el siguiente paso que da es escribir

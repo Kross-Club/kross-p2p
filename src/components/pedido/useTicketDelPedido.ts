@@ -63,6 +63,10 @@ export function useTicketDelPedido(
       state: estadoDesdePedido(pedido),
       price: Number(pedido.product_price ?? 0),
       packName: nombreDelPedido(pedido),
+      // La miniatura del ticket: la foto del pack que compró, elegida por el
+      // servidor al crear el pedido (`_shared/packs.ts`). Con varios productos
+      // es la del primero, que es justo el que nombra la línea.
+      packImage: pedido.items?.[0]?.image ?? null,
       paid: pagadoDelPedido(pedido),
       unpaid: coordinadoDelPedido(pedido),
       branch: sede,

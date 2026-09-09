@@ -25,6 +25,10 @@ export interface TicketInput {
   price: number
   /** Nombre del pack elegido, si lo hay. */
   packName: string | null
+  /** La foto de ESE pack, para que el ticket enseñe lo que compró y no un
+   *  frasco genérico. La elige el servidor al crear el pedido y viaja en
+   *  `items[0].image` (`_shared/packs.ts`). */
+  packImage?: string | null
   /** true cuando el webhook ya confirmó el adelanto. */
   paid: boolean
   /** El comprador pidió que un asesor coordine el adelanto en vez de pagar. */
@@ -57,6 +61,9 @@ export interface TicketLine {
   value: string
   /** Segunda línea, más chica: dirección de la sede, referencia. */
   detail?: string
+  /** La miniatura de la línea, al costado. Hoy solo la del pedido: la foto del
+   *  pack que compró. Sin ella la línea se pinta igual, solo sin imagen. */
+  image?: string | null
   /** Al COSTADO del valor, no debajo: el DNI de quien recoge va pegado a su
    *  nombre porque en el mostrador se leen juntos, y separarlos en dos
    *  renglones invita a llevar solo la mitad. */
@@ -113,7 +120,7 @@ export function buildTicket(i: TicketInput): Ticket {
   const lines: TicketLine[] = []
   const agencia = s.pickup.agency ? nombreAgencia(s.pickup.agency) : 'la agencia'
 
-  lines.push({ label: 'Tu pedido', value: i.packName ?? 'Tu pack' })
+  lines.push({ label: 'Tu pedido', value: i.packName ?? 'Tu pack', image: i.packImage ?? null })
 
   let destino: string
   if (isAgency) {
