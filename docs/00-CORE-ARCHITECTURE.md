@@ -748,3 +748,54 @@ tres al bucket `branding`, y `manage-store` los guarda con el mismo candado que 
 
 Con logo apaisado, `BrandMark` **no escribe el nombre al lado**: un lockup ya lo trae dibujado como
 la marca quiere que se lea, y repetirlo en nuestra tipografía lo dice dos veces y peor.
+
+## Los dos colores de una marca, y el degradado (09-set-2026)
+
+El segundo color se llamaba **«fondo oscuro»** y casi no trabajaba: el `theme-color` del navegador
+y el botón de la web pública. Ahora es el **SECUNDARIO** y su trabajo es hacer degradado con el
+primario, que es lo que pinta el acceso del comprador.
+
+| Columna | Qué es | Dónde manda |
+|---|---|---|
+| `color_primary` | El color de la marca | Encabeza todas las pantallas del comprador, los botones, y ahora el `theme-color` del navegador |
+| `color_dark` | El **secundario** (el nombre de la columna es el viejo) | El otro extremo del degradado, y el botón de la web pública |
+| `gradient_style` | `vertical` · `horizontal` · `diagonal` · `aleatorio` | Cómo se inclina ese degradado |
+| `login_images` | Hasta tres PNG | Los productos que flotan en `/acceso` |
+
+⚠️ **La columna no se renombró a propósito.** Renombrarla obligaría a correr el SQL y desplegar las
+funciones en el mismo minuto, y entre una cosa y la otra cada marca se quedaría sin color. Lo que
+cambió es lo que significa, y eso vive en `src/lib/degradado.ts`, en el panel —que ya lo llama
+«Secundario»— y en el bloque §49 del esquema.
+
+**`aleatorio` no se sortea en cada pintada.** Se deriva del id de la tienda, así que a cada marca le
+toca su ángulo y le toca siempre el mismo. Un fondo que cambia de inclinación cada vez que se abre
+la app no se lee como una gracia: se lee como un error, y además impide reconocer la pantalla.
+
+**El secundario ya puede ser CLARO**, y eso arrastró dos cosas que daban por hecho que era oscuro:
+el `theme-color` pasó al primario, y el botón de la web pública dejó de escribirse siempre en blanco
+—su tinta la decide el contraste (`--store-brand-dark-fg`)—.
+
+### La pantalla de acceso, con el color de la marca
+
+`/acceso` estuvo unas horas sobre el ink de Kross y era la única pantalla del comprador sin el color
+de su tienda; en la primera pantalla de una app white-label eso es justo lo que no puede pasar. Ahora:
+
+- **El fondo es el degradado** de los dos colores de la marca, con su inclinación.
+- **La tarjeta es de vidrio.** Un `backdrop-filter` solo NO garantiza que se lea nada: desenfoca lo
+  de atrás pero deja pasar su claridad, así que sobre un amarillo el texto blanco desaparece igual.
+  Por eso el vidrio lleva un **velo** —oscuro sobre fondo oscuro, claro sobre fondo claro— que
+  empuja el fondo hacia el extremo donde su tinta ya gana. La decide `vidrioDeMarca`, con la misma
+  aritmética de contraste del ticket.
+- **Detrás flotan los productos** que subió la marca. De los tres sitios, **uno solo pasa por debajo
+  de la tarjeta**, y por un costado: sin nada detrás, un vidrio no se distingue de un fondo plano.
+  Los sitios los decide la pantalla (`SITIOS_FLOTANTES`) y no quien sube las imágenes — de eso
+  depende que se lea un diseño y no tres PNG apoyados en el aire. Sin imágenes la pantalla queda
+  igual de bien, solo más sobria: no se inventa ninguna.
+- **El vaivén es solo `transform`**, que resuelve el compositor, y se apaga con
+  `prefers-reduced-motion`.
+- Las imágenes se guardan **solo si su URL es del bucket `branding` de este proyecto**
+  (`esUrlDeBranding` en `manage-store`). Una URL cualquiera sería una imagen ajena servida bajo el
+  nombre de la marca, y un pixel que ve la IP de cada comprador que abre su acceso.
+
+**El paso del código no dice «tu número».** Dice «revisa tu WhatsApp», sin enseñar el teléfono ni
+antes ni después: enseñarlo confirmaría que esa persona le compra a la marca y regalaría dígitos.

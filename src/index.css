@@ -37,6 +37,9 @@
 :root {
   --brand: var(--store-brand, var(--k-lime-light));
   --brand-dark: var(--store-brand-dark, var(--k-ink));
+  /* La tinta que se lee sobre el secundario de la tienda. La escribe
+     `store-context` por contraste; el ink de Kross es blanco de por sí. */
+  --brand-dark-fg: var(--store-brand-dark-fg, #FFFFFF);
   --structural: var(--k-structural);
   /* Lo que se escribe ENCIMA del acento. En las pantallas de marca el acento
      es el color de la tienda —casi siempre saturado— y el blanco funciona; en
@@ -387,7 +390,7 @@
    dinero que entró y entrega cerrada, nunca para botones genéricos. */
 .web-publica .k-cta {
   background: var(--brand-dark);
-  color: #FFFFFF;
+  color: var(--brand-dark-fg);
 }
 
 :root[data-theme] .web-publica .k-cta {
@@ -492,6 +495,32 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .panel-centro {
+    animation: none;
+  }
+}
+
+/* ── Los productos que flotan en el acceso del comprador ──────────────────────
+   Hasta tres PNG que sube la marca (`stores.login_images`) y que se mecen en
+   bucle detrás de la tarjeta de entrar. Las posiciones las decide
+   `lib/degradado.ts`; acá está solo el vaivén.
+
+   Es `transform` y nada más —ni `top`, ni `margin`— porque eso lo resuelve el
+   compositor y no obliga al navegador a recalcular la página sesenta veces por
+   segundo en un teléfono de gama baja, que es justo el aparato de este
+   comprador. Cada imagen trae su ritmo y su deriva en variables, así que las
+   tres nunca van a compás: a compás se vería un carrusel, no algo flotando. */
+@keyframes k-flotar {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(var(--giro, 0deg)); }
+  50%      { transform: translate3d(var(--deriva, 0px), var(--altura, -20px), 0) rotate(calc(var(--giro, 0deg) * -1)); }
+}
+.k-flota {
+  animation: k-flotar var(--ritmo, 10s) ease-in-out infinite;
+  will-change: transform;
+}
+/* Quien pidió menos movimiento no lo pidió solo para las webs bonitas: acá se
+   queda la composición quieta, que es lo que se estaba enseñando. */
+@media (prefers-reduced-motion: reduce) {
+  .k-flota {
     animation: none;
   }
 }

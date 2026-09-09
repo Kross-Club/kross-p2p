@@ -8,6 +8,8 @@ import { puedeAdministrar } from '../../lib/permisos'
 import { vistaDeTiendas, estorboParaBorrar } from '../../lib/vista-de-tiendas'
 import { useDemo, setDemo } from '../../lib/demo/modo-demo'
 import { PEDIDOS_POR_DIA } from '../../lib/demo/tienda-demo'
+import { ESTILOS_DE_DEGRADADO, estiloValido, fondoDeMarca, imagenesDeAcceso } from '../../lib/degradado'
+import type { EstiloDeDegradado } from '../../lib/degradado'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -22,7 +24,10 @@ interface StoreRow {
   notif_icon_url?: string | null
   logo_wide_url?: string | null
   color_primary: string
+  /** El SECUNDARIO de la marca (§49). La columna conserva el nombre viejo. */
   color_dark: string
+  gradient_style?: string | null
+  login_images?: string[] | null
   active: boolean
   created_at?: string
   wa_enabled?: boolean
@@ -346,7 +351,7 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
  *  que alguien suba tres veces la misma imagen. Y `object-contain`, no `cover`:
  *  recortar el logo de una marca para que llene la caja es lo último que se
  *  debe hacer con un logo. */
-function LogoPicker({ logo, uploading, onPick, round, wide, help, error }: { logo: string | null; uploading: boolean; onPick: (f: File) => void; round?: boolean; wide?: boolean; help?: string; error?: string }) {
+function LogoPicker({ logo, uploading, onPick, round, wide, help, error, onClear }: { logo: string | null; uploading: boolean; onPick: (f: File) => void; round?: boolean; wide?: boolean; help?: string; error?: string; onClear?: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
   return (
     <div className="flex items-center gap-3">
@@ -354,10 +359,22 @@ function LogoPicker({ logo, uploading, onPick, round, wide, help, error }: { log
         {logo ? <img src={logo} alt="" className="w-full h-full object-contain p-1" /> : <StoreIcon size={22} className="text-gray-300" />}
       </div>
       <div className="flex-1">
-        <button onClick={() => fileRef.current?.click()} disabled={uploading}
-          className="text-xs font-black px-3 py-2 rounded-xl disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
-          {uploading ? 'Subiendo…' : logo ? 'Cambiar' : 'Subir'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => fileRef.current?.click()} disabled={uploading}
+            className="text-xs font-black px-3 py-2 rounded-xl disabled:opacity-50" style={{ background: '#55C8F5', color: '#fff' }}>
+            {uploading ? 'Subiendo…' : logo ? 'Cambiar' : 'Subir'}
+          </button>
+          {/* Quitar solo donde la imagen es opcional de verdad: sin ella la
+              pantalla se ve bien igual, así que poder dar marcha atrás es parte
+              de poder probar. */}
+          {onClear && (
+            <button onClick={onClear} disabled={uploading}
+              className="text-xs font-black px-3 py-2 rounded-xl disabled:opacity-50"
+              style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+              Quitar
+            </button>
+          )}
+        </div>
         {error
           ? <p className="text-[10px] mt-1 font-bold" style={{ color: 'var(--danger-fg)' }}>{error}</p>
           : <p className="text-[10px] text-gray-400 mt-1">{help ?? 'PNG cuadrado, 512×512 recomendado.'}</p>}
@@ -387,6 +404,13 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [logoWide, setLogoWide] = useState<string | null>(store.logo_wide_url ?? null)
   const [cp, setCp] = useState(store.color_primary || '#55C8F5')
   const [cd, setCd] = useState(store.color_dark || '#060C1A')
+  const [gradiente, setGradiente] = useState<EstiloDeDegradado>(estiloValido(store.gradient_style))
+  // Tres huecos fijos: el sitio de cada imagen lo decide la pantalla del
+  // acceso, así que el orden de acá es el orden de allá.
+  const [loginImgs, setLoginImgs] = useState<(string | null)[]>(() => {
+    const guardadas = imagenesDeAcceso(store.login_images)
+    return [0, 1, 2].map(i => guardadas[i] ?? null)
+  })
   const [active, setActive] = useState(store.active)
   const [waEnabled, setWaEnabled] = useState(!!store.wa_enabled)
   // `?? true` y no `!!`: una marca cargada antes de que existiera la columna
@@ -490,6 +514,8 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [errLogo, setErrLogo] = useState('')
   const [errIcon, setErrIcon] = useState('')
   const [errWide, setErrWide] = useState('')
+  const [subiendoLogin, setSubiendoLogin] = useState([false, false, false])
+  const [errLogin, setErrLogin] = useState(['', '', ''])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   // Borrar: el subdominio tecleado. Un "¿seguro?" se contesta con un Enter de
@@ -514,6 +540,12 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const pick = subir(setUploading, setLogo, setErrLogo)
   const pickIcon = subir(setUploadingIcon, setNotifIcon, setErrIcon)
   const pickWide = subir(setUploadingWide, setLogoWide, setErrWide)
+  /** Las tres del acceso suben igual, cada una a su hueco. */
+  const pickLogin = (i: number) => subir(
+    v => setSubiendoLogin(s => s.map((x, j) => (j === i ? v : x))),
+    url => setLoginImgs(s => s.map((x, j) => (j === i ? url : x))),
+    e => setErrLogin(s => s.map((x, j) => (j === i ? e : x))),
+  )
 
   const borrar = async () => {
     setBorrando(true); setErr('')
@@ -545,6 +577,9 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     const payload: Record<string, unknown> = {
       action: 'update', admin_auth_id: adminId, store_id: store.id,
       nombre: nombre.trim(), logo_url: logo, notif_icon_url: notifIcon, logo_wide_url: logoWide, color_primary: cp, color_dark: cd,
+      gradient_style: gradiente,
+      // Los huecos vacíos no viajan: la lista es lo que hay, en orden.
+      login_images: loginImgs.filter((u): u is string => !!u),
       // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
       // verificado para estos campos — redirigen dinero, no un logo).
       pay360_enabled: pay360On, pay360_env: pay360Env,
@@ -789,10 +824,50 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
             help="PNG horizontal con fondo transparente. Firma la cabecera del panel, donde sobra ancho. Si no lo pones, usa el de la app." />
         </div>
 
+        {/* Los DOS colores de la marca (09-set-2026). El segundo dejó de ser un
+            «fondo oscuro» que casi no se usaba: ahora es el secundario y hace
+            degradado con el primario, que es lo que pinta el acceso del
+            comprador. La columna sigue llamándose `color_dark` — ver §49. */}
         <label className="text-xs font-bold text-gray-500 mb-1 block">Colores</label>
-        <div className="space-y-2 mb-4">
+        <div className="space-y-2 mb-3">
           <ColorRow label="Primario" value={cp} onChange={setCp} />
-          <ColorRow label="Fondo oscuro" value={cd} onChange={setCd} />
+          <ColorRow label="Secundario" value={cd} onChange={setCd} />
+        </div>
+
+        <label className="text-xs font-bold text-gray-500 mb-1 block">Degradado del fondo</label>
+        <div className="mb-1 rounded-xl overflow-hidden" style={{ height: 56, background: fondoDeMarca(cp, cd, gradiente, store.id) }} />
+        <div className="grid grid-cols-4 gap-1.5 mb-1">
+          {ESTILOS_DE_DEGRADADO.map(e => (
+            <button key={e.valor} type="button" onClick={() => setGradiente(e.valor)}
+              className="h-9 rounded-xl text-[11px] font-black transition-colors"
+              style={gradiente === e.valor
+                ? { background: 'var(--brand)', color: 'var(--on-brand)' }
+                : { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+              {e.etiqueta}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-400 mb-4">
+          Pinta el acceso del comprador. <b>Aleatorio</b> le toca un ángulo a tu marca y se lo deja:
+          no cambia cada vez que alguien abre la app, porque un fondo que se mueve solo parece un error.
+        </p>
+
+        {/* Los productos que flotan en el acceso. El sitio de cada uno lo decide
+            la pantalla y no quien sube: de eso depende que se lea como un diseño
+            y no como tres PNG apoyados en el aire. */}
+        <label className="text-xs font-bold text-gray-500 mb-1 block">Imágenes del acceso</label>
+        <p className="text-[10px] text-gray-400 mb-2">
+          Hasta tres PNG con fondo transparente —tus productos— que flotan detrás del formulario para entrar.
+          La <b>segunda</b> es la que pasa por detrás de la tarjeta, así que ponle la que mejor se vea a medias.
+          Sin ninguna, el acceso queda igual de bien y más sobrio.
+        </p>
+        <div className="space-y-3 mb-4">
+          {[0, 1, 2].map(i => (
+            <LogoPicker key={i} logo={loginImgs[i]} uploading={subiendoLogin[i]} onPick={pickLogin(i)}
+              wide error={errLogin[i]}
+              onClear={loginImgs[i] ? () => setLoginImgs(s => s.map((x, j) => (j === i ? null : x))) : undefined}
+              help={i === 1 ? 'La del costado: se ve a través del vidrio.' : i === 0 ? 'Arriba a la izquierda.' : 'Abajo a la izquierda.'} />
+          ))}
         </div>
 
         {/* Apagar y encender es de quien administra la plataforma, operador

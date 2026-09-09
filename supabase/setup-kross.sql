@@ -2282,3 +2282,33 @@ CREATE INDEX IF NOT EXISTS idx_buyer_sessions_buyer ON buyer_sessions(buyer_id);
 -- comprador que pudiera LEER `buyer_login_codes` no necesitaría el código.
 ALTER TABLE buyer_login_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE buyer_sessions    ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================================
+-- §49 · EL SEGUNDO COLOR ES «SECUNDARIO», Y EL ACCESO TIENE IMÁGENES  (09-set-2026)
+-- ============================================================================
+-- `color_dark` nació como «fondo oscuro» y casi no se usaba: el `theme-color`
+-- del navegador y el botón de la web pública. Desde hoy es el color
+-- **SECUNDARIO** de la marca y su trabajo es hacer DEGRADADO con el primario,
+-- que es lo que pinta el acceso del comprador (`/acceso`).
+--
+-- ⚠️ La columna NO se renombra a propósito. Renombrarla obligaría a correr este
+-- SQL y desplegar las funciones en el mismo minuto: entre una cosa y la otra,
+-- cada marca se quedaría sin color. El nombre viejo no estorba —lo que cambió
+-- es lo que significa—, y eso está escrito en `src/lib/degradado.ts` y en el
+-- panel, que ya lo llama «Secundario».
+--
+-- Como el secundario ahora puede ser CLARO, el botón de la web pública dejó de
+-- escribirse siempre en blanco: la tinta se decide por contraste
+-- (`--store-brand-dark-fg`, que escribe `store-context`).
+
+-- Cómo se inclina el degradado: 'vertical' | 'horizontal' | 'diagonal' |
+-- 'aleatorio'. «Aleatorio» no se sortea en cada pintada — se deriva del id de
+-- la tienda, así que a cada marca le toca su ángulo y le toca siempre el mismo.
+-- Un fondo que cambia de inclinación al abrir la app se lee como un error.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS gradient_style text DEFAULT 'diagonal';
+
+-- Hasta TRES PNG que flotan en el acceso del comprador. Un arreglo de URLs del
+-- bucket `branding`, en orden: el sitio de cada una lo decide la pantalla
+-- (`SITIOS_FLOTANTES`), no quien las sube — de eso depende que se vea un diseño
+-- y no un collage. La segunda es la única que pasa por detrás de la tarjeta.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS login_images jsonb DEFAULT '[]'::jsonb;
