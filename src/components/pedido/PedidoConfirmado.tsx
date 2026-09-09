@@ -166,11 +166,13 @@ export function TicketDelPedido({ ticket, orderCode }: { ticket: Ticket; orderCo
  * misma regla que `BrandMark` en el panel—. Sin él, el cuadrado y el nombre
  * escrito con la tinta que contrasta.
  */
-export function FirmaDeMarca({ nombre, ancho, cuadrado, tinta }: {
+export function FirmaDeMarca({ nombre, ancho, cuadrado, tinta, compacta }: {
   nombre: string; ancho?: string | null; cuadrado: string | null; tinta: string
+  /** En la cabecera del chat, donde comparte la fila con la flecha y el teléfono. */
+  compacta?: boolean
 }) {
   if (ancho) {
-    return <img src={ancho} alt={nombre} className="h-9 max-w-[200px] object-contain" />
+    return <img src={ancho} alt={nombre} className={compacta ? 'h-8 max-w-[160px] object-contain' : 'h-9 max-w-[200px] object-contain'} />
   }
   return (
     <div className="flex items-center gap-2">

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { KrossIcon } from '../../components/KrossLogo'
 import { useStore, isPlatformHost } from '../../lib/store-context'
 import { guardarSesion } from '../../lib/sesion-comprador'
+import { textoSobre } from '../../lib/contraste'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -22,6 +23,13 @@ const cabeceras = { Authorization: `Bearer ${ANON}`, 'Content-Type': 'applicatio
 // Si la tienda todavía no tiene su plantilla aprobada, el servidor responde
 // `modo: 'directo'` y se entra como antes — con el agujero abierto, que es
 // mejor que dejar a esa marca sin sus pedidos. Se cierra aprobando la plantilla.
+//
+// Se pinta sobre el ink de Kross (manual §4.1), no sobre el azul marino de la
+// etapa anterior: es la única pantalla del comprador que no lleva el color de
+// la marca de fondo, porque su marca ya está arriba, en su logo apaisado, y
+// abajo, en el botón. Sin el nombre repetido y sin la puerta del vendedor —
+// quien vende entra por /login, y ofrecérselo acá a cada comprador solo
+// confunde (09-set-2026).
 
 /** Segundos antes de poder pedir otro código. */
 const REENVIO_S = 30
@@ -112,12 +120,11 @@ export default function BuyerLoginPage() {
   // Cada cliente usa la app de SU marca (marca.krossclub.app).
   if (isPlatformHost()) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-6 text-center"
-        style={{ background: 'linear-gradient(160deg, #060C1A 0%, #0D1F3C 60%, #0A2540 100%)' }}>
+      <div className="min-h-dvh flex items-center justify-center px-6 text-center" style={{ background: 'var(--k-ink)' }}>
         <div className="max-w-[360px]">
           <div className="mx-auto mb-4 w-16 h-16"><KrossIcon size={64} /></div>
-          <h1 className="font-black text-xl text-white mb-2">Esta página es de cada marca</h1>
-          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          <h1 className="font-black text-xl mb-2" style={{ color: 'var(--k-bone)' }}>Esta página es de cada marca</h1>
+          <p className="text-sm" style={{ color: 'var(--k-text-2)' }}>
             Para ver tus pedidos, entra desde el enlace que te compartió tu tienda
             (por ejemplo <b>tumarca.krossclub.app</b>), no desde krossclub.app.
           </p>
@@ -135,12 +142,11 @@ export default function BuyerLoginPage() {
   // error que culpa al comprador por un problema de la dirección.
   if (!storeLoading && !store.id) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-6 text-center"
-        style={{ background: 'linear-gradient(160deg, #060C1A 0%, #0D1F3C 60%, #0A2540 100%)' }}>
+      <div className="min-h-dvh flex items-center justify-center px-6 text-center" style={{ background: 'var(--k-ink)' }}>
         <div className="max-w-[360px]">
           <div className="mx-auto mb-4 w-16 h-16"><KrossIcon size={64} /></div>
-          <h1 className="font-black text-xl text-white mb-2">Esta dirección no es de ninguna tienda</h1>
-          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          <h1 className="font-black text-xl mb-2" style={{ color: 'var(--k-bone)' }}>Esta dirección no es de ninguna tienda</h1>
+          <p className="text-sm" style={{ color: 'var(--k-text-2)' }}>
             Revisa el enlace que te compartió tu tienda — la dirección va como
             <b> tumarca.krossclub.app</b> y una letra distinta cae aquí.
           </p>
@@ -149,30 +155,44 @@ export default function BuyerLoginPage() {
     )
   }
 
-  const etiqueta = { color: 'rgba(125,232,255,0.7)' }
+  const marca = store.color_primary || '#55C8F5'
+  const tinta = textoSobre(marca)
+  const etiqueta = { color: 'var(--k-text-3)' }
   const campo = {
-    background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(125,232,255,0.2)', color: '#fff',
+    background: 'var(--k-surface-2)', border: '1px solid var(--k-structural)', color: 'var(--k-bone)',
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: 'linear-gradient(160deg, #060C1A 0%, #0D1F3C 60%, #0A2540 100%)' }}>
+    <div className="min-h-dvh flex items-center justify-center px-4" style={{ background: 'var(--k-ink)' }}>
       <div className="w-full max-w-[360px]">
 
-        <div className="text-center mb-8">
-          <div className="mx-auto mb-4 w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: store.logo_url ? '#fff' : 'transparent' }}>
-            {store.logo_url ? <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-cover" /> : <KrossIcon size={64} />}
-          </div>
-          <h1 className="font-black text-3xl tracking-tight" style={{ color: 'var(--brand)' }}>{store.nombre}</h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(125,232,255,0.5)' }}>Mis pedidos</p>
+        {/* La marca, arriba y sola: el logo apaisado si lo tiene —un lockup ya
+            trae el nombre como la marca quiere que se lea—, si no el cuadrado.
+            Sin el nombre escrito debajo: repetirlo lo dice dos veces y peor.
+            Va sobre una placa del color de la marca, como en el menú del panel
+            (`BrandMark`): un logo con tinta oscura y fondo transparente se
+            perdería sobre el ink, y la placa es lo que lo sostiene. */}
+        <div className="flex justify-center mb-8">
+          {store.logo_wide_url ? (
+            <div className="w-full max-w-[240px] h-14 rounded-xl overflow-hidden flex items-center justify-center"
+              style={{ background: marca }}>
+              <img src={store.logo_wide_url} alt={store.nombre} className="w-full h-full object-contain" />
+            </div>
+          ) : store.logo_url ? (
+            <div className="w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: marca }}>
+              <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-contain" />
+            </div>
+          ) : (
+            <KrossIcon size={64} />
+          )}
         </div>
 
-        <div className="rounded-3xl p-6 shadow-2xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(125,232,255,0.15)', backdropFilter: 'blur(20px)' }}>
+        <div className="rounded-3xl p-6" style={{ background: 'var(--k-surface-1)', border: '1px solid rgba(255,255,255,0.09)' }}>
 
           {paso === 'dni' ? (
             <>
-              <h2 className="font-black text-xl mb-1 text-white">¡Hola!</h2>
-              <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              <h2 className="font-black text-xl mb-1" style={{ color: 'var(--k-bone)' }}>Mis pedidos</h2>
+              <p className="text-sm mb-5" style={{ color: 'var(--k-text-2)' }}>
                 Ingresa tu DNI y te enviamos un código por WhatsApp
               </p>
 
@@ -189,19 +209,19 @@ export default function BuyerLoginPage() {
                   />
                 </div>
 
-                {error && <p className="text-xs font-semibold text-center" style={{ color: '#FF6B6B' }}>{error}</p>}
+                {error && <p className="text-xs font-semibold text-center" style={{ color: 'var(--k-alert-fg)' }}>{error}</p>}
 
                 <button type="submit" disabled={loading || docNumber.length !== 8}
                   className="w-full py-3.5 rounded-2xl font-black text-sm mt-1 transition-all"
-                  style={{ background: 'var(--brand)', opacity: (loading || docNumber.length !== 8) ? 0.5 : 1, color: '#060C1A' }}>
+                  style={{ background: marca, opacity: (loading || docNumber.length !== 8) ? 0.5 : 1, color: tinta }}>
                   {loading ? 'Enviando…' : 'Enviarme el código'}
                 </button>
               </form>
             </>
           ) : (
             <>
-              <h2 className="font-black text-xl mb-1 text-white">Revisa tu WhatsApp</h2>
-              <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              <h2 className="font-black text-xl mb-1" style={{ color: 'var(--k-bone)' }}>Revisa tu WhatsApp</h2>
+              <p className="text-sm mb-5" style={{ color: 'var(--k-text-2)' }}>
                 Si el DNI está registrado, te enviamos un código de 6 dígitos al número de tu cuenta.
               </p>
 
@@ -219,34 +239,28 @@ export default function BuyerLoginPage() {
                   />
                 </div>
 
-                {error && <p className="text-xs font-semibold text-center" style={{ color: '#FF6B6B' }}>{error}</p>}
+                {error && <p className="text-xs font-semibold text-center" style={{ color: 'var(--k-alert-fg)' }}>{error}</p>}
 
                 <button type="submit" disabled={loading || codigo.length !== 6}
                   className="w-full py-3.5 rounded-2xl font-black text-sm mt-1 transition-all"
-                  style={{ background: 'var(--brand)', opacity: (loading || codigo.length !== 6) ? 0.5 : 1, color: '#060C1A' }}>
+                  style={{ background: marca, opacity: (loading || codigo.length !== 6) ? 0.5 : 1, color: tinta }}>
                   {loading ? 'Entrando…' : 'Entrar'}
                 </button>
               </form>
 
               <div className="flex items-center justify-between mt-4">
                 <button type="button" onClick={() => { setPaso('dni'); setCodigo(''); setError('') }}
-                  className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                  className="text-xs font-bold" style={{ color: 'var(--k-text-3)' }}>
                   ← Cambiar DNI
                 </button>
                 <button type="button" disabled={espera > 0 || loading} onClick={() => pedirCodigo()}
-                  className="text-xs font-bold disabled:opacity-40" style={{ color: 'var(--brand)' }}>
+                  className="text-xs font-bold disabled:opacity-40" style={{ color: marca }}>
                   {espera > 0 ? `Reenviar en ${espera}s` : 'Reenviar código'}
                 </button>
               </div>
             </>
           )}
 
-          <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-            <p className="text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              ¿Eres vendedor?{' '}
-              <a href="/login" className="font-bold" style={{ color: 'var(--brand)' }}>Ingresar aquí</a>
-            </p>
-          </div>
         </div>
       </div>
     </div>

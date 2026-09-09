@@ -68,9 +68,11 @@ acceso de antes. Lo que falta, y no es código:
    variable en el cuerpo y el botón de copiar código.
 2. Guardar su nombre en `stores.wa_codigo_template` (`manage-store` lo acepta
    como superadmin).
-3. **Mirar el primer envío real.** El payload de una plantilla authentication no
-   se pudo probar contra Meta desde acá. Si falla, sale en *Panel → Conexiones*
-   como `WHATSAPP · codigo.enviar` con lo que respondió Meta.
+3. **Mirar el primer envío real.** ✅ Hecho el 09-set-2026 en la marca viva:
+   plantilla `codigo_acceso` aprobada, el bloque §48 corrido (con el arreglo del
+   `store_id` a `text` que entró en el #189), las cuatro funciones arriba y el
+   primer código llegó y abrió la sesión. Si en otra marca falla, sale en
+   *Panel → Conexiones* como `WHATSAPP · codigo.enviar` con lo que respondió Meta.
 
 **Y una cosa que sí conviene medir antes de encenderlo en una marca con
 volumen:** cuántos de sus compradores tienen un teléfono válido. Quien no lo
@@ -123,6 +125,10 @@ supabase functions deploy olva-lat-webhook --project-ref ofdjghntvmrdfjhazfvz
 ```
 
 Sin SQL. El front sale con Vercel al mergear.
+
+La cuarta vuelta de la misma tarde —las cabeceras con el logo apaisado, las cuatro
+preguntas en dos columnas y el enfriamiento de cinco minutos— es solo front: nada que
+desplegar.
 
 ### Instalar en iPhone: un video en vez de la lista · solo frontend (08-set-2026)
 

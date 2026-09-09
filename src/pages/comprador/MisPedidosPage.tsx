@@ -8,6 +8,7 @@ import { useStore } from '../../lib/store-context'
 import { stageVigente } from '../../lib/order-stages'
 import { leerSesion, olvidarSesion, refrescarSesion } from '../../lib/sesion-comprador'
 import type { SesionComprador } from '../../lib/sesion-comprador'
+import { FirmaDeMarca } from '../../components/pedido/PedidoConfirmado'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -197,10 +198,9 @@ export default function MisPedidosPage() {
       <div className="px-4 pt-10 pb-6" style={{ background: marca, color: tinta }}>
         <div className="max-w-[430px] mx-auto">
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <img src={store.logo_url || '/icon-192.png'} alt={store.nombre} className="w-8 h-8 rounded-xl object-cover" />
-              <span className="font-black text-xl tracking-tight">{store.nombre}</span>
-            </div>
+            {/* El logo apaisado solo, sin el nombre escrito al lado: la misma
+                firma del ticket y del chat (09-set-2026). */}
+            <FirmaDeMarca nombre={store.nombre} ancho={store.logo_wide_url} cuadrado={store.logo_url} tinta={tinta} />
             <div className="flex items-center gap-2">
               {puedeAvisar && !notifGranted && (
                 <button onClick={enableNotifications}

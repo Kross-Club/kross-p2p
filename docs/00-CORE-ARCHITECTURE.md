@@ -502,6 +502,18 @@ todavía no existe: va al costado de cerrar sesión, para ver y corregir el
 teléfono. Va DESPUÉS de esto y no antes: dejar editar el teléfono sin acceso
 verificado le regala al atacante la forma de quedarse con la cuenta.
 
+#### La pantalla (09-set-2026)
+
+`/acceso` (`BuyerLoginPage`) se pinta sobre el **ink de Kross** (`--k-ink`,
+tarjeta en `--k-surface-1`, campos en `--k-surface-2`): es la única pantalla del
+comprador que no lleva el color de la marca de fondo, porque su marca ya está
+arriba —el logo apaisado, solo, sobre una placa de su color como en `BrandMark`;
+sin el nombre escrito debajo ni un «Mis pedidos» de subtítulo— y en el botón,
+con la tinta que decide `textoSobre`. La placa no es adorno: un logo apaisado
+con tinta oscura y fondo transparente se perdería sobre el ink. Y **no ofrece la
+puerta del vendedor** («¿Eres vendedor? Ingresar aquí»): quien vende entra por
+`/login`, y ofrecérselo a cada comprador solo confunde.
+
 > Nota: la rama de `buyer-login` que auto-creaba un comprador desde
 > `order_sessions` buscando por teléfono se retiró. No la llamaba nadie —el
 > frontend nunca manda `phone`— y era de antes de que `buyers` existiera.
@@ -727,7 +739,7 @@ dos de los tres.
 |---|---|---|---|
 | `stores.logo_url` | Cuadrado, 512×512 | El ícono de la app instalada y el del aviso de instalar de Android | — |
 | `stores.notif_icon_url` | Redondo, transparente | Las notificaciones push, en la barra de Android | Cae al cuadrado |
-| `stores.logo_wide_url` | Apaisado, transparente | La firma de la cabecera del panel (`BrandMark`) | Cae al cuadrado + el nombre escrito |
+| `stores.logo_wide_url` | Apaisado, transparente | La firma de la cabecera del panel (`BrandMark`), la cabecera del pedido del comprador (`FirmaDeMarca`) y, sobre la placa de la marca, la pantalla de acceso `/acceso` | Cae al cuadrado + el nombre escrito |
 
 ⚠️ **Android recorta el cuadrado a su máscara** (círculo, squircle, según el lanzador), así que la
 marca tiene que ir centrada y con aire en el archivo: un logo descentrado en el PNG se ve

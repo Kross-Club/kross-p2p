@@ -21,6 +21,8 @@ import { useTicketDelPedido } from '../../components/pedido/useTicketDelPedido'
 import { useStore } from '../../lib/store-context'
 import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { preguntasRapidas } from '../../lib/preguntas-rapidas'
+import { usePreguntasUsadas } from '../../lib/use-preguntas-usadas'
+import { FirmaDeMarca } from '../../components/pedido/PedidoConfirmado'
 import { guardarSesion, leerSesion } from '../../lib/sesion-comprador'
 import { useAltoVisible } from '../../lib/use-alto-visible'
 import OfferCard from '../../components/OfferCard'
@@ -497,8 +499,10 @@ export default function OrderChatPage() {
   const ticket = useTicketDelPedido(session, messages, token ?? '')
   // Con el teclado abierto en iPhone la pantalla se mide con lo que se ve.
   const altoVisible = useAltoVisible()
-  // Las tres preguntas con respuesta, según el pedido de HOY.
+  // Las cuatro preguntas con respuesta, según el pedido de HOY, y cuáles se
+  // acaban de tocar (cinco minutos resaltadas y apagadas).
   const preguntas = useMemo(() => (session ? preguntasRapidas(session, ticket) : []), [session, ticket])
+  const [preguntasUsadas, marcarPregunta] = usePreguntasUsadas(token ?? '')
 
   // Auto-open the call when arriving from a global incoming-call notification (?call=1)
   useEffect(() => {
@@ -759,6 +763,7 @@ export default function OrderChatPage() {
   if (state === 'error') return <ErrorPage type="error" />
   if (!session) return null
 
+  // El nombre de pila, para las pantallas de llamada.
   const firstName = session.buyer_name?.split(' ')[0] ?? 'Cliente'
   // La tinta de la cabecera, por contraste contra el color de la marca. Estaba
   // fija en blanco, y el blanco sobre el naranja de una tienda real da 3.12 de
@@ -773,7 +778,7 @@ export default function OrderChatPage() {
     <div className="flex flex-col h-dvh max-w-[430px] mx-auto" style={{ background: '#FFFDF5', height: altoVisible }}>
 
       {/* ── Header ── */}
-      <div className="flex-shrink-0 px-4 pt-3 pb-4"
+      <div className="flex-shrink-0 px-4 pt-3 pb-2.5"
         style={{ background: marca, color: tinta, borderRadius: '0 0 24px 24px' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/mis-pedidos')}
@@ -783,35 +788,13 @@ export default function OrderChatPage() {
             <ArrowLeft size={18} />
           </button>
 
-          <div className="relative flex-shrink-0">
-            <div className="w-11 h-11 rounded-full overflow-hidden border-2"
-              style={{ borderColor: velo }}>
-              {/* Quien atiende, o la marca: su logo, nunca una mascota ajena. */}
-              {session?.seller_avatar ? (
-                <img src={session.seller_avatar} alt={session.seller_name ?? store.nombre}
-                  className="w-full h-full object-cover" />
-              ) : store.logo_url ? (
-                <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-cover bg-white" />
-              ) : (
-                <span className="w-full h-full flex items-center justify-center bg-white text-base font-black"
-                  style={{ color: 'var(--brand)' }}>{store.nombre.charAt(0)}</span>
-              )}
-            </div>
-            <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white"
-              style={{ background: '#4ADE80' }} />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <p className="font-black text-base leading-tight">
-              {/* Sin asesor asignado habla la MARCA, no Kross: lo que ve el
-                  comprador es white-label (manual §10). */}
-              {session?.seller_name
-                ? `${session.seller_name.split(' ')[0]} · ${session.seller_role ?? store.nombre}`
-                : store.nombre}
-            </p>
-            <p className="text-xs font-semibold" style={{ color: tintaSuave }}>
-              ¡Hola {firstName}! En línea ahora
-            </p>
+          {/* La marca, nada más (09-set-2026): el logo apaisado —sin el nombre
+              escrito al lado, sin «¡Hola!», sin el punto verde de «en línea»,
+              que prometía a alguien mirando la pantalla a cualquier hora—.
+              Quien atiende se presenta en el hilo, encima de su burbuja, que
+              es donde importa. */}
+          <div className="flex-1 min-w-0 flex items-center">
+            <FirmaDeMarca nombre={store.nombre} ancho={store.logo_wide_url} cuadrado={store.logo_url} tinta={tinta} compacta />
           </div>
 
           {session?.buyer_can_call && (
@@ -823,6 +806,14 @@ export default function OrderChatPage() {
             </button>
           )}
         </div>
+        {/* Qué chat es, debajo del logo y en una línea: el título y el número
+            que el vendedor busca en su panel y el comprador da si reclama. Con
+            letra chica cabe entero hasta en 360 px; al costado del logo, con
+            el teléfono a la derecha, se partía en dos y el número se cortaba. */}
+        <p className="pl-12 mt-1 text-[11.5px] font-semibold leading-tight truncate">
+          Chat del pedido
+          {session.order_id && <span className="tabular-nums" style={{ color: tintaSuave }}> · {session.order_id}</span>}
+        </p>
       </div>
 
       {/* ── La tarjeta del pedido ──
@@ -878,10 +869,12 @@ export default function OrderChatPage() {
 
       {/* ── Input ── */}
       <div className="flex-shrink-0 border-t border-gray-100 px-3 py-3 bg-white">
-        {/* Tres preguntas con respuesta, siempre a la vista: lo que la app ya
-            sabe del pedido se contesta al instante, y así aprende que este chat
-            resuelve. No se van al escribir ni al tocar una. */}
-        <QuickReplies preguntas={preguntas} onPick={q => handleSend(q.pregunta, q.respuesta)} />
+        {/* Cuatro preguntas con respuesta en dos columnas, siempre a la vista:
+            lo que la app ya sabe del pedido se contesta al instante, y así
+            aprende que este chat resuelve. No se van al escribir ni al tocar
+            una; la tocada se queda resaltada y apagada cinco minutos. */}
+        <QuickReplies preguntas={preguntas} usadas={preguntasUsadas} tintaDeMarca={tinta}
+          onPick={q => { marcarPregunta(q); handleSend(q.pregunta, q.respuesta) }} />
         <div className="flex items-center gap-2">
           <input
             value={input}
