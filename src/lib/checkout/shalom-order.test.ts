@@ -249,20 +249,18 @@ describe('idsDeGuia', () => {
 })
 
 // El aviso de ORIGEN, palabra por palabra: lo escriben el reflejo de tracking y
-// el demo. Es el momento que la tarjeta de la guía promete ("por acá te
-// avisamos apenas pase") — en Shalom, la pre-guía volviéndose oficial.
+// el demo. Corto (09-set-2026): el paquete ya está con el courier y va camino
+// a la agencia del comprador — sin hablar de pre-guías que se oficializan.
 describe('mensajeDeOrigen', () => {
-  it('shalom: la pre-guía se volvió oficial', () => {
+  it('shalom: ya está con el courier y va camino a su agencia', () => {
     expect(mensajeDeOrigen('SHALOM')).toBe(
-      '🏬 ¡Tu paquete entró a la agencia de origen: tu guía de SHALOM ya es oficial! '
-      + 'Por aquí te avisamos cada avance.',
+      '🏬 Tu paquete ya está en Shalom y va camino a tu agencia. Te avisamos por aquí cuando llegue.',
     )
   })
 
-  // Olva no tiene pre-guía que oficializar: solo la noticia.
-  it('olva: solo la noticia, sin pre-guía', () => {
+  it('olva: la misma noticia', () => {
     expect(mensajeDeOrigen('OLVA')).toBe(
-      '🏬 ¡Tu paquete entró a la agencia de origen de OLVA! Por aquí te avisamos cada avance.',
+      '🏬 Tu paquete ya está en Olva y va camino a tu agencia. Te avisamos por aquí cuando llegue.',
     )
   })
 })
@@ -280,31 +278,26 @@ describe('mensajeDeClave', () => {
 })
 
 describe('mensajeDeGuia', () => {
-  it('shalom: pre-guía, dónde seguirla, y el saldo', () => {
-    const m = mensajeDeGuia('SHALOM', 'Nro. de orden 80574902 · Código CJTW', 75)
-    expect(m).toContain('Nro. de orden 80574902 · Código CJTW')
-    expect(m).toContain('pre-guía')
-    expect(m).toContain('agencia de origen')
-    expect(m).toContain('sincronizado con tu guía')
-    expect(m).not.toMatch(/\bapp\b/)
-    expect(m).toContain('Tu saldo de S/75')
+  // Tres líneas: que ya existe, sus ids y qué sigue. Los ids solos en su línea,
+  // para leerse y copiarse de un vistazo.
+  it('shalom: los ids del voucher y qué sigue, nada más', () => {
+    expect(mensajeDeGuia('SHALOM', 'Nro. de orden 80574902 · Código CJTW')).toBe(
+      '📦 ¡Tu envío ya está registrado en Shalom!\n'
+      + 'Nro. de orden 80574902 · Código CJTW\n'
+      + 'Te avisamos por aquí cuando llegue a tu agencia.',
+    )
   })
 
-  // A quien pagó el total no se le habla de un saldo que no existe: su clave de
-  // recojo va sin condición. Misma regla que el acuse del webhook.
-  it('shalom con todo pagado: la clave va sin condición', () => {
-    const m = mensajeDeGuia('SHALOM', 'Nro. de orden 80574902 · Código CJTW', 0)
-    expect(m).toContain('Como ya pagaste el total')
-    expect(m).not.toContain('Tu saldo')
+  // Lo que salió de acá vive en otra parte: la pre-guía en «Ver pedido», el
+  // saldo en la tarjeta del pedido, dónde se paga en las preguntas rápidas.
+  it('sin pre-guía, sin saldo y sin dónde pagar', () => {
+    const m = mensajeDeGuia('SHALOM', 'Nro. de orden 80574902 · Código CJTW')
+    expect(m).not.toMatch(/pre-guía|saldo|agencia de origen|Yape|\bapp\b/i)
   })
 
-  // Olva no tiene pre-guía: su copy es la de siempre, entera.
-  it('olva conserva su copy de siempre', () => {
-    expect(mensajeDeGuia('OLVA', 'Guía 123456', 75)).toBe(
-      '📦 ¡Tu envío ya está registrado en OLVA! Guía 123456. Guárdala para el recojo. '
-      + 'Tu saldo de S/75 lo pagas con Yape desde este mismo enlace de tu pedido, cuando quieras y nunca en la agencia. '
-      + 'Apenas lo pagues te entregamos tu clave de recojo.'
-      + ' Por aquí te avisamos cuando tu pedido llegue a tu agencia.',
+  it('olva: la guía se llama guía', () => {
+    expect(mensajeDeGuia('OLVA', 'Guía 123456')).toBe(
+      '📦 ¡Tu envío ya está registrado en Olva!\nGuía 123456\nTe avisamos por aquí cuando llegue a tu agencia.',
     )
   })
 })

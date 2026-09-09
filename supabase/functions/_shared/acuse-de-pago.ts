@@ -5,19 +5,22 @@
 // mandar la tarjeta. Un demo que dijera otra frase estaría enseñando un producto
 // que no existe.
 //
-// La copy está calibrada y no es intercambiable:
+// La copy es corta a propósito (09-set-2026): confirma que entró la plata y
+// qué sigue, nada más. Cuánto falta y dónde se paga ya no van acá — viven en la
+// tarjeta del pedido (el botón de Yape) y en las preguntas rápidas del chat, que
+// lo contestan con la cifra de HOY. Un acuse que repite el saldo se lee como un
+// reclamo, y además envejece: el pedido puede cambiar de monto después.
 //
-//  · el saldo DERIVADO y no asumido — "tu adelanto" a quien pagó el total suena
-//    a que aún falta plata, y callar el saldo a quien pagó la mitad lo manda a
-//    preguntar cuánto debe justo el día del recojo;
-//  · en agencia el saldo se paga POR LA APP, nunca en el mostrador: la clave de
-//    recojo se entrega contra ese pago, y prometer lo contrario deja al
-//    comprador discutiendo con un counter que no cobra;
-//  · un `extra` no habla de saldos. Es plata de ENCIMA del pedido —un flete, una
-//    diferencia—, y decirle "te queda un saldo de S/X" a quien acaba de pagar su
-//    flete es inventarle una deuda.
+// Lo que sí se conserva:
 //
-// Misma regla que el mensaje de bienvenida de `register-buyer`.
+//  · "adelanto" o "pago completo" DERIVADO del pedido, no asumido — "tu
+//    adelanto" a quien pagó el total suena a que aún falta plata;
+//  · al pagar el saldo en agencia lo que el comprador espera es su clave;
+//  · un `extra` no habla de saldos: es plata de ENCIMA del pedido.
+//
+// `cobroDelAviso` (lib/comprobante.ts) reconoce los avisos viejos por su
+// arranque —"¡Recibimos tu adelanto de", "…tu saldo de", "…tu pago de"—, así que
+// esos arranques no cambian.
 
 export interface Acuse {
   /** El tipo GUARDADO del cobro que acaba de entrar. */
@@ -39,22 +42,15 @@ export function acuseDePago(a: Acuse): string {
     return `✅ ¡Recibimos tu pago de S/${a.pagado}${por ? ` por ${por}` : ''}! Gracias.`
   }
 
-  // Al pagar el saldo lo que el comprador espera es su clave, no un "estamos
-  // preparando": su pedido ya está en la agencia.
   if (a.tipo === 'saldo') {
-    return `✅ ¡Recibimos tu saldo de S/${a.pagado}! Ya no te queda nada pendiente.`
-      + ' Te enviamos tu clave de recojo por acá.'
+    return a.esRecojo
+      ? `✅ ¡Recibimos tu saldo de S/${a.pagado}! Tu clave de recojo te llega por aquí.`
+      : `✅ ¡Recibimos tu saldo de S/${a.pagado}! Tu pedido queda pagado por completo.`
   }
 
   const saldoRestante = Math.max(0, Number(a.total ?? 0) - a.pagado)
   const primero = saldoRestante > 0
-    ? (a.esRecojo
-        ? `✅ ¡Recibimos tu adelanto de S/${a.pagado}! Te queda un saldo de S/${saldoRestante}`
-          + ' que nos pagas con Yape desde este mismo enlace de tu pedido —no en la agencia— cuando te enviemos la guía'
-          + ' de tu envío. Apenas lo pagues te entregamos tu clave de recojo.'
-        : `✅ ¡Recibimos tu adelanto de S/${a.pagado}! Te queda un saldo de S/${saldoRestante}`
-          + ' que pagas al recibir tu pedido.')
-    : `✅ ¡Recibimos tu pago completo de S/${a.pagado}! No te queda ningún saldo pendiente.`
-
-  return `${primero} Ya estamos preparando tu pedido. Por aquí te avisamos cuando salga.`
+    ? `✅ ¡Recibimos tu adelanto de S/${a.pagado}!`
+    : `✅ ¡Recibimos tu pago completo de S/${a.pagado}!`
+  return `${primero} Ya estamos preparando tu pedido y te avisamos por aquí cuando salga.`
 }

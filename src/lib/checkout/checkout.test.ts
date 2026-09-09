@@ -18,7 +18,6 @@ import type { LatLng } from '../geo/haversine'
 import type { CheckoutState } from './types'
 import { stagesFor, stageIndex, toStage, stageVigente } from '../order-stages'
 import { abModeOf, resolveVariant } from './variant'
-import { repliesFor } from '../../components/chat/QuickReplies'
 
 const run = (state: CheckoutState, ...actions: CheckoutAction[]): CheckoutState =>
   actions.reduce(checkoutReducer, state)
@@ -1215,70 +1214,8 @@ describe('etapas del pedido', () => {
   })
 })
 
-// ─── Respuestas rápidas ──────────────────────────────────────────────────────
-// Se derivan del estado y no se guardan: guardadas por mensaje quedarían
-// obsoletas —"¿Ya llegó mi pago?" una semana después de que el pago cuadró—.
-describe('respuestas rápidas del chat', () => {
-  it('mientras se valida el pago ofrece las dos dudas de ese momento', () => {
-    expect(repliesFor('validando')).toEqual(['¿Ya llegó mi pago?', 'Te envío mi comprobante'])
-  })
-
-  it('ya confirmado deja de preguntar por el pago', () => {
-    expect(repliesFor('confirmado').join(' ')).not.toMatch(/pago|comprobante/i)
-  })
-
-  it('cada etapa ofrece algo: nunca una barra vacía', () => {
-    for (const st of ['nuevo', 'validando', 'confirmado', 'preparando', 'en_camino', 'entregado']) {
-      expect(repliesFor(st).length).toBeGreaterThan(0)
-      expect(repliesFor(st, { esRecojo: true, saldoPendiente: 20 }).length).toBeGreaterThan(0)
-    }
-  })
-
-  it('una etapa desconocida no rompe: cae al par genérico', () => {
-    expect(repliesFor(null).length).toBe(2)
-    expect(repliesFor('inventada').length).toBe(2)
-  })
-
-  it('al que recoge en agencia no se le ofrece cambiar dirección ni "vengan después"', () => {
-    // Sus dudas son la guía y dónde recoger — las fichas de domicilio le
-    // enseñarían que estas fichas no le hablan a él.
-    for (const st of ['confirmado', 'preparando', 'en_camino', null]) {
-      const joined = repliesFor(st, { esRecojo: true }).join(' ')
-      expect(joined).not.toMatch(/dirección|venir después/i)
-    }
-    expect(repliesFor('preparando', { esRecojo: true }).join(' ')).toMatch(/guía/i)
-    // El `preparando` viejo entra traducido y cae en las fichas de `confirmado`:
-    // mismo momento del pedido, mismas dudas. Sin `stageVigente` caía al
-    // `default` y le ofrecía el par genérico.
-    expect(repliesFor('preparando', { esRecojo: true }))
-      .toEqual(repliesFor('confirmado', { esRecojo: true }))
-  })
-
-  it('la ficha del saldo aparece solo cuando de verdad queda saldo', () => {
-    // En recojo el saldo se paga POR LA APP (suelta la clave de recojo), así
-    // que la ficha inicia el pago; a domicilio se paga en la puerta y la duda
-    // es cuánto llevar.
-    expect(repliesFor('preparando', { esRecojo: true, saldoPendiente: 25 }))
-      .toContain('Quiero pagar mi saldo')
-    expect(repliesFor('preparando', { saldoPendiente: 25 }))
-      .toContain('¿Cuánto me falta pagar?')
-    // Pagó todo (o contraentrega puro): preguntar por el saldo sembraría la
-    // duda que el mensaje de bienvenida acaba de cerrar.
-    expect(repliesFor('preparando', { esRecojo: true, saldoPendiente: 0 }).join(' '))
-      .not.toMatch(/saldo|falta pagar/i)
-    // Mientras el pago se valida la duda es OTRA (¿llegó?); el saldo espera.
-    expect(repliesFor('validando', { saldoPendiente: 25 }))
-      .toEqual(['¿Ya llegó mi pago?', 'Te envío mi comprobante'])
-  })
-
-  it('en camino y ya pagado, la ficha ofrece la clave de recojo; con saldo, pagarlo', () => {
-    expect(repliesFor('en_camino', { esRecojo: true, saldoPendiente: 0 }))
-      .toContain('¿Me reenvías mi clave de recojo?')
-    const conSaldo = repliesFor('en_camino', { esRecojo: true, saldoPendiente: 25 })
-    expect(conSaldo).toContain('Quiero pagar mi saldo')
-    expect(conSaldo).not.toContain('¿Me reenvías mi clave de recojo?')
-  })
-})
+// Las respuestas rápidas ya no viven acá: son preguntas CON respuesta y se
+// prueban en `src/lib/preguntas-rapidas.test.ts` (09-set-2026).
 
 describe('las dos ramas del checkout cubren TODO el país', () => {
   it('ningún distrito queda fuera de ambas', async () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { isPickupDispatch } from '../../lib/session'
 import QuickReplies from '../../components/chat/QuickReplies'
@@ -19,6 +19,8 @@ import TarjetaDelPedido from '../../components/pedido/TarjetaDelPedido'
 import DetalleDelPedido from '../../components/pedido/DetalleDelPedido'
 import { useTicketDelPedido } from '../../components/pedido/useTicketDelPedido'
 import { useStore } from '../../lib/store-context'
+import { preguntasRapidas } from '../../lib/preguntas-rapidas'
+import { useAltoVisible } from '../../lib/use-alto-visible'
 import OfferCard from '../../components/OfferCard'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import type { RealtimeChannel } from '@supabase/supabase-js'
@@ -140,6 +142,25 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
     )
   }
 
+  // Respuesta automática: la app contestó una pregunta rápida con lo que ya
+  // sabe del pedido. Se ve distinta a una persona a propósito.
+  if (msg.sender_role === 'system' && msg.type === 'text') {
+    return (
+      <div className="flex justify-start mb-3">
+        <div className="max-w-[85%] flex flex-col items-start">
+          <p className="text-[9px] mb-0.5 mx-1 font-bold text-gray-500">Respuesta automática</p>
+          <div className="px-4 py-2.5 text-sm font-semibold text-gray-800 bg-white"
+            style={{ border: '1px solid #EAEAE5', borderRadius: '18px 18px 18px 4px' }}>
+            {(msg.body || '').split('\n').map((line, i, arr) => (
+              <span key={i}>{line}{i < arr.length - 1 && <br />}</span>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1 mx-1">{time}</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`flex ${isBuyer ? 'justify-end' : 'justify-start'} mb-3`}>
       <div className={`max-w-[80%] flex flex-col ${isBuyer ? 'items-end' : 'items-start'}`}>
@@ -168,7 +189,7 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
 // ─── Call modal (buyer initiates or answers seller call) ──────────────────────
 type CallState = 'connecting' | 'connected' | 'ended' | 'error'
 
-function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, sellerAvatar, onClose }: { token: string; sessionId: string; buyerName: string; sellerName?: string | null; sellerRole?: string | null; sellerAvatar?: string | null; onClose: () => void }) {
+function CallModal({ token, sessionId, buyerName, marca, sellerName, sellerRole, sellerAvatar, onClose }: { token: string; sessionId: string; buyerName: string; marca: string; sellerName?: string | null; sellerRole?: string | null; sellerAvatar?: string | null; onClose: () => void }) {
   const [callState, setCallState] = useState<CallState>('connecting')
   const [muted, setMuted] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -238,8 +259,8 @@ function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, seller
           // MediaSession: keep audio alive in background
           if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
-              title: 'En llamada · Kross',
-              artist: 'Teddy · Kross',
+              title: `En llamada · ${marca}`,
+              artist: marca,
             })
             navigator.mediaSession.playbackState = 'playing'
           }
@@ -306,29 +327,14 @@ function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, seller
         <div className="w-24 h-24 rounded-full overflow-hidden border-4 mx-auto mb-4 flex items-center justify-center"
           style={{ borderColor: callState === 'connected' ? '#4ADE80' : callState === 'error' ? '#EF4444' : '#FFD400', background: '#FFD400' }}>
           {sellerAvatar ? (
-            <img src={sellerAvatar} alt={sellerName ?? 'Kross'} className="w-full h-full object-cover" />
+            <img src={sellerAvatar} alt={sellerName ?? marca} className="w-full h-full object-cover" />
           ) : (
-          <svg viewBox="0 0 64 64" width="96" height="96" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="32" cy="32" r="32" fill="#FFF9E0"/>
-            <ellipse cx="32" cy="48" rx="14" ry="11" fill="#D4A05A"/>
-            <circle cx="32" cy="28" r="16" fill="#E8B86D"/>
-            <circle cx="17" cy="16" r="6" fill="#D4A05A"/>
-            <circle cx="47" cy="16" r="6" fill="#D4A05A"/>
-            <circle cx="17" cy="16" r="3.5" fill="#F5C98A"/>
-            <circle cx="47" cy="16" r="3.5" fill="#F5C98A"/>
-            <ellipse cx="32" cy="31" rx="10" ry="8" fill="#F5C98A"/>
-            <circle cx="26" cy="26" r="2.5" fill="#1A1A1A"/>
-            <circle cx="38" cy="26" r="2.5" fill="#1A1A1A"/>
-            <circle cx="26.8" cy="25.2" r="0.9" fill="white"/>
-            <circle cx="38.8" cy="25.2" r="0.9" fill="white"/>
-            <ellipse cx="32" cy="31" rx="2.5" ry="1.8" fill="#1A1A1A"/>
-            <path d="M28.5 33.5 Q32 36.5 35.5 33.5" stroke="#1A1A1A" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
-          </svg>
+            <span className="text-3xl font-black" style={{ color: '#111' }}>{marca.charAt(0)}</span>
           )}
         </div>
 
         <p className="text-white font-black text-xl mb-1">
-          {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : 'Kross'}
+          {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : marca}
         </p>
         <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.55)' }}>
           {callState === 'connecting' && 'Llamando…'}
@@ -371,7 +377,7 @@ function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, seller
         )}
 
         <p className="text-[10px] mt-4" style={{ color: 'rgba(255,255,255,0.3)' }}>
-          Hola {buyerName}, solo Kross puede llamarte desde este número · 🔴 Esta llamada puede ser grabada para calidad
+          Hola {buyerName}, solo {marca} puede llamarte desde este número · 🔴 Esta llamada puede ser grabada para calidad
         </p>
       </div>
     </div>
@@ -379,7 +385,7 @@ function CallModal({ token, sessionId, buyerName, sellerName, sellerRole, seller
 }
 
 // ─── Incoming call from seller ────────────────────────────────────────────────
-function BuyerIncomingCall({ sessionId, onAnswer, onReject, sellerName, sellerRole, sellerAvatar }: { sessionId: string; onAnswer: () => void; onReject: () => void; sellerName?: string | null; sellerRole?: string | null; sellerAvatar?: string | null }) {
+function BuyerIncomingCall({ sessionId, onAnswer, onReject, marca, sellerName, sellerRole, sellerAvatar }: { sessionId: string; onAnswer: () => void; onReject: () => void; marca: string; sellerName?: string | null; sellerRole?: string | null; sellerAvatar?: string | null }) {
   useEffect(() => {
     const stop = startRingtone()
     return stop
@@ -399,11 +405,11 @@ function BuyerIncomingCall({ sessionId, onAnswer, onReject, sellerName, sellerRo
         <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center mx-auto mb-4 text-3xl animate-bounce border-4"
           style={{ background: '#FFD400', borderColor: '#FFD400' }}>
           {sellerAvatar
-            ? <img src={sellerAvatar} alt={sellerName ?? 'Kross'} className="w-full h-full object-cover" />
+            ? <img src={sellerAvatar} alt={sellerName ?? marca} className="w-full h-full object-cover" />
             : '📞'}
         </div>
         <p className="text-white font-black text-xl mb-1">
-          {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : 'Kross'}
+          {sellerName ? `${sellerName.split(' ')[0]}${sellerRole ? ` · ${sellerRole}` : ''}` : marca}
         </p>
         <p className="text-sm mb-2 font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
           Llamada entrante…
@@ -487,6 +493,10 @@ export default function OrderChatPage() {
   // la tarjeta y la hoja «Ver pedido». Va acá, antes de los retornos
   // tempranos, porque es un hook.
   const ticket = useTicketDelPedido(session, messages, token ?? '')
+  // Con el teclado abierto en iPhone la pantalla se mide con lo que se ve.
+  const altoVisible = useAltoVisible()
+  // Las tres preguntas con respuesta, según el pedido de HOY.
+  const preguntas = useMemo(() => (session ? preguntasRapidas(session, ticket) : []), [session, ticket])
 
   // Auto-open the call when arriving from a global incoming-call notification (?call=1)
   useEffect(() => {
@@ -530,16 +540,13 @@ export default function OrderChatPage() {
             })
             .catch(() => {})
         }
-        // Notifications: once the PWA is installed the buyer gets push by default
-        // (we turn it on for them). If it's not installed yet, invite to install
-        // — that's what unlocks real-time order alerts.
-        // Only prompt buyers who already have a session (i.e. logged in / ordered),
-        // never on a first anonymous glance, so it doesn't distract them.
-        const loggedIn = !!localStorage.getItem('buyer_session')
-        if (isInstalled()) {
-          if (notifPermission() !== 'denied') subscribePush({ sessionId: s.id, role: 'buyer' }).catch(() => {})
-        } else if (loggedIn) {
-          setTimeout(() => setShowInstall(true), 3000)
+        // Con la app instalada, los avisos del pedido se encienden solos. Si no
+        // está instalada NO se ofrece acá (09-set-2026): un aviso que aparece
+        // solo al abrir el chat se cierra sin leerse y distrae de lo que
+        // queremos posicionar —que desde aquí se conversa rápido—. Lo ofrece el
+        // vendedor cuando toca el ícono del celular (`request_push_permission`).
+        if (isInstalled() && notifPermission() !== 'denied') {
+          subscribePush({ sessionId: s.id, role: 'buyer' }).catch(() => {})
         }
       })
       .catch((e: Error) => setState(e.message === 'not_found' ? 'not_found' : 'error'))
@@ -673,7 +680,7 @@ export default function OrderChatPage() {
   // Acepta un texto para que las fichas de respuesta rápida envíen directo, sin
   // pasar por el input: obligar a "rellenar y luego enviar" pierde justo la
   // ventaja de la ficha, que es un solo toque.
-  const handleSend = useCallback(async (preset?: string) => {
+  const handleSend = useCallback(async (preset?: string, respuesta?: string) => {
     const raw = preset ?? input
     if (!raw.trim() || !token || sending) return
     const body = raw.trim()
@@ -691,19 +698,43 @@ export default function OrderChatPage() {
       created_at: new Date().toISOString(),
       read_at: null,
     }
-    setMessages(prev => [...prev, optimistic])
+    // La respuesta de una pregunta rápida se ve al instante, sin esperar al
+    // servidor. Es `opt-` como la pregunta: cuando llegue por el canal la que
+    // el servidor guardó (rol `system`), el filtro del canal retira esta.
+    const respuestaLocal: OrderMessage | null = respuesta ? {
+      id: `opt-auto-${Date.now()}`,
+      session_id: session!.id,
+      sender_role: 'system',
+      sender_name: store.nombre,
+      sender_role_label: 'Respuesta automática',
+      type: 'text',
+      body: respuesta,
+      media_url: null,
+      created_at: new Date().toISOString(),
+      read_at: null,
+    } : null
+    setMessages(prev => [...prev, optimistic, ...(respuestaLocal ? [respuestaLocal] : [])])
     try {
-      const saved = await sendMessage(token, { type: 'text', body })
-      // Replace optimistic with real message and broadcast to seller
-      setMessages(prev => prev.map(m => m.id === optimisticId ? saved : m))
+      const saved = await sendMessage(token, { type: 'text', body, respuesta_automatica: respuesta })
+      // Replace optimistic with real message and broadcast to seller. La
+      // respuesta guardada reemplaza a la local; si el servidor no la escribió
+      // (función sin desplegar), la local se queda: el comprador ya la leyó.
+      setMessages(prev => {
+        const next = prev
+          .map(m => m.id === optimisticId ? saved : m)
+          .map(m => respuestaLocal && saved.auto_reply && m.id === respuestaLocal.id ? saved.auto_reply : m)
+        // Sin repetidos: el canal pudo traer la respuesta guardada antes que esta llamada.
+        const vistos = new Set<string>()
+        return next.filter(m => !vistos.has(m.id) && !!vistos.add(m.id))
+      })
       channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: saved })
     } catch {
-      setMessages(prev => prev.filter(m => m.id !== optimisticId))
-      setInput(body)
+      setMessages(prev => prev.filter(m => m.id !== optimisticId && m.id !== respuestaLocal?.id))
+      if (!preset) setInput(body)
     } finally {
       setSending(false)
     }
-  }, [input, token, session, sending])
+  }, [input, token, session, sending, store.nombre])
 
   const acceptOffer = useCallback(async (offer: NonNullable<OrderMessage['offer']>, messageId: string) => {
     if (!session) return
@@ -730,7 +761,7 @@ export default function OrderChatPage() {
   const firstName = session.buyer_name?.split(' ')[0] ?? 'Cliente'
 
   return (
-    <div className="flex flex-col h-screen max-w-[430px] mx-auto" style={{ background: '#FFFDF5' }}>
+    <div className="flex flex-col h-dvh max-w-[430px] mx-auto" style={{ background: '#FFFDF5', height: altoVisible }}>
 
       {/* ── Header ── */}
       <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
@@ -745,30 +776,15 @@ export default function OrderChatPage() {
 
           <div className="relative flex-shrink-0">
             <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/60">
+              {/* Quien atiende, o la marca: su logo, nunca una mascota ajena. */}
               {session?.seller_avatar ? (
-                <img src={session.seller_avatar} alt={session.seller_name ?? 'Vendedor'}
+                <img src={session.seller_avatar} alt={session.seller_name ?? store.nombre}
                   className="w-full h-full object-cover" />
+              ) : store.logo_url ? (
+                <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-cover bg-white" />
               ) : (
-              <svg viewBox="0 0 64 64" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="32" cy="32" r="32" fill="#FFF9E0"/>
-                <ellipse cx="32" cy="48" rx="14" ry="11" fill="#D4A05A"/>
-                <circle cx="32" cy="28" r="16" fill="#E8B86D"/>
-                <circle cx="17" cy="16" r="6" fill="#D4A05A"/>
-                <circle cx="47" cy="16" r="6" fill="#D4A05A"/>
-                <circle cx="17" cy="16" r="3.5" fill="#F5C98A"/>
-                <circle cx="47" cy="16" r="3.5" fill="#F5C98A"/>
-                <ellipse cx="32" cy="31" rx="10" ry="8" fill="#F5C98A"/>
-                <circle cx="26" cy="26" r="2.5" fill="#1A1A1A"/>
-                <circle cx="38" cy="26" r="2.5" fill="#1A1A1A"/>
-                <circle cx="26.8" cy="25.2" r="0.9" fill="white"/>
-                <circle cx="38.8" cy="25.2" r="0.9" fill="white"/>
-                <ellipse cx="32" cy="31" rx="2.5" ry="1.8" fill="#1A1A1A"/>
-                <path d="M28.5 33.5 Q32 36.5 35.5 33.5" stroke="#1A1A1A" strokeWidth="1.3" fill="none" strokeLinecap="round"/>
-                <ellipse cx="32" cy="13" rx="13" ry="4" fill="var(--brand)"/>
-                <rect x="19" y="9" width="26" height="8" rx="4" fill="var(--brand)"/>
-                <rect x="23" y="6" width="18" height="7" rx="3.5" fill="#2BB5EE"/>
-                <circle cx="32" cy="6" r="2.5" fill="#FFD400"/>
-              </svg>
+                <span className="w-full h-full flex items-center justify-center bg-white text-base font-black"
+                  style={{ color: 'var(--brand)' }}>{store.nombre.charAt(0)}</span>
               )}
             </div>
             <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white"
@@ -827,7 +843,7 @@ export default function OrderChatPage() {
             fijo: lo fijo le quita pantalla al chat. */}
         {showInstall && (
           <div className="-mx-4 mb-3">
-            <InstallBanner inline onInstalled={() => {
+            <InstallBanner inline esRecojo={isPickupDispatch(session.dispatch_type)} onInstalled={() => {
               setShowInstall(false)
               subscribePush({ sessionId: session.id, role: 'buyer' }).catch(() => {})
             }} />
@@ -852,29 +868,24 @@ export default function OrderChatPage() {
 
       {/* ── Input ── */}
       <div className="flex-shrink-0 border-t border-gray-100 px-3 py-3 bg-white">
-        {/* Fichas de respuesta rápida: bajan el costo de la primera interacción
-            y le enseñan que este chat es donde se resuelve su pedido. Se van en
-            cuanto escribe algo — ya cumplieron. */}
-        <QuickReplies
-          stage={session.stage}
-          buyerHasWritten={messages.some(m => m.sender_role === 'buyer')}
-          esRecojo={isPickupDispatch(session.dispatch_type)}
-          botonDeSaldo={puedePagarSaldo(session)}
-          saldoPendiente={Number(session.advance_amount ?? 0) > 0
-            ? Math.max(0, Number(session.product_price ?? 0) - Number(session.advance_amount ?? 0))
-            : 0}
-          onPick={text => handleSend(text)}
-        />
+        {/* Tres preguntas con respuesta, siempre a la vista: lo que la app ya
+            sabe del pedido se contesta al instante, y así aprende que este chat
+            resuelve. No se van al escribir ni al tocar una. */}
+        <QuickReplies preguntas={preguntas} onPick={q => handleSend(q.pregunta, q.respuesta)} />
         <div className="flex items-center gap-2">
           <input
             value={input}
             onChange={e => { setInput(e.target.value); broadcastTyping() }}
             onKeyDown={e => { if (e.key === 'Enter') handleSend() }}
             placeholder="Escribe tu mensaje…"
-            className="flex-1 rounded-full px-4 py-2.5 text-sm outline-none placeholder-gray-400"
+            enterKeyHint="send"
+            autoComplete="off"
+            className="flex-1 min-w-0 rounded-full px-4 py-2.5 text-base outline-none placeholder-gray-400"
             style={{ background: '#F0F0F0' }}
           />
           <button
+            type="button"
+            aria-label="Enviar"
             onClick={() => handleSend()}
             disabled={!input.trim() || sending}
             className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-sm disabled:opacity-40"
@@ -890,9 +901,10 @@ export default function OrderChatPage() {
           sessionId={session.id}
           onAnswer={() => { setSellerCalling(false); setShowCall(true) }}
           onReject={() => setSellerCalling(false)}
+          marca={store.nombre}
           sellerName={session?.seller_name}
           sellerRole={session?.seller_role}
-          sellerAvatar={session?.seller_avatar}
+          sellerAvatar={session?.seller_avatar ?? store.logo_url}
         />
       )}
 
@@ -901,9 +913,10 @@ export default function OrderChatPage() {
           token={token}
           sessionId={session.id}
           buyerName={firstName}
+          marca={store.nombre}
           sellerName={session?.seller_name}
           sellerRole={session?.seller_role}
-          sellerAvatar={session?.seller_avatar}
+          sellerAvatar={session?.seller_avatar ?? store.logo_url}
           onClose={() => setShowCall(false)}
         />
       )}

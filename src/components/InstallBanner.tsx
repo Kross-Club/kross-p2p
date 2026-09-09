@@ -138,7 +138,13 @@ export function AndroidSteps({ dark }: { dark?: boolean }) {
 // vendedor reciba pedidos, mensajes y llamadas con la pantalla apagada — eso es
 // el celular. En escritorio solo tapaba la lista de chats con un aviso que no
 // resuelve nada.
-export default function InstallBanner({ inline = false, onInstalled }: { inline?: boolean; onInstalled?: () => void }) {
+export default function InstallBanner({ inline = false, esRecojo = false, onInstalled }: {
+  inline?: boolean
+  /** Recoge en agencia: no hay puerta a la que salir. Lo que le sirve son los
+   *  avisos del envío —la guía, la llegada, su clave—. */
+  esRecojo?: boolean
+  onInstalled?: () => void
+}) {
   const { store } = useStore()
   const desktop = useIsDesktop()
   const [prompt, setPrompt] = useState<any>(() => (typeof window !== 'undefined' ? (window as any).__deferredInstallPrompt : null))
@@ -199,7 +205,9 @@ export default function InstallBanner({ inline = false, onInstalled }: { inline?
   const nombre = store.nombre
   const logo = store.logo_url || '/icon-192.png'
   const benefit = inline
-    ? 'Haz seguimiento a tu pedido en tiempo real y recibe un aviso cuando salga a tu puerta.'
+    ? (esRecojo
+        ? 'Recibe al instante los avisos de tu pedido: la guía, la llegada a la agencia y tu clave de recojo.'
+        : 'Haz seguimiento a tu pedido en tiempo real y recibe un aviso cuando salga a tu puerta.')
     : 'Da seguimiento a tus clientes: recibe al instante los nuevos pedidos, mensajes y llamadas.'
 
   // ── Inline card (inside the buyer chat, never covers the input) ──

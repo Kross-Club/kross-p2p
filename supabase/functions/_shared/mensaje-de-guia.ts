@@ -6,10 +6,9 @@
 // cliente con `Deno.env` al cargar, y eso no se puede importar desde el panel.
 //
 // En Shalom la guía nace como **PRE-GUÍA**: existe y ya se puede seguir, pero se
-// vuelve oficial recién cuando el paquete entra a la agencia de origen. Decirlo
-// evita el reclamo previsible — el comprador la busca en el mostrador de Shalom
-// al minuto y la agencia le dice que no existe. Y se le dice dónde seguirla: en
-// esta app, que está sincronizada con su guía, o en Shalom.
+// vuelve oficial recién cuando el paquete entra a la agencia de origen. Eso se
+// explica en «Ver pedido» (junto a los ids), no en el mensaje: el aviso del
+// chat dice que la guía existe, sus ids y qué sigue (09-set-2026).
 
 export type Courier = 'SHALOM' | 'OLVA'
 
@@ -45,11 +44,11 @@ export function idsDeGuia(
  * que se dice dos veces.
  */
 export function mensajeDeOrigen(courier: Courier): string {
-  if (courier === 'OLVA') {
-    return '🏬 ¡Tu paquete entró a la agencia de origen de OLVA! Por aquí te avisamos cada avance.'
-  }
-  return '🏬 ¡Tu paquete entró a la agencia de origen: tu guía de SHALOM ya es oficial! '
-    + 'Por aquí te avisamos cada avance.'
+  return `🏬 Tu paquete ya está en ${nombreDelCourier(courier)} y va camino a tu agencia. Te avisamos por aquí cuando llegue.`
+}
+
+function nombreDelCourier(courier: Courier): string {
+  return courier === 'OLVA' ? 'Olva' : 'Shalom'
 }
 
 /**
@@ -67,25 +66,14 @@ export function mensajeDeClave(clave: string): string {
     + 'para retirar tu paquete. No la compartas con nadie.'
 }
 
-export function mensajeDeGuia(courier: Courier, ids: string, saldo: number): string {
-  const cobroCopy = saldo > 0
-    // Sin la palabra "app" (05-set-2026): el comprador de provincia con poca
-    // costumbre digital no sabe qué es una app, y sí sabe qué es Yape y un
-    // enlace. "Nunca en la agencia" evita que llegue al mostrador con el saldo
-    // en efectivo y sin clave. La misma frase vive en `acuse-de-pago.ts`,
-    // `tracking.ts` y en el ticket del checkout (`lib/checkout/ticket.ts`).
-    ? `Tu saldo de S/${saldo} lo pagas con Yape desde este mismo enlace de tu pedido, cuando quieras y nunca en la agencia. Apenas lo pagues te entregamos tu clave de recojo.`
-    : 'Como ya pagaste el total, junto con la guía te entregaremos tu clave de recojo.'
-
-  if (courier === 'OLVA') {
-    return `📦 ¡Tu envío ya está registrado en OLVA! ${ids}. `
-      + 'Guárdala para el recojo. '
-      + cobroCopy + ' Por aquí te avisamos cuando tu pedido llegue a tu agencia.'
-  }
-
-  return `📦 ¡Tu envío ya está registrado en SHALOM! ${ids} — guárdalos para el recojo.\n\n`
-    + 'Por ahora es una pre-guía: se vuelve oficial cuando tu paquete entre a la agencia '
-    + 'de origen, y por acá te avisamos apenas pase. Desde ya puedes seguir tu envío desde '
-    + 'este mismo enlace de tu pedido —está sincronizado con tu guía— o directamente en Shalom.\n\n'
-    + cobroCopy
+/**
+ * El aviso de la guía: que ya existe, sus ids y qué sigue. Nada más
+ * (09-set-2026): la pre-guía, dónde seguirla y el saldo salieron de acá.
+ * Eran tres párrafos que daban flojera leer, y lo que decían ya vive en otra
+ * parte —la pre-guía y los ids en «Ver pedido», el saldo en el botón de la
+ * tarjeta del pedido, dónde va en las preguntas rápidas—. Los ids van en su
+ * propia línea para que se lean (y se copien) de un vistazo.
+ */
+export function mensajeDeGuia(courier: Courier, ids: string): string {
+  return `📦 ¡Tu envío ya está registrado en ${nombreDelCourier(courier)}!\n${ids}\nTe avisamos por aquí cuando llegue a tu agencia.`
 }

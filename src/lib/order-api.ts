@@ -204,8 +204,16 @@ export async function getSession(token: string): Promise<SessionData> {
 
 export async function sendMessage(
   token: string,
-  payload: { type: 'text' | 'audio' | 'image'; body?: string; media_url?: string }
-): Promise<OrderMessage> {
+  payload: {
+    type: 'text' | 'audio' | 'image'
+    body?: string
+    media_url?: string
+    /** Una pregunta rápida trae su respuesta (`lib/preguntas-rapidas.ts`): el
+     *  servidor la escribe en el hilo como mensaje del sistema, justo después,
+     *  y la devuelve en `auto_reply`. Así el vendedor ve qué se le contestó. */
+    respuesta_automatica?: string
+  }
+): Promise<OrderMessage & { auto_reply?: OrderMessage | null }> {
   const res = await fetch(`${BASE}/send-message`, {
     method: 'POST',
     headers: {

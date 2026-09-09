@@ -30,11 +30,16 @@ async function trySendPush(sub: object, payload: object) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { token, type, body, media_url } = await req.json() as {
+  const { token, type, body, media_url, respuesta_automatica } = await req.json() as {
     token: string
     type: 'text' | 'audio' | 'image'
     body?: string
     media_url?: string
+    /** Una pregunta rápida del comprador trae su respuesta, derivada de su
+     *  propio pedido (`lib/preguntas-rapidas.ts`). Se escribe en el hilo como
+     *  mensaje del SISTEMA, etiquetado, para que el vendedor vea qué se le
+     *  contestó y no lo conteste dos veces. Solo texto corto. */
+    respuesta_automatica?: string
   }
 
   if (!token) return new Response('Missing token', { status: 400, headers: corsHeaders })
@@ -70,6 +75,34 @@ Deno.serve(async (req) => {
     })
   }
 
+  // La tienda: su nombre firma la respuesta automática y su logo va en el push.
+  let store: { nombre: string | null; logo_url: string | null } | null = null
+  if (session.store_id) {
+    const { data } = await supabase.from('stores').select('nombre, logo_url').eq('id', session.store_id).maybeSingle()
+    store = data ?? null
+  }
+
+  // La respuesta automática, si la pregunta la trae. Va como mensaje del
+  // sistema y etiquetada: se ve distinta a una persona a propósito.
+  const respuesta = typeof respuesta_automatica === 'string' ? respuesta_automatica.trim().slice(0, 400) : ''
+  let autoReply: Record<string, unknown> | null = null
+  if (respuesta && (type ?? 'text') === 'text') {
+    const { data: reply } = await supabase
+      .from('chat_messages')
+      .insert({
+        session_id: session.id,
+        sender_role: 'system',
+        sender_name: store?.nombre ?? 'Kross',
+        sender_role_label: 'Respuesta automática',
+        type: 'text',
+        body: respuesta,
+        visibility: 'all',
+      })
+      .select()
+      .single()
+    autoReply = reply ?? null
+  }
+
   // Broadcast to realtime channel
   await fetch(`${Deno.env.get('SUPABASE_URL')}/realtime/v1/api/broadcast`, {
     method: 'POST',
@@ -79,7 +112,10 @@ Deno.serve(async (req) => {
       apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     },
     body: JSON.stringify({
-      messages: [{ topic: `order:${session.id}`, event: 'new_message', payload: msg }],
+      messages: [
+        { topic: `order:${session.id}`, event: 'new_message', payload: msg },
+        ...(autoReply ? [{ topic: `order:${session.id}`, event: 'new_message', payload: autoReply }] : []),
+      ],
     }),
   })
 
@@ -108,14 +144,12 @@ Deno.serve(async (req) => {
         .in('seller_id', [...recipientIds])
         .eq('sub_role', 'seller')
 
-      let storeLogo: string | null = null
-      if (session.store_id) {
-        const { data: store } = await supabase.from('stores').select('logo_url').eq('id', session.store_id).maybeSingle()
-        storeLogo = store?.logo_url ?? null
-      }
-
+      const storeLogo = store?.logo_url ?? null
       const buyerFirstName = (session.buyer_name ?? 'Cliente').split(' ')[0]
-      const preview = type === 'text' ? (body ?? '').slice(0, 80) : '🎵 Mensaje de audio'
+      // Si la app ya contestó, que el vendedor lo sepa desde el aviso.
+      const preview = type === 'text'
+        ? `${(body ?? '').slice(0, 80)}${autoReply ? ' · respondido automáticamente' : ''}`
+        : '🎵 Mensaje de audio'
 
       await Promise.all((subs ?? [])
         .filter(row => row.notify_new_message !== false)
@@ -133,7 +167,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify(msg), {
+  return new Response(JSON.stringify({ ...msg, auto_reply: autoReply }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
   })
 })

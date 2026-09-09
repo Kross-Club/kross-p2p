@@ -42,13 +42,35 @@ el saldo o la clave de recojo). «Ver pedido» abre encima el ticket y el recorr
 de `/pedido/:token`, con cancelar. Detalle en `01-SALES-ENGINE.md` § *El chat del
 comprador, en tres cosas*.
 
-**La función.** `get-session` manda `shalom_pickup_code` también al comprador
-cuando el pedido ya no debe nada (`sinSaldo`, misma cuenta que `saldoOf`). Sin el
-deploy la tarjeta simplemente no enseña la clave —sigue llegando por el chat— y
-todo lo demás funciona.
+**Las funciones.** Dos cambian de contrato y varias llevan copys nuevas:
+
+- `get-session` manda `shalom_pickup_code` también al comprador cuando el pedido
+  ya no debe nada (`sinSaldo`, misma cuenta que `saldoOf`). Sin el deploy la
+  tarjeta no enseña la clave —sigue llegando por el chat— y lo demás funciona.
+- `send-message` escribe la **respuesta automática** de una pregunta rápida como
+  mensaje del sistema y la devuelve en `auto_reply`. Sin el deploy el comprador
+  ve la respuesta igual (se pinta en su pantalla), pero no queda en el hilo ni la
+  ve el vendedor.
+- Las copys cortas del acuse (`_shared/acuse-de-pago.ts`) y de la guía y el
+  origen (`_shared/mensaje-de-guia.ts`) salen con quien las escribe. Hasta el
+  deploy sigue saliendo la copy larga; nada se rompe.
 
 ```
 supabase functions deploy get-session --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy send-message --project-ref ofdjghntvmrdfjhazfvz
+# el acuse
+supabase functions deploy pay360-webhook --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy flow-confirm --project-ref ofdjghntvmrdfjhazfvz
+# la guía (registrarGuia)
+supabase functions deploy shalom-order --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-order --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+# el aviso de origen (reflejo de tracking)
+supabase functions deploy shalom-webhook --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-lat-webhook --project-ref ofdjghntvmrdfjhazfvz
 ```
 
 Sin SQL. El front sale con Vercel al mergear.
