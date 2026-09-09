@@ -15,6 +15,7 @@ import type { AgencyBranch } from '../../lib/checkout/types'
 import { pickupBranchIdOf } from '../../lib/session'
 import { enlaceDeGuia } from '../../lib/hoja-de-guia'
 import { useStore } from '../../lib/store-context'
+import { cobrosDelPedido } from '../../lib/order-money'
 import type { OrderMessage, OrderSession } from '../../lib/order-api'
 
 /** Cómo se NOMBRA el pedido en una línea: el pack, o el primer producto y
@@ -23,6 +24,24 @@ export function nombreDelPedido(p: Pick<OrderSession, 'items' | 'pack_name' | 'p
   const items = p.items ?? []
   if (items.length > 1) return `${items[0].nombre} +${items.length - 1} más`
   return p.pack_name ?? p.product_name ?? 'Tu pedido'
+}
+
+/**
+ * De qué cobro es la constancia que se le ofrece en el pedido confirmado.
+ *
+ * El ADELANTO —o el pago completo, que es un adelanto que cubre el precio
+ * entero— y no el último pago: esa pantalla anuncia «pago recibido» con la
+ * cifra del adelanto, así que su botón tiene que abrir esa misma constancia. La
+ * del saldo y la de un extra llegan por el chat, cada una junto al aviso de su
+ * propio pago.
+ *
+ * Solo un cobro PAGADO y con id: sin id no hay página que abrir, y la
+ * constancia de un cobro pendiente diría que se pagó algo que no se pagó.
+ */
+function comprobanteDelAdelanto(pedido: OrderSession): string | null {
+  const suyo = cobrosDelPedido(pedido)
+    .find(c => c.verificado && c.id && (c.tipo === 'adelanto' || c.tipo === 'total'))
+  return suyo?.id ?? null
 }
 
 export function useTicketDelPedido(
@@ -71,6 +90,7 @@ export function useTicketDelPedido(
       // pack, el logo cuadrado de la marca.
       packImage: pedido.items?.[0]?.image ?? null,
       storeLogo: store.logo_url,
+      receiptCobroId: comprobanteDelAdelanto(pedido),
       paid: pagadoDelPedido(pedido),
       unpaid: coordinadoDelPedido(pedido),
       branch: sede,

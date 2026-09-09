@@ -100,9 +100,11 @@ describe('la orden', () => {
     expect(montoParaFlow(0.1 + 0.2)).toBe(0.3)
   })
 
-  it('el email se sintetiza del celular, como hacía Culqi', () => {
-    // Uno solo para todos: el checkout no pide correo y Flow lo exige.
-    expect(EMAIL_DEL_PAGADOR).toBe('uxbriel@gmail.com')
+  it('el correo del pagador es un buzón de la plataforma, no una cuenta personal', () => {
+    // Uno solo para todos: el checkout no pide correo y Flow lo exige. Que sea
+    // de la empresa importa por si Flow se lo enseña al comprador en su
+    // checkout — ahí una dirección personal se lee como la de un desconocido.
+    expect(EMAIL_DEL_PAGADOR).toBe('flowpagos@kross.club')
     expect(EMAIL_DEL_PAGADOR).toMatch(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)
   })
 })

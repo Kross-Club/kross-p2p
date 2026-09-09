@@ -60,6 +60,22 @@ export const RIELES: readonly Proveedor[] = ['360PAY', 'FLOW'] as const
 export const NOMBRE_RIEL: Record<Proveedor, string> = { '360PAY': '360pay', FLOW: 'Flow' }
 
 /**
+ * Cómo se llama cada riel **para el COMPRADOR**, en su constancia de pago.
+ *
+ * Son dos nombres y no uno por dos razones distintas. La primera es que el
+ * recaudador lo PIDE: Flow exige aparecer como «Flow Pagos» —su nombre
+ * comercial— donde se le atribuye el cobro, y «Flow» a secas es como lo
+ * llamamos nosotros entre nosotros. La segunda es que quien recibe la
+ * constancia puede no haber oído hablar de ninguno de los dos: el nombre
+ * completo es el que se puede buscar.
+ *
+ * ⚠️ El comprobante lo nombra, el CHECKOUT no. Ahí el comprador sigue pagando
+ * «con Yape» —ver `checkout.config.ts`— salvo la línea de atribución que el
+ * propio recaudador pide en su pantalla de pago.
+ */
+export const NOMBRE_DE_PASARELA: Record<Proveedor, string> = { '360PAY': '360pay', FLOW: 'Flow Pagos' }
+
+/**
  * ¿Este pedido cobra en línea?
  *
  * Es la única lectura de `payment_provider` que debería existir en el front.

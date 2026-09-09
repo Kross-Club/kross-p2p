@@ -40,6 +40,12 @@ export interface DatosDeComprobante {
   payment_code: string | null
   operation_number: string | null
   bank: string | null
+  /** Por qué PASARELA entró la plata (`'360PAY' | 'FLOW'`), leído de la fila del
+   *  cobro (`rielDelCobro`). El recaudador pide aparecer nombrado en la
+   *  constancia que se lleva quien pagó, y quien reclama necesita saber a qué
+   *  puerta tocar. `null` = no se puede saber, y entonces no se nombra
+   *  ninguna. */
+  pasarela: string | null
   /** El pedido alrededor del cobro, para que la constancia se explique sola:
    *  cuánto cuesta, cuánto lleva pagado y cuánto le falta HOY. */
   total: number

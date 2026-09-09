@@ -269,12 +269,25 @@ cobrar deja al comprador con un pedido y sin forma de pagarlo.
   app de Yape a aprobar, Android congela ese JS y el retorno no ocurre. `flow-return` sigue
   existiendo y sirve cuando el comprador sí se queda, pero la vuelta que se cumple siempre es la
   que ve nuestra propia pantalla.
+- **La pantalla de pago NOMBRA a Flow** (09-set-2026). Al pie de la caja del botón morado, junto
+  a la descripción de la espera: *«Vas a pagar por Yape a través de Flow Pagos»* (`COPY.flowGateway`,
+  pintado por `FlowYapeBox` y por la pantalla del redirect). Es lo **único** de ese paso que
+  nombra al recaudador —el resto sigue siendo Yape, que es la app en la que el comprador
+  confía— y está porque **Flow lo pide**: aparecer nombrado, con su nombre comercial, donde se
+  cobra por su riel. 360pay no lo pide y por eso su caja no lleva la línea equivalente. Va
+  fuera del recuadro verde del sello de confianza: meterle una marca desconocida a ese recuadro
+  le quita justo lo que hace.
+- **La constancia de pago dice por qué pasarela entró la plata.** Ver
+  [`00-CORE-ARCHITECTURE.md` § El comprobante](./00-CORE-ARCHITECTURE.md).
 - **Un adelanto rechazado deja al comprador sin botón** en `/p/<token>`: `PagarSaldo` solo
   cobra saldos. Hoy vuelve por el "retomar pedido" de la landing (`saveLastOrder`), igual que
   con 360pay. Deuda compartida por los dos rieles.
 - **El `email` del pagador es uno solo para todos** (`EMAIL_DEL_PAGADOR` en `_shared/flow.ts`).
   El checkout de Kross no pide correo —DNI y celular— y Flow lo exige igual. Antes se
-  sintetizaba del celular contra un dominio sin buzón; ahora es una dirección real. El costo:
+  sintetizaba del celular contra un dominio sin buzón; ahora es una dirección real. Desde el
+  09-set-2026 es **`flowpagos@kross.club`**, un buzón de la plataforma: era la cuenta personal
+  de quien montó la integración, y eso obligaba a pedirle a una persona que abriera su correo
+  cada vez que hubiera que mirar un aviso. El costo no cambia:
   todos los avisos de Flow caen en ese buzón, y en el panel de Flow **todos los pedidos salen
   con el mismo pagador**, así que una transacción se rastrea por `commerceOrder` —el id de la
   fila de `cobros`— y nunca por el correo. **Provisional**: cuando deje de serlo, el sitio es

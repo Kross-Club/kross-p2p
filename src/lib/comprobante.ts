@@ -8,13 +8,14 @@
 import { fechaYHora } from './fechas'
 import { datosDeRastro } from './rastro-de-pago'
 import type { DatoDeRastro } from './rastro-de-pago'
+import { NOMBRE_DE_PASARELA, esRielEnLinea } from '../../supabase/functions/_shared/comision.ts'
 import type { DatosDeComprobante } from '../../supabase/functions/_shared/comprobante.ts'
 
 /**
  * Cómo se llama este cobro EN EL COMPROBANTE.
  *
  * Más corto que en el panel —ahí dice "Adelanto pagado con Yape (360pay)"—
- * porque el papel ya tiene su propia línea de método y su propio monto grande.
+ * porque el papel ya tiene su propia línea de pasarela y su propio monto grande.
  * Repetirlo en el título lo convierte en ruido.
  *
  * Un `extra` se llama por su CONCEPTO. Para el comprador, "Cobro adicional" no
@@ -46,14 +47,27 @@ export function lineasDelComprobante(d: DatosDeComprobante): DatoDeRastro[] {
     trace: { payment_code: d.payment_code, operation_number: d.operation_number, bank: d.bank },
     cobradoEn: d.cobrado_en,
   })
+  const out = [...rastro]
+
   const cliente = (d.comprador ?? '').trim()
   // El cliente va después del pedido: primero se identifica la compra, después
   // quién la hizo. Solo si existe — media línea diciendo "Cliente —" hace dudar
   // de si falta el dato o falló la página.
-  if (!cliente) return rastro
-  const i = rastro.findIndex(l => l.etiqueta === 'Pedido')
-  const out = [...rastro]
-  out.splice(i + 1, 0, { etiqueta: 'Cliente', valor: cliente })
+  if (cliente) {
+    const i = out.findIndex(l => l.etiqueta === 'Pedido')
+    out.splice(i + 1, 0, { etiqueta: 'Cliente', valor: cliente })
+  }
+
+  // La PASARELA cierra la lista. Decía «Método: Yape · 360pay» **escrito a
+  // mano en la página** (09-set-2026): con Flow cobrando desde el 08-set eso
+  // era falso en cada constancia que emitía el otro riel, y una constancia que
+  // nombra mal a quien recibió la plata manda el reclamo a la puerta
+  // equivocada. Ahora sale de la fila del cobro (`rielDelCobro`) y con el
+  // nombre que el recaudador pide llevar (`NOMBRE_DE_PASARELA`).
+  //
+  // «Yape» no se perdió: la línea de la operación bancaria lo dice, y ahí es un
+  // dato del banco y no una suposición nuestra.
+  if (esRielEnLinea(d.pasarela)) out.push({ etiqueta: 'Pasarela', valor: NOMBRE_DE_PASARELA[d.pasarela] })
   return out
 }
 

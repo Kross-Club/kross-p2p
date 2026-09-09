@@ -70,6 +70,28 @@ describe('ticket · la miniatura del pedido', () => {
   })
 })
 
+// ─── La constancia del pago ──────────────────────────────────────────────────
+describe('ticket · el comprobante que se ofrece', () => {
+  const armar = (extra: Partial<Parameters<typeof buildTicket>[0]>) =>
+    buildTicket({ state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE, ...extra })
+
+  it('con el adelanto cruzado, el id de ese cobro', () => {
+    expect(armar({ receiptCobroId: 'cob-1' }).receiptCobroId).toBe('cob-1')
+  })
+
+  // Sin plata cruzada no hay página que abrir. Y no se explica por qué falta el
+  // botón: la regla dura del módulo es que al comprador nunca se le dice que su
+  // pago no existe.
+  it('sin pago cruzado no se ofrece ninguno, aunque llegue un id', () => {
+    expect(armar({ paid: false, receiptCobroId: 'cob-1' }).receiptCobroId).toBeNull()
+    expect(armar({ paid: false, unpaid: true, receiptCobroId: 'cob-1' }).receiptCobroId).toBeNull()
+  })
+
+  it('sin id tampoco', () => {
+    expect(armar({}).receiptCobroId).toBeNull()
+  })
+})
+
 describe('ticket · agencia con adelanto pagado', () => {
   const t = buildTicket({ state: agencia(), price: 189, packName: 'Pack x2', paid: true, unpaid: false, branch: SEDE })
 

@@ -136,7 +136,11 @@ export default function ComprobantePage() {
 
           {/* Con qué se sigue esta transacción. La misma lista, con los mismos
               nombres, que el vendedor tiene en su panel: cuando el comprador
-              enseña esto y el otro mira su pantalla, los dos ven lo mismo. */}
+              enseña esto y el otro mira su pantalla, los dos ven lo mismo.
+
+              La PASARELA es la última línea y sale de la misma lista: acá había
+              un «Método: Yape · 360pay» escrito a mano, que desde que Flow
+              cobra era falso en la mitad de las constancias. */}
           <div className="px-6 pb-5">
             <dl className="text-[13px]">
               {lineas.map(l => (
@@ -145,10 +149,6 @@ export default function ComprobantePage() {
                   <dd className="font-bold text-gray-900 text-right break-all">{l.valor}</dd>
                 </div>
               ))}
-              <div className="flex justify-between gap-4 py-2 border-t" style={{ borderColor: '#F1F1F1' }}>
-                <dt className="text-gray-500">Método</dt>
-                <dd className="font-bold text-gray-900">Yape · 360pay</dd>
-              </div>
             </dl>
           </div>
 

@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { tieneComprobante } from '../_shared/comprobante.ts'
+import { rielDelCobro } from '../_shared/cobros.ts'
 import { rastroDelEvento } from '../_shared/rastro.ts'
 import type { DatosDeComprobante } from '../_shared/comprobante.ts'
 
@@ -39,8 +40,11 @@ Deno.serve(async (req) => {
   const cobroId = (url.searchParams.get('cobro_id') ?? '').trim()
   if (!cobroId) return json({ error: 'missing_cobro' }, 400)
 
+  // `flow_token` y `pay360_coupon_id` no viajan a la página: son internos. Se
+  // leen para saber por qué PASARELA entró la plata (`rielDelCobro`), que es lo
+  // único de ellos que el comprobante nombra.
   const { data: cobro } = await supabase.from('cobros')
-    .select('id, session_id, tipo, monto, estado, concepto, matched_at, payment_event_id, pay360_consumer_code')
+    .select('id, session_id, tipo, monto, estado, concepto, matched_at, payment_event_id, pay360_coupon_id, pay360_consumer_code, flow_token')
     .eq('id', cobroId).maybeSingle()
 
   // El mismo 404 para "no existe" y para "existe pero no se pagó": quien tantea
@@ -94,6 +98,7 @@ Deno.serve(async (req) => {
     payment_code: rastro?.payment_code ?? null,
     operation_number: rastro?.operation_number ?? null,
     bank: rastro?.bank ?? null,
+    pasarela: rielDelCobro(cobro),
     total,
     pagado,
     saldo: Math.max(0, total - pagado),

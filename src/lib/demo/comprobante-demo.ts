@@ -89,6 +89,11 @@ export async function comprobanteDemo(
       : cobro.tipo === 'extra' ? null : pedido.payment_trace)?.operation_number ?? null,
     bank: (cobro.tipo === 'saldo' ? pedido.saldo_trace
       : cobro.tipo === 'extra' ? null : pedido.payment_trace)?.bank ?? null,
+    // La pasarela del cobro, igual que en la tienda real: sale de su fila
+    // (`rielDelCobro`, vía `cobrosDelPedido`) y no del pedido. La tienda de
+    // ejemplo cobra por 360pay, así que su constancia lo dice — y el día que el
+    // generador siembre un cobro por Flow, esta línea ya lo enseña.
+    pasarela: cobro.riel ?? pedido.payment_provider ?? null,
     total,
     pagado,
     saldo: Math.max(0, total - pagado),

@@ -257,11 +257,16 @@ export function montoParaFlow(pen: number): number {
  *     enseñando una dirección que no es suya. **Es lo primero que hay que mirar en la
  *     primera orden de prueba.**
  *
- * Es temporal y se cambia acá, en una línea. Cuando deje de serlo, el sitio correcto
- * es un secreto de plataforma o una columna de `stores` —no una dirección personal
- * viviendo en el repo.
+ * Desde el 09-set-2026 es un **buzón de la plataforma** y ya no la cuenta personal de
+ * quien lo montó: `flowpagos@kross.club`. El costo de arriba no cambia —sigue siendo un
+ * solo buzón para todos los avisos—, pero ahora quien tenga que mirarlo puede hacerlo sin
+ * pedirle a nadie que abra su correo, y si Flow llegara a enseñárselo al comprador, lee
+ * como una dirección de la empresa y no como la de un desconocido.
+ *
+ * Cuando deje de ser un solo buzón, el sitio correcto es un secreto de plataforma o una
+ * columna de `stores`.
  */
-export const EMAIL_DEL_PAGADOR = 'uxbriel@gmail.com'
+export const EMAIL_DEL_PAGADOR = 'flowpagos@kross.club'
 
 /**
  * Crea la orden. `commerceOrder` es NUESTRA llave: ahí va el id de la fila de

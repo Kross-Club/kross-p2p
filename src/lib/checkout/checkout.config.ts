@@ -394,6 +394,18 @@ export const COPY = {
   flowYapeCta: 'Pagar con Yape',
   flowYapeFallback: '¿No se abrió Yape? Paga desde la página de pago',
   flowYapeAfterHint: 'Aprueba la compra en Yape y regresa a esta ventana: tu pago se valida solo y aquí verás el detalle de tu pedido.',
+  // La ATRIBUCIÓN de la pasarela, al pie de la espera (09-set-2026). Es lo único
+  // que rompe la regla de arriba —«para el comprador es Yape, el recaudador es
+  // cocina nuestra»— y lo rompe porque **el recaudador lo pide**: Flow exige
+  // aparecer nombrado en la pantalla donde se paga por su riel, con su nombre
+  // comercial («Flow Pagos», no «Flow»). 360pay no lo pide y por eso su caja no
+  // lleva línea equivalente; el día que lo pida, va acá al lado y no en la
+  // pantalla.
+  //
+  // Va al PIE y no en el botón: quien está por tocar «Pagar con Yape» tiene que
+  // seguir leyendo Yape en el botón, que es la app que va a abrir y en la que
+  // confía. Esto explica por dónde viaja la plata, que es otra pregunta.
+  flowGateway: 'Vas a pagar por Yape a través de Flow Pagos.',
 
   submit: 'Terminar mi pedido',
   submitting: 'Registrando tu pedido…',
@@ -413,6 +425,11 @@ export const COPY = {
   /** El botón de la guía, cuando la API ya la emitió mientras el comprador
    *  miraba esta pantalla. `{courier}` es Shalom u Olva. */
   doneSeeGuide: 'Ver mi guía de',
+  // La constancia del pago, en la pantalla del pedido. La MISMA frase que el
+  // botón de la tarjeta verde del chat (`TarjetaDeComprobante`): es la misma
+  // página y el comprador la va a encontrar por los dos caminos — dos nombres
+  // para lo mismo le harían pensar que son dos documentos.
+  doneSeeReceipt: 'Ver mi comprobante',
   // El canal es el CHAT del pedido, no WhatsApp. WhatsApp es solo el fallback
   // cuando el comprador no entra al chat, así que prometerlo aquí manda a
   // esperar por donde no vamos a escribir primero — y deja el chat, que es lo
