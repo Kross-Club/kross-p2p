@@ -85,8 +85,10 @@ export function IOSSteps({ dark }: { dark?: boolean }) {
  * de la lista (08-set-2026). Grabado en un iPhone real, enseña lo que la lista
  * solo describía: dónde está el `···`, cómo se ve la hoja de Compartir y hasta
  * dónde hay que bajar para «Agregar a inicio». La lista sigue viva en
- * `IOSSteps` para la barra del panel y la tarjeta del chat, donde un video no
- * cabe, y acá en el `aria-label` para quien no lo ve.
+ * `IOSSteps` para la barra del panel —donde un video no cabe—, y acá en el
+ * `aria-label` para quien no lo ve. La tarjeta del chat también lo usa desde el
+ * 09-set-2026: es el mismo comprador de la confirmación y le sirve lo mismo,
+ * enseñado en vez de descrito.
  *
  * Por qué está armado así, y ninguna es opcional en iOS:
  *   · **H.264, no WebM/AV1**: Safari en iOS no reproduce otra cosa en <video>.
@@ -222,7 +224,7 @@ export default function InstallBanner({ inline = false, esRecojo = false, onInst
           <p className="text-sm font-black text-gray-900 leading-tight">Instala {nombre}</p>
           <p className="text-[11px] mt-0.5 leading-snug" style={{ color: '#6B7280' }}>{benefit}</p>
           {isIOS
-            ? <IOSSteps />
+            ? <IOSInstallVideo />
             : (
               <>
                 <button onClick={install}

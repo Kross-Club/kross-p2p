@@ -23,6 +23,7 @@ import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { preguntasRapidas } from '../../lib/preguntas-rapidas'
 import { usePreguntasUsadas } from '../../lib/use-preguntas-usadas'
 import { FirmaDeMarca } from '../../components/pedido/PedidoConfirmado'
+import BajoLaMarca from '../../components/pedido/BajoLaMarca'
 import { guardarSesion, leerSesion } from '../../lib/sesion-comprador'
 import { useAltoVisible } from '../../lib/use-alto-visible'
 import OfferCard from '../../components/OfferCard'
@@ -500,8 +501,11 @@ export default function OrderChatPage() {
   // Con el teclado abierto en iPhone la pantalla se mide con lo que se ve.
   const altoVisible = useAltoVisible()
   // Las cuatro preguntas con respuesta, según el pedido de HOY, y cuáles se
-  // acaban de tocar (cinco minutos resaltadas y apagadas).
-  const preguntas = useMemo(() => (session ? preguntasRapidas(session, ticket) : []), [session, ticket])
+  // acaban de tocar (cinco minutos resaltadas y apagadas). Dentro de la app
+  // instalada la respuesta del aviso cambia: ya la tiene, no hay nada que
+  // ofrecerle. Se mide una vez — instalarla recarga la pantalla.
+  const enApp = useMemo(() => isInstalled(), [])
+  const preguntas = useMemo(() => (session ? preguntasRapidas(session, ticket, { enApp }) : []), [session, ticket, enApp])
   const [preguntasUsadas, marcarPregunta] = usePreguntasUsadas(token ?? '')
 
   // Auto-open the call when arriving from a global incoming-call notification (?call=1)
@@ -778,8 +782,10 @@ export default function OrderChatPage() {
     <div className="flex flex-col h-dvh max-w-[430px] mx-auto" style={{ background: '#FFFDF5', height: altoVisible }}>
 
       {/* ── Header ── */}
-      <div className="flex-shrink-0 px-4 pt-3 pb-2.5"
-        style={{ background: marca, color: tinta, borderRadius: '0 0 24px 24px' }}>
+      {/* Sin esquinas redondeadas abajo: las pone el panel de abajo, hacia
+          abajo, y el color queda en las muescas (`BajoLaMarca`). El `pb`
+          incluye los 24 px que ese panel le come al solaparse. */}
+      <div className="flex-shrink-0 px-4 pt-3 pb-8" style={{ background: marca, color: tinta }}>
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/mis-pedidos')}
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -821,6 +827,7 @@ export default function OrderChatPage() {
           dirección, el envío y el saldo como bloques fijos (09-set-2026): el
           chat es para hablar, y esto es lo único que se queda encima de él.
           Lo demás vive en el hilo o en «Ver pedido». */}
+      <BajoLaMarca fondo="#FFFDF5" className="flex-1 min-h-0 flex flex-col">
       <div className="flex-shrink-0">
         <TarjetaDelPedido
           pedido={session}
@@ -866,6 +873,7 @@ export default function OrderChatPage() {
 
         <div ref={bottomRef} />
       </div>
+      </BajoLaMarca>
 
       {/* ── Input ── */}
       <div className="flex-shrink-0 border-t border-gray-100 px-3 py-3 bg-white">
@@ -874,7 +882,14 @@ export default function OrderChatPage() {
             aprende que este chat resuelve. No se van al escribir ni al tocar
             una; la tocada se queda resaltada y apagada cinco minutos. */}
         <QuickReplies preguntas={preguntas} usadas={preguntasUsadas} tintaDeMarca={tinta}
-          onPick={q => { marcarPregunta(q); handleSend(q.pregunta, q.respuesta) }} />
+          onPick={q => {
+            marcarPregunta(q)
+            // La respuesta prometió un aviso al instante y todavía no tiene la
+            // app: la tarjeta de instalar entra al hilo detrás de la respuesta,
+            // que es cuando la razón para instalarla está recién leída.
+            if (q.ofreceApp) setShowInstall(true)
+            handleSend(q.pregunta, q.respuesta)
+          }} />
         <div className="flex items-center gap-2">
           <input
             value={input}

@@ -9,6 +9,7 @@ import { stageVigente } from '../../lib/order-stages'
 import { leerSesion, olvidarSesion, refrescarSesion } from '../../lib/sesion-comprador'
 import type { SesionComprador } from '../../lib/sesion-comprador'
 import { FirmaDeMarca } from '../../components/pedido/PedidoConfirmado'
+import BajoLaMarca from '../../components/pedido/BajoLaMarca'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -195,7 +196,7 @@ export default function MisPedidosPage() {
   return (
     <div className="min-h-screen" style={{ background: '#FFFDF5' }}>
       {/* Header */}
-      <div className="px-4 pt-10 pb-6" style={{ background: marca, color: tinta }}>
+      <div className="px-4 pt-10 pb-12" style={{ background: marca, color: tinta }}>
         <div className="max-w-[430px] mx-auto">
           <div className="flex items-center justify-between mb-4">
             {/* El logo apaisado solo, sin el nombre escrito al lado: la misma
@@ -248,6 +249,9 @@ export default function MisPedidosPage() {
           )}
         </div>
       </div>
+
+      {/* De la franja de la marca al claro, con la curva hacia abajo. */}
+      <BajoLaMarca fondo="#FFFDF5">
 
       {/* Welcome reward (once, when an imported customer activates). Apagada con
           el resto de la fidelización: anunciar puntos ganados donde no se enseña
@@ -346,6 +350,7 @@ export default function MisPedidosPage() {
           </div>
         )}
       </div>
+      </BajoLaMarca>
     </div>
   )
 }

@@ -10,8 +10,9 @@
 // Son CUATRO y cortas (la tarde del mismo día): van en dos columnas debajo del
 // hilo, dos filas en vez de tres, para devolverle pantalla a la conversación.
 // Cada pregunta tiene que caber en media pantalla de 360 px sin flecha: hasta
-// 18 caracteres. La pregunta también es el mensaje que entra al hilo, así que
-// se escribe como se escribe en un chat, no como un título.
+// 19 caracteres, medidos contra el ancho real de la celda. La pregunta también
+// es el mensaje que entra al hilo, así que se escribe como se escribe en un
+// chat, no como un título.
 //
 // Se derivan del pedido y de los `pasos` del ticket (los mismos de la tarjeta y
 // de /pedido/:token) y nunca se guardan: una respuesta guardada envejece. La
@@ -28,10 +29,37 @@ import type { PedidoDeLaTarjeta } from './tarjeta-del-pedido'
 export interface PreguntaRapida {
   pregunta: string
   respuesta: string
+  /** La respuesta acaba de prometer avisos al instante y quien pregunta
+   *  todavía no tiene la app: el chat le ofrece instalarla detrás de la
+   *  respuesta. Falso dentro de la app — ya la tiene. */
+  ofreceApp?: boolean
 }
 
 export interface PedidoConPreguntas extends PedidoDeLaTarjeta {
   agency_name?: string | null
+}
+
+export interface ContextoDePreguntas {
+  /** El comprador está en la app instalada (`isInstalled()`). Lo decide el
+   *  dispositivo, así que entra como dato: estas reglas siguen siendo puras. */
+  enApp?: boolean
+}
+
+/** Lo que se le agrega a «¿Cuándo llega?»: el aviso al instante es la razón
+ *  entera de instalar la app, y esa pregunta es donde se pregunta por él.
+ *  Dentro de la app no se ofrece nada — se le recuerda que ya lo tiene. */
+const AVISO = {
+  web: 'Instala nuestra app y los avisos de tu pedido te llegan al instante.',
+  app: 'Los avisos de tu pedido te llegan al instante con las notificaciones de la app.',
+} as const
+
+/** «¿Cuándo llega?», con la coleta del aviso puesta según dónde esté. */
+function conAviso(pregunta: string, respuesta: string, enApp: boolean): PreguntaRapida {
+  return {
+    pregunta,
+    respuesta: `${respuesta} ${enApp ? AVISO.app : AVISO.web}`,
+    ofreceApp: !enApp,
+  }
 }
 
 /** Índices de los pasos del ticket (`buildTicket`). */
@@ -58,13 +86,14 @@ const ENTREGADO: PreguntaRapida[] = [
 
 const PAGADO = 'Nada. Tu pedido está pagado por completo.'
 
-export function preguntasRapidas(p: PedidoConPreguntas, ticket: Ticket | null): PreguntaRapida[] {
+export function preguntasRapidas(p: PedidoConPreguntas, ticket: Ticket | null, ctx: ContextoDePreguntas = {}): PreguntaRapida[] {
   // Un pedido cerrado no tiene preguntas de seguimiento: lo que quede se
   // conversa.
   if (p.status === 'cancelado' || p.status === 'anulado') return []
   const etapa = stageVigente(p.stage)
   if (etapa === 'no_entregado') return []
 
+  const enApp = ctx.enApp === true
   const esRecojo = isPickupDispatch(p.dispatch_type)
   const pasos = ticket?.pasos ?? []
   const i = pasos.findIndex(s => s.estado === 'actual')
@@ -98,16 +127,15 @@ export function preguntasRapidas(p: PedidoConPreguntas, ticket: Ticket | null): 
 
   if (esRecojo) {
     const sede = donde?.value ?? agencia
-    const cuando: PreguntaRapida = etapa === 'validando' ? validando : {
-      pregunta: '¿Cuándo llega?',
-      respuesta: i <= PASO.PAGO
+    const cuando: PreguntaRapida = etapa === 'validando' ? validando : conAviso('¿Cuándo llega?',
+      i <= PASO.PAGO
         ? `Apenas confirmemos tu pago registramos tu envío en ${agencia} y te avisamos por aquí.`
         : i === PASO.PREPARANDO
           ? `Estamos registrando tu envío en ${agencia}. Te avisamos por aquí apenas salga tu guía.`
           : i === PASO.EN_CAMINO
             ? `Va en camino a ${sede}. ${pasos[i]?.detail ? `${pasos[i].detail} ` : ''}Te avisamos por aquí cuando llegue.`
             : `¡Ya llegó! Está en ${sede}, listo para que lo recojas.`,
-    }
+      enApp)
     const dondeRecojo: PreguntaRapida = {
       pregunta: '¿Dónde lo recojo?',
       respuesta: lugar
@@ -115,7 +143,7 @@ export function preguntasRapidas(p: PedidoConPreguntas, ticket: Ticket | null): 
         : `En tu agencia de ${agencia}. Te confirmamos la sede por aquí. Lleva tu DNI y tu clave de recojo.`,
     }
     const plata: PreguntaRapida = {
-      pregunta: '¿Cuánto me falta?',
+      pregunta: '¿Cuánto saldo debo?',
       respuesta: saldo <= 0
         ? PAGADO
         : puedePagarSaldo(p)
@@ -137,18 +165,17 @@ export function preguntasRapidas(p: PedidoConPreguntas, ticket: Ticket | null): 
   }
 
   const destino = donde?.value ?? 'tu dirección'
-  const cuando: PreguntaRapida = etapa === 'validando' ? validando : {
-    pregunta: '¿Cuándo llega?',
-    respuesta: i <= PASO.PAGO
+  const cuando: PreguntaRapida = etapa === 'validando' ? validando : conAviso('¿Cuándo llega?',
+    i <= PASO.PAGO
       ? 'Apenas confirmemos tu pago lo preparamos y te avisamos por aquí.'
       : i === PASO.PREPARANDO
         ? 'Lo estamos preparando. Te avisamos por aquí cuando salga el motorizado.'
         : i === PASO.EN_CAMINO
           ? `Va en camino a ${destino}. Te avisamos por aquí cuando esté por llegar.`
           : 'Ya está por llegar a tu dirección.',
-  }
+    enApp)
   const pago: PreguntaRapida = {
-    pregunta: '¿Cuánto me falta?',
+    pregunta: '¿Cuánto saldo debo?',
     respuesta: saldo > 0 ? `${soles(saldo)}, al recibir tu pedido.` : PAGADO,
   }
   // A dónde sale el motorizado: una dirección mal tipeada es la forma más

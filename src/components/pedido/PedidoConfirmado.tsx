@@ -39,6 +39,7 @@ import { Check, Download, ExternalLink, Smartphone, Wallet } from 'lucide-react'
 import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
 import { useStore } from '../../lib/store-context'
+import BajoLaMarca from './BajoLaMarca'
 import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { subscribePush } from '../../lib/push'
 import { useIsDesktop } from '../../lib/use-desktop'
@@ -70,7 +71,7 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
           El color llega hasta DEBAJO del ticket y ahí corta: la boleta se
           queda en su rectángulo blanco, recortada contra el color, y lo que
           viene después respira en blanco. */}
-      <div className="px-5 pt-5 pb-5 -mx-5" style={{ background: marca }}>
+      <div className="px-5 pt-5 pb-11 -mx-5" style={{ background: marca }}>
         <div className="flex justify-center mb-4">
           <FirmaDeMarca nombre={store.nombre} ancho={store.logo_wide_url} cuadrado={store.logo_url} tinta={tinta} />
         </div>
@@ -92,12 +93,16 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
       <TicketDelPedido ticket={ticket} orderCode={orderCode} />
       </div>
 
-      {/* ── El recorrido ── */}
-      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mt-5 mb-2 px-1">{COPY.doneTimelineTitle}</p>
-      <Recorrido pasos={ticket.pasos} />
+      {/* De la franja de la marca al blanco: la curva hacia abajo, y el `-mx-5`
+          con su `px-5` para que el panel llegue a los bordes como la franja. */}
+      <BajoLaMarca fondo="#fff" className="-mx-5 px-5">
+        {/* ── El recorrido ── */}
+        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 pt-5 mb-2 px-1">{COPY.doneTimelineTitle}</p>
+        <Recorrido pasos={ticket.pasos} />
 
-      {/* ── La app ── */}
-      <InstalarApp sessionId={sessionId} nombre={store.nombre} logo={store.logo_url} />
+        {/* ── La app ── */}
+        <InstalarApp sessionId={sessionId} nombre={store.nombre} logo={store.logo_url} />
+      </BajoLaMarca>
     </div>
   )
 }

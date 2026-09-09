@@ -10,6 +10,7 @@ import { stageVigente } from '../../lib/order-stages'
 import { mensajeDeGps, verificarDireccionPorGps } from '../../lib/gps'
 import { FirmaDeMarca, Recorrido, TicketDelPedido } from './PedidoConfirmado'
 import CancelarPedido from './CancelarPedido'
+import BajoLaMarca from './BajoLaMarca'
 
 // ─── «Ver pedido»: la hoja del ticket, desde el chat ─────────────────────────
 //
@@ -42,7 +43,7 @@ export default function DetalleDelPedido({ pedido, ticket, onClose, onPatch }: {
     <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: '#fff' }} role="dialog" aria-modal="true" aria-label="Tu pedido">
       <div className="max-w-[430px] mx-auto min-h-full">
         {/* La marca encabeza, y el color llega hasta debajo del ticket. */}
-        <div className="px-5 pt-4 pb-5" style={{ background: marca }}>
+        <div className="px-5 pt-4 pb-11" style={{ background: marca }}>
           <div className="flex items-center gap-3 mb-4">
             <button type="button" onClick={onClose} aria-label="Volver al chat"
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -56,10 +57,10 @@ export default function DetalleDelPedido({ pedido, ticket, onClose, onPatch }: {
           <TicketDelPedido ticket={ticket} orderCode={pedido.order_id} />
         </div>
 
-        <div className="px-5">
+        <BajoLaMarca fondo="#fff" className="px-5">
           {items.length > 1 && (
             <>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mt-5 mb-2 px-1">Productos</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 pt-5 mb-2 px-1">Productos</p>
               <ul className="rounded-2xl divide-y divide-gray-100" style={{ border: '1px solid #EAEAE5' }}>
                 {items.map((it, i) => (
                   <li key={i} className="flex items-center gap-2.5 px-3 py-2.5">
@@ -77,7 +78,7 @@ export default function DetalleDelPedido({ pedido, ticket, onClose, onPatch }: {
             </>
           )}
 
-          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mt-5 mb-2 px-1">{COPY.doneTimelineTitle}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 pt-5 mb-2 px-1">{COPY.doneTimelineTitle}</p>
           <Recorrido pasos={ticket.pasos} />
 
           {!esRecojo && <Ubicacion pedido={pedido} onPatch={onPatch} />}
@@ -86,7 +87,7 @@ export default function DetalleDelPedido({ pedido, ticket, onClose, onPatch }: {
             <CancelarPedido sessionId={pedido.id} onCancelado={() => { onPatch({ status: 'cancelado' }); onClose() }} />
           )}
           <div className="pb-8" />
-        </div>
+        </BajoLaMarca>
       </div>
     </div>
   )
