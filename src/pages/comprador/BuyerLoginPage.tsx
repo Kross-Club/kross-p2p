@@ -5,7 +5,7 @@ import { useStore, isPlatformHost } from '../../lib/store-context'
 import { guardarSesion } from '../../lib/sesion-comprador'
 import { textoSobre } from '../../lib/contraste'
 import {
-  SITIOS_FLOTANTES, estiloValido, fondoDeMarca, imagenesDeAcceso, vidrioDeMarca,
+  ESCENARIO, SITIOS_FLOTANTES, estiloValido, fondoDeMarca, imagenesDeAcceso, vidrioDeMarca,
 } from '../../lib/degradado'
 import type { SitioFlotante } from '../../lib/degradado'
 
@@ -191,9 +191,19 @@ export default function BuyerLoginPage() {
   return (
     <div className="relative min-h-dvh overflow-hidden flex items-center justify-center px-4" style={{ background: fondo }}>
 
-      {/* Los productos de la marca, meciéndose. `pointer-events: none` en
-          todos: una imagen que flota no puede comerse el toque de un botón. */}
-      {flotantes.map((src, i) => <Flotante key={src} src={src} sitio={SITIOS_FLOTANTES[i]} />)}
+      {/* Los productos de la marca, meciéndose dentro de un escenario acotado y
+          centrado sobre la tarjeta. `inset-0` con `m-auto` es lo que lo centra
+          en los dos ejes; los topes hacen que en un teléfono ocupe la pantalla
+          entera —como antes— y en un monitor se quede del tamaño de la
+          composición en vez de estirarse hasta los bordes.
+          `pointer-events: none`: una imagen que flota no puede comerse el toque
+          de un botón. */}
+      {flotantes.length > 0 && (
+        <div className="absolute inset-0 m-auto w-full h-full pointer-events-none"
+          style={{ maxWidth: ESCENARIO.ancho, maxHeight: ESCENARIO.alto }}>
+          {flotantes.map((src, i) => <Flotante key={src} src={src} sitio={SITIOS_FLOTANTES[i]} />)}
+        </div>
+      )}
 
       <div className="relative w-full max-w-[360px]" style={{ zIndex: 2 }}>
 

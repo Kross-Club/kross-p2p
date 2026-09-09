@@ -192,9 +192,17 @@ export function vidrioDeMarca(primario: string, secundario: string): Vidrio {
 //
 // La segunda es la única que pasa POR DETRÁS de la tarjeta, y por un costado:
 // es lo que hace visible el vidrio —sin nada detrás, un `backdrop-filter` no se
-// distingue de un fondo plano—. Las otras dos quedan lejos, arriba y abajo, y
-// además se recortan contra el borde de la pantalla para que se lean como parte
-// del fondo y no como tres productos apoyados en el aire.
+// distingue de un fondo plano—. Las otras dos quedan arriba y abajo, y se
+// recortan contra el borde del escenario para que se lean como parte del fondo
+// y no como tres productos apoyados en el aire.
+//
+// ⚠️ Los porcentajes son del ESCENARIO (`ESCENARIO`), no de la ventana. Con la
+// ventana de referencia, en un monitor de 1900 px un 46 % eran 874 px: los
+// productos salían gigantes y a un palmo de la tarjeta, con un vacío de color
+// en medio. El escenario está acotado y centrado, así que la misma cifra vale
+// en un teléfono y en un monitor — y las tres imágenes quedan siempre a la
+// misma distancia de la tarjeta, que es lo que hace que se lea como una sola
+// composición (09-set-2026).
 
 export interface SitioFlotante {
   estilo: Record<string, string | number>
@@ -208,11 +216,24 @@ export interface SitioFlotante {
   detras: boolean
 }
 
+/** El escenario donde se posicionan: acotado y centrado sobre la tarjeta. El
+ *  ancho deja un margen a cada lado del formulario (360 px) para que las
+ *  imágenes lo bordeen; el alto tapa cualquier teléfono, así que ahí siguen
+ *  sangrando de arriba abajo como antes. */
+export const ESCENARIO = { ancho: 560, alto: 880 }
+
 export const SITIOS_FLOTANTES: SitioFlotante[] = [
   // 1 · Arriba a la izquierda, mordiendo el borde.
   { estilo: { top: '4%', left: '-14%', width: '46%' }, ritmo: 11, altura: -20, deriva: 8, giro: 4, detras: false },
-  // 2 · La del costado, a la altura de la tarjeta: la que se ve por el vidrio.
-  { estilo: { top: '38%', right: '-20%', width: '58%' }, ritmo: 14, altura: -26, deriva: -10, giro: -5, detras: true },
+  // 2 · La del costado. Estaba a la altura del centro de la tarjeta y se la
+  // comía entera: quedaba una mancha borrosa detrás del vidrio y nada más.
+  // Ahora se ancla por ABAJO y no por arriba, y no en porcentaje sino en
+  // píxeles desde el centro: así su pie entra ~40 px por debajo del hombro del
+  // formulario —lo justo para que el vidrio se note— y ese solape es el mismo
+  // en un teléfono que en un monitor. Con un `top` en porcentaje no lo era: la
+  // imagen crece con el ancho del escenario, así que en pantallas distintas se
+  // hundía más o menos detrás de la tarjeta.
+  { estilo: { bottom: 'calc(50% + 42px)', right: '-18%', width: '54%' }, ritmo: 14, altura: -26, deriva: -10, giro: -5, detras: true },
   // 3 · Abajo a la izquierda, más chica: cierra la composición.
   { estilo: { bottom: '6%', left: '-8%', width: '38%' }, ritmo: 9, altura: 18, deriva: 10, giro: -3, detras: false },
 ]
