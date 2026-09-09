@@ -68,9 +68,11 @@ acceso de antes. Lo que falta, y no es código:
    variable en el cuerpo y el botón de copiar código.
 2. Guardar su nombre en `stores.wa_codigo_template` (`manage-store` lo acepta
    como superadmin).
-3. **Mirar el primer envío real.** El payload de una plantilla authentication no
-   se pudo probar contra Meta desde acá. Si falla, sale en *Panel → Conexiones*
-   como `WHATSAPP · codigo.enviar` con lo que respondió Meta.
+3. **Mirar el primer envío real.** ✅ Hecho el 09-set-2026 en la marca viva:
+   plantilla `codigo_acceso` aprobada, el bloque §48 corrido (con el arreglo del
+   `store_id` a `text` que entró en el #189), las cuatro funciones arriba y el
+   primer código llegó y abrió la sesión. Si en otra marca falla, sale en
+   *Panel → Conexiones* como `WHATSAPP · codigo.enviar` con lo que respondió Meta.
 
 **Y una cosa que sí conviene medir antes de encenderlo en una marca con
 volumen:** cuántos de sus compradores tienen un teléfono válido. Quien no lo
