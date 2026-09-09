@@ -784,6 +784,31 @@ Lo que cambió alrededor:
   los cinco minutos, porque ahora dice algo nuevo. Las reglas son puras y con pruebas en
   `lib/preguntas-rapidas.ts`.
 
+**Quinta vuelta (09-set-2026), la curva y la app.**
+
+- **La curva va hacia abajo, y ahora es una sola pieza.** Las cuatro pantallas del comprador
+  —«Mis pedidos», el chat, «Ver pedido» y la confirmación— arrancan con una franja del color de
+  la marca. La junta con el claro era un corte recto, y en el chat era peor: la franja llevaba
+  las esquinas redondeadas **abajo**, así que el claro trepaba por las esquinas y lo de abajo
+  parecía contener a lo de arriba. Se dio vuelta con `components/pedido/BajoLaMarca`: el panel
+  claro entra con las esquinas redondeadas **arriba** y metido bajo la franja, y el color queda
+  en las muescas. Solape y radio son iguales (24 px) para que la muesca caiga entera dentro del
+  color. ⚠️ El primer hijo del panel no puede traer `mt-*`: colapsaría con el solape y lo
+  anularía; va como `pt-*`.
+- **«¿Cuándo llega?» ofrece la app, y solo en la web.** La respuesta es la misma y se le agrega
+  una línea: en la web, *«Instala nuestra app y los avisos de tu pedido te llegan al instante»*,
+  y detrás de la respuesta entra al hilo la tarjeta de instalar —el botón en Android, **el video
+  de los cuatro toques** en iPhone, el mismo de la confirmación—. Dentro de la app instalada la
+  línea es otra, *«…te llegan al instante con las notificaciones de la app»*, y no se ofrece
+  nada: ya la tiene. Lo decide `isInstalled()` y entra a las reglas como el dato `enApp`, así que
+  siguen siendo puras y con pruebas. Ninguna otra pregunta ofrece la app: la tarjeta sale una vez.
+- **«¿Cuánto me falta?» pasa a «¿Cuánto saldo debo?»**, que es la palabra del negocio y la que el
+  comprador ve en el ticket. Es la pregunta más larga que existe, así que el ancho de la celda se
+  **midió** en vez de estimarse: a 360 px la caja del texto da 149 px y esa pregunta pide 146. De
+  ahí que el relleno del botón sea `px-1.5` y que la cuadrícula perdiera su `px-1` — con lo de
+  antes la caja daba 135 y se cortaba con puntos suspensivos. A 320 px, un tamaño de teléfono ya
+  raro, las dos más largas se recortan y se leen igual.
+
 ## El checkout multi-paso es el default
 
 Desde este cambio, la landing abre el checkout de 3 pasos. El viejo (`CheckoutQuiz`)

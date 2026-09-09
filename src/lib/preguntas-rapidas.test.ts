@@ -19,6 +19,11 @@ const domicilio = {
   dispatch_type: 'MOTORIZADO_LIMA', address: 'Av. Los Olivos 123', address_verified: true,
 }
 
+// Las dos coletas de «¿Cuándo llega?»: en la web se ofrece la app, dentro de
+// ella se le recuerda que ya la tiene.
+const AVISO_WEB = 'Instala nuestra app y los avisos de tu pedido te llegan al instante.'
+const AVISO_APP = 'Los avisos de tu pedido te llegan al instante con las notificaciones de la app.'
+
 const sede = { id: '12', name: 'JIRON ANCASH', address: 'JR. ANCASH MZ. B LT. 11', district: 'El Agustino', province: 'Lima' } as unknown as AgencyBranch
 
 function ticketDe(p: typeof recojo | typeof domicilio, extra: { fase?: string | null; guia?: boolean; branch?: AgencyBranch | null } = {}) {
@@ -37,8 +42,8 @@ function ticketDe(p: typeof recojo | typeof domicilio, extra: { fase?: string | 
 describe('preguntasRapidas', () => {
   it('recojo en camino con saldo: cuándo, dónde, cuánto falta y la clave, contestadas', () => {
     const qs = preguntasRapidas(recojo, ticketDe(recojo, { guia: true, fase: 'REGISTRADO', branch: sede }))
-    expect(qs.map(q => q.pregunta)).toEqual(['¿Cuándo llega?', '¿Dónde lo recojo?', '¿Cuánto me falta?', '¿Cuál es mi clave?'])
-    expect(qs[0].respuesta).toBe('Va en camino a Shalom · JIRON ANCASH. Te avisamos por aquí cuando llegue.')
+    expect(qs.map(q => q.pregunta)).toEqual(['¿Cuándo llega?', '¿Dónde lo recojo?', '¿Cuánto saldo debo?', '¿Cuál es mi clave?'])
+    expect(qs[0].respuesta).toBe(`Va en camino a Shalom · JIRON ANCASH. Te avisamos por aquí cuando llegue. ${AVISO_WEB}`)
     expect(qs[1].respuesta).toBe('En Shalom · JIRON ANCASH, JR. ANCASH MZ. B LT. 11, El Agustino. Lleva tu DNI y tu clave de recojo.')
     expect(qs[2].respuesta).toBe('Te falta S/ 6. Págalo con el botón «Pagar S/ 6 con Yape» de arriba y te llega tu clave de recojo.')
     expect(qs[3].respuesta).toBe('Te la enviamos por aquí apenas pagues el saldo.')
@@ -47,7 +52,7 @@ describe('preguntasRapidas', () => {
   it('llegó a la agencia y ya pagó: no debe nada y la clave se contesta', () => {
     const pagado = { ...recojo, saldo_verification: 'MATCHED', shalom_pickup_code: '4821' }
     const qs = preguntasRapidas(pagado, ticketDe(pagado, { guia: true, fase: 'EN_DESTINO', branch: sede }))
-    expect(qs[0].respuesta).toBe('¡Ya llegó! Está en Shalom · JIRON ANCASH, listo para que lo recojas.')
+    expect(qs[0].respuesta).toBe(`¡Ya llegó! Está en Shalom · JIRON ANCASH, listo para que lo recojas. ${AVISO_WEB}`)
     expect(qs[2].respuesta).toBe('Nada. Tu pedido está pagado por completo.')
     expect(qs[3]).toEqual({ pregunta: '¿Cuál es mi clave?', respuesta: 'Tu clave de recojo es 4821. Preséntala con tu DNI en el mostrador.' })
   })
@@ -62,7 +67,7 @@ describe('preguntasRapidas', () => {
     const v = { ...recojo, stage: 'validando', payment_verification: 'PENDING' }
     const qs = preguntasRapidas(v, ticketDe(v))
     expect(qs[0]).toEqual({ pregunta: '¿Ya llegó mi pago?', respuesta: 'Lo estamos validando. Apenas cruce te avisamos por aquí.' })
-    expect(qs[2].pregunta).toBe('¿Cuánto me falta?')
+    expect(qs[2].pregunta).toBe('¿Cuánto saldo debo?')
     expect(qs[2].respuesta).toBe('Te falta S/ 6. Te avisamos por aquí cuando puedas pagarlo.')
     expect(qs[3].respuesta).toBe('Te la enviamos por aquí apenas pagues el saldo.')
   })
@@ -74,8 +79,8 @@ describe('preguntasRapidas', () => {
 
   it('a domicilio: cuándo llega, cuánto falta, a dónde llega y cambiar la dirección', () => {
     const qs = preguntasRapidas(domicilio, ticketDe(domicilio))
-    expect(qs.map(q => q.pregunta)).toEqual(['¿Cuándo llega?', '¿Cuánto me falta?', '¿A dónde llega?', 'Cambiar dirección'])
-    expect(qs[0].respuesta).toBe('Lo estamos preparando. Te avisamos por aquí cuando salga el motorizado.')
+    expect(qs.map(q => q.pregunta)).toEqual(['¿Cuándo llega?', '¿Cuánto saldo debo?', '¿A dónde llega?', 'Cambiar dirección'])
+    expect(qs[0].respuesta).toBe(`Lo estamos preparando. Te avisamos por aquí cuando salga el motorizado. ${AVISO_WEB}`)
     expect(qs[1].respuesta).toBe('S/ 6, al recibir tu pedido.')
     expect(qs[2].respuesta).toBe('A Av. Los Olivos 123. Tu ubicación está verificada con GPS.')
   })
@@ -89,7 +94,7 @@ describe('preguntasRapidas', () => {
   it('a domicilio en camino y pagado por completo', () => {
     const v = { ...domicilio, advance_amount: 12 }
     const qs = preguntasRapidas(v, ticketDe(v, { fase: 'EN_TRANSITO' }))
-    expect(qs[0].respuesta).toBe('Va en camino a Av. Los Olivos 123. Te avisamos por aquí cuando esté por llegar.')
+    expect(qs[0].respuesta).toBe(`Va en camino a Av. Los Olivos 123. Te avisamos por aquí cuando esté por llegar. ${AVISO_WEB}`)
     expect(qs[1].respuesta).toBe('Nada. Tu pedido está pagado por completo.')
   })
 
@@ -113,7 +118,7 @@ describe('preguntasRapidas', () => {
     expect(preguntasRapidas({ ...recojo, stage: 'entregado' }, ticketDe(recojo))).toHaveLength(3)
   })
 
-  it('caben en media pantalla: ninguna pasa de 18 caracteres (entregado, la última va sola)', () => {
+  it('caben en media pantalla: ninguna pasa de 19 caracteres (entregado, la última va sola)', () => {
     const vivos = [
       preguntasRapidas(recojo, ticketDe(recojo, { guia: true })),
       preguntasRapidas({ ...recojo, saldo_verification: 'MATCHED', shalom_pickup_code: '4821' }, ticketDe(recojo, { guia: true })),
@@ -121,7 +126,34 @@ describe('preguntasRapidas', () => {
       preguntasRapidas(domicilio, ticketDe(domicilio)),
       preguntasRapidas({ ...recojo, stage: 'entregado' }, ticketDe(recojo)).slice(0, 2),
     ]
-    for (const q of vivos.flat()) expect(q.pregunta.length, q.pregunta).toBeLessThanOrEqual(18)
+    for (const q of vivos.flat()) expect(q.pregunta.length, q.pregunta).toBeLessThanOrEqual(19)
+  })
+
+  it('«¿Cuándo llega?» ofrece la app en la web y solo la nombra dentro de ella', () => {
+    const web = preguntasRapidas(recojo, ticketDe(recojo, { guia: true }))
+    expect(web[0].respuesta.endsWith(AVISO_WEB)).toBe(true)
+    expect(web[0].ofreceApp).toBe(true)
+    // Ninguna otra ofrece nada: la tarjeta de instalar sale una sola vez.
+    expect(web.slice(1).some(q => q.ofreceApp)).toBe(false)
+
+    const app = preguntasRapidas(recojo, ticketDe(recojo, { guia: true }), { enApp: true })
+    expect(app[0].respuesta.endsWith(AVISO_APP)).toBe(true)
+    expect(app[0].ofreceApp).toBe(false)
+    expect(app.map(q => q.pregunta)).toEqual(web.map(q => q.pregunta))
+  })
+
+  it('validando: la primera no es «¿Cuándo llega?», así que no ofrece la app', () => {
+    const v = { ...recojo, stage: 'validando', payment_verification: 'PENDING' }
+    for (const ctx of [{}, { enApp: true }]) {
+      const qs = preguntasRapidas(v, ticketDe(v), ctx)
+      expect(qs[0].respuesta).toBe('Lo estamos validando. Apenas cruce te avisamos por aquí.')
+      expect(qs.some(q => q.ofreceApp)).toBe(false)
+    }
+  })
+
+  it('entregado tampoco ofrece la app: lo que se pregunta ya es otra cosa', () => {
+    const v = { ...recojo, stage: 'entregado' }
+    expect(preguntasRapidas(v, ticketDe(v, { guia: true })).some(q => q.ofreceApp)).toBe(false)
   })
 })
 
