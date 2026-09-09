@@ -759,6 +759,31 @@ Lo que cambió alrededor:
   el pedido y nadie la puede atender a la hora en que suene. La atención es el chat. El
   número sigue en `stores.wa_display_phone` para lo que el vendedor configure.
 
+**Cuarta vuelta (09-set-2026), la cabecera y las preguntas.**
+
+- **Las dos cabeceras del comprador llevan el logo apaisado y nada más.** En «Mis pedidos» y
+  en el chat iba el cuadrado con el nombre escrito al lado —lo dice dos veces y peor, como ya
+  sabía el panel—; ahora las dos usan la firma del ticket (`FirmaDeMarca`), que sin apaisado
+  cae al cuadrado con el nombre. En el chat, además, iba «¡Hola Jhoann! En línea ahora» con un
+  punto verde fijo: prometía a alguien mirando la pantalla a cualquier hora. Ahora dice QUÉ chat
+  es —**Chat del pedido · ORD-…**, en una línea chica debajo del logo: al costado, con el
+  teléfono a la derecha, se partía en dos y el número se cortaba en 360 px— y quien atiende se
+  presenta en el hilo, encima de su burbuja, que es donde importa.
+- **Cuatro preguntas en dos columnas, no tres apiladas.** Las tres filas medían 132 px; la
+  cuadrícula, 78, y esa pantalla vuelve al hilo. Caben porque se acortaron a lo que entra en
+  media pantalla de 360 px sin flecha, hasta 18 caracteres: `¿Cuándo llega?`, `¿Dónde lo
+  recojo?`, `¿Cuánto me falta?`, `¿Cuál es mi clave?`; a domicilio `¿A dónde llega?` y `Cambiar
+  dirección`. La cuarta es lo que más se contestaba a mano: en agencia la clave de recojo —que
+  sin clave dice qué la suelta, el saldo o la guía— y a domicilio la dirección con la que sale el
+  motorizado, con el GPS verificado o el aviso de verificarlo. Entregado siguen siendo tres, y
+  la última va de lado a lado.
+- **La recién tocada se queda resaltada y apagada cinco minutos.** Dos toques seguidos metían
+  dos veces la misma respuesta al hilo. La marca se recuerda por pedido en el dispositivo
+  (`usePreguntasUsadas`, `localStorage`) y es de la pregunta **con su respuesta**: si el pedido
+  avanzó —cruzó el pago, salió la guía— la respuesta ya es otra y el botón se enciende antes de
+  los cinco minutos, porque ahora dice algo nuevo. Las reglas son puras y con pruebas en
+  `lib/preguntas-rapidas.ts`.
+
 ## El checkout multi-paso es el default
 
 Desde este cambio, la landing abre el checkout de 3 pasos. El viejo (`CheckoutQuiz`)

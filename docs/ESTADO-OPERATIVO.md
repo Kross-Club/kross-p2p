@@ -126,6 +126,10 @@ supabase functions deploy olva-lat-webhook --project-ref ofdjghntvmrdfjhazfvz
 
 Sin SQL. El front sale con Vercel al mergear.
 
+La cuarta vuelta de la misma tarde —las cabeceras con el logo apaisado, las cuatro
+preguntas en dos columnas y el enfriamiento de cinco minutos— es solo front: nada que
+desplegar.
+
 ### Instalar en iPhone: un video en vez de la lista · solo frontend (08-set-2026)
 
 En la confirmación del pedido, el bloque «¿te avisamos cuando llegue?» en iPhone ya no enseña
