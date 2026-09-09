@@ -21,6 +21,7 @@ import { useTicketDelPedido } from '../../components/pedido/useTicketDelPedido'
 import { useStore } from '../../lib/store-context'
 import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { preguntasRapidas } from '../../lib/preguntas-rapidas'
+import { guardarSesion, leerSesion } from '../../lib/sesion-comprador'
 import { useAltoVisible } from '../../lib/use-alto-visible'
 import OfferCard from '../../components/OfferCard'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -527,18 +528,17 @@ export default function OrderChatPage() {
         // Auto-login: if the buyer reached this chat from a link/push without a
         // session, log them in from the order's buyer so their home (Mis pedidos +
         // score) works on the back arrow AND the seller sees them as "En línea".
-        if (!localStorage.getItem('buyer_session') && s.buyer_id) {
+        // El `buyer_id` sale del propio pedido: quien está acá ya abrió el
+        // enlace que le mandamos a su WhatsApp, o sea que la prueba de que es
+        // él es el token de la URL. El servidor le abre sesión con su token,
+        // para que «Mis pedidos» refresque sin volver a pasar por esta puerta.
+        if (!leerSesion() && s.buyer_id) {
           fetch(`${BASE}/buyer-login`, {
             method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ buyer_id: s.buyer_id, store_id: s.store_id }),
           })
             .then(r => (r.ok ? r.json() : null))
-            .then(session => {
-              if (session?.buyer) {
-                localStorage.setItem('buyer_session', JSON.stringify(session))
-                window.dispatchEvent(new Event('buyer-session-changed'))
-              }
-            })
+            .then(sesion => { if (sesion?.buyer) guardarSesion(sesion) })
             .catch(() => {})
         }
         // Con la app instalada, los avisos del pedido se encienden solos. Si no

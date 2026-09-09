@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
     wa_enabled?: boolean
     wa_phone_number_id?: string
     wa_display_phone?: string
+    wa_codigo_template?: string
     wa_business_account_id?: string
     // Cobros — la cuenta de 360pay de la marca. SOLO por JWT
     // verificado (ver abajo): redirigir el cobro de una tienda es
@@ -166,7 +167,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
+      .select('id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -409,6 +410,12 @@ Deno.serve(async (req) => {
     if (isSuper && typeof body.wa_phone_number_id === 'string') patch.wa_phone_number_id = body.wa_phone_number_id.trim()
     if (isSuper && typeof body.wa_display_phone === 'string') patch.wa_display_phone = body.wa_display_phone.trim()
     if (isSuper && typeof body.wa_business_account_id === 'string') patch.wa_business_account_id = body.wa_business_account_id.trim()
+    // ⚠️ La plantilla del CÓDIGO DE ACCESO no es una config más: es el
+    // interruptor de la seguridad del comprador. En cuanto tiene nombre (con
+    // WhatsApp encendido y su número), `buyer-login` deja de aceptar el DNI a
+    // secas — ver `_shared/acceso-comprador.ts`. Vaciarla vuelve a abrir esa
+    // puerta, así que se toca con el mismo cuidado que las llaves de cobro.
+    if (isSuper && typeof body.wa_codigo_template === 'string') patch.wa_codigo_template = body.wa_codigo_template.trim()
 
     if (isSuper && typeof body.slug === 'string' && body.slug.trim()) {
       const slug = cleanSlug(body.slug)

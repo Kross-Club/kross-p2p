@@ -2225,3 +2225,60 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_session
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS slug_anterior text;
 CREATE INDEX IF NOT EXISTS idx_stores_slug_anterior
   ON stores(slug_anterior) WHERE slug_anterior IS NOT NULL;
+
+
+-- §48 · ENTRAR CON UN CÓDIGO, NO CON EL DNI A SECAS  (09-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- Hasta hoy, `/acceso` pedía el DNI y nada más, y `buyer-login` respondía con
+-- la ficha entera de la persona Y el `token` de cada pedido. Ese token abre el
+-- chat, la guía, la sede de recojo y —desde el mismo día— la CLAVE con la que
+-- se retira el paquete del mostrador. En Perú el DNI está en cada boleta: no
+-- es una contraseña. Quien supiera un DNI se llevaba el paquete.
+--
+-- Ahora se entra con un código de 6 dígitos que llega al WhatsApp YA GUARDADO
+-- para ese DNI. Las reglas (largo, vigencia, intentos, tope de pedidos) viven
+-- en `_shared/acceso-comprador.ts`, puras y con pruebas.
+--
+-- ⚠️ El interruptor es la PLANTILLA, no una casilla: en cuanto la marca tiene
+-- `wa_codigo_template` aprobada —con WhatsApp encendido y su número—, la puerta
+-- del DNI a secas se cierra sola. Mientras no la tenga, esa puerta sigue
+-- abierta, porque cerrarla sin un canal para mandar el código dejaría a la
+-- marca sin «Mis pedidos». Está anotado como deuda en ESTADO-OPERATIVO.md.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_codigo_template text;
+
+-- El código NO se guarda: se guarda su HMAC. Si la tabla se filtrara, seis
+-- dígitos en claro son seis dígitos regalados; con HMAC hace falta además la
+-- llave del servidor (`BUYER_CODE_PEPPER`, o la service role si no está).
+CREATE TABLE IF NOT EXISTS buyer_login_codes (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  buyer_id   uuid NOT NULL REFERENCES buyers(id) ON DELETE CASCADE,
+  store_id   uuid NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  code_hash  text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  attempts   integer NOT NULL DEFAULT 0,
+  used_at    timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+-- La consulta de siempre: el último código de este comprador. Y la misma sirve
+-- para contar los de la ventana, que es como se topea cuántos puede pedir.
+CREATE INDEX IF NOT EXISTS idx_buyer_login_codes_buyer
+  ON buyer_login_codes(buyer_id, created_at DESC);
+
+-- La sesión deja de ser el JSON crudo de `localStorage` —que cualquiera edita
+-- a mano para decir que es otro— y pasa a ser un token opaco que emite el
+-- servidor, con vencimiento y revocable borrando la fila.
+CREATE TABLE IF NOT EXISTS buyer_sessions (
+  token        text PRIMARY KEY,
+  buyer_id     uuid NOT NULL REFERENCES buyers(id) ON DELETE CASCADE,
+  store_id     uuid NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  expires_at   timestamptz NOT NULL,
+  last_seen_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_buyer_sessions_buyer ON buyer_sessions(buyer_id);
+
+-- Sin políticas: las dos son solo para las Edge Functions (service role). Un
+-- comprador que pudiera LEER `buyer_login_codes` no necesitaría el código.
+ALTER TABLE buyer_login_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE buyer_sessions    ENABLE ROW LEVEL SECURITY;

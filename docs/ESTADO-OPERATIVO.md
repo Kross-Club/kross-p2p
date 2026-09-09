@@ -34,22 +34,54 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-### ⚠️ Deuda abierta · entrar con el DNI a secas (09-set-2026)
+### Entrar con código por WhatsApp · SQL + 4 funciones + frontend (09-set-2026)
 
-**Cualquiera que sepa un DNI entra a la cuenta de esa persona en la tienda**: `buyer-login`
-pide DNI y nada más, y devuelve su ficha entera y el `token` de cada pedido, que abre el
-chat, la guía y la sede de recojo. Con la clave de recojo viajando al comprador (bloque de
-abajo), lo que se lleva quien entre ya no son solo datos: es el paquete.
+Cierra el agujero de entrar con el DNI a secas: cualquiera que supiera un DNI
+veía los pedidos de esa persona y, con la clave de recojo viajando al comprador,
+se llevaba su paquete. Ahora se entra con un código de 6 dígitos al WhatsApp ya
+guardado. Diseño completo en
+[`00-CORE-ARCHITECTURE.md` § Entrar con un código](./00-CORE-ARCHITECTURE.md).
 
-No hay parche pequeño: la salida es un **código de 6 dígitos por WhatsApp al teléfono ya
-guardado**, no una contraseña y no un magic link (el enlace abriría la sesión en el
-navegador in-app de WhatsApp, no en la app instalada). El análisis completo, con las reglas
-que lo hacen seguro y lo que cuesta, está en
-[`00-CORE-ARCHITECTURE.md` § Entrar con el DNI a secas](./00-CORE-ARCHITECTURE.md).
+**Orden del despliegue** (el SQL primero: las funciones nuevas leen esas tablas):
 
-**Lo destraba:** cotizar la plantilla *authentication* y que cada marca la apruebe en su
-WABA. Hasta entonces la puerta sigue abierta, y conviene saberlo antes de que entre la
-primera marca con volumen.
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: el bloque §48 de supabase/setup-kross.sql
+```
+
+```
+supabase functions deploy buyer-code-request --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy buyer-code-verify  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy buyer-login        --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store       --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**Opcional pero recomendado:** `BUYER_CODE_PEPPER` como secreto del proyecto (una
+cadena aleatoria larga). Sin él, el HMAC de los códigos usa la service role, que
+funciona pero mezcla dos secretos con vidas distintas.
+
+⚠️ **Esto NO cierra el agujero por sí solo.** El interruptor es la plantilla: la
+puerta del DNI se cierra sola cuando la marca tiene `wa_codigo_template` con
+WhatsApp encendido y su número. Mientras tanto sigue abierta, y el front cae al
+acceso de antes. Lo que falta, y no es código:
+
+1. Aprobar en la WABA de cada marca una plantilla **authentication** con una
+   variable en el cuerpo y el botón de copiar código.
+2. Guardar su nombre en `stores.wa_codigo_template` (`manage-store` lo acepta
+   como superadmin).
+3. **Mirar el primer envío real.** El payload de una plantilla authentication no
+   se pudo probar contra Meta desde acá. Si falla, sale en *Panel → Conexiones*
+   como `WHATSAPP · codigo.enviar` con lo que respondió Meta.
+
+**Y una cosa que sí conviene medir antes de encenderlo en una marca con
+volumen:** cuántos de sus compradores tienen un teléfono válido. Quien no lo
+tenga pierde «Mis pedidos» hasta que se lo corrijan — su pedido se sigue
+abriendo con el enlace del chat, que es como llega casi todo el mundo.
+
+```sql
+select count(*) filter (where coalesce(phone,'') = '') as sin_telefono,
+       count(*) as compradores
+from buyers where store_id = '<id de la marca>';
+```
 
 ### El chat del comprador, en tres cosas · 1 función + frontend (09-set-2026)
 

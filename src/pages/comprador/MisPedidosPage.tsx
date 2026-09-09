@@ -6,6 +6,8 @@ import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { supabase } from '../../lib/supabase'
 import { useStore } from '../../lib/store-context'
 import { stageVigente } from '../../lib/order-stages'
+import { leerSesion, olvidarSesion, refrescarSesion } from '../../lib/sesion-comprador'
+import type { SesionComprador } from '../../lib/sesion-comprador'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -43,35 +45,10 @@ const STAGE_COLOR: Record<string, string> = {
   cancelado:  '#EF4444',
 }
 
-interface BuyerSession {
-  buyer: {
-    id: string
-    nombre: string
-    phone: string
-    document_number?: string
-    score: number
-    puntos: number
-    address: string | null
-  }
-  sessions: Array<{
-    id: string
-    token: string
-    order_id: string
-    product_name: string
-    product_price: number
-    pack_name: string | null
-    stage: string
-    status: string
-    created_at: string
-    address: string | null
-    unread_count?: number
-  }>
-}
-
 export default function MisPedidosPage() {
   const navigate = useNavigate()
   const { store } = useStore()
-  const [data, setData] = useState<BuyerSession | null>(null)
+  const [data, setData] = useState<SesionComprador | null>(null)
 
   const [notifGranted, setNotifGranted] = useState(notifPermission() === 'granted')
   const [welcome, setWelcome] = useState<{ points: number; msg: string | null } | null>(() => {
@@ -82,34 +59,44 @@ export default function MisPedidosPage() {
   const seenRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    const raw = localStorage.getItem('buyer_session')
-    if (!raw) { navigate('/acceso', { replace: true }); return }
-    let parsed: BuyerSession
-    try {
-      parsed = JSON.parse(raw)
-      setData(parsed)
-      if (parsed.buyer?.id && notifPermission() === 'granted') {
-        subscribePush({ buyerId: parsed.buyer.id, role: 'buyer' as const }).catch(() => {})
-      }
-    } catch { navigate('/acceso', { replace: true }); return }
-
-    // Refresh from the server so cancellations, stages and unread are up to date
-    const doc = parsed.buyer?.document_number
-    if (doc) {
-      fetch(`${BASE}/buyer-login`, {
-        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document_number: doc, store_id: store.id }),
-      })
-        .then(r => (r.ok ? r.json() : null))
-        .then(fresh => {
-          if (fresh?.buyer) {
-            setData(fresh)
-            try { localStorage.setItem('buyer_session', JSON.stringify(fresh)) } catch { /* */ }
-          }
-        })
-        .catch(() => {})
+    const guardada = leerSesion()
+    if (!guardada) { navigate('/acceso', { replace: true }); return }
+    setData(guardada)
+    if (notifPermission() === 'granted') {
+      subscribePush({ buyerId: guardada.buyer.id, role: 'buyer' as const }).catch(() => {})
     }
-  }, [navigate])
+
+    // Refrescar con el TOKEN de sesión, no con el DNI: el DNI dejó de ser una
+    // llave (ver `_shared/acceso-comprador.ts`). Una sesión de antes del cambio
+    // no lo tiene; ahí se pide con el DNI y, si la marca ya manda códigos, el
+    // servidor responde 403 y toca volver a entrar. Es un solo reingreso.
+    const cuerpo = guardada.session_token
+      ? { session_token: guardada.session_token }
+      : { document_number: guardada.buyer.document_number, store_id: store.id }
+    // La rama vieja necesita la tienda, y `store.id` llega un tick después de
+    // montar: sin esperar, el primer intento salía sin tienda y moría en 400.
+    if (!guardada.session_token && !store.id) return
+    fetch(`${BASE}/buyer-login`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo),
+    })
+      .then(async r => {
+        if (r.status === 401 || r.status === 403) {
+          olvidarSesion()
+          navigate('/acceso', { replace: true })
+          return null
+        }
+        return r.ok ? r.json() : null
+      })
+      .then(fresh => {
+        if (!fresh?.buyer) return
+        // El token nuevo si vino; si no, el que ya teníamos.
+        const nueva = { ...fresh, session_token: fresh.session_token ?? guardada.session_token ?? null }
+        setData(nueva)
+        refrescarSesion(nueva)
+      })
+      .catch(() => {})
+  }, [navigate, store.id])
 
   // Live unread: bump the counter when the seller writes, in real time
   const sessionIds = (data?.sessions ?? []).map(s => s.id).join(',')
@@ -132,10 +119,9 @@ export default function MisPedidosPage() {
   }, [sessionIds])
 
   const enableNotifications = async () => {
-    const raw = localStorage.getItem('buyer_session')
-    if (!raw) return
-    const { buyer } = JSON.parse(raw)
-    const ok = await subscribePush({ buyerId: buyer.id, role: 'buyer' as const })
+    const s = leerSesion()
+    if (!s) return
+    const ok = await subscribePush({ buyerId: s.buyer.id, role: 'buyer' as const })
     if (ok) setNotifGranted(true)
   }
 
@@ -146,15 +132,23 @@ export default function MisPedidosPage() {
       if (!d) return d
       const sessions = d.sessions.map(x => x.id === s.id ? { ...x, unread_count: 0 } : x)
       const nd = { ...d, sessions }
-      try { localStorage.setItem('buyer_session', JSON.stringify(nd)) } catch { /* ignore */ }
+      refrescarSesion(nd)
       return nd
     })
     navigate(`/p/${s.token}`)
   }
 
+  // Cerrar sesión invalida el token en el SERVIDOR. Borrarlo solo de este
+  // dispositivo dejaría la cuenta abierta desde cualquier otro que lo tuviera.
   const logout = () => {
-    localStorage.removeItem('buyer_session')
-    window.dispatchEvent(new Event('buyer-session-changed'))
+    const token = leerSesion()?.session_token
+    if (token) {
+      fetch(`${BASE}/buyer-login`, {
+        method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logout: true, session_token: token }),
+      }).catch(() => {})
+    }
+    olvidarSesion()
     navigate('/acceso', { replace: true })
   }
 
