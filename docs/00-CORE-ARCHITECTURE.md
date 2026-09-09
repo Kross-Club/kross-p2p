@@ -590,6 +590,25 @@ más se da y que más duele —el CNAME puesto y el dominio sin dar de alta en e
 certificado y el navegador enseña una advertencia de seguridad antes de cualquier página—. Una
 comprobación que aprueba eso es peor que ninguna.
 
+### El raíz y el `www` son el mismo negocio
+
+Para el DNS son hosts distintos; para cualquier persona, la misma tienda. Y **cuál de los dos termina
+sirviendo la app no lo decide el panel: lo decide el hosting**, que redirige uno al otro según cuál se
+marcó como principal. Guardar `monoshop.fit` y que el hosting sirva `www.monoshop.fit` dejaba al
+comprador en la marca genérica de Kross — la tienda existía y no se encontraba.
+
+Por eso se buscan los **dos** (`variantesDeDominio`, una sola consulta con `IN`), en el frontend, en el
+manifiesto y al comprobar que nadie más lo tenga. Da igual cuál se escriba en el panel.
+
+**El DNS de un dominio raíz son dos registros**, y el panel los enseña tal cual:
+
+| Tipo | Nombre | Valor |
+|---|---|---|
+| A | `@` | `76.76.21.21` |
+| CNAME | `www` | `cname.vercel-dns.com` |
+
+Para un subdominio suelto (`tienda.sumarca.pe`) es uno solo: `CNAME` → `cname.vercel-dns.com`.
+
 ### Lo que NO hace el código
 
 - **Dar el dominio de alta en el hosting.** El CNAME por sí solo no alcanza: sin el alta no existe el

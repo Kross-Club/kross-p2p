@@ -7,7 +7,7 @@
 // revés—. Una sola definición, dos consumidores. El precedente es `alcance.ts`.
 
 export {
-  APEX, baseDeLaTienda, comoResolver, esHostDePlataforma, normalizarDominio,
+  APEX, baseDeLaTienda, comoResolver, esHostDePlataforma, normalizarDominio, variantesDeDominio,
 } from '../../supabase/functions/_shared/tienda-url.ts'
 export type {
   Dominio, DominioInvalido, DominioValido, Resolucion, TiendaConDominio,

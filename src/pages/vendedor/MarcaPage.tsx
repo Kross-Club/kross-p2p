@@ -877,20 +877,41 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
 
             <div className="mb-4 rounded-xl px-3 py-2.5 text-[10px] leading-relaxed"
               style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
-              <b>Cómo se enciende, en dos pasos.</b> Guarda el dominio acá y, en el DNS del cliente:
-              <ul className="mt-1 space-y-0.5 list-disc pl-4">
-                <li>Un subdominio (<span className="font-mono">tienda.sumarca.pe</span>): <b>CNAME</b> → <span className="font-mono">cname.vercel-dns.com</span></li>
-                <li>El dominio raíz (<span className="font-mono">sumarca.pe</span>): <b>A</b> → <span className="font-mono">76.76.21.21</span></li>
-              </ul>
-              <p className="mt-1.5">
-                Después hay que <b>dar el dominio de alta en el proyecto del hosting</b>, que es lo que
-                emite su certificado. Sin ese paso el navegador enseña una advertencia de seguridad
-                antes de cualquier página, así que <b>Comprobar</b> no lo da por bueno.
+              <b>Los dos registros del DNS.</b> Para el dominio raíz —<span className="font-mono">sumarca.pe</span>—
+              van los dos, y el segundo es el que hace que <span className="font-mono">www</span> también entre:
+              <table className="w-full mt-1.5 mb-1 font-mono text-[10px]">
+                <thead><tr style={{ color: 'var(--text-faint)' }}>
+                  <th className="text-left font-bold pb-0.5">Tipo</th>
+                  <th className="text-left font-bold pb-0.5">Nombre</th>
+                  <th className="text-left font-bold pb-0.5">Valor</th>
+                </tr></thead>
+                <tbody style={{ color: 'var(--text)' }}>
+                  <tr><td className="pr-2">A</td><td className="pr-2">@</td><td>76.76.21.21</td></tr>
+                  <tr><td className="pr-2">CNAME</td><td className="pr-2">www</td><td>cname.vercel-dns.com</td></tr>
+                </tbody>
+              </table>
+              <p>
+                <b>@</b> significa «el dominio a secas», sin nada delante. Si en vez del raíz quieres solo
+                un subdominio (<span className="font-mono">tienda.sumarca.pe</span>), es un único registro:
+                <b> CNAME</b>, nombre <span className="font-mono">tienda</span>, valor{' '}
+                <span className="font-mono">cname.vercel-dns.com</span>.
               </p>
               <p className="mt-1.5">
-                Hasta que diga <b>Verificado</b>, los enlaces que se manden por WhatsApp y SMS siguen
-                saliendo con <span className="font-mono">{slug}.{APEX}</span>, que nunca deja de atender.
-                El subdominio sigue funcionando siempre.
+                <b>TTL:</b> el más bajo que ofrezca el registrador — media hora está bien. Es cuánto se
+                queda cacheado el valor viejo si hay que corregirlo, así que mientras se prueba conviene
+                corto. Después se puede subir.
+              </p>
+              <p className="mt-1.5">
+                Con eso <b>no basta</b>: hay que <b>dar el dominio de alta en el proyecto del hosting</b>
+                {' '}—los dos, el raíz y el <span className="font-mono">www</span>—, que es lo que emite su
+                certificado. Sin ese paso el navegador enseña una advertencia de seguridad antes de
+                cualquier página, así que <b>Comprobar</b> no lo da por bueno.
+              </p>
+              <p className="mt-1.5">
+                Da igual si acá escribes el raíz o el <span className="font-mono">www</span>: los dos
+                encuentran esta tienda. Y hasta que diga <b>Verificado</b>, los enlaces que se manden por
+                WhatsApp y SMS siguen saliendo con <span className="font-mono">{slug}.{APEX}</span>, que
+                nunca deja de atender. El subdominio sigue funcionando siempre.
               </p>
             </div>
           </>
