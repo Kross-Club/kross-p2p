@@ -36,6 +36,31 @@ function cleanSlug(raw: string): string {
 
 const RESERVED = new Set(['www', 'app', 'api', 'admin', 'kross', 'krossclub', 'mail', 'assets'])
 
+/** Los cuatro estilos de degradado que existen (§49). Si llega otro, se ignora:
+ *  un valor inventado pinta un `linear-gradient` roto en la cara del comprador. */
+const ESTILOS_DE_DEGRADADO = ['vertical', 'horizontal', 'diagonal', 'aleatorio']
+
+/**
+ * ¿Esta URL es una imagen de NUESTRO bucket público de branding?
+ *
+ * Las imágenes del acceso las sube el panel al storage de este proyecto y
+ * manda su URL. Guardar cualquier URL que llegue convertiría la pantalla de
+ * entrar en un sitio donde un tercero sirve imágenes bajo el nombre de la
+ * marca —y una imagen remota es un pixel que ve la IP de cada comprador que
+ * abre su acceso—. Se compara contra el `SUPABASE_URL` del propio proyecto,
+ * así que no hay lista de dominios que mantener.
+ */
+function esUrlDeBranding(url: string): boolean {
+  const base = Deno.env.get('SUPABASE_URL') ?? ''
+  if (!base) return false
+  try {
+    const u = new URL(url)
+    return u.origin === new URL(base).origin && u.pathname.includes('/storage/v1/object/public/branding/')
+  } catch {
+    return false
+  }
+}
+
 /**
  * ¿Este subdominio ya lo usa alguien? Cuenta el ACTUAL y el ANTERIOR (§47).
  *
@@ -75,7 +100,12 @@ Deno.serve(async (req) => {
     notif_icon_url?: string | null
     logo_wide_url?: string | null
     color_primary?: string
+    /** El SECUNDARIO de la marca (§49). El nombre de la columna es el viejo. */
     color_dark?: string
+    /** Cómo se inclina el degradado: vertical | horizontal | diagonal | aleatorio. */
+    gradient_style?: string
+    /** Hasta tres PNG que flotan en `/acceso`. URLs del bucket `branding`. */
+    login_images?: unknown
     active?: boolean
     /** delete: el `slug` de la tienda, tecleado por quien borra. Ver la acción. */
     confirmar?: string
@@ -167,7 +197,7 @@ Deno.serve(async (req) => {
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
     const q = supabase.from('stores')
-      .select('id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
+      .select('id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, gradient_style, login_images, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
       .order('created_at', { ascending: true })
     if (!isSuper) q.eq('id', me.store_id)
     const { data, error } = await q
@@ -391,6 +421,19 @@ Deno.serve(async (req) => {
     if (typeof body.winback_days === 'number') patch.winback_days = Math.max(1, Math.floor(body.winback_days))
     if (typeof body.color_primary === 'string') patch.color_primary = body.color_primary
     if (typeof body.color_dark === 'string') patch.color_dark = body.color_dark
+    // El estilo del degradado se valida contra la lista: lo que no está en ella
+    // pintaría un `linear-gradient` roto en la cara del comprador.
+    if (typeof body.gradient_style === 'string' && ESTILOS_DE_DEGRADADO.includes(body.gradient_style)) {
+      patch.gradient_style = body.gradient_style
+    }
+    // Las imágenes del acceso: hasta tres URLs, y solo del storage de ESTE
+    // proyecto. Una URL cualquiera acá es una imagen ajena servida como si
+    // fuera de la marca, y un pixel de rastreo en la pantalla de entrar.
+    if (Array.isArray(body.login_images)) {
+      patch.login_images = body.login_images
+        .filter((u: unknown): u is string => typeof u === 'string' && esUrlDeBranding(u))
+        .slice(0, 3)
+    }
     // Apagar una marca detiene su app ese mismo segundo, y por eso es de quien
     // administra la plataforma y no del admin de la marca. Pero **se deshace
     // tocando otra vez**, así que no hace falta más ceremonia: el operador

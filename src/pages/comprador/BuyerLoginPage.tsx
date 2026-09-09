@@ -4,6 +4,10 @@ import { KrossIcon } from '../../components/KrossLogo'
 import { useStore, isPlatformHost } from '../../lib/store-context'
 import { guardarSesion } from '../../lib/sesion-comprador'
 import { textoSobre } from '../../lib/contraste'
+import {
+  SITIOS_FLOTANTES, estiloValido, fondoDeMarca, imagenesDeAcceso, vidrioDeMarca,
+} from '../../lib/degradado'
+import type { SitioFlotante } from '../../lib/degradado'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -24,12 +28,23 @@ const cabeceras = { Authorization: `Bearer ${ANON}`, 'Content-Type': 'applicatio
 // `modo: 'directo'` y se entra como antes — con el agujero abierto, que es
 // mejor que dejar a esa marca sin sus pedidos. Se cierra aprobando la plantilla.
 //
-// Se pinta sobre el ink de Kross (manual §4.1), no sobre el azul marino de la
-// etapa anterior: es la única pantalla del comprador que no lleva el color de
-// la marca de fondo, porque su marca ya está arriba, en su logo apaisado, y
-// abajo, en el botón. Sin el nombre repetido y sin la puerta del vendedor —
-// quien vende entra por /login, y ofrecérselo acá a cada comprador solo
-// confunde (09-set-2026).
+// El fondo es de LA MARCA (09-set-2026, segunda pasada): el degradado de sus
+// dos colores, con la inclinación que eligió en el panel. Estuvo unas horas
+// sobre el ink de Kross y era la única pantalla del comprador que no llevaba su
+// color; en la primera pantalla de una app white-label eso es justo lo que no
+// puede pasar.
+//
+// Encima, una tarjeta de VIDRIO. El desenfoque solo no garantiza que se lea
+// nada —deja pasar la claridad de lo de atrás—, así que el vidrio lleva su velo
+// y su tinta decididos por contraste contra el degradado (`vidrioDeMarca`).
+//
+// Y detrás flotan los productos que subió la marca. Uno pasa POR DEBAJO de la
+// tarjeta y por un costado: sin nada detrás, un vidrio no se distingue de un
+// fondo plano. Sin imágenes subidas la pantalla queda igual de bien, solo más
+// sobria — no se inventa ninguna.
+//
+// Sin el nombre repetido y sin la puerta del vendedor — quien vende entra por
+// /login, y ofrecérselo acá a cada comprador solo confunde.
 
 /** Segundos antes de poder pedir otro código. */
 const REENVIO_S = 30
@@ -157,42 +172,66 @@ export default function BuyerLoginPage() {
 
   const marca = store.color_primary || '#55C8F5'
   const tinta = textoSobre(marca)
-  const etiqueta = { color: 'var(--k-text-3)' }
-  const campo = {
-    background: 'var(--k-surface-2)', border: '1px solid var(--k-structural)', color: 'var(--k-bone)',
+  // El fondo: los dos colores de la marca, con su inclinación. La semilla del
+  // ángulo «aleatorio» es el id de la tienda, así que es el mismo siempre.
+  const fondo = fondoDeMarca(marca, store.color_dark || marca, estiloValido(store.gradient_style), store.id ?? store.slug ?? '')
+  const vidrio = vidrioDeMarca(marca, store.color_dark || marca)
+  const flotantes = imagenesDeAcceso(store.login_images)
+  // Una sombra apenas perceptible: despega el PNG del degradado sin dibujarle
+  // el rectángulo que se acaba de quitar. Más marcada sobre un fondo oscuro,
+  // donde un logo de tinta clara se funde antes.
+  const sombraDelLogo = {
+    filter: vidrio.claro
+      ? 'drop-shadow(0 6px 18px rgba(0,0,0,0.35))'
+      : 'drop-shadow(0 6px 16px rgba(15,17,21,0.20))',
   }
+  const etiqueta = { color: vidrio.tintaSuave }
+  const campo = { background: vidrio.campo, border: vidrio.bordeCampo, color: vidrio.tinta }
 
   return (
-    <div className="min-h-dvh flex items-center justify-center px-4" style={{ background: 'var(--k-ink)' }}>
-      <div className="w-full max-w-[360px]">
+    <div className="relative min-h-dvh overflow-hidden flex items-center justify-center px-4" style={{ background: fondo }}>
+
+      {/* Los productos de la marca, meciéndose. `pointer-events: none` en
+          todos: una imagen que flota no puede comerse el toque de un botón. */}
+      {flotantes.map((src, i) => <Flotante key={src} src={src} sitio={SITIOS_FLOTANTES[i]} />)}
+
+      <div className="relative w-full max-w-[360px]" style={{ zIndex: 2 }}>
 
         {/* La marca, arriba y sola: el logo apaisado si lo tiene —un lockup ya
             trae el nombre como la marca quiere que se lea—, si no el cuadrado.
             Sin el nombre escrito debajo: repetirlo lo dice dos veces y peor.
-            Va sobre una placa del color de la marca, como en el menú del panel
-            (`BrandMark`): un logo con tinta oscura y fondo transparente se
-            perdería sobre el ink, y la placa es lo que lo sostiene. */}
+
+            Y va SIN placa (09-set-2026): el fondo ya es el color de la marca,
+            así que el rectángulo de atrás solo recortaba un bloque plano sobre
+            su propio color — justo el borde que un logo en PNG viene a no
+            tener. Lo único que queda es una sombra muy suave, que es lo que
+            despega un PNG transparente del degradado sin dibujarle una caja. */}
         <div className="flex justify-center mb-8">
           {store.logo_wide_url ? (
-            <div className="w-full max-w-[240px] h-14 rounded-xl overflow-hidden flex items-center justify-center"
-              style={{ background: marca }}>
-              <img src={store.logo_wide_url} alt={store.nombre} className="w-full h-full object-contain" />
-            </div>
+            <img src={store.logo_wide_url} alt={store.nombre}
+              className="h-14 max-w-[240px] object-contain" style={sombraDelLogo} />
           ) : store.logo_url ? (
-            <div className="w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center" style={{ background: marca }}>
-              <img src={store.logo_url} alt={store.nombre} className="w-full h-full object-contain" />
-            </div>
+            <img src={store.logo_url} alt={store.nombre}
+              className="w-20 h-20 object-contain" style={sombraDelLogo} />
           ) : (
             <KrossIcon size={64} />
           )}
         </div>
 
-        <div className="rounded-3xl p-6" style={{ background: 'var(--k-surface-1)', border: '1px solid rgba(255,255,255,0.09)' }}>
+        <div className="rounded-3xl p-6" style={{
+          background: vidrio.fondo,
+          border: vidrio.borde,
+          boxShadow: vidrio.sombra,
+          // `-webkit-` incluido: es lo único que desenfoca en el Safari de un
+          // iPhone, que es donde vive la mitad de estos compradores.
+          backdropFilter: 'blur(18px) saturate(140%)',
+          WebkitBackdropFilter: 'blur(18px) saturate(140%)',
+        }}>
 
           {paso === 'dni' ? (
             <>
-              <h2 className="font-black text-xl mb-1" style={{ color: 'var(--k-bone)' }}>Mis pedidos</h2>
-              <p className="text-sm mb-5" style={{ color: 'var(--k-text-2)' }}>
+              <h2 className="font-black text-xl mb-1" style={{ color: vidrio.tinta }}>Mis pedidos</h2>
+              <p className="text-sm mb-5" style={{ color: vidrio.tintaSuave }}>
                 Ingresa tu DNI y te enviamos un código por WhatsApp
               </p>
 
@@ -209,7 +248,7 @@ export default function BuyerLoginPage() {
                   />
                 </div>
 
-                {error && <p className="text-xs font-semibold text-center" style={{ color: 'var(--k-alert-fg)' }}>{error}</p>}
+                {error && <p className="text-xs font-semibold text-center" style={{ color: vidrio.claro ? 'var(--k-alert-fg)' : '#B91C1C' }}>{error}</p>}
 
                 <button type="submit" disabled={loading || docNumber.length !== 8}
                   className="w-full py-3.5 rounded-2xl font-black text-sm mt-1 transition-all"
@@ -220,9 +259,9 @@ export default function BuyerLoginPage() {
             </>
           ) : (
             <>
-              <h2 className="font-black text-xl mb-1" style={{ color: 'var(--k-bone)' }}>Revisa tu WhatsApp</h2>
-              <p className="text-sm mb-5" style={{ color: 'var(--k-text-2)' }}>
-                Si el DNI está registrado, te enviamos un código de 6 dígitos al número de tu cuenta.
+              <h2 className="font-black text-xl mb-1" style={{ color: vidrio.tinta }}>Revisa tu WhatsApp</h2>
+              <p className="text-sm mb-5" style={{ color: vidrio.tintaSuave }}>
+                Si el DNI está registrado, te enviamos un código de 6 dígitos a tu WhatsApp.
               </p>
 
               <form onSubmit={verificar} className="flex flex-col gap-3">
@@ -239,7 +278,7 @@ export default function BuyerLoginPage() {
                   />
                 </div>
 
-                {error && <p className="text-xs font-semibold text-center" style={{ color: 'var(--k-alert-fg)' }}>{error}</p>}
+                {error && <p className="text-xs font-semibold text-center" style={{ color: vidrio.claro ? 'var(--k-alert-fg)' : '#B91C1C' }}>{error}</p>}
 
                 <button type="submit" disabled={loading || codigo.length !== 6}
                   className="w-full py-3.5 rounded-2xl font-black text-sm mt-1 transition-all"
@@ -250,11 +289,11 @@ export default function BuyerLoginPage() {
 
               <div className="flex items-center justify-between mt-4">
                 <button type="button" onClick={() => { setPaso('dni'); setCodigo(''); setError('') }}
-                  className="text-xs font-bold" style={{ color: 'var(--k-text-3)' }}>
+                  className="text-xs font-bold" style={{ color: vidrio.tintaSuave }}>
                   ← Cambiar DNI
                 </button>
                 <button type="button" disabled={espera > 0 || loading} onClick={() => pedirCodigo()}
-                  className="text-xs font-bold disabled:opacity-40" style={{ color: marca }}>
+                  className="text-xs font-bold underline disabled:opacity-40" style={{ color: vidrio.tinta }}>
                   {espera > 0 ? `Reenviar en ${espera}s` : 'Reenviar código'}
                 </button>
               </div>
@@ -264,5 +303,41 @@ export default function BuyerLoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Uno de los productos que la marca subió, meciéndose en bucle.
+ *
+ * El sitio y el ritmo salen de `SITIOS_FLOTANTES`, no de quien sube la imagen:
+ * de eso depende que la pantalla se lea como un diseño y no como tres PNG
+ * apoyados en el aire. El del costado va DEBAJO de la tarjeta y es el que se ve
+ * a través del vidrio; los otros dos pasan por delante, mordiendo el borde de
+ * la pantalla, que es lo que da la sensación de profundidad.
+ *
+ * `aria-hidden` y `alt` vacío: son decoración. Un lector de pantalla leyendo
+ * «imagen» tres veces antes del campo del DNI estorba y no informa de nada.
+ */
+function Flotante({ src, sitio }: { src: string; sitio: SitioFlotante }) {
+  return (
+    <img
+      src={src}
+      alt=""
+      aria-hidden
+      loading="lazy"
+      className="k-flota absolute select-none"
+      style={{
+        ...sitio.estilo,
+        zIndex: sitio.detras ? 1 : 3,
+        pointerEvents: 'none',
+        // El filtro le da peso al producto sobre el color: sin sombra, un PNG
+        // recortado se ve pegado encima y no flotando.
+        filter: 'drop-shadow(0 18px 28px rgba(0,0,0,0.28))',
+        ['--ritmo' as string]: `${sitio.ritmo}s`,
+        ['--altura' as string]: `${sitio.altura}px`,
+        ['--deriva' as string]: `${sitio.deriva}px`,
+        ['--giro' as string]: `${sitio.giro}deg`,
+      }}
+    />
   )
 }

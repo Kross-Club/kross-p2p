@@ -133,6 +133,30 @@ desplegar.
 La quinta —la curva hacia abajo de las cuatro pantallas del comprador, la app ofrecida
 detrás de «¿Cuándo llega?» y «¿Cuánto saldo debo?»— también es solo front.
 
+### El secundario, el degradado y las imágenes del acceso · SQL + 1 función + frontend (09-set-2026)
+
+El «fondo oscuro» de una marca pasa a ser su **SECUNDARIO** y hace degradado con el primario:
+es lo que pinta `/acceso`, con la tarjeta de vidrio y hasta tres PNG de la marca flotando
+detrás. Diseño en [`00-CORE-ARCHITECTURE.md` § Los dos colores](./00-CORE-ARCHITECTURE.md).
+
+**Orden del despliegue** (el SQL primero, como siempre):
+
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: el bloque §49 de supabase/setup-kross.sql
+```
+
+```
+supabase functions deploy manage-store --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**Qué pasa si el front sale antes que el SQL:** nada. `store-context` pide las columnas nuevas
+y, si el proyecto todavía no las tiene, vuelve a pedir sin ellas — cada marca se ve como hoy y el
+degradado aparece el día que se corra el bloque. Sin ese respaldo, un despliegue adelantado
+dejaba a TODAS las tiendas con el celeste genérico de Kross.
+
+**Sin el deploy de `manage-store`**, el panel enseña el selector de degradado y los tres huecos de
+imagen, pero al guardar el servidor ignora esos tres campos: se ven, no se pegan.
+
 ### Instalar en iPhone: un video en vez de la lista · solo frontend (08-set-2026)
 
 En la confirmación del pedido, el bloque «¿te avisamos cuando llegue?» en iPhone ya no enseña

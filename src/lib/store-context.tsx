@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { hostConSlug } from './enlaces'
 import { supabase } from './supabase'
+import { textoSobre } from './contraste'
 
 export interface Store {
   id: string | null
@@ -11,7 +12,13 @@ export interface Store {
    *  se cae al cuadrado con el nombre escrito al lado. */
   logo_wide_url?: string | null
   color_primary: string
+  /** El SECUNDARIO de la marca (§49): hace degradado con el primario y es lo
+   *  que pinta el acceso del comprador. La columna conserva el nombre viejo. */
   color_dark: string
+  /** Cómo se inclina ese degradado. Ver `lib/degradado.ts`. */
+  gradient_style?: string | null
+  /** Hasta tres PNG que flotan en `/acceso`. */
+  login_images?: string[] | null
   /** Número visible de la marca (`stores.wa_display_phone`). La pantalla final
    *  del checkout lo ofrece como "llama a" — un teléfono es el respaldo de quien
    *  no va a volver a la app. Opcional: la caché por slug de antes no lo trae. */
@@ -63,6 +70,29 @@ function resolveSlug(): string | null {
   return null
 }
 
+// Las columnas de siempre y las del bloque §49, aparte.
+const CAMPOS = 'id, slug, nombre, logo_url, logo_wide_url, color_primary, color_dark, wa_display_phone'
+const CAMPOS_49 = 'gradient_style, login_images'
+
+/**
+ * La tienda de un subdominio, pidiendo primero las columnas nuevas.
+ *
+ * ⚠️ Si el SQL del bloque §49 todavía no se corrió, PostgREST no devuelve una
+ * fila sin esas columnas: devuelve un ERROR, y `data` llega en `null`. Sin este
+ * respaldo, un despliegue del front antes que el SQL —y el front sale solo al
+ * mergear— dejaría a TODAS las marcas pintadas con el celeste genérico de
+ * Kross, que es peor que no tener el degradado. Así el orden deja de importar:
+ * mientras falte el SQL se ve como antes, y el día que se corra aparece.
+ */
+async function traerTienda(columna: 'slug' | 'slug_anterior', slug: string): Promise<Store | null> {
+  const pedir = (campos: string) =>
+    supabase.from('stores').select(campos).eq(columna, slug).eq('active', true).maybeSingle()
+  const conNuevas = await pedir(`${CAMPOS}, ${CAMPOS_49}`)
+  if (!conNuevas.error) return (conNuevas.data as unknown as Store) ?? null
+  const { data } = await pedir(CAMPOS)
+  return (data as unknown as Store) ?? null
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const slug = resolveSlug()
   const initial = slug ? (cachedStore(slug) ?? NEUTRAL_STORE) : DEFAULT_STORE
@@ -72,18 +102,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyBranding(initial)
     if (!slug) { setLoading(false); return }
-    const CAMPOS = 'id, slug, nombre, logo_url, logo_wide_url, color_primary, color_dark, wa_display_phone'
-    supabase.from('stores').select(CAMPOS).eq('slug', slug).eq('active', true).maybeSingle()
-      .then(async ({ data }) => {
+    traerTienda('slug', slug)
+      .then(async data => {
         // El subdominio no resuelve a ninguna tienda: puede ser uno VIEJO, de
         // antes de que la marca se mudara (§47). Los enlaces ya mandados por
         // SMS y WhatsApp lo llevan, así que en vez de enseñarle al comprador la
         // marca genérica de Kross, se le lleva al subdominio nuevo con su misma
         // ruta — su pedido, su guía, lo que estuviera abriendo.
         if (!data) {
-          const { data: mudada } = await supabase.from('stores').select(CAMPOS)
-            .eq('slug_anterior', slug).eq('active', true).maybeSingle()
-          const destino = (mudada as Store | null)?.slug
+          const destino = (await traerTienda('slug_anterior', slug))?.slug
           const host = destino ? hostConSlug(window.location.hostname, destino) : null
           if (host) {
             const { protocol, pathname, search, hash } = window.location
@@ -91,7 +118,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return
           }
         }
-        const s = (data as Store) ?? DEFAULT_STORE
+        const s = data ?? DEFAULT_STORE
         setStore(s); applyBranding(s)
         setLoading(false)
         try { localStorage.setItem(`store:${slug}`, JSON.stringify(s)) } catch { /* ignore */ }
@@ -120,7 +147,11 @@ function applyBranding(s: Store) {
       // iOS uses this (not the manifest) for the home-screen name
       setMeta('apple-mobile-web-app-title', s.nombre)
     }
-    setMeta('theme-color', s.color_dark)
+    // La barra del navegador va del color PRIMARIO (§49). Iba del segundo, que
+    // se llamaba «fondo oscuro» y se podía dar por oscuro; ahora es el
+    // secundario y una marca puede ponerlo blanco. El primario es el color que
+    // encabeza todas las pantallas del comprador, así que es el que hace juego.
+    setMeta('theme-color', s.color_primary)
     if (s.logo_url) {
       setLink('apple-touch-icon', s.logo_url)
       setLink('icon', s.logo_url)
@@ -131,6 +162,11 @@ function applyBranding(s: Store) {
     // porque esa pantalla es la herramienta de Kross, no la tienda.
     root.style.setProperty('--store-brand', s.color_primary)
     root.style.setProperty('--store-brand-dark', s.color_dark)
+    // El segundo color dejó de ser «oscuro» (§49): ahora es el secundario y
+    // puede ser claro. El botón de la web pública se escribía siempre en
+    // blanco, así que sobre un secundario claro quedaba ilegible. La tinta se
+    // decide por contraste, igual que en el ticket y en la cabecera del chat.
+    root.style.setProperty('--store-brand-dark-fg', textoSobre(s.color_dark))
   } catch { /* ignore */ }
 }
 
