@@ -406,6 +406,81 @@ que ya se aplicó al pin de ubicación (ver [02-LOGISTICS §4](./02-SMART-LOGIST
 La infraestructura ya existe: `buyer-login` resuelve por `document_number`, y `ScorePage`
 y `MisPedidosPage` son justamente las pantallas que lo justifican.
 
+### ⚠️ Entrar con el DNI a secas es un agujero 🔮 (09-set-2026)
+
+**Validado leyendo el código, no supuesto.** Hoy `/acceso` pide el DNI y nada más.
+`buyer-login` busca por `(store_id, document_number)` y, si existe, responde con **todo**:
+
+| Lo que devuelve | Para qué sirve |
+|---|---|
+| `nombre`, `phone`, `address`, `document_number` | la ficha entera de la persona |
+| `sessions[].token` | **la llave de cada pedido** |
+
+Ese `token` es una capacidad, no un identificador: con él se abre `/p/<token>`, que es el
+chat completo, la guía con la sede de recojo, el DNI de quien retira y —desde el bloque
+anterior de este mismo PR— **la clave de recojo** cuando el pedido ya no debe nada.
+
+O sea: **quien sepa un DNI y el subdominio de la marca entra, ve dónde compra esa persona,
+lee sus conversaciones y, si el pedido está pagado, se lleva su paquete del mostrador.**
+En Perú el DNI no es un secreto: está en cada boleta, en cada formulario y en cada padrón
+filtrado. No es una contraseña y nunca lo fue.
+
+⚠️ **Y esto empeoró con la clave de recojo.** Mandarle la clave al comprador por
+`get-session` (bloque anterior) es correcto para él y sube el precio de esta puerta: antes
+el atacante veía datos, ahora se lleva mercadería. Cerrar el acceso deja de ser higiene y
+pasa a ser condición para que la clave viaje.
+
+**Por qué NO una contraseña.** Se propuso y no encaja:
+
+- El comprador de contraentrega compra cada varios meses. No la va a recordar, y ya se
+  midió en el propio equipo: «mucha gente no recuerda su clave».
+- Recuperarla exige un canal igual (correo o WhatsApp), así que **hay que construir el
+  segundo factor de todos modos** — y encima el almacén de contraseñas, el hasheo, el
+  flujo de reseteo y el soporte de los que se quedan afuera.
+- Una contraseña que se olvida siempre termina siendo un enlace por WhatsApp. Mejor
+  empezar por ahí y no tener las dos cosas.
+
+**Lo que sí: un CÓDIGO de 6 dígitos por WhatsApp, al teléfono que YA está en la ficha.**
+DNI → código → sesión. La infraestructura existe: WhatsApp Cloud API por marca, con el
+nombre de cada plantilla guardado en `stores` (`wa_recojo_template` y compañía, ver
+`08-RECORDATORIOS-RECOJO.md`); esto sería una columna más y una plantilla de categoría
+*authentication* aprobada en la WABA de cada marca.
+
+**Código y no magic link, y la razón es la PWA.** Un enlace tocado dentro de WhatsApp abre
+el navegador **in-app de WhatsApp**: la sesión se crearía ahí, y el comprador que después
+abre su app instalada seguiría deslogueado. Un código se lee en WhatsApp y se teclea donde
+la persona de verdad está. Es más simple de construir y falla menos.
+
+**Las reglas que lo hacen seguro** (sin ellas es teatro):
+
+- El código va **al teléfono guardado para ese DNI**, nunca a uno que el visitante escriba.
+  Se enseña enmascarado (`+51 ••• ••• 241`) para que el dueño lo reconozca.
+- **La respuesta no revela si el DNI existe.** Siempre «te mandamos un código si el DNI
+  está registrado». Si no, la pantalla se vuelve un buscador de quién le compra a la marca.
+- 6 dígitos, un solo uso, ~10 minutos de vida, máximo 5 intentos, y límite por DNI y por IP.
+  Un código de 6 dígitos sin límite de intentos se rompe en un millón de pruebas.
+- La sesión deja de ser el JSON crudo de `localStorage` —hoy cualquiera lo edita— y pasa a
+  ser un token firmado por el servidor, con vencimiento.
+
+**Lo que cuesta y lo que falta comprobar antes de construirlo:**
+
+- Cada código es un mensaje de plantilla **con tarifa**. La categoría *authentication* tiene
+  su propio precio y hay que cotizarla como se cotizó la de utilidad en el doc 08 (ahí el
+  SMS se descartó a S/0.92 por segmento contra los S/1.28 que deja un cobro). Un login es
+  mucho menos frecuente que un recordatorio, pero el número tiene que existir antes.
+- Cada marca aprueba su plantilla en su WABA. Sin plantilla aprobada, no hay login.
+- **Compradores sin teléfono válido** (importados, tipeados mal) no podrían entrar. No
+  quedan encerrados: su pedido se sigue abriendo con el enlace del chat, que es como
+  llegan casi todos. Lo que perderían es «Mis pedidos» hasta corregir el número.
+
+**Y una pantalla de perfil**, que hoy no existe: al costado de cerrar sesión, para ver y
+corregir su teléfono —el mismo que recibe el código— y su dirección. Va junto con esto, no
+antes: sin acceso verificado, una pantalla que deja EDITAR el teléfono le regala al atacante
+la forma de quedarse con la cuenta.
+
+**Decisión pendiente del equipo.** Esto es una función nueva, una tabla de códigos, SQL en
+`setup-kross.sql` y una plantilla por marca. No entra en el PR del chat.
+
 ## Modelo de datos (núcleo) ✅
 
 - `stores` — una marca por fila: branding, slug, `active`, config WhatsApp (`wa_*`),

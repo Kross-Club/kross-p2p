@@ -1,13 +1,26 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Package, ChevronRight, Star, LogOut, Bell, MessageCircle, RefreshCw, ShoppingBag } from 'lucide-react'
-import { subscribePush, notifPermission } from '../../lib/push'
+import { subscribePush, notifPermission, pushSupported } from '../../lib/push'
+import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { supabase } from '../../lib/supabase'
 import { useStore } from '../../lib/store-context'
 import { stageVigente } from '../../lib/order-stages'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
+// ─── Fidelización, apagada a propósito (09-set-2026) ─────────────────────────
+//
+// El anillo del score, los puntos, «Comprar de nuevo» y «Volver a pedir» se
+// OCULTAN, no se borran: el módulo de Loyalty los va a trabajar y el código
+// tiene que seguir vivo para no rehacerlo. Hoy prometen de más — el anillo
+// enseña «0 puntos acumulados» a quien acaba de comprar, y «Volver a pedir»
+// crea un pedido sin pasar por el checkout, o sea sin adelanto, que es
+// exactamente lo que este producto existe para cobrar antes de despachar.
+//
+// Se encienden cambiando ESTA línea, no reescribiendo la pantalla.
+const MOSTRAR_FIDELIZACION: boolean = false
 
 // Sin `preparando`: salió del eje (ver `stageVigente` en order-stages). Los
 // pedidos que la BD todavía tiene ahí se leen como `confirmado` — que es lo que
@@ -165,14 +178,29 @@ export default function MisPedidosPage() {
   if (!data) return null
 
   const { buyer, sessions } = data
+  // La cabecera va en el color de la marca, PLANO: el degradado terminaba
+  // siempre en el mismo morado, que no es de nadie —una marca naranja se veía
+  // media morada—. Y como el color lo elige el comerciante, la tinta se decide
+  // por contraste (`lib/contraste.ts`), igual que en el ticket del pedido.
+  const marca = store.color_primary || '#55C8F5'
+  const tinta = textoSobre(marca)
+  const tintaSuave = textoSuaveSobre(marca)
+  // El velo de los botones va del mismo lado que la tinta: blanco sobre una
+  // marca oscura, ink sobre una clara. Un velo blanco sobre amarillo no se ve.
+  const velo = tinta === '#FFFFFF' ? 'rgba(255,255,255,0.2)' : 'rgba(15,17,21,0.08)'
+  // Avisos: el botón solo existe donde el navegador PUEDE. En el Safari de un
+  // iPhone (fuera de la app instalada) no hay API de notificaciones, así que
+  // `subscribePush` devolvía false y el botón no hacía absolutamente nada —
+  // prometía y fallaba en silencio. Ahí el camino es instalar la app, que el
+  // chat del pedido ya ofrece. `denied` tampoco se puede revertir desde acá.
+  const puedeAvisar = pushSupported() && notifPermission() !== 'denied'
   const scoreColor = buyer.score >= 80 ? '#4ADE80' : buyer.score >= 50 ? '#FFD400' : '#EF4444'
   const scoreLabel = buyer.score >= 80 ? 'Comprador confiable' : buyer.score >= 50 ? 'Comprador estándar' : 'Nuevo comprador'
 
   return (
     <div className="min-h-screen" style={{ background: '#FFFDF5' }}>
       {/* Header */}
-      <div className="px-4 pt-10 pb-6 text-white"
-        style={{ background: `linear-gradient(135deg, ${store.color_primary} 0%, #863bff 100%)` }}>
+      <div className="px-4 pt-10 pb-6" style={{ background: marca, color: tinta }}>
         <div className="max-w-[430px] mx-auto">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -180,23 +208,25 @@ export default function MisPedidosPage() {
               <span className="font-black text-xl tracking-tight">{store.nombre}</span>
             </div>
             <div className="flex items-center gap-2">
-              {!notifGranted && (
+              {puedeAvisar && !notifGranted && (
                 <button onClick={enableNotifications}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black"
-                  style={{ background: 'rgba(255,255,255,0.2)', color: '#fff' }}>
+                  style={{ background: velo, color: tinta }}>
                   <Bell size={12} /> Activar avisos
                 </button>
               )}
-              <button onClick={logout} className="p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.2)' }}>
+              <button onClick={logout} aria-label="Cerrar sesión" className="p-2 rounded-xl"
+                style={{ background: velo, color: tinta }}>
                 <LogOut size={16} />
               </button>
             </div>
           </div>
 
-          <p className="text-white/70 text-sm">Hola,</p>
+          <p className="text-sm" style={{ color: tintaSuave }}>Hola,</p>
           <h1 className="font-black text-2xl">{buyer.nombre.split(' ')[0]}</h1>
 
-          {/* Score card — tap to see how to level up */}
+          {/* Score card — tap to see how to level up. Apagada: ver MOSTRAR_FIDELIZACION. */}
+          {MOSTRAR_FIDELIZACION && (
           <button onClick={() => navigate('/mi-score')}
             className="mt-4 w-full p-4 rounded-2xl flex items-center gap-4 text-left"
             style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}>
@@ -221,11 +251,14 @@ export default function MisPedidosPage() {
               </p>
             </div>
           </button>
+          )}
         </div>
       </div>
 
-      {/* Welcome reward (once, when an imported customer activates) */}
-      {welcome && (
+      {/* Welcome reward (once, when an imported customer activates). Apagada con
+          el resto de la fidelización: anunciar puntos ganados donde no se enseña
+          ningún punto deja al comprador buscando algo que no está. */}
+      {MOSTRAR_FIDELIZACION && welcome && (
         <div className="max-w-[430px] mx-auto px-4 pt-4">
           <div className="rounded-2xl p-4 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #FFF7E6, #FFFDF5)', border: '1.5px solid #FFD400' }}>
             <span className="text-2xl">🎁</span>
@@ -238,14 +271,16 @@ export default function MisPedidosPage() {
         </div>
       )}
 
-      {/* Repurchase CTA — the whole point of retention */}
+      {/* Repurchase CTA — the whole point of retention. Apagado: ver MOSTRAR_FIDELIZACION. */}
+      {MOSTRAR_FIDELIZACION && (
       <div className="max-w-[430px] mx-auto px-4 pt-4">
         <button onClick={() => navigate('/tienda')}
-          className="w-full py-3.5 rounded-2xl font-black text-sm text-white flex items-center justify-center gap-2 shadow-sm"
-          style={{ background: `linear-gradient(135deg, ${store.color_primary} 0%, #863bff 100%)` }}>
+          className="w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-sm"
+          style={{ background: marca, color: tinta }}>
           <ShoppingBag size={16} /> Comprar de nuevo
         </button>
       </div>
+      )}
 
       {/* Orders list */}
       <div className="max-w-[430px] mx-auto px-4 py-5">
@@ -304,7 +339,7 @@ export default function MisPedidosPage() {
                   </div>
                   <ChevronRight size={16} style={{ color: '#ccc' }} />
                 </button>
-                {!isCancelled && (
+                {MOSTRAR_FIDELIZACION && !isCancelled && (
                   <button onClick={() => reorder(s)} disabled={reordering === s.id}
                     className="w-full py-2.5 text-xs font-black flex items-center justify-center gap-1.5 border-t disabled:opacity-50"
                     style={{ color: 'var(--brand)', borderColor: '#f0f0f0' }}>

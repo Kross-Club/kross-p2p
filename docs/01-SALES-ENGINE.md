@@ -738,6 +738,27 @@ Lo que cambió alrededor:
    (`lib/use-alto-visible.ts`), el texto va a 16 px para que iOS no haga zoom,
    y el teclado ofrece «Enviar» (`enterKeyHint`).
 
+**Tercera vuelta (09-set-2026), sobre las otras dos pantallas del comprador.**
+
+- **«Mis pedidos» va en el color de la marca, plano.** El degradado terminaba siempre en el
+  mismo morado (`#863bff`), que no es de ninguna marca: una tienda naranja se veía media
+  morada. Y como el color lo elige el comerciante, la tinta se decide por contraste
+  (`lib/contraste.ts`), igual que en el ticket.
+- **La fidelización se apagó, no se borró** (`MOSTRAR_FIDELIZACION` en `MisPedidosPage`):
+  el anillo del score, los puntos, «Comprar de nuevo» y «Volver a pedir». Prometen de más
+  hoy —el anillo enseña «0 puntos» a quien acaba de comprar— y **«Volver a pedir» crea un
+  pedido saltándose el checkout**, o sea sin adelanto, que es justo lo que el producto
+  existe para cobrar antes de despachar. Se encienden cambiando una línea.
+- **«Activar avisos» solo donde el navegador puede.** En el Safari de un iPhone, fuera de
+  la app instalada, no existe la API de notificaciones: `subscribePush` devolvía `false` y
+  el botón no hacía nada, sin decir por qué. En Chrome de Android sí funciona en la web, así
+  que el botón no se quita, se condiciona (`pushSupported()`). En iPhone el camino es
+  instalar la app, que el chat ya ofrece cuando el vendedor toca el ícono del celular.
+- **El teléfono de la tienda salió del ticket.** «Si necesitas ayuda, llama a…» abría un
+  canal fuera del chat: una llamada no deja rastro en el hilo, no la ve el equipo que sigue
+  el pedido y nadie la puede atender a la hora en que suene. La atención es el chat. El
+  número sigue en `stores.wa_display_phone` para lo que el vendedor configure.
+
 ## El checkout multi-paso es el default
 
 Desde este cambio, la landing abre el checkout de 3 pasos. El viejo (`CheckoutQuiz`)

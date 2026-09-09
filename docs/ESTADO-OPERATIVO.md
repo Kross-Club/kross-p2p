@@ -34,6 +34,23 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### ⚠️ Deuda abierta · entrar con el DNI a secas (09-set-2026)
+
+**Cualquiera que sepa un DNI entra a la cuenta de esa persona en la tienda**: `buyer-login`
+pide DNI y nada más, y devuelve su ficha entera y el `token` de cada pedido, que abre el
+chat, la guía y la sede de recojo. Con la clave de recojo viajando al comprador (bloque de
+abajo), lo que se lleva quien entre ya no son solo datos: es el paquete.
+
+No hay parche pequeño: la salida es un **código de 6 dígitos por WhatsApp al teléfono ya
+guardado**, no una contraseña y no un magic link (el enlace abriría la sesión en el
+navegador in-app de WhatsApp, no en la app instalada). El análisis completo, con las reglas
+que lo hacen seguro y lo que cuesta, está en
+[`00-CORE-ARCHITECTURE.md` § Entrar con el DNI a secas](./00-CORE-ARCHITECTURE.md).
+
+**Lo destraba:** cotizar la plantilla *authentication* y que cada marca la apruebe en su
+WABA. Hasta entonces la puerta sigue abierta, y conviene saberlo antes de que entre la
+primera marca con volumen.
+
 ### El chat del comprador, en tres cosas · 1 función + frontend (09-set-2026)
 
 **Qué entra.** `/p/:token` deja los seis bloques fijos que aplastaban el hilo y

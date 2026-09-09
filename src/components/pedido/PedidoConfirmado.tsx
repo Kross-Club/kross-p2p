@@ -18,6 +18,12 @@
 //
 //   1. EL TICKET: qué pidió, dónde lo recoge y con qué dirección, a nombre de
 //      quién, y su guía con número apenas exista. Diseñado para capturarse.
+//      SIN el teléfono de la tienda (09-set-2026): la atención va por el chat
+//      del pedido y nada más. Una llamada no deja rastro en el hilo, no la ve
+//      el equipo que sigue el pedido, y abre un canal que nadie mide ni puede
+//      atender a la hora en que el comprador llame. El número sigue guardado en
+//      `stores.wa_display_phone` para lo que el vendedor configure, pero al
+//      comprador no se le ofrece.
 //   2. EL RECORRIDO: en qué va el pedido y qué viene, como una línea vertical
 //      de puntos. El saldo y el DNI no son cajas sueltas que gritan: son el
 //      detalle del paso donde tocan.
@@ -29,7 +35,7 @@
 //      instala—.
 
 import { useEffect, useState } from 'react'
-import { Check, Download, ExternalLink, Phone, Smartphone, Wallet } from 'lucide-react'
+import { Check, Download, ExternalLink, Smartphone, Wallet } from 'lucide-react'
 import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
 import { useStore } from '../../lib/store-context'
@@ -104,7 +110,6 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
  */
 export function TicketDelPedido({ ticket, orderCode }: { ticket: Ticket; orderCode: string }) {
   const { store } = useStore()
-  const phone = store.wa_display_phone?.trim() || null
   return (
     <div className="rounded-2xl border-2 border-gray-900 overflow-hidden bg-white">
       <div className="flex items-center justify-between px-4 py-2.5 bg-gray-900 text-white">
@@ -148,23 +153,6 @@ export function TicketDelPedido({ ticket, orderCode }: { ticket: Ticket; orderCo
           </div>
         )}
 
-        {phone && (
-          <div className="px-4 py-3">
-            <dt className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
-              {COPY.doneCallStore} {store.nombre}
-            </dt>
-            <dd>
-              <a
-                href={`tel:${phone.replace(/[^\d+]/g, '')}`}
-                className="inline-flex items-center gap-2 text-lg font-black text-gray-900 tabular-nums
-                  focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 rounded-md"
-              >
-                <Phone size={18} strokeWidth={2.5} />
-                {phone}
-              </a>
-            </dd>
-          </div>
-        )}
       </dl>
     </div>
   )
