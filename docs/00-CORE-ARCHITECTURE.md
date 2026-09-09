@@ -406,6 +406,106 @@ que ya se aplicó al pin de ubicación (ver [02-LOGISTICS §4](./02-SMART-LOGIST
 La infraestructura ya existe: `buyer-login` resuelve por `document_number`, y `ScorePage`
 y `MisPedidosPage` son justamente las pantallas que lo justifican.
 
+### Entrar con un código, no con el DNI a secas ✅ (09-set-2026)
+
+**El agujero, medido en el código.** `/acceso` pedía el DNI y nada más, y
+`buyer-login` respondía con la ficha entera de la persona y el `token` de cada
+pedido. Ese token es una capacidad, no un identificador: abre `/p/<token>`, o
+sea el chat completo, la guía con la sede de recojo, el DNI de quien retira y
+—desde el mismo día— **la clave de recojo** cuando el pedido ya no debe nada.
+
+Quien supiera un DNI y el subdominio de la marca entraba, veía dónde compra esa
+persona, leía sus conversaciones y, si el pedido estaba pagado, se llevaba su
+paquete del mostrador. En Perú el DNI está en cada boleta y en cada formulario:
+no es una contraseña y nunca lo fue. Mandarle la clave al comprador subió el
+precio de esa puerta, y cerrarla dejó de ser higiene para ser condición.
+
+**Por qué NO una contraseña.** Se evaluó y no encaja: el comprador de
+contraentrega compra cada varios meses y no la recuerda; recuperarla exige un
+canal igual, así que **hay que construir el segundo factor de todos modos**, y
+encima el almacén, el hasheo, el reseteo y el soporte de los que quedan afuera.
+
+**Un CÓDIGO de 6 dígitos por WhatsApp, y no un enlace mágico.** La razón es la
+PWA: un enlace tocado dentro de WhatsApp abre su navegador **in-app**, la sesión
+se crearía ahí, y el comprador que después abre su app instalada seguiría
+deslogueado. El código se lee en WhatsApp y se teclea donde la persona está.
+
+#### Las piezas
+
+| Pieza | Qué hace |
+|---|---|
+| `_shared/acceso-comprador.ts` | Las reglas, **puras y con pruebas**: 6 dígitos, 10 minutos, 5 intentos, 3 códigos por 15 min, sesión de 30 días |
+| `buyer-code-request` | Busca el DNI en ESA tienda y manda el código al teléfono guardado |
+| `buyer-code-verify` | Compara contra el HMAC, quema el código y abre la sesión |
+| `buyer-login` | Las tres puertas: `session_token`, `buyer_id` (auto-login del chat) y el DNI **solo mientras la marca no pueda mandar códigos** |
+| `_shared/sesion-comprador.ts` | El token de sesión y el payload que las tres puertas devuelven igual |
+| `buyer_login_codes` · `buyer_sessions` | §48 del esquema. Solo service role |
+
+#### Las decisiones que lo hacen seguro (y no teatro)
+
+- **El código va al teléfono YA GUARDADO** para ese DNI, nunca a uno que el
+  visitante escriba. Dejar elegir el destino convierte «demuestra que eres tú»
+  en «dime a dónde te lo mando».
+- **La respuesta nunca dice si el DNI existe.** Exista o no, `buyer-code-request`
+  responde lo mismo. ⚠️ Por eso **no** se enseña el teléfono enmascarado antes de
+  verificar, como se había propuesto: decir «te mandamos el código al ••• 241»
+  confirma que esa persona compra acá y regala tres dígitos. `enmascararTelefono`
+  existe para el perfil, ya adentro.
+- **El código no se guarda**: se guarda su HMAC, con el id de la fila dentro del
+  mensaje y una llave que no sale del servidor (`BUYER_CODE_PEPPER`, o la service
+  role si no está). Una tabla filtrada no alcanza para entrar.
+- **Cinco intentos y el código se quema**, y el intento se cuenta ANTES de
+  comparar: contarlo después daría intentos gratis a quien corta la conexión.
+- **Un error único** para vencido, gastado o equivocado. Distinguirlos le diría
+  al que prueba si va bien.
+- **Comparación en tiempo constante**: salir en el primer dígito distinto filtra,
+  por lo que tarda, cuántos iban bien.
+- **Un código nuevo invalida los anteriores**: dos vivos duplican las
+  oportunidades de acertar.
+- **Tope de 3 por ventana**: cada código es un mensaje con tarifa, el único gasto
+  que un desconocido puede provocarnos, y sin tope también es una forma de
+  acosar a alguien a mensajes.
+- **La sesión deja de ser el JSON de `localStorage`** —que cualquiera editaba
+  para decir que era otro— y pasa a ser un token opaco de 32 bytes con
+  vencimiento. **Cerrar sesión lo invalida en el servidor**, no solo en el
+  dispositivo.
+
+#### El interruptor es la plantilla, no una casilla
+
+`puedeMandarCodigo` mira tres cosas: WhatsApp encendido, número, y
+`stores.wa_codigo_template`. En cuanto las tres están, `buyer-login` **rechaza el
+DNI a secas** con `codigo_requerido`. Configurar la plantilla ES encender la
+seguridad: no hay un flag aparte que alguien pueda olvidarse de mover.
+
+⚠️ **Y al revés: mientras la marca no la tenga, esa puerta sigue abierta.** Es
+deliberado — cerrarla sin un canal para mandar el código dejaría a esa tienda sin
+«Mis pedidos» —, y es deuda anotada en `ESTADO-OPERATIVO.md`. Lo que la salda es
+aprobar la plantilla, no tocar código.
+
+La plantilla es de categoría **authentication**, con una variable en el cuerpo y
+el botón de copiar; Meta exige que el código viaje en los dos, y así se manda.
+⚠️ **Ese envío no está probado contra Meta todavía** (no hay plantilla aprobada
+con qué probarlo): el primer envío real hay que mirarlo, y si falla queda en
+*Panel → Conexiones* como `WHATSAPP · codigo.enviar` con la respuesta de Meta.
+
+#### Qué pasa con quien ya estaba adentro
+
+Una sesión de antes de este cambio no tiene token. Se acepta y se refresca con
+el DNI como antes; donde la marca ya manda códigos, ese refresco responde 403 y
+la persona vuelve a entrar una vez. Nadie queda encerrado: el pedido se sigue
+abriendo con el enlace del chat, que es como llega casi todo el mundo.
+
+**Compradores sin teléfono válido** (importados, tipeados mal) no pueden pedir
+código. Tampoco quedan encerrados por lo mismo, pero pierden «Mis pedidos» hasta
+que alguien les corrija el número. De ahí sale la **pantalla de perfil**, que
+todavía no existe: va al costado de cerrar sesión, para ver y corregir el
+teléfono. Va DESPUÉS de esto y no antes: dejar editar el teléfono sin acceso
+verificado le regala al atacante la forma de quedarse con la cuenta.
+
+> Nota: la rama de `buyer-login` que auto-creaba un comprador desde
+> `order_sessions` buscando por teléfono se retiró. No la llamaba nadie —el
+> frontend nunca manda `phone`— y era de antes de que `buyers` existiera.
+
 ## Modelo de datos (núcleo) ✅
 
 - `stores` — una marca por fila: branding, slug, `active`, config WhatsApp (`wa_*`),

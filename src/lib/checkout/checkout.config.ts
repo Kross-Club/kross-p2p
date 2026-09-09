@@ -373,7 +373,6 @@ export const COPY = {
   // El teléfono de la tienda es el respaldo de quien no va a volver a esta
   // app: para una persona mayor, un número al que llamar cierra lo que ningún
   // mensaje cierra. Solo se muestra si la marca lo configuró.
-  doneCallStore: 'Si necesitas ayuda, llama a',
   /** El botón de la guía, cuando la API ya la emitió mientras el comprador
    *  miraba esta pantalla. `{courier}` es Shalom u Olva. */
   doneSeeGuide: 'Ver mi guía de',

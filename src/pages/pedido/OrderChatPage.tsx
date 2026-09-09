@@ -19,7 +19,9 @@ import TarjetaDelPedido from '../../components/pedido/TarjetaDelPedido'
 import DetalleDelPedido from '../../components/pedido/DetalleDelPedido'
 import { useTicketDelPedido } from '../../components/pedido/useTicketDelPedido'
 import { useStore } from '../../lib/store-context'
+import { textoSobre, textoSuaveSobre } from '../../lib/contraste'
 import { preguntasRapidas } from '../../lib/preguntas-rapidas'
+import { guardarSesion, leerSesion } from '../../lib/sesion-comprador'
 import { useAltoVisible } from '../../lib/use-alto-visible'
 import OfferCard from '../../components/OfferCard'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
@@ -526,18 +528,17 @@ export default function OrderChatPage() {
         // Auto-login: if the buyer reached this chat from a link/push without a
         // session, log them in from the order's buyer so their home (Mis pedidos +
         // score) works on the back arrow AND the seller sees them as "En línea".
-        if (!localStorage.getItem('buyer_session') && s.buyer_id) {
+        // El `buyer_id` sale del propio pedido: quien está acá ya abrió el
+        // enlace que le mandamos a su WhatsApp, o sea que la prueba de que es
+        // él es el token de la URL. El servidor le abre sesión con su token,
+        // para que «Mis pedidos» refresque sin volver a pasar por esta puerta.
+        if (!leerSesion() && s.buyer_id) {
           fetch(`${BASE}/buyer-login`, {
             method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ buyer_id: s.buyer_id, store_id: s.store_id }),
           })
             .then(r => (r.ok ? r.json() : null))
-            .then(session => {
-              if (session?.buyer) {
-                localStorage.setItem('buyer_session', JSON.stringify(session))
-                window.dispatchEvent(new Event('buyer-session-changed'))
-              }
-            })
+            .then(sesion => { if (sesion?.buyer) guardarSesion(sesion) })
             .catch(() => {})
         }
         // Con la app instalada, los avisos del pedido se encienden solos. Si no
@@ -759,23 +760,32 @@ export default function OrderChatPage() {
   if (!session) return null
 
   const firstName = session.buyer_name?.split(' ')[0] ?? 'Cliente'
+  // La tinta de la cabecera, por contraste contra el color de la marca. Estaba
+  // fija en blanco, y el blanco sobre el naranja de una tienda real da 3.12 de
+  // contraste (AA pide 4.5) y sobre el celeste por defecto 1.91: el nombre de
+  // quien te atiende, ilegible. Es la misma cuenta que ya hacía el ticket.
+  const marca = store.color_primary || '#55C8F5'
+  const tinta = textoSobre(marca)
+  const tintaSuave = textoSuaveSobre(marca)
+  const velo = tinta === '#FFFFFF' ? 'rgba(255,255,255,0.25)' : 'rgba(15,17,21,0.10)'
 
   return (
     <div className="flex flex-col h-dvh max-w-[430px] mx-auto" style={{ background: '#FFFDF5', height: altoVisible }}>
 
       {/* ── Header ── */}
-      <div className="flex-shrink-0 px-4 pt-3 pb-4 text-white"
-        style={{ background: 'var(--brand)', borderRadius: '0 0 24px 24px' }}>
+      <div className="flex-shrink-0 px-4 pt-3 pb-4"
+        style={{ background: marca, color: tinta, borderRadius: '0 0 24px 24px' }}>
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/mis-pedidos')}
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'rgba(255,255,255,0.25)' }}
+            style={{ background: velo, color: tinta }}
             title="Mis pedidos">
-            <ArrowLeft size={18} className="text-white" />
+            <ArrowLeft size={18} />
           </button>
 
           <div className="relative flex-shrink-0">
-            <div className="w-11 h-11 rounded-full overflow-hidden border-2 border-white/60">
+            <div className="w-11 h-11 rounded-full overflow-hidden border-2"
+              style={{ borderColor: velo }}>
               {/* Quien atiende, o la marca: su logo, nunca una mascota ajena. */}
               {session?.seller_avatar ? (
                 <img src={session.seller_avatar} alt={session.seller_name ?? store.nombre}
@@ -792,14 +802,14 @@ export default function OrderChatPage() {
           </div>
 
           <div className="flex-1 min-w-0">
-            <p className="font-black text-white text-base leading-tight">
+            <p className="font-black text-base leading-tight">
               {/* Sin asesor asignado habla la MARCA, no Kross: lo que ve el
                   comprador es white-label (manual §10). */}
               {session?.seller_name
                 ? `${session.seller_name.split(' ')[0]} · ${session.seller_role ?? store.nombre}`
                 : store.nombre}
             </p>
-            <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>
+            <p className="text-xs font-semibold" style={{ color: tintaSuave }}>
               ¡Hola {firstName}! En línea ahora
             </p>
           </div>
