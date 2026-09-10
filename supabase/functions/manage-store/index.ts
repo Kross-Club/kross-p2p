@@ -38,7 +38,7 @@ function cleanSlug(raw: string): string {
 const RESERVED = new Set(['www', 'app', 'api', 'admin', 'kross', 'krossclub', 'mail', 'assets'])
 
 /**
- * Las columnas de los bloques §49 y §50. Están apartadas por una razón operativa: esta
+ * Las columnas de los bloques §49, §50 y §51. Están apartadas por una razón operativa: esta
  * función se despliega A MANO y el SQL se corre A MANO, así que hay una ventana
  * —minutos u horas— en la que la función nueva le habla a una base vieja.
  *
@@ -46,9 +46,19 @@ const RESERVED = new Set(['www', 'app', 'api', 'admin', 'kross', 'krossclub', 'm
  * sin la columna que falta, devuelve un error, así que el listado de tiendas
  * del panel se queda vacío y un admin deja de ver sus propias marcas. Pasó
  * (09-set-2026). De ahí `faltaColumna` y los dos reintentos de abajo: mientras
- * el SQL no esté, el panel funciona como antes y estos dos campos no existen.
+ * el SQL no esté, el panel funciona como antes y estos campos no existen.
+ *
+ * El nombre quedó del §49, que fue el primero. Lo que importa no es de qué
+ * bloque salió cada columna sino que TODAS las de SQL sin correr entren acá:
+ * una que se olvide vuelve a vaciarle la lista de marcas a alguien.
  */
-const CAMPOS_49 = ['gradient_style', 'login_images', 'custom_domain', 'custom_domain_verified'] as const
+const CAMPOS_49 = ['gradient_style', 'login_images', 'custom_domain', 'custom_domain_verified', 'wa_pedido_template'] as const
+
+/** Las plantillas de WhatsApp que una marca configura por nombre. */
+const PLANTILLAS_WA = [
+  'wa_codigo_template', 'wa_pedido_template',
+  'wa_recojo_template', 'wa_recordatorio_template', 'wa_ultimo_aviso_template',
+] as const
 
 /** ¿El error es «esa columna no existe»? (Postgres 42703.) */
 function faltaColumna(error: { code?: string; message?: string } | null): boolean {
@@ -135,6 +145,12 @@ Deno.serve(async (req) => {
     wa_phone_number_id?: string
     wa_display_phone?: string
     wa_codigo_template?: string
+    /** Las otras plantillas por marca (§51 y doc 08). Nombre aprobado en su
+     *  WABA; vacío = ese aviso no se manda. */
+    wa_pedido_template?: string
+    wa_recojo_template?: string
+    wa_recordatorio_template?: string
+    wa_ultimo_aviso_template?: string
     wa_business_account_id?: string
     // Cobros — la cuenta de 360pay de la marca. SOLO por JWT
     // verificado (ver abajo): redirigir el cobro de una tienda es
@@ -218,7 +234,7 @@ Deno.serve(async (req) => {
   // ─── LIST STORES ───────────────────────────────────────────────────────────
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
-    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone'
+    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, wa_recojo_template, wa_recordatorio_template, wa_ultimo_aviso_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone'
     type Respuesta = { data: Record<string, unknown>[] | null; error: { code?: string; message?: string } | null }
     const pedir = async (campos: string): Promise<Respuesta> => {
       const q = supabase.from('stores').select(campos).order('created_at', { ascending: true })
@@ -591,12 +607,22 @@ Deno.serve(async (req) => {
     if (isSuper && typeof body.wa_phone_number_id === 'string') patch.wa_phone_number_id = body.wa_phone_number_id.trim()
     if (isSuper && typeof body.wa_display_phone === 'string') patch.wa_display_phone = body.wa_display_phone.trim()
     if (isSuper && typeof body.wa_business_account_id === 'string') patch.wa_business_account_id = body.wa_business_account_id.trim()
-    // ⚠️ La plantilla del CÓDIGO DE ACCESO no es una config más: es el
-    // interruptor de la seguridad del comprador. En cuanto tiene nombre (con
-    // WhatsApp encendido y su número), `buyer-login` deja de aceptar el DNI a
-    // secas — ver `_shared/acceso-comprador.ts`. Vaciarla vuelve a abrir esa
-    // puerta, así que se toca con el mismo cuidado que las llaves de cobro.
-    if (isSuper && typeof body.wa_codigo_template === 'string') patch.wa_codigo_template = body.wa_codigo_template.trim()
+    // Las plantillas de la marca. El NOMBRE es el interruptor de cada aviso:
+    // vacío = ese paso no manda WhatsApp y nada más se rompe (el chat y el push
+    // salen igual). Es de plataforma porque quien aprueba una plantilla en la
+    // WABA es quien la administra.
+    //
+    // ⚠️ La del CÓDIGO DE ACCESO no es una config más: es el interruptor de la
+    // seguridad del comprador. En cuanto tiene nombre (con WhatsApp encendido y
+    // su número), `buyer-login` deja de aceptar el DNI a secas — ver
+    // `_shared/acceso-comprador.ts`. Vaciarla vuelve a abrir esa puerta, así
+    // que se toca con el mismo cuidado que las llaves de cobro.
+    if (isSuper) {
+      for (const col of PLANTILLAS_WA) {
+        const v = (body as Record<string, unknown>)[col]
+        if (typeof v === 'string') patch[col] = v.trim()
+      }
+    }
 
     if (isSuper && typeof body.slug === 'string' && body.slug.trim()) {
       const slug = cleanSlug(body.slug)

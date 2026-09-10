@@ -34,6 +34,83 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El WhatsApp del pedido nuevo, y la respuesta a quien escribe · SQL + 4 funciones + frontend (10-set-2026)
+
+Al cerrar el formulario de 3 pasos al comprador **no le llegaba nada**. El único
+sitio donde vivía su enlace era esa pestaña: si la cerraba, si compró desde el
+celular de otro, o si el navegador limpió su almacenamiento, el enlace se perdía
+—y con él la tasa de entrega, porque el chat del pedido es lo que la sostiene—.
+
+Ahora sale una plantilla apenas se crea el pedido, y quien le escriba a ese
+número recibe **su** enlace de vuelta en lugar de silencio. Diseño en
+[`01-SALES-ENGINE.md` § El WhatsApp del pedido nuevo](./01-SALES-ENGINE.md).
+
+**Orden del despliegue** (el SQL primero: `wa-pedido` lee esa columna):
+
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: el bloque §51 de supabase/setup-kross.sql
+```
+
+Y para comprobar que corrió, en el mismo editor:
+
+```sql
+select column_name from information_schema.columns
+where table_name = 'stores' and column_name = 'wa_pedido_template';
+select to_regclass('public.wa_respuestas');
+```
+
+```
+supabase functions deploy send-wa-template --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy register-buyer   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy wa-webhook       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+⚠️ `wa-webhook` **es nueva y va con `--no-verify-jwt`**: quien la llama es Meta,
+que no manda JWT de Supabase. No queda abierta: cada POST se verifica con la
+firma `x-hub-signature-256`, y **sin el secreto configurado la función rechaza
+todo** (un webhook abierto deja que cualquiera nos haga mandar mensajes con el
+número de la marca).
+
+**Dos secretos nuevos del proyecto:**
+
+```
+supabase secrets set WHATSAPP_VERIFY_TOKEN=<una cadena larga que eliges tú> --project-ref ofdjghntvmrdfjhazfvz
+supabase secrets set WHATSAPP_APP_SECRET=<Meta → App Dashboard → Settings → Basic → App Secret> --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**En Meta**, una sola vez por app: *WhatsApp → Configuration → Webhook → Edit*.
+Callback URL `https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/wa-webhook`,
+Verify token el mismo de arriba, y **suscribir el campo `messages`** (sin esa
+casilla el webhook queda dado de alta y no llega nada).
+
+**Y la plantilla, que es el interruptor.** Como el resto del riel: sin
+`stores.wa_pedido_template` no se manda nada y no se rompe nada. Categoría
+**utility**, tres variables y un botón de URL dinámica:
+
+```
+Cuerpo:  Hola {{1}}, recibimos tu pedido en {{2}}. Tu número es {{3}}.
+         Este número solo envía avisos y no se lee. Toda la información de tu
+         pedido y la conversación con nuestro equipo están en el botón de abajo.
+Botón:   Ver mi pedido → URL dinámica → https://<dominio de la marca>/p/{{1}}
+```
+
+`{{1}}` nombre · `{{2}}` marca · `{{3}}` número de pedido; el `{{1}}` del botón
+es el token, que lo pone el servidor.
+
+⚠️ **La URL del botón se congela al aprobar la plantilla.** Si la marca conecta
+su dominio propio (§50) después, hay que aprobar la plantilla de nuevo con el
+dominio nuevo: Meta no deja cambiarle la base a una plantilla ya aprobada. Por
+eso conviene aprobarla **después** de conectar el dominio, no antes.
+
+**Lo que se ve sin desplegar nada:** el bloque *Plantillas de WhatsApp* en
+*Panel → Marca* (solo superadmin), con las cinco plantillas de la marca elegidas
+de una lista de las aprobadas en su WABA. Hasta hoy solo se podían escribir
+llamando a `manage-store` a mano, así que media docena de avisos vivía apagada
+sin que se notara. **Sin el deploy de `manage-store`** el bloque se ve y se
+puede elegir, pero guardar no persiste `wa_pedido_template` (las otras cuatro
+columnas ya existían).
+
 ### Lo que pidió Flow: atribución, pasarela en la constancia y el buzón · 2 funciones + frontend (09-set-2026)
 
 Tres cosas que pidió el proveedor de Flow, más el cambio de buzón. Diseño en

@@ -5,6 +5,7 @@ import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
 import { imagenDelPack } from '../_shared/packs.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 import { anotarConversion } from '../_shared/api-eventos.ts'
+import { mandarPlantillaDePedido } from '../_shared/wa-pedido.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -621,6 +622,18 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error('[register-buyer] CAPI Lead falló:', String(e))
   }
+
+  // ─── El WhatsApp del pedido nuevo (§51) ────────────────────────────────────
+  // Le pone al comprador una copia permanente de su enlace donde ya vive. Hasta
+  // hoy, el único sitio donde vivía era la pestaña que acaba de cerrar.
+  //
+  // NO se espera: quien está del otro lado es el navegador del comprador
+  // esperando la confirmación de su pedido, y un WhatsApp lento no puede
+  // retrasarla. Va con `runInBackground` y no con un `void` suelto porque al
+  // devolver la respuesta el runtime puede cortar lo que quede pendiente:
+  // `waitUntil` es lo que hace que el envío llegue a salir. Sin plantilla
+  // aprobada es un no-op.
+  runInBackground(mandarPlantillaDePedido(data.id, body.store_id))
 
   return new Response(
     JSON.stringify({

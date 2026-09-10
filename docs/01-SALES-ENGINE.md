@@ -1176,3 +1176,72 @@ Decía solo **Lima**, y el Callao entra en esa rama: es lo que cubre el motoriza
 propio. Un comprador de Ventanilla o Bellavista leía "Lima" y "Provincia" y no
 tenía forma de saber cuál le tocaba — la duda basta para que escriba por WhatsApp
 en vez de terminar la compra.
+
+## El WhatsApp del pedido nuevo, y quién contesta ahí ✅ (10-set-2026)
+
+Al terminar el formulario de 3 pasos, al comprador **no le llegaba nada**. Su
+enlace vivía en un solo sitio: la pestaña que acababa de usar. Si la cerraba, si
+compró desde el celular de otro, o si el navegador limpió el almacenamiento, el
+enlace se perdía — y el chat del pedido es lo que sostiene la tasa de entrega.
+
+Ahora, apenas se crea el pedido, sale una **plantilla de utilidad** a su WhatsApp
+con una copia permanente del enlace, en el sitio donde esa persona ya vive.
+
+### Qué dice, y qué NO dice
+
+```
+Hola {{1}}, recibimos tu pedido en {{2}}. Tu número es {{3}}.
+Este número solo envía avisos y no se lee. Toda la información de tu pedido y la
+conversación con nuestro equipo están en el botón de abajo.
+
+[ Ver mi pedido ]  → https://<dominio de la marca>/p/<token>
+```
+
+`{{1}}` nombre · `{{2}}` marca · `{{3}}` número de pedido. El enlace va en el
+**botón de URL dinámica** y no en el cuerpo: un botón se toca mucho más que un
+enlace suelto, y eso es lo único que este mensaje tiene que lograr.
+
+⚠️ Dice **«recibimos tu pedido»** y nunca «gracias por tu pago». El pedido se
+crea antes de que el Yape esté validado, así que agradecer un pago que todavía
+puede no cruzar es prometer algo falso. El acuse del pago ya existe aparte
+(`_shared/acuse-de-pago.ts`) y sale cuando de verdad pasó: los dos mensajes no
+se pisan a propósito.
+
+### La otra mitad: quien escribe recibe su enlace
+
+Decirle «no respondemos acá» no evita que la gente escriba — escribe igual,
+porque WhatsApp es donde vive—. Lo que evita el enojo, y las denuncias que le
+bajan la calificación al número de la marca, es que reciba algo útil en vez de
+silencio.
+
+`wa-webhook` recibe los mensajes entrantes y contesta **una vez cada 12 h por
+número** (`wa_respuestas`) con el enlace de su pedido vivo, o con
+`<dominio>/acceso` si no tiene ninguno. Es texto libre, no plantilla: el mensaje
+de la persona abre una ventana de 24 h en la que contestarle sale gratis.
+
+No contesta cada línea que escriba dentro de esa ventana: no cuesta dinero, pero
+se lee como un bot roto. Quien insiste ya recibió su enlace; lo que necesita es
+que alguien lo lea, y ahí es donde está el equipo.
+
+Esto **no convierte el número en un canal**. Sigue valiendo lo de arriba, *El
+canal es el chat, no WhatsApp*: la conversación pasa en `/p/:token`, donde queda
+escrita, la ve el vendedor y no depende de la ventana de 24 h de Meta.
+
+### El interruptor es la plantilla
+
+Como todo el riel de WhatsApp: sin `stores.wa_pedido_template` aprobado y
+guardado, esto es un no-op y no se rompe nada. Las cinco plantillas de la marca
+se eligen desde *Panel → Marca → Plantillas de WhatsApp* (solo superadmin), de
+una lista de las que de verdad están aprobadas en su WABA — un nombre mal
+tecleado no falla al guardar: falla el día del envío, en silencio y de a un
+comprador. El panel compara además cuántas variables espera la plantilla contra
+las que le manda el servidor, porque una diferencia ahí hace que Meta rechace el
+envío entero.
+
+⚠️ **La URL del botón se congela al aprobar la plantilla.** Si la marca conecta
+su dominio propio (§50) después, hay que volver a aprobarla con el dominio
+nuevo: Meta no deja cambiarle la base a una plantilla ya aprobada. Conviene
+aprobarla *después* de conectar el dominio.
+
+El despliegue, los secretos y la configuración en Meta están en
+[`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md).

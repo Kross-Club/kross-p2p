@@ -2342,3 +2342,32 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS custom_domain_verified boolean DEFAU
 -- casi todas las filas tienen NULL y NULL no colisiona consigo mismo.
 CREATE UNIQUE INDEX IF NOT EXISTS stores_custom_domain_key
   ON stores (custom_domain) WHERE custom_domain IS NOT NULL;
+
+-- ============================================================================
+-- §51 · EL WHATSAPP DEL PEDIDO NUEVO, Y LA RESPUESTA A QUIEN ESCRIBE  (10-set-2026)
+-- ============================================================================
+-- Al terminar el formulario no le llegaba NADA al comprador. El único sitio
+-- donde vivía su enlace era esa pestaña del navegador: si la cerraba, si compró
+-- desde el celular de otro, o si el navegador limpió su almacenamiento, el
+-- enlace se perdía — y con él la tasa de entrega, porque el chat del pedido es
+-- lo que la sostiene.
+--
+-- La plantilla le pone una copia permanente del enlace donde ya vive. Y como el
+-- número solo manda avisos, hace falta la otra mitad: contestarle a quien
+-- escribe. Decir «no respondemos» no evita que escriban; lo que evita el enojo
+-- —y las denuncias que bajan la calificación del número— es que reciba su
+-- enlace en vez de silencio.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_pedido_template text;
+
+-- A quién ya se le contestó, para no contestarle a cada mensaje. La respuesta
+-- automática es gratis dentro de la ventana de 24 h que abre SU mensaje, pero
+-- repetirla en cada línea que escriba es spam y se lee como un bot roto.
+CREATE TABLE IF NOT EXISTS wa_respuestas (
+  store_id   text        NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  phone      text        NOT NULL,
+  last_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (store_id, phone)
+);
+-- Solo la usa la Edge Function con service role: un comprador que pudiera
+-- leerla vería los teléfonos de los demás compradores de la marca.
+ALTER TABLE wa_respuestas ENABLE ROW LEVEL SECURITY;

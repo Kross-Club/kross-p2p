@@ -17,6 +17,53 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 const APEX = 'krossclub.app'
 
+/**
+ * Los avisos del viaje del pedido que salen por WhatsApp, en orden. Lo que se
+ * guarda es el NOMBRE de la plantilla que la marca aprobó en SU WABA, y ese
+ * nombre es el interruptor: vacío = ese paso no manda WhatsApp y nada más se
+ * rompe —el chat y la notificación de la app salen igual—.
+ *
+ * `vars` es el contrato con Meta: los `{{n}}` que el servidor le pasa a esa
+ * plantilla, en ese orden (`_shared/wa-recojo.ts` y `_shared/wa-pedido.ts`).
+ * Si la plantilla aprobada espera otra cantidad, Meta rechaza el envío entero,
+ * así que el panel lo compara y lo dice ANTES de que un comprador se quede sin
+ * su aviso.
+ */
+const PLANTILLAS_WA = [
+  {
+    col: 'wa_codigo_template',
+    titulo: 'Código de acceso',
+    vars: ['el código de 6 dígitos'],
+    ayuda: 'Categoría *authentication*: el código va en el cuerpo y en el botón de copiar. ⚠️ En cuanto tiene nombre, el DNI a secas deja de abrir la app: es la puerta del comprador, no una config más.',
+  },
+  {
+    col: 'wa_pedido_template',
+    titulo: 'Pedido recibido',
+    vars: ['nombre', 'marca', 'número de pedido'],
+    ayuda: 'Sale apenas se cierra el formulario. Dice que este número es solo de avisos y manda la conversación al enlace del pedido (botón de URL con el token).',
+  },
+  {
+    col: 'wa_recojo_template',
+    titulo: 'Llegó a la agencia',
+    vars: ['nombre', 'producto', 'agencia', 'enlace'],
+    ayuda: 'Ya se puede recoger. Es el primer paso de la cascada del doc 08.',
+  },
+  {
+    col: 'wa_recordatorio_template',
+    titulo: 'Recordatorio de recojo',
+    vars: ['nombre', 'agencia', 'enlace'],
+    ayuda: 'A mitad del plazo que da la agencia, si todavía no lo recogió.',
+  },
+  {
+    col: 'wa_ultimo_aviso_template',
+    titulo: 'Último aviso',
+    vars: ['nombre', 'fecha límite', 'enlace'],
+    ayuda: 'Antes de que la agencia lo devuelva. Lleva la fecha de devolución.',
+  },
+] as const
+
+interface PlantillaAprobada { name: string; language?: string; params?: number; preview?: string }
+
 interface StoreRow {
   id: string
   slug: string
@@ -29,6 +76,11 @@ interface StoreRow {
   color_dark: string
   gradient_style?: string | null
   login_images?: string[] | null
+  wa_codigo_template?: string | null
+  wa_pedido_template?: string | null
+  wa_recojo_template?: string | null
+  wa_recordatorio_template?: string | null
+  wa_ultimo_aviso_template?: string | null
   custom_domain?: string | null
   custom_domain_verified?: boolean | null
   active: boolean
@@ -408,6 +460,12 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [cp, setCp] = useState(store.color_primary || '#55C8F5')
   const [cd, setCd] = useState(store.color_dark || '#060C1A')
   const [gradiente, setGradiente] = useState<EstiloDeDegradado>(estiloValido(store.gradient_style))
+  // Las plantillas de WhatsApp de la marca. Hasta hoy solo se podían escribir
+  // llamando a `manage-store` a mano: el nombre es el interruptor de cada
+  // aviso, así que no tener dónde ponerlo dejaba la mitad del riel apagada.
+  const [plantillas, setPlantillas] = useState<Record<string, string>>(() =>
+    Object.fromEntries(PLANTILLAS_WA.map(p => [p.col, String((store as unknown as Record<string, unknown>)[p.col] ?? '')])))
+  const [aprobadas, setAprobadas] = useState<PlantillaAprobada[]>([])
   // El dominio propio (§50). `verificado` es del SERVIDOR: escribirlo no lo
   // verifica, lo verifica la prueba de que ese host abre esta tienda.
   const [dominio, setDominio] = useState(store.custom_domain ?? '')
@@ -513,6 +571,25 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
         : { operational: false, remaining: null, motivo: 'caida' })
     })
   }, [adminId])
+
+  // Las plantillas APROBADAS en la WABA de la marca, para elegir de una lista
+  // en vez de teclear un nombre que quizá no existe (un nombre mal escrito no
+  // falla al guardar: falla el día del envío, en silencio y de a un comprador).
+  // Si no vuelve ninguna —sin WABA, sin token global, o la marca todavía no
+  // aprobó nada— los campos siguen siendo de texto: no poder listar nunca puede
+  // ser motivo para perder lo que ya estaba configurado.
+  useEffect(() => {
+    if (!isSuper || !store.wa_business_account_id) return
+    let vivo = true
+    fetch(`${BASE}/list-wa-templates`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ store_id: store.id }),
+    }).then(r => r.json())
+      .then(d => { if (vivo) setAprobadas(Array.isArray(d?.templates) ? d.templates : []) })
+      .catch(() => { /* sin lista se teclea el nombre; no es un fallo del panel */ })
+    return () => { vivo = false }
+  }, [isSuper, store.id, store.wa_business_account_id])
 
   const [uploading, setUploading] = useState(false)
   const [uploadingIcon, setUploadingIcon] = useState(false)
@@ -631,6 +708,9 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
       payload.wa_phone_number_id = waPhoneId.trim()
       payload.wa_display_phone = waDisplay.trim()
       payload.wa_business_account_id = waBiz.trim()
+      // Cada plantilla es su propia columna en `stores` (así las lee cada
+      // función sin pasar por acá). Viajan planas, con el mismo nombre.
+      for (const pl of PLANTILLAS_WA) payload[pl.col] = (plantillas[pl.col] ?? '').trim()
     }
     const { ok, data } = await call(payload)
     setBusy(false)
@@ -1587,6 +1667,86 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
             <input value={waDisplay} onChange={e => setWaDisplay(e.target.value)} placeholder="Número visible (ej: +51 999 999 999)"
               className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none" />
+          </div>
+        )}
+
+        {/* Las plantillas del viaje del pedido. Van pegadas al fallback porque
+            dependen de lo mismo —el número de la marca en Cloud API—, pero son
+            otra cosa: el fallback es «si el push no llegó»; esto es cada aviso
+            que la marca decidió mandar sí o sí. Antes de este bloque el único
+            modo de escribirlas era llamar a `manage-store` a mano, así que la
+            mitad del riel vivía apagada sin que se notara. */}
+        {isSuper && (
+          <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--info-bg)', border: '0.5px solid var(--info-border)' }}>
+            <p className="text-xs font-black mb-1 flex items-center gap-1.5" style={{ color: 'var(--info-fg)' }}>
+              <MessageCircle size={14} /> Plantillas de WhatsApp
+            </p>
+            <p className="text-[10px] mb-2" style={{ color: 'var(--text-muted)' }}>
+              El nombre exacto de la plantilla aprobada en la WABA de la marca. Vacío = ese
+              aviso no sale por WhatsApp; el chat y la notificación de la app salen igual.
+            </p>
+            {!waEnabled && (
+              <p className="text-[10px] font-bold mb-2" style={{ color: 'var(--warn-fg)' }}>
+                WhatsApp está apagado arriba: se pueden dejar listas, pero no se manda ninguna.
+              </p>
+            )}
+            {!store.wa_business_account_id ? (
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-muted)' }}>
+                Sin WABA ID no podemos listar las aprobadas: escribe el nombre tal cual figura en Meta.
+              </p>
+            ) : aprobadas.length === 0 && (
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-muted)' }}>
+                No volvió ninguna plantilla aprobada de esta WABA. Escribe el nombre tal cual figura en Meta.
+              </p>
+            )}
+            {PLANTILLAS_WA.map(pl => {
+              const valor = plantillas[pl.col] ?? ''
+              const elegida = aprobadas.find(a => a.name === valor)
+              // Guardada pero ya no aprobada (renombrada, rechazada, borrada):
+              // se enseña igual y en la lista, porque perderla en silencio al
+              // guardar cualquier otra cosa apagaría el aviso sin avisar.
+              const huerfana = !!valor && aprobadas.length > 0 && !elegida
+              const varsMal = elegida && typeof elegida.params === 'number' && elegida.params !== pl.vars.length
+              return (
+                <div key={pl.col} className="mb-2.5">
+                  <label className="text-[10px] font-bold text-gray-500 mb-1 block">{pl.titulo}</label>
+                  {aprobadas.length > 0 ? (
+                    <select value={valor}
+                      onChange={e => setPlantillas(v => ({ ...v, [pl.col]: e.target.value }))}
+                      className="w-full bg-white border rounded-xl px-3 py-2 text-sm">
+                      <option value="">— sin plantilla, este aviso no sale —</option>
+                      {huerfana && <option value={valor}>{valor} — ya no está aprobada</option>}
+                      {aprobadas.map(a => (
+                        <option key={a.name} value={a.name}>
+                          {a.name} · {a.params ?? 0} var{a.params === 1 ? '' : 's'}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input value={valor}
+                      onChange={e => setPlantillas(v => ({ ...v, [pl.col]: e.target.value }))}
+                      placeholder="nombre_de_la_plantilla" autoComplete="off" spellCheck={false}
+                      className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none font-mono" />
+                  )}
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                    {pl.ayuda} Variables: {pl.vars.map((v, i) => `{{${i + 1}}} ${v}`).join(' · ')}.
+                  </p>
+                  {elegida?.preview && (
+                    <p className="text-[10px] mt-1 italic" style={{ color: 'var(--text-muted)' }}>«{elegida.preview}»</p>
+                  )}
+                  {huerfana && (
+                    <p className="text-[10px] font-bold mt-1" style={{ color: 'var(--warn-fg)' }}>
+                      Esa plantilla ya no figura entre las aprobadas de la WABA: mientras siga así, Meta rechaza el envío.
+                    </p>
+                  )}
+                  {varsMal && (
+                    <p className="text-[10px] font-bold mt-1" style={{ color: 'var(--danger-fg)' }}>
+                      Esta plantilla espera {elegida!.params} variable(s) y le mandamos {pl.vars.length}: Meta rechaza el envío entero.
+                    </p>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 
