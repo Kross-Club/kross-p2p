@@ -445,10 +445,20 @@ Deno.serve(async (req) => {
   if (body.action === 'verify_domain') {
     const targetId = isSuper ? (body.store_id || me.store_id) : me.store_id
     if (!targetId) return json({ error: 'no_store' }, 400)
-    const { data: tienda } = await supabase.from('stores')
+    const { data: tienda, error: errTienda } = await supabase.from('stores')
       .select('nombre, custom_domain').eq('id', targetId).maybeSingle()
+    // Sin el SQL del §50 esta lectura NO devuelve una fila sin la columna:
+    // devuelve error. Tragárselo dejaba «sin_dominio», que manda a mirar el
+    // formulario cuando lo que falta es el esquema. `mensajePanel` sabe leer
+    // este texto y decir qué correr.
+    if (errTienda) return json({ error: errTienda.message }, 400)
     const dominio = String(tienda?.custom_domain ?? '').trim()
-    if (!dominio) return json({ error: 'sin_dominio' }, 400)
+    if (!dominio) {
+      return json({
+        error: 'sin_dominio',
+        detalle: 'Esta tienda no tiene ningún dominio guardado. Escríbelo y pulsa Guardar antes de comprobar.',
+      }, 400)
+    }
 
     const marcar = async (ok: boolean) => {
       await supabase.from('stores').update({ custom_domain_verified: ok }).eq('id', targetId)
@@ -931,9 +941,21 @@ Deno.serve(async (req) => {
       // guardar, pero todo lo demás del formulario sí — y perder el nombre y
       // los colores por un degradado sería un mal negocio.
       if (faltaColumna(error) && CAMPOS_49.some(c => c in patch)) {
+        const omitidos = CAMPOS_49.filter(c => c in patch)
         const sin49: Record<string, unknown> = { ...patch }
         for (const c of CAMPOS_49) delete sin49[c]
         error = Object.keys(sin49).length > 0 ? await guardar(sin49) : null
+        if (error) return json({ error: error.message }, 400)
+        // Se guardó lo demás, pero DECIRLO. Callarlo es lo que hace que alguien
+        // escriba su dominio, le dé a Guardar, vea «Guardado» y después no
+        // entienda por qué no se puede comprobar: el campo se ve lleno porque
+        // es estado de la pantalla, no porque esté en la base.
+        return json({
+          ok: true,
+          omitidos,
+          aviso: `Se guardó todo menos ${omitidos.join(' y ')}: esas columnas todavía no existen en la base. `
+            + 'Corre el bloque §50 de supabase/setup-kross.sql y vuelve a guardar.',
+        })
       }
       if (error) return json({ error: error.message }, 400)
     }
