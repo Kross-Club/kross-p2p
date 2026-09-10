@@ -10,6 +10,7 @@
 // Deploy: supabase functions deploy web-order --project-ref ofdjghntvmrdfjhazfvz
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { normalizarCodigo } from '../_shared/afiliados.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -89,6 +90,13 @@ Deno.serve(async (req) => {
       nota: clamp(body.nota, 500),
       items,
       total_mostrado: Number(body.total_mostrado) || 0,
+      // Quién trajo este lead (§51.b). Se guarda el CÓDIGO en texto y no el id
+      // del afiliado: acá el código puede no resolver todavía —un enlace viejo,
+      // un afiliado dado de baja— y un texto que no resuelve es un dato que se
+      // puede investigar; una FK que no resuelve es un lead que se pierde.
+      // Se normaliza igual que en la web para que `?ref=Jhoann` y `?ref=jhoann`
+      // sean el mismo afiliado.
+      affiliate_code: normalizarCodigo(String(body.affiliate_code ?? '')) || null,
     })
     .select('codigo')
     .single()

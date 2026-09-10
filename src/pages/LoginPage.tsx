@@ -4,6 +4,7 @@ import { supabase, setPersistSession } from '../lib/supabase'
 import AuthShell, { AuthButton, AuthError, AuthField } from '../components/AuthShell'
 import { isPlatformHost } from '../lib/store-context'
 import { administraLaPlataforma, esDeLaPlataforma } from '../../supabase/functions/_shared/alcance.ts'
+import { llamarAfiliados } from '../lib/afiliados-api'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -45,6 +46,19 @@ export default function LoginPage() {
       const { data: me } = await supabase.from('sellers')
         .select('store_id, is_admin, is_super_admin').eq('auth_user_id', auth.user?.id).maybeSingle()
       if (!administraLaPlataforma(me)) {
+        // **Antes de echarlo, preguntar si es afiliado.** El afiliado entra por
+        // krossclub.app —no es de ninguna marca, así que no tiene subdominio al
+        // que mandarlo— y sin esta rama el login lo despedía con un mensaje que
+        // le pide ir a un sitio que no existe. Es la misma clase de candado sin
+        // llave que el de los operadores, un rol más abajo.
+        //
+        // La pregunta va por la Edge Function porque `affiliates` no se lee
+        // desde el navegador: quién es lo decide el servidor contra su JWT.
+        const r = await llamarAfiliados<{ afiliado: unknown | null }>({ action: 'quien_soy' })
+        if (r.ok && r.data?.afiliado) {
+          navigate('/afiliado', { replace: true })
+          return
+        }
         await supabase.auth.signOut()
         // Dos rechazos distintos, porque son dos problemas distintos y el
         // mensaje es lo único que la persona rechazada tiene para actuar.

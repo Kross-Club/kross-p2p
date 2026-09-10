@@ -15,7 +15,7 @@
 /** Cada API de terceros de la que Kross depende. El id es el que se guarda. */
 export const PROVEEDORES = [
   'SHALOM_PE', 'SHALOM_LAT', 'OLVA', 'OLVA_LAT',
-  'PAY360', 'FLOW',
+  'PAY360', 'FLOW', 'STRIPE',
   'WHATSAPP', 'META_CAPI', 'TIKTOK_CAPI',
   'LIVEKIT', 'ELEVENLABS', 'DECOLECTA', 'RESEND', 'WEB_PUSH', 'NOMINATIM',
   'TWILIO',
@@ -78,6 +78,10 @@ export const INTEGRACIONES: Integracion[] = [
   {
     id: 'FLOW', nombre: 'Flow Pagos', que: 'Checkout alojado para los montos bajos (el segundo riel)',
     dueno: 'Flow', host: 'flow.cl', alcance: 'marca', secreto: null, critico: true,
+  },
+  {
+    id: 'STRIPE', nombre: 'Stripe', que: 'Cobra el plan mensual del comercio ($67/mes). Es la LLAVE de la comisión del afiliado: sin mes pagado, ese mes no comisiona',
+    dueno: 'Stripe', host: 'api.stripe.com', alcance: 'plataforma', secreto: 'STRIPE_WEBHOOK_SECRET', critico: false,
   },
   {
     id: 'SHALOM_PE', nombre: 'Shalom PE', que: 'Rastreo y emisión de guías Shalom — el proveedor titular',

@@ -35,6 +35,9 @@ import VendedorPedidoPage from './pages/vendedor/VendedorPedidoPage'
 import BuyerPresenceTracker from './components/BuyerPresenceTracker'
 import BuyerCallListener from './components/BuyerCallListener'
 import { isPlatformHost } from './lib/store-context'
+import { anotarReferido } from './lib/referido'
+import AfiliadosPage from './pages/vendedor/AfiliadosPage'
+import AfiliadoPage from './pages/afiliado/AfiliadoPage'
 
 // Smart home: seller session → seller dashboard, buyer session → mis-pedidos.
 //
@@ -91,6 +94,11 @@ function RequireSellerAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // El enlace del afiliado se pisa UNA vez y la tienda nace días después, así
+  // que el código se anota al arrancar y sobrevive la navegación. Primer toque
+  // gana; el detalle está en `lib/referido.ts`.
+  useEffect(() => { anotarReferido(window.location.href) }, [])
+
   return (
     <BrowserRouter>
       {/* Buyer-wide presence + incoming call ring (work on any page) */}
@@ -153,6 +161,12 @@ export default function App() {
             no se registra en el bundle de producción. */}
         {import.meta.env.DEV && <Route path="/checkout-demo" element={<CheckoutDemoPage />} />}
 
+        {/* El panel del afiliado. Autenticado, pero FUERA del `Layout` de
+            vendedor: no es vendedor de ninguna tienda, así que el menú de una
+            marca no le corresponde. Quién es lo decide la Edge Function
+            `afiliados`, no esta ruta. */}
+        <Route path="/afiliado" element={<RequireSellerAuth><AfiliadoPage /></RequireSellerAuth>} />
+
         {/* Protected seller routes */}
         <Route element={<RequireSellerAuth><Layout /></RequireSellerAuth>}>
           <Route path="/vendedor/pedidos" element={<PedidosPage />} />
@@ -167,6 +181,7 @@ export default function App() {
           <Route path="/vendedor/equipo" element={<EquipoPage />} />
           <Route path="/vendedor/marca" element={<MarcaPage />} />
           <Route path="/vendedor/conexiones" element={<ConexionesPage />} />
+          <Route path="/vendedor/afiliados" element={<AfiliadosPage />} />
           {/* Las llamadas dejaron de ser una sección: cada grabación vive en el
               hilo del pedido donde ocurrió (11-RELACIONES). La ruta redirige
               porque estaba en el menú y puede haber enlaces guardados. */}

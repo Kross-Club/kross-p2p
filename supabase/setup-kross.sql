@@ -2342,3 +2342,220 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS custom_domain_verified boolean DEFAU
 -- casi todas las filas tienen NULL y NULL no colisiona consigo mismo.
 CREATE UNIQUE INDEX IF NOT EXISTS stores_custom_domain_key
   ON stores (custom_domain) WHERE custom_domain IS NOT NULL;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §51 · AFILIADOS: QUIÉN TRAJO A QUIÉN, Y CUÁNTO SE LE DEBE  (10-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Kross se vende por recomendación. Hasta hoy eso no estaba escrito en ningún
+-- lado: quien traía un comercio lo decía por WhatsApp, y lo que se le pagaba
+-- salía de una hoja de cálculo que solo una persona sabía leer.
+--
+-- El programa tiene tres piezas y conviene no confundirlas, porque cada una la
+-- mueve un actor distinto:
+--
+--   1. **El enlace** — lo entrega Kross. `krossclub.app/?ref=<codigo>`.
+--   2. **La suscripción** — la paga el COMERCIO, por Stripe, $67/mes. Es la
+--      llave: sin mes pagado no hay comisión por ese mes.
+--   3. **La comisión** — la paga Kross al AFILIADO, S/0.10 por transacción de
+--      la tienda referida, por transferencia. **No sale por Stripe.**
+--
+-- Las reglas puras —la tarifa, el mes de Lima, el árbol— viven en
+-- `supabase/functions/_shared/afiliados.ts`, con pruebas en
+-- `src/lib/afiliados.test.ts`. Acá vive lo que hay que GUARDAR.
+--
+-- ⚠️ **Lo que NO hay acá es un contador de transacciones**, y es la decisión de
+-- diseño que sostiene todo lo demás. Una transacción ya está escrita: es una
+-- fila de `cobros` en estado `MATCHED`. Un contador aparte sería una segunda
+-- versión de la misma verdad, y las dos versiones se separan el día que un
+-- cobro se anula, un webhook llega dos veces o alguien corrige una fila a mano.
+-- La comisión del mes se CUENTA de `cobros` cada vez que alguien la mira, y se
+-- congela una sola vez: cuando el mes se liquida y se paga (`affiliate_payouts`).
+
+-- 51.a EL AFILIADO ----------------------------------------------------------
+-- `codigo` es el enlace y por eso es único. `referred_by` es el árbol: un
+-- afiliado puede reclutar afiliados. HOY solo se paga el nivel 1 —el que trajo
+-- la tienda—, pero el árbol se guarda entero: es lo que responde "¿de dónde
+-- salió esta tienda?" tres saltos arriba cuando hay que auditar una atribución.
+CREATE TABLE IF NOT EXISTS affiliates (
+  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  codigo       text        NOT NULL,               -- minúsculas, url-safe: ES el enlace
+  nombre       text        NOT NULL,
+  email        text,
+  phone        text,
+  -- Su cuenta de Supabase Auth. NULL mientras no haya entrado nunca: se puede
+  -- dar de alta a un afiliado, entregarle su enlace y que cree su cuenta
+  -- después. El enlace funciona desde el minuto uno; el panel, cuando entre.
+  auth_user_id uuid,
+  -- Quién trajo a este afiliado. NULL = lo trajo Kross directo.
+  referred_by  uuid        REFERENCES affiliates(id) ON DELETE SET NULL,
+  -- Apagado ≠ borrado. Un afiliado que se va deja de acumular, pero sus tiendas
+  -- siguen atribuidas y sus liquidaciones pagadas siguen existiendo. Borrarlo
+  -- dejaría tiendas sin origen y meses pagados sin destinatario.
+  active       boolean     NOT NULL DEFAULT true,
+  nota         text,                                -- para quien administra, no para él
+  created_at   timestamptz DEFAULT now()
+);
+
+-- El código es el enlace: dos afiliados con el mismo se roban los referidos.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_affiliates_codigo ON affiliates(lower(codigo));
+-- Un usuario de Auth es UN afiliado. Parcial porque casi todos son NULL al
+-- principio, y NULL no colisiona consigo mismo.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_affiliates_auth
+  ON affiliates(auth_user_id) WHERE auth_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_affiliates_padre
+  ON affiliates(referred_by) WHERE referred_by IS NOT NULL;
+
+-- RLS encendido y SIN políticas: solo service role. El afiliado no lee esta
+-- tabla directo —vería el árbol entero, los correos de los demás y sus notas—;
+-- va por la Edge Function `afiliados`, que le devuelve SU rama y nada más.
+ALTER TABLE affiliates ENABLE ROW LEVEL SECURITY;
+
+-- ⚠️ Un ciclo (A trae a B, B trae a A) es posible en una FK a la misma tabla y
+-- cuelga a cualquiera que recorra el árbol. Se evita en `afiliados.ts`
+-- (`cerrariaCiclo`) ANTES de escribir, que es el único momento en que se puede
+-- evitar de verdad; y el lector lo tolera igual (corta-ciclos en `arbolDeAfiliados`),
+-- porque una fila mal escrita a mano en el SQL Editor no puede tumbar el panel.
+
+-- 51.b LA ATRIBUCIÓN --------------------------------------------------------
+-- Una tienda tiene UN afiliado y lo tiene para siempre: primer toque gana. Es
+-- una columna y no una tabla de relación porque no hay un "segundo afiliado"
+-- que modelar — y si algún día lo hubiera, sería una regla de reparto nueva,
+-- no una fila más.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS affiliate_id uuid REFERENCES affiliates(id) ON DELETE SET NULL;
+-- Cuándo quedó atribuida. Sirve para la disputa que siempre llega: dos
+-- afiliados que dicen haber traído al mismo comercio.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS affiliate_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_stores_affiliate
+  ON stores(affiliate_id) WHERE affiliate_id IS NOT NULL;
+
+-- El enlace cae en la web pública y el comercio se da de alta desde ahí, así
+-- que el código tiene que sobrevivir el salto de "visitante" a "tienda". Viaja
+-- pegado al pedido de la web (`web-order`), que es el lead: cuando ese lead se
+-- convierte en tienda, `manage-store` copia el código a `stores.affiliate_id`.
+--
+-- Se guarda el CÓDIGO en texto y no el id del afiliado: en el momento del lead
+-- el código puede no existir todavía (un enlace viejo, un afiliado dado de
+-- baja), y un texto que no resuelve es un dato que se puede investigar —
+-- una FK que no resuelve es un insert que falla y un lead que se pierde.
+ALTER TABLE web_orders ADD COLUMN IF NOT EXISTS affiliate_code text;
+CREATE INDEX IF NOT EXISTS idx_web_orders_affiliate
+  ON web_orders(affiliate_code) WHERE affiliate_code IS NOT NULL;
+
+-- 51.c LA SUSCRIPCIÓN DEL COMERCIO (Stripe) ---------------------------------
+-- El estado de HOY, uno por tienda. Es el semáforo del panel y la lista de a
+-- quién hay que llamar. **No decide comisiones** — eso lo hace 51.d.
+CREATE TABLE IF NOT EXISTS store_subscriptions (
+  store_id              text        PRIMARY KEY REFERENCES stores(id) ON DELETE CASCADE,
+  stripe_customer_id    text,
+  stripe_subscription_id text,
+  -- El status crudo de Stripe: active | trialing | past_due | canceled |
+  -- unpaid | incomplete | incomplete_expired | paused. Se guarda CRUDO y se
+  -- traduce en `afiliados.ts` (`estadoDeSuscripcion`): si Stripe agrega un
+  -- estado, acá entra sin migración y allá se decide qué significa.
+  status                text,
+  current_period_end    timestamptz,
+  cancel_at_period_end  boolean     NOT NULL DEFAULT false,
+  price_usd             numeric,
+  -- Cuándo lo dijo Stripe. Los webhooks pueden llegar DESORDENADOS —un
+  -- `updated` viejo después de uno nuevo— y sin esta marca el estado retrocede
+  -- solo. `stripe-webhook` descarta lo que llega con fecha anterior a la
+  -- guardada.
+  stripe_event_at       timestamptz,
+  updated_at            timestamptz DEFAULT now()
+);
+ALTER TABLE store_subscriptions ENABLE ROW LEVEL SECURITY;  -- solo service role
+CREATE INDEX IF NOT EXISTS idx_store_subs_status ON store_subscriptions(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_store_subs_stripe
+  ON store_subscriptions(stripe_subscription_id) WHERE stripe_subscription_id IS NOT NULL;
+
+-- 51.d LOS MESES QUE LA TIENDA PAGÓ DE VERDAD -------------------------------
+-- La pregunta que decide la comisión no es *"¿esta tienda está suscrita HOY?"*
+-- sino *"¿tenía el mes pagado CUANDO hizo esta venta?"*. Con la primera, una
+-- tienda que cancela el 28 le borra al afiliado las 400 ventas del 1 al 27; al
+-- revés, una que se suscribe el 28 le regala las 400 que hizo sin plan.
+--
+-- Así que lo que se guarda no es un estado, son TRAMOS PAGADOS: una fila por
+-- factura pagada, con el rango que esa factura cubre (`invoice.paid` de Stripe
+-- lo trae en `lines[].period`). Una transacción cuenta si cae dentro de alguno.
+CREATE TABLE IF NOT EXISTS subscription_periods (
+  id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id          text        NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  stripe_invoice_id text        NOT NULL,
+  inicio            timestamptz NOT NULL,
+  fin               timestamptz NOT NULL,
+  monto_usd         numeric,
+  paid_at           timestamptz,
+  created_at        timestamptz DEFAULT now()
+);
+ALTER TABLE subscription_periods ENABLE ROW LEVEL SECURITY;  -- solo service role
+
+-- La idempotencia del webhook. Stripe reintenta hasta que le contestes 200, así
+-- que la MISMA factura llega dos y tres veces: sin este índice, el mismo mes
+-- entraría dos veces y ningún total lo notaría (un tramo duplicado no cambia si
+-- una fecha «cae dentro», pero sí rompe cualquier suma por tramo).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_periods_invoice
+  ON subscription_periods(stripe_invoice_id);
+-- La consulta de la liquidación: los tramos de una tienda que tocan un mes.
+CREATE INDEX IF NOT EXISTS idx_sub_periods_store ON subscription_periods(store_id, inicio);
+
+-- 51.e EL ÍNDICE QUE HACE POSIBLE CONTAR ------------------------------------
+-- La liquidación pregunta, por cada tienda referida: *cuántos cobros MATCHED
+-- hubo entre estas dos fechas*. Sin índice eso es un scan de la tabla de la
+-- plata entera, todos los meses y por cada afiliado. Parcial por `MATCHED`
+-- porque es lo único que se cuenta —un cupón emitido y sin pagar no es una
+-- transacción— y eso deja fuera del índice a los PENDING, que son mayoría.
+CREATE INDEX IF NOT EXISTS idx_cobros_liquidacion
+  ON cobros(store_id, matched_at) WHERE estado = 'MATCHED';
+
+-- 51.f EL MES CERRADO -------------------------------------------------------
+-- Mientras el mes corre, la comisión es una CUENTA: se saca de `cobros` cada
+-- vez que alguien la mira, y por eso siempre está al día. Cuando el mes se
+-- cierra deja de ser una cuenta y pasa a ser una DEUDA — y una deuda no puede
+-- moverse sola. Un cobro anulado en octubre no puede cambiar lo que se le
+-- prometió (o ya se le transfirió) al afiliado por setiembre.
+--
+-- Por eso esta tabla congela el número. Es el único sitio del programa donde
+-- una cifra se guarda en vez de calcularse, y la razón es exactamente esa: acá
+-- el pasado tiene que dejar de moverse.
+CREATE TABLE IF NOT EXISTS affiliate_payouts (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  affiliate_id  uuid        NOT NULL REFERENCES affiliates(id) ON DELETE RESTRICT,
+  periodo       text        NOT NULL,               -- 'YYYY-MM', el mes de LIMA
+  transacciones integer     NOT NULL DEFAULT 0,
+  tarifa_pen    numeric     NOT NULL,               -- la tarifa VIGENTE al cerrar
+  monto_pen     numeric     NOT NULL,
+  -- CALCULADO (cerrado, se le debe) | PAGADO (transferido) | ANULADO
+  estado        text        NOT NULL DEFAULT 'CALCULADO'
+                            CHECK (estado IN ('CALCULADO','PAGADO','ANULADO')),
+  paid_at       timestamptz,
+  -- Cómo se le pagó: "Yape 999888777", "BCP ****1234". Texto libre porque el
+  -- pago vive fuera del sistema y lo único que hace falta es poder rastrearlo.
+  -- ⚠️ Nunca un número de cuenta completo ni una llave: es texto que el panel
+  -- muestra.
+  referencia    text,
+  -- El detalle que sostiene el número: qué tienda aportó cuántas. Congelado
+  -- junto con el total, porque si mañana una tienda cambia de afiliado el
+  -- desglose de un mes ya pagado tiene que seguir explicando ESE pago.
+  detalle       jsonb       NOT NULL DEFAULT '[]',
+  created_by    text,                                -- auth_user_id de quien cerró
+  created_at    timestamptz DEFAULT now()
+);
+ALTER TABLE affiliate_payouts ENABLE ROW LEVEL SECURITY;  -- solo service role
+
+-- Un afiliado tiene UNA liquidación por mes. Es lo que hace que cerrar el mes
+-- dos veces por error no genere dos deudas por lo mismo.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payouts_unico
+  ON affiliate_payouts(affiliate_id, periodo) WHERE estado <> 'ANULADO';
+CREATE INDEX IF NOT EXISTS idx_payouts_periodo ON affiliate_payouts(periodo, estado);
+
+-- 51.g BORRAR UNA TIENDA, OTRA VEZ ------------------------------------------
+-- §34 dejó escrito que el orden de borrado no es opcional. Las dos tablas
+-- nuevas que cuelgan de `stores` llevan `ON DELETE CASCADE` para no volver a
+-- pedirle a nadie que se acuerde: se van con su tienda.
+--
+-- `affiliate_payouts` NO cascadea y es a propósito (`ON DELETE RESTRICT` sobre
+-- el afiliado): un mes ya pagado es un comprobante contable. Si hace falta
+-- sacar a un afiliado, se apaga (`active = false`); borrarlo solo es posible
+-- cuando no se le debe ni se le pagó nada, que es justo lo que el RESTRICT
+-- obliga a comprobar.
