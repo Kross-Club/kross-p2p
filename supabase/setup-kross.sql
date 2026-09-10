@@ -2559,3 +2559,70 @@ CREATE INDEX IF NOT EXISTS idx_payouts_periodo ON affiliate_payouts(periodo, est
 -- sacar a un afiliado, se apaga (`active = false`); borrarlo solo es posible
 -- cuando no se le debe ni se le pagó nada, que es justo lo que el RESTRICT
 -- obliga a comprobar.
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §52 · LA TIENDA TAMBIÉN ES AFILIADA  (10-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §51 dio por hecho que un afiliado es alguien de fuera: un vendedor con su
+-- enlace. Pero el mejor canal de Kross no es ese — es **el comerciante
+-- contento que le recomienda la herramienta a otro comerciante**. Esa persona
+-- ya está adentro, ya entra al panel todos los días y no necesita que nadie le
+-- explique el producto.
+--
+-- Así que una tienda puede SER un afiliado, y lo es desde que nace.
+--
+-- ⚠️ **Ojo con las dos direcciones, porque se confunden leyendo rápido:**
+--
+--   · `stores.affiliate_id`  → *quién trajo a esta tienda* (§51.b)
+--   · `affiliates.store_id`  → *de qué tienda es este afiliado* (esto)
+--
+-- Una tienda puede tener las dos: la trajo Jhoann, y ella a su vez trajo a
+-- otras tres.
+
+ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS store_id text REFERENCES stores(id) ON DELETE SET NULL;
+
+-- Una tienda tiene UNA identidad de afiliado. Parcial porque los afiliados de
+-- fuera —los que no son tienda— llevan NULL, y NULL no colisiona consigo mismo.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_affiliates_store
+  ON affiliates(store_id) WHERE store_id IS NOT NULL;
+
+-- 52.a EL ALTA AUTOMÁTICA ---------------------------------------------------
+-- Cada tienda nace con su código, y el código es su slug: el comerciante ya lo
+-- conoce —es su subdominio— así que no hay nada nuevo que memorizar ni que
+-- explicarle. `manage-store` lo crea junto con la tienda; esto es el traspaso
+-- para las que ya existían.
+--
+-- **Por qué automático y no un interruptor.** Un programa de referidos que hay
+-- que activar lo activa quien ya sabe que existe, o sea casi nadie. El enlace
+-- no cuesta nada mientras no se use, y estar ahí es la mitad del trabajo.
+--
+-- El sufijo del `md5` es para el choque de nombres: un afiliado de fuera pudo
+-- haberse llevado ese código antes. Es raro y aun así tiene que resolverse
+-- solo, porque el que se queda sin código es un comerciante que abre su panel y
+-- ve una sección rota.
+--
+-- Idempotente por partida doble: el `NOT EXISTS` salta las que ya tienen
+-- afiliado y el `ON CONFLICT DO NOTHING` cubre el choque de código.
+INSERT INTO affiliates (codigo, nombre, store_id)
+SELECT
+  CASE WHEN EXISTS (SELECT 1 FROM affiliates a WHERE lower(a.codigo) = lower(s.slug))
+       THEN s.slug || '-' || substr(md5(s.id), 1, 4)
+       ELSE s.slug END,
+  s.nombre,
+  s.id
+FROM stores s
+WHERE s.id <> 'platform'
+  AND length(s.slug) >= 3
+  AND NOT EXISTS (SELECT 1 FROM affiliates a WHERE a.store_id = s.id)
+ON CONFLICT DO NOTHING;
+
+-- 52.b UNA TIENDA NO SE TRAE A SÍ MISMA -------------------------------------
+-- Con las dos direcciones en la misma fila, `stores.affiliate_id` apuntando al
+-- afiliado de esa MISMA tienda es un ciclo de largo 1: la tienda se cobra a sí
+-- misma su propia comisión. No lo produce ningún camino del código —el alta
+-- automática y la atribución son dos operaciones distintas— pero un `update` a
+-- mano en el SQL Editor sí, y entonces nadie lo notaría hasta la liquidación.
+UPDATE stores s SET affiliate_id = NULL, affiliate_at = NULL
+WHERE s.affiliate_id IS NOT NULL
+  AND EXISTS (SELECT 1 FROM affiliates a WHERE a.id = s.affiliate_id AND a.store_id = s.id);

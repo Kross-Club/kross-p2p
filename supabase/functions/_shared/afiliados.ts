@@ -289,11 +289,22 @@ export interface AporteDeTienda {
   /** Transacciones del mes que además caen dentro de un tramo pagado. Es el
    *  número que se multiplica. */
   transacciones: number
-  /** Transacciones del mes que NO cuentan porque el plan no cubría esa fecha.
-   *  Se enseña, no se esconde: un afiliado que ve "300 ventas, 0 comisión" sin
-   *  explicación asume que el sistema le robó. Con este número la conversación
-   *  es "tu tienda no pagó el plan", que es la verdad y además es accionable. */
+  /** Transacciones que NO cuentan porque **la referida** no tenía plan esa
+   *  fecha. Se enseña, no se esconde: un afiliado que ve "300 ventas, 0
+   *  comisión" sin explicación asume que el sistema le robó. Con este número la
+   *  conversación es "tu tienda no pagó el plan", que es la verdad y además es
+   *  lo único que él puede destrabar. */
   sin_plan: number
+  /**
+   * Transacciones que no cuentan porque **el afiliado-tienda** no tenía SU plan
+   * al día (§52). La referida sí lo tenía: la que falló fue la de arriba.
+   *
+   * Es un número aparte de `sin_plan` y no una suma con él, porque las dos
+   * cifras mandan a llamar a personas distintas. Juntarlas dejaría al
+   * comerciante reclamándole a su referido por algo que tiene que arreglar él.
+   * Siempre 0 para un afiliado de fuera, que no tiene plan que vencer.
+   */
+  sin_mi_plan: number
   estado: EstadoSuscripcion
 }
 
@@ -301,6 +312,7 @@ export interface Liquidacion {
   periodo: string
   transacciones: number
   sin_plan: number
+  sin_mi_plan: number
   monto: number
   tiendas: AporteDeTienda[]
 }
@@ -315,12 +327,14 @@ export interface Liquidacion {
 export function liquidacionDe(
   periodo: string, tiendas: readonly AporteDeTienda[], tarifa = TARIFA_AFILIADO,
 ): Liquidacion {
-  const transacciones = tiendas.reduce((s, t) => s + Math.max(0, t.transacciones), 0)
-  const sin_plan = tiendas.reduce((s, t) => s + Math.max(0, t.sin_plan), 0)
+  const suma = (f: (t: AporteDeTienda) => number) =>
+    tiendas.reduce((s, t) => s + Math.max(0, f(t)), 0)
+  const transacciones = suma(t => t.transacciones)
   return {
     periodo,
     transacciones,
-    sin_plan,
+    sin_plan: suma(t => t.sin_plan),
+    sin_mi_plan: suma(t => t.sin_mi_plan),
     monto: comisionDeAfiliado(transacciones, tarifa),
     tiendas: [...tiendas].sort((a, b) => b.transacciones - a.transacciones),
   }
@@ -495,4 +509,42 @@ export function tramosDelPeriodo(
   return fusionados.map(p => ({
     desde: new Date(p.a).toISOString(), hasta: new Date(p.b).toISOString(),
   }))
+}
+
+/**
+ * Los días en que **los dos** planes estaban al día (§52).
+ *
+ * Cuando el afiliado es una tienda, su propia suscripción es una segunda
+ * condición: mientras él no pague su plan de Kross, sus referidas no le generan
+ * comisión. La transacción cuenta solo si cae dentro de los tramos pagados de
+ * la referida **y** dentro de los suyos.
+ *
+ * Es la misma regla de §51 aplicada un nivel más arriba, y por la misma razón:
+ * la comisión es una parte del margen de un mes que Kross efectivamente cobró.
+ * Si el que se lleva la parte dejó de pagar, ya no hay relación de la que salga.
+ *
+ * Las dos listas llegan **recortadas al mes y fusionadas** (`tramosDelPeriodo`),
+ * así que basta un barrido en paralelo: sin solapes internos, los dos punteros
+ * solo avanzan.
+ */
+export function interseccionDeTramos(
+  a: readonly { desde: string; hasta: string }[],
+  b: readonly { desde: string; hasta: string }[],
+): { desde: string; hasta: string }[] {
+  const salida: { desde: string; hasta: string }[] = []
+  let i = 0; let j = 0
+  while (i < a.length && j < b.length) {
+    const ai = Date.parse(a[i].desde); const af = Date.parse(a[i].hasta)
+    const bi = Date.parse(b[j].desde); const bf = Date.parse(b[j].hasta)
+    const desde = Math.max(ai, bi)
+    const hasta = Math.min(af, bf)
+    if (hasta > desde) {
+      salida.push({ desde: new Date(desde).toISOString(), hasta: new Date(hasta).toISOString() })
+    }
+    // Avanza el que cierra primero: el otro todavía puede cruzarse con el
+    // siguiente de esta lista.
+    if (af < bf) i++
+    else j++
+  }
+  return salida
 }

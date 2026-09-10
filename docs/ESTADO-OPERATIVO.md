@@ -34,14 +34,17 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-### El programa de afiliados · **SQL** + 2 funciones nuevas + 2 desplegadas + frontend (10-set-2026)
+### El programa de afiliados, y la tienda como afiliada · **SQL** + 2 funciones nuevas + 2 desplegadas + frontend (10-set-2026)
 
 Diseño completo en [`15-AFILIADOS.md`](./15-AFILIADOS.md). **Nada de esto está
-corrido todavía**: el código está en la rama, la base no tiene §51 y no hay
-ninguna suscripción de Stripe conectada.
+corrido todavía**: el código está mergeado en `main`, la base no tiene §51 ni
+§52 y no hay ninguna suscripción de Stripe conectada. Nada está ROTO mientras
+tanto —las funciones desplegadas siguen siendo las viejas y el frontend nuevo es
+inofensivo sin las tablas—, pero tampoco funciona nada.
 
 ```sql
--- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql (idempotente, §51)
+-- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql
+-- (idempotente; trae §51 · el programa, y §52 · la tienda como afiliada)
 ```
 ```
 supabase functions deploy afiliados      --project-ref ofdjghntvmrdfjhazfvz
@@ -57,6 +60,13 @@ falta API key de Stripe** — el webhook solo escucha, nunca llama.
 desplegarlas contra una base SIN §51 escribe en columnas que no existen.** Corre
 el SQL PRIMERO. Es la misma ventana que rompió el listado de tiendas el 09-set:
 PostgREST no ignora la columna que falta, devuelve error.
+
+**§52 le da a cada marca su propio enlace.** El SQL hace el traspaso: cada
+tienda que ya existe se queda con un afiliado cuyo código es su slug, y el
+comerciante lo ve en *Panel → Afiliados* dentro de su panel. Las nuevas lo traen
+de fábrica (`manage-store`). Su comisión tiene una compuerta más: **mientras su
+propio plan de Kross no esté al día, sus referidas no le generan nada** — lo ya
+liquidado se le paga igual.
 
 **Qué hace falta después del deploy, y sin esto no cuenta nada:** cada tienda
 tiene que quedar enlazada con su cliente de Stripe, con `client_reference_id =

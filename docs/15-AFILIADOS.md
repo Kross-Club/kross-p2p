@@ -7,7 +7,10 @@
 > Leyenda: ✅ construido · 🟡 parcial · 🔮 planeado
 >
 > Estado: **✅ construido, 🟡 sin correr en producción** (10-set-2026). Falta el
-> SQL, los dos deploys y la cuenta de Stripe conectada — ver *Puesta en marcha*.
+> SQL, los deploys y la cuenta de Stripe conectada — ver *Puesta en marcha*.
+>
+> **§52 (10-set-2026): la tienda también es afiliada.** Cada marca nace con su
+> enlace y lo ve en su propio panel. Ver la sección al final.
 
 ## Las tres piezas, y quién mueve cada una
 
@@ -163,6 +166,7 @@ milisegundo.
 | `store_subscriptions` | El estado de hoy en Stripe. **Semáforo, no llave** |
 | `subscription_periods` | Los tramos pagados. **Esto sí decide la comisión** |
 | `affiliate_payouts` | El mes cerrado. El único sitio donde una cifra se guarda en vez de calcularse |
+| `affiliates.store_id` (§52) | De qué tienda es este afiliado. NULL = de fuera |
 
 Más un índice que hace posible contar: `idx_cobros_liquidacion` sobre
 `cobros(store_id, matched_at) WHERE estado = 'MATCHED'`. Sin él, liquidar es un
@@ -182,10 +186,11 @@ la política correcta (el precedente es `cobros`, §36).
 | `supabase/functions/stripe-webhook/` | Guarda estado y tramos. `--no-verify-jwt` |
 | `supabase/functions/afiliados/` | La API de las dos pantallas |
 | `src/lib/referido.ts` | El `?ref=` en el dispositivo, 90 días, primer toque |
-| `src/pages/afiliado/AfiliadoPage.tsx` | `/afiliado` — su enlace, su mes, sus tiendas, su rama |
-| `src/pages/vendedor/AfiliadosPage.tsx` | `Panel → Afiliados` — el árbol, atribuir, cerrar el mes, marcar pagado |
+| `src/components/PanelDeAfiliado.tsx` | **El panel del afiliado**, compartido por el comerciante y el de fuera |
+| `src/pages/afiliado/AfiliadoPage.tsx` | `/afiliado` — el marco del afiliado de fuera |
+| `src/pages/vendedor/AfiliadosPage.tsx` | `Panel → Afiliados` — el programa entero para Kross; el panel propio para el comerciante |
 
-Pruebas: `src/lib/afiliados.test.ts` (37), `src/lib/stripe.test.ts` (18),
+Pruebas: `src/lib/afiliados.test.ts` (43), `src/lib/stripe.test.ts` (18),
 `src/lib/referido.test.ts` (7).
 
 ### Lo que el webhook contesta, y por qué importa
@@ -229,7 +234,8 @@ propósito: son unas pocas transferencias al mes.
 
 1. **SQL** — correr `supabase/setup-kross.sql` en el SQL Editor de
    [`ofdjghntvmrdfjhazfvz`](https://supabase.com/dashboard/project/ofdjghntvmrdfjhazfvz).
-   Es idempotente: §51 se agrega y lo anterior no se toca.
+   Es idempotente: §51 y §52 se agregan y lo anterior no se toca. §52 hace el
+   traspaso: cada tienda que ya existe se queda con su enlace.
 2. **Secreto** — `STRIPE_WEBHOOK_SECRET` = el `whsec_…` del endpoint. **No hace
    falta ninguna API key de Stripe**: esta función solo escucha.
 3. **Deploys**
@@ -251,6 +257,93 @@ propósito: son unas pocas transferencias al mes.
    Sin ninguno de los dos, el webhook resuelve por `stripe_customer_id` contra
    `store_subscriptions` — que solo sirve **después** de que el primer evento ya
    dejó el enlace escrito.
+
+## §52 · La tienda también es afiliada (10-set-2026)
+
+§51 dio por hecho que un afiliado es alguien de fuera: un vendedor con su
+enlace. Pero el mejor canal de Kross no es ese — es **el comerciante contento
+que le recomienda la herramienta a otro comerciante**. Esa persona ya está
+adentro, ya entra al panel todos los días y no necesita que nadie le explique el
+producto.
+
+Así que una tienda **es** un afiliado, y lo es desde que nace.
+
+### Las dos direcciones, que se confunden leyendo rápido
+
+| Columna | Qué dice |
+|---|---|
+| `stores.affiliate_id` | **Quién trajo a esta tienda** (§51.b) |
+| `affiliates.store_id` | **De qué tienda es este afiliado** (§52) |
+
+Una tienda puede tener las dos: la trajo Jhoann, y ella a su vez trajo a otras
+tres. Lo que no puede es traerse a sí misma — sería un ciclo de largo 1 y la
+tienda se cobraría su propia comisión mes tras mes, con el número saliendo bien
+en todas las pantallas. Lo cierran tres candados: el `UPDATE` de limpieza de
+§52.b, el rechazo de `atribuir` en la Edge Function, y que el alta automática y
+la atribución son dos operaciones distintas que nunca se cruzan.
+
+### El alta es automática, y el código es el slug
+
+Cada tienda nace con su código de afiliado, y ese código es su **slug**: el
+comerciante ya lo conoce —es su subdominio— así que no hay nada nuevo que
+memorizar. Lo crea `manage-store` junto con la tienda; §52.a hace el traspaso de
+las que ya existían.
+
+**Por qué automático y no un interruptor.** Un programa de referidos que hay que
+activar lo activa quien ya sabe que existe, o sea casi nadie. El enlace no cuesta
+nada mientras no se use, y estar ahí es la mitad del trabajo.
+
+El alta es **best-effort**: si falla, la tienda queda creada igual y su enlace se
+le da después desde el panel. Perder una marca nueva por no haber podido escribir
+una fila de referidos sería el peor negocio posible — la misma regla de
+`api-eventos.ts`: anotar nunca tumba lo que estaba anotando.
+
+### La segunda compuerta: su propio plan
+
+Cuando el que refiere es una tienda, **su propia suscripción es una segunda
+condición**. Mientras no pague su plan de Kross, sus referidas no le generan
+comisión.
+
+```
+transacciones que cuentan = las que caen dentro de
+    (tramos pagados de LA REFERIDA)  ∩  (tramos pagados del AFILIADO-TIENDA)
+```
+
+Es la misma regla de §51 un nivel más arriba, y por la misma razón: la comisión
+es una parte del margen de un mes que Kross efectivamente cobró. Si el que se
+lleva la parte dejó de pagar, ya no hay relación de la que salga. Un afiliado de
+fuera no tiene plan que vencer, así que para él no hay segunda compuerta —
+`interseccionDeTramos` solo entra cuando `affiliates.store_id` no es nulo.
+
+Lo ya liquidado se paga igual: cerrar el mes congela el número (§51.f), y eso no
+lo mueve nadie.
+
+> ⚠️ **Las dos razones por las que algo no contó se cuentan por separado**, y no
+> es cosmético: `sin_plan` (no pagó la referida) y `sin_mi_plan` (no pagué yo)
+> mandan a llamar a personas distintas. Sumarlas en un número dejaría al
+> comerciante reclamándole a su referido por algo que tiene que arreglar él.
+
+### Dónde lo ve cada quien
+
+**La misma ruta, dos contenidos** — el patrón que el panel ya usa para
+`Tiendas`/`Marca`:
+
+| Quién | Dónde | Qué ve |
+|---|---|---|
+| Kross | `Panel → Afiliados` | El programa entero: árbol, atribuir, cerrar el mes, pagar |
+| El comerciante | `Panel → Afiliados` | **Su** enlace y **sus** referidas |
+| El afiliado de fuera | `/afiliado` | Lo mismo que el comerciante, con su propio marco |
+
+Los dos últimos son el **mismo componente**
+(`src/components/PanelDeAfiliado.tsx`), con `suelto` decidiendo si trae marco y
+botón de salir. Dos componentes para lo mismo se habrían separado en la primera
+semana: uno arreglaría el conteo y el otro seguiría enseñando el viejo, y el que
+reclama es el que cobra.
+
+Quién ve qué lo decide el servidor (`quienLlama`), no la ruta: el enlace de una
+marca lo ve **quien la administra** (`is_admin` sobre `sellers`, así que el
+operador de esa marca también), no el vendedor raso — la comisión es de la marca,
+no de quien atiende un pedido.
 
 ## Lo que falta, y lo que se decidió no hacer
 

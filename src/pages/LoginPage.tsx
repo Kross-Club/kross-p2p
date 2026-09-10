@@ -54,8 +54,13 @@ export default function LoginPage() {
         //
         // La pregunta va por la Edge Function porque `affiliates` no se lee
         // desde el navegador: quién es lo decide el servidor contra su JWT.
-        const r = await llamarAfiliados<{ afiliado: unknown | null }>({ action: 'quien_soy' })
-        if (r.ok && r.data?.afiliado) {
+        const r = await llamarAfiliados<{ afiliado: { store_id: string | null } | null }>({ action: 'quien_soy' })
+        // Solo el afiliado de FUERA. Con §52 cada tienda tiene su fila de
+        // afiliado, así que sin mirar `store_id` el comerciante que se equivoca
+        // de puerta acabaría en `/afiliado` —una app distinta de la que estaba
+        // entrando, sin sus pedidos— en vez de leer que su sitio es su
+        // subdominio, donde además ya tiene esta misma pantalla.
+        if (r.ok && r.data?.afiliado && !r.data.afiliado.store_id) {
           navigate('/afiliado', { replace: true })
           return
         }

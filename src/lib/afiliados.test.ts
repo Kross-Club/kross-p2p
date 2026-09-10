@@ -3,7 +3,7 @@ import {
   TARIFA_AFILIADO, HORAS_LIMA,
   normalizarCodigo, esCodigoValido, enlaceDeAfiliado, codigoDeLaUrl,
   periodoDe, esPeriodo, rangoDelPeriodo, periodoAnterior, nombreDelPeriodo,
-  cubierta, estadoDeSuscripcion, tramosDelPeriodo,
+  cubierta, estadoDeSuscripcion, tramosDelPeriodo, interseccionDeTramos,
   comisionDeAfiliado, liquidacionDe,
   arbolDeAfiliados, aplanarArbol, descendientesDe, cerrariaCiclo,
   type AporteDeTienda, type NodoDeAfiliado,
@@ -172,9 +172,9 @@ describe('lo que se le debe al afiliado', () => {
   })
 
   const tiendas: AporteDeTienda[] = [
-    { store_id: 'a', nombre: 'Marca A', transacciones: 120, sin_plan: 0, estado: 'activa' },
-    { store_id: 'b', nombre: 'Marca B', transacciones: 400, sin_plan: 12, estado: 'en_gracia' },
-    { store_id: 'c', nombre: 'Marca C', transacciones: 0, sin_plan: 90, estado: 'cancelada' },
+    { store_id: 'a', nombre: 'Marca A', transacciones: 120, sin_plan: 0, sin_mi_plan: 0, estado: 'activa' },
+    { store_id: 'b', nombre: 'Marca B', transacciones: 400, sin_plan: 12, sin_mi_plan: 30, estado: 'en_gracia' },
+    { store_id: 'c', nombre: 'Marca C', transacciones: 0, sin_plan: 90, sin_mi_plan: 0, estado: 'cancelada' },
   ]
 
   it('suma el mes y lo ordena por quien más aportó', () => {
@@ -194,7 +194,7 @@ describe('lo que se le debe al afiliado', () => {
 
   it('un afiliado sin tiendas liquida en cero, no en error', () => {
     const l = liquidacionDe('2026-09', [])
-    expect(l).toMatchObject({ periodo: '2026-09', transacciones: 0, sin_plan: 0, monto: 0 })
+    expect(l).toMatchObject({ periodo: '2026-09', transacciones: 0, sin_plan: 0, sin_mi_plan: 0, monto: 0 })
   })
 })
 
@@ -297,5 +297,62 @@ describe('los pedazos del mes que estaban pagados', () => {
   it('fechas ilegibles se ignoran en vez de reventar la liquidación', () => {
     expect(tramosDelPeriodo([{ inicio: 'ayer', fin: 'hoy' }], mes.desde, mes.hasta)).toEqual([])
     expect(tramosDelPeriodo([{ inicio: mes.desde, fin: mes.hasta }], 'x', mes.hasta)).toEqual([])
+  })
+})
+
+describe('cuando el que refiere es una tienda, su propio plan también cuenta (§52)', () => {
+  const t = (desde: string, hasta: string) => ({ desde, hasta })
+
+  it('solo cuentan los días en que los DOS planes estaban al día', () => {
+    // La referida pagó todo setiembre; el afiliado-tienda pagó desde el 10.
+    expect(interseccionDeTramos(
+      [t('2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')],
+      [t('2026-09-10T00:00:00.000Z', '2026-10-01T00:00:00.000Z')],
+    )).toEqual([t('2026-09-10T00:00:00.000Z', '2026-10-01T00:00:00.000Z')])
+  })
+
+  it('si el afiliado-tienda no pagó nada, no cobra por nadie', () => {
+    expect(interseccionDeTramos(
+      [t('2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z')],
+      [],
+    )).toEqual([])
+  })
+
+  it('cruza varios huecos de los dos lados sin perder ninguno', () => {
+    // Él tuvo un bache del 8 al 22; ella del 5 al 12. Solo queda lo que los dos
+    // cubrían.
+    const r = interseccionDeTramos(
+      [t('2026-09-01T00:00:00.000Z', '2026-09-05T00:00:00.000Z'),
+       t('2026-09-12T00:00:00.000Z', '2026-10-01T00:00:00.000Z')],
+      [t('2026-09-01T00:00:00.000Z', '2026-09-08T00:00:00.000Z'),
+       t('2026-09-22T00:00:00.000Z', '2026-10-01T00:00:00.000Z')],
+    )
+    expect(r).toEqual([
+      t('2026-09-01T00:00:00.000Z', '2026-09-05T00:00:00.000Z'),
+      t('2026-09-22T00:00:00.000Z', '2026-10-01T00:00:00.000Z'),
+    ])
+  })
+
+  it('dos tramos que solo se tocan en el borde no dan un tramo vacío', () => {
+    // Medio abierto: el fin de uno es el inicio del otro, y ahí no hay ni un
+    // milisegundo que contar. Un tramo de ancho cero generaría una consulta
+    // que siempre devuelve 0.
+    expect(interseccionDeTramos(
+      [t('2026-09-01T00:00:00.000Z', '2026-09-10T00:00:00.000Z')],
+      [t('2026-09-10T00:00:00.000Z', '2026-09-20T00:00:00.000Z')],
+    )).toEqual([])
+  })
+
+  it('sin planes de nadie, nada', () => {
+    expect(interseccionDeTramos([], [])).toEqual([])
+  })
+
+  it('separa POR QUÉ no contaron: ella o yo', () => {
+    // Son dos cifras y no una suma porque mandan a llamar a personas distintas.
+    const l = liquidacionDe('2026-09', [
+      { store_id: 'a', nombre: 'A', transacciones: 100, sin_plan: 5, sin_mi_plan: 40, estado: 'activa' },
+      { store_id: 'b', nombre: 'B', transacciones: 50, sin_plan: 0, sin_mi_plan: 10, estado: 'activa' },
+    ])
+    expect(l).toMatchObject({ transacciones: 150, sin_plan: 5, sin_mi_plan: 50, monto: 15 })
   })
 })

@@ -29,13 +29,13 @@ describe('el menú del panel', () => {
   // propios eventos—, pero no la lleva en el menú (ver `seller-nav.ts`).
   it('el admin de una marca tiene su herramienta entera, sin Conexiones', () => {
     expect(etiquetas(perfil({ is_admin: true })))
-      .toEqual(['Pedidos', 'Clientes', 'Productos', 'Equipo', 'Marca'])
+      .toEqual(['Pedidos', 'Clientes', 'Productos', 'Equipo', 'Marca', 'Afiliados'])
   })
 
   // Entrar a una tienda es dejar la plataforma a propósito: ahí sí hay pedidos.
   it('quien entra a una marca desde la plataforma trabaja como su admin', () => {
     expect(etiquetas(perfil({ store_id: 'st_marca', is_admin: true, is_super_admin: false })))
-      .toEqual(['Pedidos', 'Clientes', 'Productos', 'Equipo', 'Marca'])
+      .toEqual(['Pedidos', 'Clientes', 'Productos', 'Equipo', 'Marca', 'Afiliados'])
   })
 
   it('el miembro del equipo, una sola entrada: sus pedidos', () => {

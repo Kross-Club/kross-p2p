@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { UserPlus, RefreshCw, Link2, Check, Store, Lock, KeyRound } from 'lucide-react'
+import { UserPlus, RefreshCw, Link2, Check, Store, KeyRound } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import PanelDeAfiliado from '../../components/PanelDeAfiliado'
 import { useSeller } from '../../lib/seller-session'
 import {
   llamarAfiliados, porQueNoSePudo,
@@ -100,12 +101,23 @@ export default function AfiliadosPage() {
     return () => { vivo = false }
   }, [puede, periodo, pedir, aplicar])
 
+  // **La misma ruta, dos contenidos** (§52). Quien administra la plataforma ve
+  // el programa entero; el admin de una marca ve SU enlace y las tiendas que
+  // trajo — que es exactamente lo que ve un afiliado de fuera en `/afiliado`,
+  // con el mismo componente. Es el patrón de `Tiendas`/`Marca`.
+  //
+  // Un vendedor raso no llega acá ni por el menú ni por la URL: el servidor no
+  // le devuelve ningún afiliado, así que el panel dice que no tiene acceso.
   if (!puede) {
     return (
-      <div className="p-4">
-        <p className="text-xs flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-          <Lock size={13} /> El programa de afiliados lo administra Kross, no una marca.
-        </p>
+      <div className="p-4 max-w-lg">
+        <header className="mb-3">
+          <h1 className="text-sm font-black" style={{ color: 'var(--text)' }}>Afiliados</h1>
+          <p className="text-[10px]" style={{ color: 'var(--text-faint)' }}>
+            Recomienda Kross y gana por cada venta de las tiendas que traigas
+          </p>
+        </header>
+        <PanelDeAfiliado />
       </div>
     )
   }
@@ -228,6 +240,14 @@ function Fila({ f, tiendas, abierta, onAbrir, onListo }: {
               {f.nivel > 0 && <span style={{ color: 'var(--text-faint)' }}>└ </span>}
               {f.nombre}
               <span className="tabular font-normal" style={{ color: 'var(--text-faint)' }}> /{f.codigo}</span>
+              {/* Los afiliados-tienda (§52) son casi todos —cada marca nace con
+                  el suyo—, así que lo que hay que poder distinguir de un
+                  vistazo es al de FUERA: ese cobra sin plan propio que vencer. */}
+              {!f.store_id && (
+                <span className="text-[9px] font-black px-1.5 py-0.5 rounded ml-1"
+                  title="Afiliado de fuera: no tiene tienda, así que no tiene plan propio que se le pueda vencer."
+                  style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>externo</span>
+              )}
             </p>
             <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
               {f.tiendas} tienda{f.tiendas === 1 ? '' : 's'} · {f.transacciones.toLocaleString('es-PE')} transacciones
@@ -271,7 +291,10 @@ function Fila({ f, tiendas, abierta, onAbrir, onListo }: {
                   </span>
                   <span className="flex-shrink-0">
                     {t.transacciones.toLocaleString('es-PE')}
-                    {t.sin_plan > 0 && <span style={{ color: 'var(--warn-fg)' }}> (+{t.sin_plan} sin plan)</span>}
+                    {t.sin_plan > 0 && <span style={{ color: 'var(--warn-fg)' }}> (+{t.sin_plan} sin su plan)</span>}
+                    {/* La otra razón (§52): la referida sí pagó, el que no fue
+                        el afiliado-tienda. Son dos llamadas distintas. */}
+                    {t.sin_mi_plan > 0 && <span style={{ color: 'var(--warn-fg)' }}> (+{t.sin_mi_plan} sin el suyo)</span>}
                   </span>
                 </p>
               ))}
