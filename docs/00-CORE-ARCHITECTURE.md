@@ -609,6 +609,11 @@ manifiesto y al comprobar que nadie más lo tenga. Da igual cuál se escriba en 
 
 Para un subdominio suelto (`tienda.sumarca.pe`) es uno solo: `CNAME` → `cname.vercel-dns.com`.
 
+⚠️ **Esos valores son los que Vercel llama «legacy».** Siguen funcionando y por eso quedan escritos
+—sirven de ejemplo y de respaldo—, pero Vercel está ampliando su rango de IPs y al dar un dominio de
+alta enseña los que recomienda hoy, con un botón para copiarlos. **Gana lo que enseñe Vercel**, y el
+panel lo dice: hardcodear un valor de infraestructura ajena es escribir algo que caduca sin avisar.
+
 ### Lo que NO hace el código
 
 - **Dar el dominio de alta en el hosting.** El CNAME por sí solo no alcanza: sin el alta no existe el
