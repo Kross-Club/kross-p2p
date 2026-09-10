@@ -45,12 +45,9 @@ async function broadcast(sessionId: string, event: string, payload: unknown) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const { session_id, template, language, params, mapping, seller_name, boton_url } = await req.json() as {
+  const { session_id, template, language, params, mapping, seller_name } = await req.json() as {
     session_id: string; template: string; language?: string; params?: number
     mapping?: string[]; seller_name?: string
-    /** La clave del catálogo que va como sufijo del BOTÓN de URL, si la
-     *  plantilla lo tiene. Con `token`, Meta arma `<url base>/<token>`. */
-    boton_url?: string
   }
   if (!session_id || !template) return json({ error: 'missing_fields' }, 400)
 
@@ -123,9 +120,6 @@ Deno.serve(async (req) => {
   while (keys.length < count) keys.push('name') // safety, shouldn't happen
   const parameters = keys.map(k => ({ type: 'text', text: String(catalog[k] ?? '').slice(0, 300) }))
   const lang = language || Deno.env.get('WHATSAPP_TEMPLATE_LANG') || 'es'
-  // `token` no está en el catálogo a propósito: no es un texto que se lea, es
-  // la llave del pedido, y solo tiene sentido como sufijo del botón.
-  const botonSufijo = boton_url === 'token' ? String(session.token ?? '') : (boton_url ? String(catalog[boton_url] ?? '') : '')
 
   let result = 'failed', error: string | undefined
   try {
@@ -134,16 +128,13 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messaging_product: 'whatsapp', to: num, type: 'template',
-        template: {
-          name: template, language: { code: lang },
-          components: [
-            ...(parameters.length ? [{ type: 'body', parameters }] : []),
-            // El botón de URL dinámica. Meta pega este sufijo a la URL con la
-            // que se aprobó la plantilla, así que acá va SOLO el token: un
-            // botón se toca mucho más que un enlace suelto en el texto.
-            ...(botonSufijo ? [{ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: botonSufijo }] }] : []),
-          ],
-        },
+        // Sin componente de botón a propósito: todas las plantillas del riel
+        // llevan el enlace como variable del CUERPO (`link`). Meta congela la
+        // URL de un botón al aprobar la plantilla, así que una con botón sirve
+        // para una sola marca y hay que re-aprobarla si esa marca conecta su
+        // dominio. En el cuerpo, el MISMO texto sirve para todas y el enlace
+        // sale con el dominio de cada tienda.
+        template: { name: template, language: { code: lang }, components: parameters.length ? [{ type: 'body', parameters }] : [] },
       }),
     })
     if (res.ok) result = 'sent'

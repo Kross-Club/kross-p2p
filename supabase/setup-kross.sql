@@ -2344,19 +2344,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS stores_custom_domain_key
   ON stores (custom_domain) WHERE custom_domain IS NOT NULL;
 
 -- ============================================================================
--- §51 · EL WHATSAPP DEL PEDIDO NUEVO, Y LA RESPUESTA A QUIEN ESCRIBE  (10-set-2026)
+-- §51 · EL WHATSAPP DEL PEDIDO PAGADO, Y LA RESPUESTA A QUIEN ESCRIBE  (10-set-2026)
 -- ============================================================================
--- Al terminar el formulario no le llegaba NADA al comprador. El único sitio
--- donde vivía su enlace era esa pestaña del navegador: si la cerraba, si compró
--- desde el celular de otro, o si el navegador limpió su almacenamiento, el
--- enlace se perdía — y con él la tasa de entrega, porque el chat del pedido es
--- lo que la sostiene.
+-- Al comprador no le llegaba NADA fuera de la pestaña donde compró. El único
+-- sitio donde vivía su enlace era esa pestaña: si la cerraba, si compró desde
+-- el celular de otro, o si el navegador limpió su almacenamiento, el enlace se
+-- perdía — y con él la tasa de entrega, porque el chat del pedido es lo que la
+-- sostiene.
 --
--- La plantilla le pone una copia permanente del enlace donde ya vive. Y como el
--- número solo manda avisos, hace falta la otra mitad: contestarle a quien
--- escribe. Decir «no respondemos» no evita que escriban; lo que evita el enojo
--- —y las denuncias que bajan la calificación del número— es que reciba su
--- enlace en vez de silencio.
+-- La plantilla le pone una copia permanente del enlace donde ya vive, y sale
+-- con el PRIMER COBRO CRUZADO (el adelanto), no al registrar el pedido: un
+-- pedido sin pago todavía puede no cruzar. Y como el número solo manda avisos,
+-- hace falta la otra mitad: contestarle a quien escribe. Decir «no respondemos»
+-- no evita que escriban; lo que evita el enojo —y las denuncias que bajan la
+-- calificación del número— es que reciba su enlace en vez de silencio.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_pedido_template text;
 
 -- A quién ya se le contestó, para no contestarle a cada mensaje. La respuesta

@@ -38,9 +38,9 @@ const PLANTILLAS_WA = [
   },
   {
     col: 'wa_pedido_template',
-    titulo: 'Pedido recibido',
-    vars: ['nombre', 'marca', 'número de pedido'],
-    ayuda: 'Sale apenas se cierra el formulario. Dice que este número es solo de avisos y manda la conversación al enlace del pedido (botón de URL con el token).',
+    titulo: 'Pago recibido',
+    vars: ['nombre', 'marca', 'número de pedido', 'enlace'],
+    ayuda: 'Sale con el PRIMER cobro cruzado (el adelanto, pague la mitad o el total), no al registrar el pedido. Le deja su enlace donde va a estar cuando se vaya de la pantalla, y dice que este número solo envía avisos.',
   },
   {
     col: 'wa_recojo_template',

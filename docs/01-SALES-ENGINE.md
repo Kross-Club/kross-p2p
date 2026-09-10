@@ -1177,35 +1177,55 @@ propio. Un comprador de Ventanilla o Bellavista leía "Lima" y "Provincia" y no
 tenía forma de saber cuál le tocaba — la duda basta para que escriba por WhatsApp
 en vez de terminar la compra.
 
-## El WhatsApp del pedido nuevo, y quién contesta ahí ✅ (10-set-2026)
+## El WhatsApp del pedido pagado, y quién contesta ahí ✅ (10-set-2026)
 
-Al terminar el formulario de 3 pasos, al comprador **no le llegaba nada**. Su
-enlace vivía en un solo sitio: la pestaña que acababa de usar. Si la cerraba, si
-compró desde el celular de otro, o si el navegador limpió el almacenamiento, el
-enlace se perdía — y el chat del pedido es lo que sostiene la tasa de entrega.
+Al comprador no le llegaba **nada** fuera de la pestaña donde compró. Su enlace
+vivía en un solo sitio: esa pestaña. Si la cerraba, si compró desde el celular
+de otro, o si el navegador limpió el almacenamiento, el enlace se perdía — y el
+chat del pedido es lo que sostiene la tasa de entrega.
 
-Ahora, apenas se crea el pedido, sale una **plantilla de utilidad** a su WhatsApp
-con una copia permanente del enlace, en el sitio donde esa persona ya vive.
+### Sale con el PRIMER PAGO, no con el pedido creado
 
-### Qué dice, y qué NO dice
+El disparo está en los dos rieles de cobro (`pay360-webhook` y `flow-confirm`),
+justo después del acuse, y **solo con el cobro `adelanto`** — el primero, pague
+la mitad o el total. Ni el saldo ni un `extra` lo repiten: esos ya tienen su
+acuse, y repetir el enlace se lee como un cobro nuevo.
+
+Va después del pago y no al registrar el pedido a propósito: un pedido sin pago
+todavía puede no cruzar, y gastarle una plantilla a quien no pagó promete algo
+que no ocurrió. **Al que abandona el pago se le hablará con otra plantilla**,
+que es otra conversación (🔮 pendiente).
+
+Y es el momento justo por dónde está esa persona: acaba de pagar en Yape y
+**está en Yape**, no en la pantalla del pedido. Es cuando hay que dejarle el
+enlace donde va a estar.
+
+No se pisa con `_shared/acuse-de-pago.ts`: ese es el mensaje **dentro** del
+chat, para quien ya está mirando; este va a buscar al que no está.
+
+### El texto, y por qué el enlace va en el cuerpo
 
 ```
-Hola {{1}}, recibimos tu pedido en {{2}}. Tu número es {{3}}.
-Este número solo envía avisos y no se lee. Toda la información de tu pedido y la
-conversación con nuestro equipo están en el botón de abajo.
+Hola {{1}}, recibimos tu pago y tu pedido en {{2}} ya está en preparación.
 
-[ Ver mi pedido ]  → https://<dominio de la marca>/p/<token>
+Todo el seguimiento y la conversación con nuestro equipo están acá: {{4}}
+
+Este número solo envía avisos y no se lee: escríbenos por ese enlace y te
+respondemos ahí. Tu número de pedido es {{3}}.
 ```
 
-`{{1}}` nombre · `{{2}}` marca · `{{3}}` número de pedido. El enlace va en el
-**botón de URL dinámica** y no en el cuerpo: un botón se toca mucho más que un
-enlace suelto, y eso es lo único que este mensaje tiene que lograr.
+`{{1}}` nombre · `{{2}}` marca · `{{3}}` número de pedido · `{{4}}` enlace.
 
-⚠️ Dice **«recibimos tu pedido»** y nunca «gracias por tu pago». El pedido se
-crea antes de que el Yape esté validado, así que agradecer un pago que todavía
-puede no cruzar es prometer algo falso. El acuse del pago ya existe aparte
-(`_shared/acuse-de-pago.ts`) y sale cuando de verdad pasó: los dos mensajes no
-se pisan a propósito.
+**Un botón se toca más, pero no sirve acá.** Meta congela la URL de un botón al
+aprobar la plantilla: una plantilla con botón vale para UNA marca, y hay que
+volver a aprobarla si esa marca conecta su dominio. Como variable del cuerpo, el
+**mismo texto de plantilla sirve para todas las tiendas** y el servidor le pone
+a cada comprador el dominio de SU tienda (`baseDeLaTienda`, §50). Eso es lo que
+lo hace reutilizable en vez de un caso especial por marca.
+
+⚠️ **El `{{4}}` no puede quedar al final del cuerpo**: Meta rechaza las
+plantillas cuya última cosa es una variable. Por eso el número de pedido cierra
+el texto en vez de abrirlo.
 
 ### La otra mitad: quien escribe recibe su enlace
 
@@ -1219,13 +1239,13 @@ número** (`wa_respuestas`) con el enlace de su pedido vivo, o con
 `<dominio>/acceso` si no tiene ninguno. Es texto libre, no plantilla: el mensaje
 de la persona abre una ventana de 24 h en la que contestarle sale gratis.
 
-No contesta cada línea que escriba dentro de esa ventana: no cuesta dinero, pero
-se lee como un bot roto. Quien insiste ya recibió su enlace; lo que necesita es
-que alguien lo lea, y ahí es donde está el equipo.
-
-Esto **no convierte el número en un canal**. Sigue valiendo lo de arriba, *El
-canal es el chat, no WhatsApp*: la conversación pasa en `/p/:token`, donde queda
-escrita, la ve el vendedor y no depende de la ventana de 24 h de Meta.
+⚠️ **Lo que entra por ahí NO se guarda ni aparece en el panel.** No hay bandeja
+de WhatsApp, no hay hilo en el CRM y el vendedor no ve lo que la persona
+escribió: el webhook responde y suelta el mensaje. Es deliberado y es lo que
+mantiene el chat del pedido como el único sitio donde se conversa — ver *El
+canal es el chat, no WhatsApp*, arriba. Meterlo al panel sería construir un
+segundo buzón con reglas propias (la ventana de 24 h, plantillas para reabrirla,
+quién contesta qué), que es justo lo que este diseño evita.
 
 ### El interruptor es la plantilla
 
@@ -1237,11 +1257,6 @@ tecleado no falla al guardar: falla el día del envío, en silencio y de a un
 comprador. El panel compara además cuántas variables espera la plantilla contra
 las que le manda el servidor, porque una diferencia ahí hace que Meta rechace el
 envío entero.
-
-⚠️ **La URL del botón se congela al aprobar la plantilla.** Si la marca conecta
-su dominio propio (§50) después, hay que volver a aprobarla con el dominio
-nuevo: Meta no deja cambiarle la base a una plantilla ya aprobada. Conviene
-aprobarla *después* de conectar el dominio.
 
 El despliegue, los secretos y la configuración en Meta están en
 [`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md).

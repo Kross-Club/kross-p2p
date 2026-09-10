@@ -523,7 +523,7 @@ por aviso, y cada una es su propia columna de `stores`:
 | Columna | Aviso | Variables que le manda el servidor |
 |---|---|---|
 | `wa_codigo_template` | Código de acceso | el código (cuerpo y botón de copiar) |
-| `wa_pedido_template` | Pedido recibido | nombre · marca · número de pedido |
+| `wa_pedido_template` | Pago recibido (el primer cobro) | nombre · marca · número de pedido · enlace |
 | `wa_recojo_template` | Llegó a la agencia | nombre · producto · agencia · enlace |
 | `wa_recordatorio_template` | Recordatorio de recojo | nombre · agencia · enlace |
 | `wa_ultimo_aviso_template` | Último aviso | nombre · fecha límite · enlace |
