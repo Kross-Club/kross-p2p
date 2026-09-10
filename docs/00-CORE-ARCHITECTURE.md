@@ -614,6 +614,40 @@ Para un subdominio suelto (`tienda.sumarca.pe`) es uno solo: `CNAME` → `cname.
 alta enseña los que recomienda hoy, con un botón para copiarlos. **Gana lo que enseñe Vercel**, y el
 panel lo dice: hardcodear un valor de infraestructura ajena es escribir algo que caduca sin avisar.
 
+### Los archivos también salen por el dominio de la marca (10-set-2026)
+
+La hoja de guía se abría en `https://<ref>.supabase.co/storage/v1/object/public/shalom-guias/…`.
+Ese enlace es el que el comprador abre en una pestaña y el que viaja por WhatsApp: la marca mandaba
+a su cliente a un dominio que no es suyo ni nuestro.
+
+`vercel.json` reescribe **`/archivos/*`** contra el storage, así que el archivo se sirve por el host
+por el que entró la persona —el dominio propio o el subdominio— **sin pasar por una función**: es una
+reescritura del hosting, no un proxy con runtime. `rutaDeArchivo` (`src/lib/archivos.ts`) convierte
+las URL absolutas al mostrarlas, así que **también arregla las filas viejas**, y deja intacto lo que
+no es nuestro — el rótulo de Olva vive en el dominio de Olva y reescribirlo lo rompería.
+
+⚠️ **Esto es marca blanca, NO seguridad**, y conviene no confundirlo. La URL y la llave anónima de
+Supabase están en el bundle a propósito; lo que protege los datos es RLS. Lo que se arregla es la
+dirección que la persona **ve**. Lo que sigue a la vista de quien mire la pestaña de red:
+
+| Qué | Por qué se queda |
+|---|---|
+| `…supabase.co/functions/v1/…` en cada llamada | Esconderlo obliga a proxiar toda la API por el hosting: más latencia, más superficie y una pieza más que puede caerse |
+| El websocket de Realtime | Lo mismo, y además reconectando |
+| La llave anónima en el bundle | Es pública por diseño. Si protegiera algo, el problema sería RLS |
+
+Y una que sí es de seguridad y **no cambia con esto**: la guía es un PDF en un bucket público con el
+nombre, el DNI y la dirección del comprador. Lo que la protege es que su ruta es un UUID imposible de
+adivinar — la misma regla de capacidad que `/p/<token>`, y la misma que hay que respetar: **quien
+tiene el enlace tiene el documento**, así que no se pone en ningún sitio listable.
+
+### Las dos direcciones de una landing
+
+Con dominio propio verificado, *Productos* enseña **dos** botones de copiar: el de la marca y el
+nuestro. No es duplicar por duplicar — sirven para cosas distintas: el suyo para un anuncio, el
+nuestro como respaldo si el DNS de su dominio se cae o lo mueven. Sin dominio propio son la misma
+dirección y se enseña **una sola**: dos botones idénticos serían ruido.
+
 ### Lo que NO hace el código
 
 - **Dar el dominio de alta en el hosting.** El CNAME por sí solo no alcanza: sin el alta no existe el

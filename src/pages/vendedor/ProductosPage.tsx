@@ -9,6 +9,7 @@ import AbTestPanel from './AbTestPanel'
 import { mensajePanel } from '../../lib/panel-errors'
 import { AgencyService } from '../../lib/checkout/services/AgencyService'
 import type { AgencyBranch } from '../../lib/checkout/types'
+import { baseDeLaTienda } from '../../lib/dominio'
 
 /** El catálogo REAL de la cuenta Shalom Pro (lo que devuelve GET /v1/products),
  *  no una escala nuestra: de cuál se elija sale la tarifa del envío. Misma lista
@@ -48,6 +49,9 @@ interface Product {
   declared_content?: string | null
 }
 
+/** El host de una dirección, para nombrar el botón sin el `https://`. */
+const hostDe = (url: string) => { try { return new URL(url).host } catch { return url } }
+
 export default function ProductosPage() {
   const { real, effective } = useSeller()
   const [products, setProducts] = useState<Product[]>([])
@@ -55,7 +59,10 @@ export default function ProductosPage() {
   const [editing, setEditing] = useState<Product | null>(null)
   /** `null` mientras carga. Se pide entero y no solo el slug porque el
    *  experimento A/B también depende de la marca — ver abajo. */
-  const [store, setStore] = useState<{ slug: string | null; home_delivery_enabled: boolean } | null>(null)
+  const [store, setStore] = useState<{
+    slug: string | null; home_delivery_enabled: boolean
+    custom_domain?: string | null; custom_domain_verified?: boolean | null
+  } | null>(null)
   /** Cuál de los enlaces se acaba de copiar. Sin acuse, copiar no se siente:
    *  el portapapeles no da señal y el vendedor toca dos veces por las dudas. */
   const [copiado, setCopiado] = useState<string | null>(null)
@@ -75,19 +82,39 @@ export default function ProductosPage() {
   }
   useEffect(() => { load() /* eslint-disable-next-line */ }, [effective?.store_id])
 
-  // Brand subdomain, so shared landing links always point to the brand's site
-  // (e.g. marca.krossclub.app/landing/…), even when the super admin shares them.
+  // La dirección de la marca, para que los enlaces compartidos apunten a SU
+  // sitio —y no al de quien los copia— aunque los comparta un super admin.
   useEffect(() => {
     if (!effective?.store_id) return
-    supabase.from('stores').select('slug, home_delivery_enabled').eq('id', effective.store_id).maybeSingle()
-      .then(({ data }) => setStore({
+    // Con el dominio propio (§50) y, si el SQL no está, sin él: el enlace sale
+    // al subdominio, que es lo que hacía antes.
+    const CAMPOS = 'slug, home_delivery_enabled'
+    const pedir = (campos: string) =>
+      supabase.from('stores').select(campos).eq('id', effective.store_id!).maybeSingle()
+    pedir(`${CAMPOS}, custom_domain, custom_domain_verified`)
+      .then(async r => (r.error ? (await pedir(CAMPOS)).data : r.data))
+      .then(d => {
+        const data = d as { slug?: string | null; home_delivery_enabled?: boolean | null
+                            custom_domain?: string | null; custom_domain_verified?: boolean | null } | null
+        setStore({
         slug: data?.slug ?? null,
+        custom_domain: data?.custom_domain ?? null,
+        custom_domain_verified: !!data?.custom_domain_verified,
         // El default de la columna es `true` y las marcas viejas no la tienen
         // escrita: `undefined` significa "reparte", igual que en el checkout.
         home_delivery_enabled: data?.home_delivery_enabled ?? true,
-      }))
+        })
+      })
   }, [effective?.store_id])
-  const landingBase = store?.slug ? `https://${store.slug}.krossclub.app` : window.location.origin
+
+  // Las DOS direcciones de una landing. Con dominio propio verificado son
+  // distintas, y las dos funcionan: se enseñan las dos porque sirven para cosas
+  // distintas —el suyo para un anuncio y su marca, el nuestro como respaldo si
+  // el DNS de su dominio se cae o lo mueven—. Sin dominio propio son la misma y
+  // se enseña una sola: dos botones idénticos serían ruido.
+  const baseKross = store?.slug ? `https://${store.slug}.krossclub.app` : window.location.origin
+  const baseMarca = store?.slug || store?.custom_domain ? baseDeLaTienda(store) : window.location.origin
+  const conDominioPropio = baseMarca !== baseKross
 
   // ─── ¿Tiene sentido el experimento en esta marca? ──────────────────────────
   // A y B se diferencian SOLO en provincia con cobertura: en A la cobertura
@@ -150,24 +177,37 @@ export default function ProductosPage() {
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                  <button onClick={() => copiar(`${landingBase}/landing/${p.id}`, p.id)}
+                  <button onClick={() => copiar(`${baseMarca}/landing/${p.id}`, p.id)}
+                    title={`${baseMarca}/landing/${p.id}`}
                     className="text-[11px] font-bold flex items-center gap-1" style={{ color: 'var(--brand)' }}>
-                    <Copy size={11} /> {copiado === p.id ? '¡Copiado!' : 'Copiar link de landing'}
+                    <Copy size={11} /> {copiado === p.id
+                      ? '¡Copiado!'
+                      : conDominioPropio ? `Copiar link · ${hostDe(baseMarca)}` : 'Copiar link de landing'}
                   </button>
+                  {/* El nuestro, solo cuando son direcciones distintas. Sirve de
+                      respaldo: si el DNS del dominio de la marca se cae o lo
+                      mueven, este sigue atendiendo. */}
+                  {conDominioPropio && (
+                    <button onClick={() => copiar(`${baseKross}/landing/${p.id}`, `${p.id}-kross`)}
+                      title={`${baseKross}/landing/${p.id}`}
+                      className="text-[11px] font-bold flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                      <Copy size={11} /> {copiado === `${p.id}-kross` ? '¡Copiado!' : `Copiar link · ${hostDe(baseKross)}`}
+                    </button>
+                  )}
                   {/* Los dos enlaces del experimento. `?checkout=` FUERZA la versión
                       y no la guarda, así que sirven para mandar cada anuncio a una
                       —y comparar— pero no sortean: quien entre por el link limpio
                       sigue cayendo en el reparto de la tienda.
                       Solo donde el experimento existe: ver `abIsLive`. */}
                   {abIsLive && (['A', 'B'] as const).map(v => (
-                    <button key={v} onClick={() => copiar(`${landingBase}/landing/${p.id}?checkout=${v}`, `${p.id}-${v}`)}
+                    <button key={v} onClick={() => copiar(`${baseMarca}/landing/${p.id}?checkout=${v}`, `${p.id}-${v}`)}
                       className="text-[11px] font-bold flex items-center gap-1 text-gray-400">
                       <Copy size={10} /> {copiado === `${p.id}-${v}` ? '¡Copiado!' : `Versión ${v}`}
                     </button>
                   ))}
                 </div>
               </div>
-              <a href={`${landingBase}/landing/${p.id}`} target="_blank" rel="noreferrer" className="p-2 rounded-xl" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}><ExternalLink size={14} /></a>
+              <a href={`${baseMarca}/landing/${p.id}`} target="_blank" rel="noreferrer" className="p-2 rounded-xl" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}><ExternalLink size={14} /></a>
               <button onClick={() => setEditing(p)} className="text-xs font-black px-3 py-2 rounded-xl" style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>Editar</button>
             </div>
           ))}

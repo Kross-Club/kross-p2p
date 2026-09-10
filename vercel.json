@@ -1,5 +1,9 @@
 {
   "rewrites": [
+    {
+      "source": "/archivos/:path*",
+      "destination": "https://ofdjghntvmrdfjhazfvz.supabase.co/storage/v1/object/public/:path*"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
