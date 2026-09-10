@@ -891,6 +891,13 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
                 </tbody>
               </table>
               <p>
+                ⚠️ <b>Si el hosting te propone otros valores, gana el hosting.</b> Al dar el dominio de
+                alta, Vercel enseña los registros que recomienda hoy y trae un botón para copiarlos —
+                úsalo en vez de teclear, sobre todo con los nombres largos. Está ampliando su rango de
+                IPs, así que los de arriba son los antiguos: siguen funcionando, pero los suyos son la
+                fuente de verdad.
+              </p>
+              <p className="mt-1.5">
                 <b>@</b> significa «el dominio a secas», sin nada delante. Si en vez del raíz quieres solo
                 un subdominio (<span className="font-mono">tienda.sumarca.pe</span>), es un único registro:
                 <b> CNAME</b>, nombre <span className="font-mono">tienda</span>, valor{' '}
