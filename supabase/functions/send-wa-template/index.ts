@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 import { saldoOf } from '../_shared/tracking.ts'
 import { DIAS_EN_AGENCIA_DEFAULT, fechaDeDevolucion, fechaEnPalabras } from '../_shared/recojo.ts'
+import { baseDeLaTienda, type TiendaConDominio } from '../_shared/tienda-url.ts'
 
 /** El courier como se nombra a una persona. Igual que en el ticket y en el
  *  chat: el comprador ve "Shalom", no "SHALOM". */
@@ -58,9 +59,18 @@ Deno.serve(async (req) => {
   if (!session) return json({ error: 'session_not_found' }, 404)
 
   const token = Deno.env.get('WHATSAPP_TOKEN')
-  const { data: store } = await supabase
-    .from('stores').select('wa_enabled, wa_phone_number_id, slug, agency_hold_days').eq('id', session.store_id).maybeSingle()
-  if (!token || !store?.wa_enabled || !store?.wa_phone_number_id) return json({ error: 'wa_not_configured' }, 400)
+  // El nombre para las plantillas que nombran la marca, y el dominio propio
+  // (§50) para el enlace. Si ese SQL no se corrió, se pide sin esas columnas y
+  // el enlace sale al subdominio.
+  const CAMPOS_TIENDA = 'wa_enabled, wa_phone_number_id, slug, nombre, agency_hold_days'
+  const pedirTienda = (campos: string) =>
+    supabase.from('stores').select(campos).eq('id', session.store_id).maybeSingle()
+  let rt = await pedirTienda(`${CAMPOS_TIENDA}, custom_domain, custom_domain_verified`) as {
+    data: Record<string, unknown> | null; error: { code?: string; message?: string } | null
+  }
+  if (rt.error) rt = await pedirTienda(CAMPOS_TIENDA) as typeof rt
+  const store = (rt.data ?? {}) as Record<string, unknown>
+  if (!token || !store.wa_enabled || !store.wa_phone_number_id) return json({ error: 'wa_not_configured' }, 400)
 
   // Recipient phone
   let phone: string | null = null
@@ -71,10 +81,17 @@ Deno.serve(async (req) => {
   if (!num) return json({ error: 'no_phone' }, 400)
 
   // Catalog of variable values, resolved from the order
-  const link = store.slug ? `https://${store.slug}.krossclub.app/p/${session.token}` : `https://krossclub.app/p/${session.token}`
+  // La dirección de la marca, no el subdominio a secas: desde el §50 una
+  // tienda puede tener su dominio propio, y este enlace es el que la persona
+  // abre desde WhatsApp. `baseDeLaTienda` cae al subdominio mientras no esté
+  // verificado, así que nunca manda a un DNS que no resuelve.
+  const link = `${baseDeLaTienda(store as TiendaConDominio)}/p/${session.token}`
   const catalog: Record<string, string> = {
     name: (session.buyer_name ?? 'Hola').split(' ')[0],
     product: session.product_name ?? 'tu pedido',
+    // La MARCA, para las plantillas que la nombran: el comprador tiene que
+    // reconocer de quién es el mensaje antes de tocar nada.
+    store: String(store.nombre ?? '').trim() || 'tu tienda',
     link,
     price: session.product_price != null ? `S/${session.product_price}` : '',
     address: session.address ?? '',
@@ -111,6 +128,12 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messaging_product: 'whatsapp', to: num, type: 'template',
+        // Sin componente de botón a propósito: todas las plantillas del riel
+        // llevan el enlace como variable del CUERPO (`link`). Meta congela la
+        // URL de un botón al aprobar la plantilla, así que una con botón sirve
+        // para una sola marca y hay que re-aprobarla si esa marca conecta su
+        // dominio. En el cuerpo, el MISMO texto sirve para todas y el enlace
+        // sale con el dominio de cada tienda.
         template: { name: template, language: { code: lang }, components: parameters.length ? [{ type: 'body', parameters }] : [] },
       }),
     })

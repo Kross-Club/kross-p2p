@@ -188,7 +188,7 @@ Todo el stack, en el punto donde se sabe **de qué marca** era la llamada:
 | **Shalom LAT** | su propio `llamar()` en `shalom-lat-emisor` (instancia, sesión, pendientes, emisión) y el rastreo en el router |
 | **Olva PE** | `olva-tracking` y `olva-tracking-sync`, en sus dos rieles |
 | **Olva LAT** | su `latFetch()` cubre todo lo que pase por ahí (rastreo, suscripción, catálogo, registro); más la firma del webhook y la guía emitida en `olva-order` |
-| **WhatsApp** | `send-wa-template`, `run-campaign`, `invite-buyers`, `list-wa-templates`, `seller-call-token` y `_shared/notificar.ts` |
+| **WhatsApp** | `send-wa-template`, `run-campaign`, `invite-buyers`, `list-wa-templates`, `seller-call-token`, `_shared/notificar.ts` y —desde el 10-set-2026— `wa-webhook` (`respuesta.enviar`: la respuesta automática a quien le escribe al número de la marca) |
 | **Meta CAPI · TikTok** | los tres sitios que disparan conversiones, vía `anotarCapi` |
 | **RENIEC (Decolecta)** | `dni-lookup` |
 | **Web Push** | `_shared/notificar.ts` — solo cuando fallaron **todas** las suscripciones (una muerta es normal) |

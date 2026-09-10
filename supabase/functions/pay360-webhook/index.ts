@@ -26,6 +26,7 @@ import { columnasDe } from '../_shared/cobros.ts'
 import { anotar, anotarConversion, anotarResultado } from '../_shared/api-eventos.ts'
 import { comisionDeKross, desgloseDelEvento, hayDesvio } from '../_shared/comision.ts'
 import { acuseDePago } from '../_shared/acuse-de-pago.ts'
+import { avisarPedidoPagado } from '../_shared/wa-pedido.ts'
 import { mensajeDeClave } from '../_shared/mensaje-de-guia.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
 import { notifyBuyer } from '../_shared/notificar.ts'
@@ -462,6 +463,16 @@ Deno.serve(async (req) => {
       sms: { tipo: esSaldo ? 'saldo' : 'adelanto', pagado: paid, esRecojo },
     })
   }
+
+  // ─── Y el WhatsApp con su enlace, si la marca tiene la plantilla (§51) ─────
+  // Solo con el ADELANTO: el primer cobro cruzado, pague la mitad o el total.
+  // Es el momento en que el comprador se va de la pantalla —acaba de pagar en
+  // Yape y está en Yape—, así que es cuando hay que dejarle el enlace donde va
+  // a estar. El saldo y los `extra` no lo repiten: ya tienen su acuse.
+  //
+  // `runInBackground` y no `await`: el 2xx de este webhook no puede esperar a
+  // Meta ni fallar por Meta.
+  if (!esSaldo) runInBackground(avisarPedidoPagado(String(session.id), session.store_id))
 
   // ─── La clave de recojo, contra el saldo pagado ────────────────────────────
   //

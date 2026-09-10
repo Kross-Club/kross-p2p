@@ -622,6 +622,11 @@ Deno.serve(async (req) => {
     console.error('[register-buyer] CAPI Lead falló:', String(e))
   }
 
+  // ⚠️ El WhatsApp con el enlace del pedido NO sale acá. Sale con el primer
+  // cobro cruzado, desde `pay360-webhook` y `flow-confirm`
+  // (`_shared/wa-pedido.ts`): un pedido registrado todavía puede no pagarse, y
+  // gastarle una plantilla a quien no pagó promete algo que no ocurrió.
+
   return new Response(
     JSON.stringify({
       token: data.token,

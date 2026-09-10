@@ -510,9 +510,37 @@ aprobar la plantilla, no tocar código.
 
 La plantilla es de categoría **authentication**, con una variable en el cuerpo y
 el botón de copiar; Meta exige que el código viaje en los dos, y así se manda.
-⚠️ **Ese envío no está probado contra Meta todavía** (no hay plantilla aprobada
-con qué probarlo): el primer envío real hay que mirarlo, y si falla queda en
-*Panel → Conexiones* como `WHATSAPP · codigo.enviar` con la respuesta de Meta.
+✅ **Probado contra Meta el 09-set-2026** en la marca viva (plantilla
+`codigo_acceso`): el código llegó y abrió la sesión. Si en otra marca falla,
+queda en *Panel → Conexiones* como `WHATSAPP · codigo.enviar` con lo que
+respondió Meta.
+
+#### Dónde se configuran las plantillas (10-set-2026)
+
+*Panel → Marca → **Plantillas de WhatsApp*** (solo superadmin). Son cinco, una
+por aviso, y cada una es su propia columna de `stores`:
+
+| Columna | Aviso | Variables que le manda el servidor |
+|---|---|---|
+| `wa_codigo_template` | Código de acceso | el código (cuerpo y botón de copiar) |
+| `wa_pedido_template` | Pago recibido (el primer cobro) | nombre · marca · número de pedido · enlace |
+| `wa_recojo_template` | Llegó a la agencia | nombre · producto · agencia · enlace |
+| `wa_recordatorio_template` | Recordatorio de recojo | nombre · agencia · enlace |
+| `wa_ultimo_aviso_template` | Último aviso | nombre · fecha límite · enlace |
+
+Hasta el 10-set el único modo de escribirlas era llamar a `manage-store` a mano,
+así que media docena de avisos vivía apagada sin que se notara. El panel las
+ofrece **de una lista de las aprobadas** en la WABA de la marca
+(`list-wa-templates`), no como texto libre: un nombre mal tecleado no falla al
+guardar, falla el día del envío, en silencio y de a un comprador. Y compara
+cuántas variables espera la plantilla contra las que le manda el servidor,
+porque una diferencia ahí hace que Meta rechace el envío entero.
+
+Si la lista no vuelve —sin WABA ID, sin token global, o la marca todavía no
+aprobó nada— los campos siguen siendo de texto: no poder listar nunca puede ser
+motivo para perder lo que ya estaba configurado. Y una plantilla guardada que ya
+no figura entre las aprobadas se sigue viendo, marcada, en vez de desaparecer al
+guardar cualquier otra cosa.
 
 #### Qué pasa con quien ya estaba adentro
 

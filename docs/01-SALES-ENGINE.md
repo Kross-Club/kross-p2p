@@ -1176,3 +1176,87 @@ Decía solo **Lima**, y el Callao entra en esa rama: es lo que cubre el motoriza
 propio. Un comprador de Ventanilla o Bellavista leía "Lima" y "Provincia" y no
 tenía forma de saber cuál le tocaba — la duda basta para que escriba por WhatsApp
 en vez de terminar la compra.
+
+## El WhatsApp del pedido pagado, y quién contesta ahí ✅ (10-set-2026)
+
+Al comprador no le llegaba **nada** fuera de la pestaña donde compró. Su enlace
+vivía en un solo sitio: esa pestaña. Si la cerraba, si compró desde el celular
+de otro, o si el navegador limpió el almacenamiento, el enlace se perdía — y el
+chat del pedido es lo que sostiene la tasa de entrega.
+
+### Sale con el PRIMER PAGO, no con el pedido creado
+
+El disparo está en los dos rieles de cobro (`pay360-webhook` y `flow-confirm`),
+justo después del acuse, y **solo con el cobro `adelanto`** — el primero, pague
+la mitad o el total. Ni el saldo ni un `extra` lo repiten: esos ya tienen su
+acuse, y repetir el enlace se lee como un cobro nuevo.
+
+Va después del pago y no al registrar el pedido a propósito: un pedido sin pago
+todavía puede no cruzar, y gastarle una plantilla a quien no pagó promete algo
+que no ocurrió. **Al que abandona el pago se le hablará con otra plantilla**,
+que es otra conversación (🔮 pendiente).
+
+Y es el momento justo por dónde está esa persona: acaba de pagar en Yape y
+**está en Yape**, no en la pantalla del pedido. Es cuando hay que dejarle el
+enlace donde va a estar.
+
+No se pisa con `_shared/acuse-de-pago.ts`: ese es el mensaje **dentro** del
+chat, para quien ya está mirando; este va a buscar al que no está.
+
+### El texto, y por qué el enlace va en el cuerpo
+
+```
+Hola {{1}}, recibimos tu pago y tu pedido en {{2}} ya está en preparación.
+
+Todo el seguimiento y la conversación con nuestro equipo están acá: {{4}}
+
+Este número solo envía avisos y no se lee: escríbenos por ese enlace y te
+respondemos ahí. Tu número de pedido es {{3}}.
+```
+
+`{{1}}` nombre · `{{2}}` marca · `{{3}}` número de pedido · `{{4}}` enlace.
+
+**Un botón se toca más, pero no sirve acá.** Meta congela la URL de un botón al
+aprobar la plantilla: una plantilla con botón vale para UNA marca, y hay que
+volver a aprobarla si esa marca conecta su dominio. Como variable del cuerpo, el
+**mismo texto de plantilla sirve para todas las tiendas** y el servidor le pone
+a cada comprador el dominio de SU tienda (`baseDeLaTienda`, §50). Eso es lo que
+lo hace reutilizable en vez de un caso especial por marca.
+
+⚠️ **El `{{4}}` no puede quedar al final del cuerpo**: Meta rechaza las
+plantillas cuya última cosa es una variable. Por eso el número de pedido cierra
+el texto en vez de abrirlo.
+
+### La otra mitad: quien escribe recibe su enlace
+
+Decirle «no respondemos acá» no evita que la gente escriba — escribe igual,
+porque WhatsApp es donde vive—. Lo que evita el enojo, y las denuncias que le
+bajan la calificación al número de la marca, es que reciba algo útil en vez de
+silencio.
+
+`wa-webhook` recibe los mensajes entrantes y contesta **una vez cada 12 h por
+número** (`wa_respuestas`) con el enlace de su pedido vivo, o con
+`<dominio>/acceso` si no tiene ninguno. Es texto libre, no plantilla: el mensaje
+de la persona abre una ventana de 24 h en la que contestarle sale gratis.
+
+⚠️ **Lo que entra por ahí NO se guarda ni aparece en el panel.** No hay bandeja
+de WhatsApp, no hay hilo en el CRM y el vendedor no ve lo que la persona
+escribió: el webhook responde y suelta el mensaje. Es deliberado y es lo que
+mantiene el chat del pedido como el único sitio donde se conversa — ver *El
+canal es el chat, no WhatsApp*, arriba. Meterlo al panel sería construir un
+segundo buzón con reglas propias (la ventana de 24 h, plantillas para reabrirla,
+quién contesta qué), que es justo lo que este diseño evita.
+
+### El interruptor es la plantilla
+
+Como todo el riel de WhatsApp: sin `stores.wa_pedido_template` aprobado y
+guardado, esto es un no-op y no se rompe nada. Las cinco plantillas de la marca
+se eligen desde *Panel → Marca → Plantillas de WhatsApp* (solo superadmin), de
+una lista de las que de verdad están aprobadas en su WABA — un nombre mal
+tecleado no falla al guardar: falla el día del envío, en silencio y de a un
+comprador. El panel compara además cuántas variables espera la plantilla contra
+las que le manda el servidor, porque una diferencia ahí hace que Meta rechace el
+envío entero.
+
+El despliegue, los secretos y la configuración en Meta están en
+[`ESTADO-OPERATIVO.md`](./ESTADO-OPERATIVO.md).

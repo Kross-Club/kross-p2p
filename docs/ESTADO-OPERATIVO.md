@@ -34,6 +34,107 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El WhatsApp del pedido pagado, y la respuesta a quien escribe · SQL + 5 funciones + frontend (10-set-2026)
+
+Al comprador no le llegaba **nada** fuera de la pestaña donde compró. El único
+sitio donde vivía su enlace era esa pestaña: si la cerraba, si compró desde el
+celular de otro, o si el navegador limpió el almacenamiento, se perdía —y con él
+la tasa de entrega, porque el chat del pedido es lo que la sostiene—.
+
+Ahora, **con el primer cobro cruzado**, sale una plantilla con su enlace; y
+quien le escriba a ese número recibe **su** enlace de vuelta en lugar de
+silencio. Diseño en
+[`01-SALES-ENGINE.md` § El WhatsApp del pedido pagado](./01-SALES-ENGINE.md).
+
+**Orden del despliegue** (el SQL primero: `wa-pedido` lee esa columna):
+
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: el bloque §51 de supabase/setup-kross.sql
+```
+
+Y para comprobar que corrió, en el mismo editor:
+
+```sql
+select column_name from information_schema.columns
+where table_name = 'stores' and column_name = 'wa_pedido_template';
+select to_regclass('public.wa_respuestas');
+```
+
+```
+supabase functions deploy send-wa-template --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy flow-confirm     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy wa-webhook       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+⚠️ `wa-webhook` **es nueva y va con `--no-verify-jwt`**: quien la llama es Meta,
+que no manda JWT de Supabase. No queda abierta: cada POST se verifica con la
+firma `x-hub-signature-256`, y **sin el secreto configurado la función rechaza
+todo** (un webhook abierto deja que cualquiera nos haga mandar mensajes con el
+número de la marca).
+
+**Dos secretos nuevos del proyecto:**
+
+```
+supabase secrets set WHATSAPP_VERIFY_TOKEN=<una cadena larga que eliges tú> --project-ref ofdjghntvmrdfjhazfvz
+supabase secrets set WHATSAPP_APP_SECRET=<Meta → App Dashboard → Settings → Basic → App Secret> --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**Dónde se configura el webhook: en Meta, no en Kross.** Es
+[developers.facebook.com](https://developers.facebook.com/apps) → la **app** que
+administra la WABA → *WhatsApp → Configuration → Webhook → Edit*. Callback URL
+`https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/wa-webhook`, Verify token
+el mismo de arriba, y **suscribir el campo `messages`** (sin esa casilla el
+webhook queda dado de alta y no llega nada).
+
+Es **una sola vez por app**, no por marca ni por número: una app puede tener
+varias WABAs y varios números, y todos entran por la misma URL. Por eso la
+función resuelve la tienda desde el `phone_number_id` que viene en cada evento,
+en vez de tener una URL por marca.
+
+**Y la plantilla, que es el interruptor.** Como el resto del riel: sin
+`stores.wa_pedido_template` no se manda nada y no se rompe nada. Categoría
+**utility**, cuatro variables y **sin botón** —el enlace va en el cuerpo, ver
+abajo—:
+
+```
+Hola {{1}}, recibimos tu pago y tu pedido en {{2}} ya está en preparación.
+
+Todo el seguimiento y la conversación con nuestro equipo están acá: {{4}}
+
+Este número solo envía avisos y no se lee: escríbenos por ese enlace y te
+respondemos ahí. Tu número de pedido es {{3}}.
+```
+
+`{{1}}` nombre · `{{2}}` marca · `{{3}}` número de pedido · `{{4}}` enlace.
+
+⚠️ **Este texto no lleva dominio de ninguna marca y por eso sirve para todas.**
+El enlace va como variable del cuerpo y no como botón justamente por eso: Meta
+congela la URL de un botón al aprobar, así que una plantilla con botón vale para
+una sola tienda y hay que re-aprobarla si esa tienda conecta su dominio. El
+servidor le pone a cada comprador el dominio de SU tienda (`baseDeLaTienda`).
+
+⚠️ **El `{{4}}` no puede quedar al final del cuerpo**: Meta rechaza las
+plantillas cuya última cosa es una variable. Por eso el número de pedido cierra
+el texto.
+
+**Lo que se ve sin desplegar nada:** el bloque *Plantillas de WhatsApp* en
+*Panel → Marca* (solo superadmin), con las cinco plantillas de la marca elegidas
+de una lista de las aprobadas en su WABA. Hasta hoy solo se podían escribir
+llamando a `manage-store` a mano, así que media docena de avisos vivía apagada
+sin que se notara. **Sin el deploy de `manage-store`** el bloque se ve y se
+puede elegir, pero guardar no persiste `wa_pedido_template` (las otras cuatro
+columnas ya existían).
+
+**Lo que este cambio NO hace, a propósito:** los mensajes que entren por ese
+WhatsApp **no se guardan ni aparecen en el panel**. No hay bandeja, ni hilo en
+el CRM, ni forma de contestarle desde ahí: el webhook responde con el enlace y
+suelta el mensaje. El chat del pedido sigue siendo el único sitio donde se
+conversa. Meterlos al panel sería un segundo buzón con reglas propias (la
+ventana de 24 h, plantillas para reabrirla, quién contesta qué) — otra tarea, y
+una decisión de producto, no un pendiente de esta.
+
 ### Lo que pidió Flow: atribución, pasarela en la constancia y el buzón · 2 funciones + frontend (09-set-2026)
 
 Tres cosas que pidió el proveedor de Flow, más el cambio de buzón. Diseño en

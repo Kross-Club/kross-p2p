@@ -26,6 +26,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { columnasDe } from '../_shared/cobros.ts'
 import { anotarConversion, anotarResultado } from '../_shared/api-eventos.ts'
 import { acuseDePago } from '../_shared/acuse-de-pago.ts'
+import { avisarPedidoPagado } from '../_shared/wa-pedido.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
 import { desgloseDeFlow, esPagada, esFinalSinPago, estadoPorToken, flowBaseUrl, llavesDeTienda, tokenDelWebhook, type FlowEnv } from '../_shared/flow.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
@@ -238,6 +239,16 @@ Deno.serve(async (req) => {
   // CAPI y la guía solo en el PRIMER cobro. Ver `pay360-webhook`.
   if (esExtra) return ok({ received: true, matched: true, extra: true })
   if (esSaldo) return ok({ received: true, matched: true, saldo: true })
+
+  // ─── Y el WhatsApp con su enlace, si la marca tiene la plantilla (§51) ─────
+  // Acá abajo ya solo queda el ADELANTO: el extra y el saldo salieron arriba.
+  // Es el momento en que el comprador se va de la pantalla —acaba de pagar en
+  // Yape y está en Yape—, así que es cuando hay que dejarle el enlace donde va
+  // a estar. El saldo y los `extra` no lo repiten: ya tienen su acuse.
+  //
+  // `runInBackground` y no `await`: el 2xx de este webhook no puede esperar a
+  // Meta ni fallar por Meta.
+  runInBackground(avisarPedidoPagado(String(session.id), session.store_id))
 
   try {
     const cfg: AdsConfig = {
