@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { APEX, baseDeLaTienda, comoResolver, esHostDePlataforma, normalizarDominio } from './dominio'
+import { APEX, baseDeLaTienda, comoResolver, esHostDePlataforma, normalizarDominio, variantesDeDominio } from './dominio'
 
 const ok = (crudo: string) => {
   const r = normalizarDominio(crudo)
@@ -115,5 +115,22 @@ describe('baseDeLaTienda', () => {
   it('sin nada, la plataforma', () => {
     expect(baseDeLaTienda(null)).toBe(`https://${APEX}`)
     expect(baseDeLaTienda({})).toBe(`https://${APEX}`)
+  })
+})
+
+describe('variantesDeDominio', () => {
+  it('un dominio raíz busca también su www, y al revés', () => {
+    expect(variantesDeDominio('monoshop.fit')).toEqual(['monoshop.fit', 'www.monoshop.fit'])
+    expect(variantesDeDominio('www.monoshop.fit')).toEqual(['www.monoshop.fit', 'monoshop.fit'])
+  })
+
+  it('normaliza igual que el resto', () => {
+    expect(variantesDeDominio('MonoShop.FIT:443.')).toEqual(['monoshop.fit', 'www.monoshop.fit'])
+    expect(variantesDeDominio('')).toEqual([])
+  })
+
+  it('un subdominio que no es www se busca solo, sin inventarle un gemelo raro', () => {
+    expect(variantesDeDominio('tienda.monoshop.fit'))
+      .toEqual(['tienda.monoshop.fit', 'www.tienda.monoshop.fit'])
   })
 })

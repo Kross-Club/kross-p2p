@@ -5,7 +5,7 @@ import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
 import { asegurarSesionLat } from '../_shared/shalom-lat-emisor.ts'
 import { olvaLatApiKey, validateAtLat } from '../_shared/olva-lat-api.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
-import { normalizarDominio } from '../_shared/tienda-url.ts'
+import { normalizarDominio, variantesDeDominio } from '../_shared/tienda-url.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -555,8 +555,11 @@ Deno.serve(async (req) => {
         // Dos marcas no pueden reclamar el mismo host: la segunda se llevaría
         // los compradores de la primera. El índice único lo impide igual; esto
         // es para contestar con un motivo y no con un error crudo de Postgres.
+        // Se mira el dominio Y su gemelo `www`: los dos resuelven a la misma
+        // tienda, así que dejar que otra marca se quede con uno de ellos sería
+        // el mismo choque, solo que más difícil de ver.
         const { data: duena } = await supabase.from('stores')
-          .select('id, nombre').eq('custom_domain', d.dominio).neq('id', targetId).maybeSingle()
+          .select('id, nombre').in('custom_domain', variantesDeDominio(d.dominio)).neq('id', targetId).limit(1).maybeSingle()
         if (duena) return json({ error: 'dominio_tomado', detalle: `Ese dominio ya es de ${duena.nombre}.` }, 400)
         patch.custom_domain = d.dominio
         // Recién escrito NO está verificado: lo que decide es la prueba de

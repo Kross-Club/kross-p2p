@@ -20,6 +20,12 @@ const ANON = process.env.VITE_SUPABASE_ANON_KEY
 
 const APEX = 'krossclub.app'
 
+/** El host y su gemelo con o sin `www`: son hosts distintos y la misma tienda. */
+function variantes(host = '') {
+  const h = String(host).toLowerCase()
+  return h.startsWith('www.') ? [h, h.slice(4)] : [h, `www.${h}`]
+}
+
 /** Cómo buscar la marca de este host: por slug, por dominio propio, o nada. */
 function comoResolver(host = '') {
   const h = String(host).toLowerCase().split(':')[0].replace(/\.+$/, '')
@@ -46,10 +52,14 @@ export default async function handler(req, res) {
 
   let store = KROSS
   if (donde && SUPABASE_URL && ANON) {
-    const columna = donde.por === 'dominio' ? 'custom_domain' : 'slug'
+    // Un dominio se busca junto con su gemelo `www`: cuál de los dos sirve la
+    // app lo decide la redirección del hosting, no lo que se guardó.
+    const filtro = donde.por === 'dominio'
+      ? `custom_domain=in.(${variantes(donde.valor).map(encodeURIComponent).join(',')})`
+      : `slug=eq.${encodeURIComponent(donde.valor)}`
     try {
       const r = await fetch(
-        `${SUPABASE_URL}/rest/v1/stores?${columna}=eq.${encodeURIComponent(donde.valor)}&active=eq.true&select=nombre,logo_url,color_primary,color_dark&limit=1`,
+        `${SUPABASE_URL}/rest/v1/stores?${filtro}&active=eq.true&select=nombre,logo_url,color_primary,color_dark&limit=1`,
         { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } }
       )
       if (r.ok) {

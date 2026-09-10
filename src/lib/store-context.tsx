@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { hostConSlug } from './enlaces'
 import { supabase } from './supabase'
 import { textoSobre } from './contraste'
-import { comoResolver } from './dominio'
+import { comoResolver, variantesDeDominio } from './dominio'
 import type { Resolucion } from './dominio'
 
 export interface Store {
@@ -85,8 +85,15 @@ const CAMPOS_49 = 'gradient_style, login_images, custom_domain, custom_domain_ve
  * mientras falte el SQL se ve como antes, y el día que se corra aparece.
  */
 async function traerTienda(columna: 'slug' | 'slug_anterior' | 'custom_domain', valor: string): Promise<Store | null> {
-  const pedir = (campos: string) =>
-    supabase.from('stores').select(campos).eq(columna, valor).eq('active', true).maybeSingle()
+  // Un dominio se busca junto con su gemelo `www`: cuál de los dos sirve la app
+  // lo decide el hosting con su redirección, no lo que se escribió en el panel.
+  const pedir = (campos: string) => {
+    const q = supabase.from('stores').select(campos)
+    const filtrada = columna === 'custom_domain'
+      ? q.in('custom_domain', variantesDeDominio(valor))
+      : q.eq(columna, valor)
+    return filtrada.eq('active', true).limit(1).maybeSingle()
+  }
   const conNuevas = await pedir(`${CAMPOS}, ${CAMPOS_49}`)
   if (!conNuevas.error) return (conNuevas.data as unknown as Store) ?? null
   const { data } = await pedir(CAMPOS)

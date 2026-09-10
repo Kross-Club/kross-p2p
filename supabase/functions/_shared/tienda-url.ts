@@ -72,6 +72,25 @@ export function esHostDePlataforma(host: string): boolean {
   return h === APEX || h.endsWith(`.${APEX}`)
 }
 
+/**
+ * El host y su gemelo con o sin `www`.
+ *
+ * Un dominio raíz y su `www` son hosts DISTINTOS para el DNS y para nosotros,
+ * pero la misma tienda para cualquier persona. Y cuál de los dos termina
+ * sirviendo la app no lo decide el panel: lo decide el hosting, que redirige
+ * uno al otro según cuál se marcó como principal. Guardar `monoshop.fit` y que
+ * el hosting sirva `www.monoshop.fit` dejaba al comprador en la marca genérica
+ * de Kross — la tienda existía y no se encontraba.
+ *
+ * Así que se buscan los dos y da igual cuál se haya escrito. Es una sola
+ * consulta con `IN`, no dos viajes.
+ */
+export function variantesDeDominio(host: string): string[] {
+  const h = String(host ?? '').toLowerCase().split(':')[0].replace(/\.+$/, '')
+  if (!h) return []
+  return h.startsWith('www.') ? [h, h.slice(4)] : [h, `www.${h}`]
+}
+
 /** Cómo hay que buscar la tienda de este host. */
 export type Resolucion =
   | { por: 'slug'; valor: string }
