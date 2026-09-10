@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 09-set-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 10-set-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -33,6 +33,42 @@ fecha de arriba.
 
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
+
+### El programa de afiliados · **SQL** + 2 funciones nuevas + 2 desplegadas + frontend (10-set-2026)
+
+Diseño completo en [`15-AFILIADOS.md`](./15-AFILIADOS.md). **Nada de esto está
+corrido todavía**: el código está en la rama, la base no tiene §51 y no hay
+ninguna suscripción de Stripe conectada.
+
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql (idempotente, §51)
+```
+```
+supabase functions deploy afiliados      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy stripe-webhook --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy web-order      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store   --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Y un secreto: `STRIPE_WEBHOOK_SECRET` (el `whsec_…` del endpoint). **No hace
+falta API key de Stripe** — el webhook solo escucha, nunca llama.
+
+⚠️ **`web-order` y `manage-store` importan `_shared/afiliados.ts`, así que
+desplegarlas contra una base SIN §51 escribe en columnas que no existen.** Corre
+el SQL PRIMERO. Es la misma ventana que rompió el listado de tiendas el 09-set:
+PostgREST no ignora la columna que falta, devuelve error.
+
+**Qué hace falta después del deploy, y sin esto no cuenta nada:** cada tienda
+tiene que quedar enlazada con su cliente de Stripe, con `client_reference_id =
+<store_id>` en el Checkout Link o `metadata.store_id` en la suscripción. Sin ese
+enlace el webhook no sabe de quién es la factura y el mes no se registra —el
+afiliado ve cero y nadie sabe por qué—.
+
+**Deuda conocida:** `stores.affiliate_id` queda de lectura pública, porque
+`stores` tiene política `SELECT` para `public` (la usa el storefront). No expone
+a ningún afiliado —esa tabla sí está cerrada— pero deja ver qué tiendas
+comparten uno. Se arregla el día que `stores` deje de leerse entera desde el
+cliente.
 
 ### Lo que pidió Flow: atribución, pasarela en la constancia y el buzón · 2 funciones + frontend (09-set-2026)
 

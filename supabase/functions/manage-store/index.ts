@@ -6,6 +6,7 @@ import { asegurarSesionLat } from '../_shared/shalom-lat-emisor.ts'
 import { olvaLatApiKey, validateAtLat } from '../_shared/olva-lat-api.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 import { normalizarDominio, variantesDeDominio } from '../_shared/tienda-url.ts'
+import { normalizarCodigo } from '../_shared/afiliados.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -104,6 +105,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
+    affiliate_code?: string
     action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status' | 'olva_lat_status' | 'verify_domain'
     home_delivery_enabled?: boolean
     admin_auth_id: string
@@ -978,9 +980,31 @@ Deno.serve(async (req) => {
     if (await slugTomado(slug)) return json({ error: 'slug_en_uso' }, 400)
 
     const storeId = `st_${slug}_${Date.now().toString(36)}`
+
+    // ── Quién trajo esta tienda (§51.b) ────────────────────────────────────
+    // El código llega por dos caminos y los dos terminan acá: escrito a mano
+    // en el alta (`affiliate_code`), o heredado del lead de la web pública
+    // (`web_orders.affiliate_code`, que es donde cayó el `?ref=`).
+    //
+    // Se resuelve a un id AHORA y no se guarda el texto: a partir de este
+    // momento la atribución es una relación, no una pista. Un código que no
+    // resuelve —un enlace viejo, un afiliado dado de baja— deja la tienda sin
+    // afiliado y NO frena el alta: perder una marca nueva por un código mal
+    // tecleado sería el peor negocio posible, y atribuirla después es un
+    // botón en el panel.
+    const codigoAfiliado = normalizarCodigo(String(body.affiliate_code ?? ''))
+    let affiliateId: string | null = null
+    if (codigoAfiliado) {
+      const { data: af } = await supabase.from('affiliates')
+        .select('id').eq('codigo', codigoAfiliado).eq('active', true).maybeSingle()
+      affiliateId = af?.id ?? null
+    }
+
     const { error: sErr } = await supabase.from('stores').insert({
       id: storeId,
       slug,
+      affiliate_id: affiliateId,
+      affiliate_at: affiliateId ? new Date().toISOString() : null,
       nombre: body.nombre.trim(),
       logo_url: body.logo_url ?? null,
       color_primary: body.color_primary || '#55C8F5',

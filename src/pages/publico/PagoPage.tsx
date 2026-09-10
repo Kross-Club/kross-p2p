@@ -5,6 +5,7 @@ import PublicLayout from '../../components/publico/PublicLayout'
 import { useCarrito } from '../../lib/carrito'
 import { precioTexto, periodoTexto } from '../../config/catalogo'
 import { EMPRESA } from '../../config/empresa'
+import { referidoActual, olvidarReferido } from '../../lib/referido'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -71,12 +72,20 @@ export default function PagoPage() {
             precio_unitario: l.item.precio, periodo: l.item.periodo,
           })),
           total_mostrado: total,
+          // Quién lo trajo. Viaja pegado al lead porque entre el clic en el
+          // enlace y la tienda dada de alta pasan días: es lo que hace que la
+          // atribución sobreviva al salto de «visitante» a «tienda» (§51.b).
+          affiliate_code: referidoActual(),
         }),
       })
       if (!res.ok) throw new Error(String(res.status))
       const { codigo } = await res.json()
       setCodigo(codigo)
       vaciar()
+      // A partir de acá la atribución vive en la base. Dejarla en el
+      // dispositivo haría que el siguiente pedido desde el mismo navegador
+      // arrastrara un afiliado que no lo trajo.
+      olvidarReferido()
     } catch {
       setFallo('No pudimos registrar tu pedido. Revisa tu conexión e inténtalo otra vez.')
     } finally {

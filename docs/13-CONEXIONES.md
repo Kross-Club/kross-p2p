@@ -9,10 +9,11 @@
 
 ## El problema que resuelve (03-set-2026)
 
-Kross se apoya en **quince APIs que no controla**: los dos rieles de cobro, los
+Kross se apoya en **dieciséis APIs que no controla**: los dos rieles de cobro, los
 **cuatro** proveedores de tracking (Shalom y Olva tienen dos cada uno, ninguno
 oficial), WhatsApp, RENIEC, LiveKit, los CAPI de Meta y TikTok, la voz de IA, el
-correo de reclamaciones, el push y el geocoding.
+correo de reclamaciones, el push, el geocoding y **Stripe**, que cobra el plan
+mensual del comercio.
 
 Hasta hoy, cuando una fallaba el error terminaba en un `console.error`. Eso
 significaba tres cosas, y las tres se pagaban en el peor momento:
@@ -116,7 +117,7 @@ proveedor y su respuesta. Es el caso de uso de soporte y por eso está primero.
 Al lado del nombre puede haber una de dos, y ninguna es un diagnóstico — son el
 **papel** que cumple esa API, no su estado:
 
-- **crítica** — si se cae, se frena vender o despachar. Son siete de quince: los
+- **crítica** — si se cae, se frena vender o despachar. Son siete de dieciséis: los
   dos rieles de cobro, los cuatro couriers y RENIEC. Una integración crítica
   puede estar perfectamente sana; lo que dice la etiqueta es cuánto duele que no
   lo esté.
@@ -136,7 +137,7 @@ significa no está haciendo su trabajo.
 ### Cuando el servidor no contesta
 
 **Los nombres no dependen del servidor.** El catálogo es estático y vive en el
-módulo compartido, así que la lista de las quince se pinta siempre — aunque la
+módulo compartido, así que la lista de las dieciséis se pinta siempre — aunque la
 Edge Function no esté desplegada o rechace la sesión. Lo que falta en ese caso
 es el estado EN VIVO y el historial, y se dice con todas sus letras arriba, con
 el motivo concreto (`404` → la función no está desplegada; `401`/`403` → la
@@ -153,7 +154,7 @@ más.
 
 En orden, porque cada paso depende del anterior:
 
-1. **La pantalla carga y lista las quince** — si aparece el aviso ámbar *"No se
+1. **La pantalla carga y las lista todas** — si aparece el aviso ámbar *"No se
    pudo consultar el estado en vivo"*, el motivo está ahí escrito.
 2. **El SQL entró:** `select count(*) from api_events;` responde `0` en vez de
    *relation does not exist*.
@@ -194,6 +195,7 @@ Todo el stack, en el punto donde se sabe **de qué marca** era la llamada:
 | **Web Push** | `_shared/notificar.ts` — solo cuando fallaron **todas** las suscripciones (una muerta es normal) |
 | **Twilio (SMS)** · dieciséis (05-set-2026) · ⚠️ **apagado por precio desde el 06-set** (US$0.2476 por segmento a Perú contra S/1.28 que Kross gana por cobro; los recordatorios pasaron a plantilla de WhatsApp). El riel sigue montado: `SMS_ENABLED=on` lo revive | `_shared/sms.ts` — cada envío rechazado o caído, con el código de Twilio en `error_code` y su `Twilio-Request-Id` en `provider_ref`. El chequeo del tablero lista **un** mensaje (`GET Accounts/{sid}/Messages?PageSize=1`): gratis, y es una lectura sobre el mismo recurso en el que escribimos. Preguntar por `GET Accounts/{sid}` rebotaba con una API key aunque el envío funcionara, y el panel pintaba *Caída* un riel que estaba mandando SMS (06-set-2026). Si el chequeo falla, queda anotado con su `KX-…`. Secreto que la enciende: `TWILIO_ACCOUNT_SID` (más el token o una API key, y el remitente: ver `ESTADO-OPERATIVO.md` § *El riel SMS*) |
 | **ElevenLabs · Resend · Nominatim** | sus funciones |
+| **Stripe** · diecisiete (10-set-2026) — cobra el plan mensual del comercio ($67/mes). No es crítica para vender ni despachar, **pero sí para pagar**: es la que dice qué meses pagó cada tienda, y sin ese dato la comisión del afiliado de ese mes no se acumula (`docs/15-AFILIADOS.md`) | `stripe-webhook` — la firma rechazada, el pago de plan fallido (`suscripcion.pago_fallido`, que es la lista de a quién llamar) y cualquier escritura que no entre. **Solo escucha**: no hay ninguna llamada saliente a Stripe, así que no hay API key que se pueda filtrar. Secreto que la enciende: `STRIPE_WEBHOOK_SECRET` |
 
 Dos detalles de diseño que evitan inundar la tabla: en las **campañas** y las
 **invitaciones** se anota **una vez por corrida** (una plantilla mal aprobada
