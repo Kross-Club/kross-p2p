@@ -561,7 +561,12 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     const { ok, data } = await call({ action: 'verify_domain', admin_auth_id: adminId, store_id: store.id })
     setProbandoDominio(false)
     if (!ok) {
-      setAvisoDominio({ ok: false, texto: mensajePanel(data?.error, 'No se pudo comprobar el dominio.') })
+      // El `detalle` del servidor es una frase; el `error` es un código. Se
+      // prefiere la frase: «sin_dominio» en rojo manda a adivinar.
+      setAvisoDominio({
+        ok: false,
+        texto: String(data?.detalle ?? '') || mensajePanel(data?.error, 'No se pudo comprobar el dominio.'),
+      })
       return
     }
     setVerificado(!!data?.ok)
@@ -630,6 +635,11 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     const { ok, data } = await call(payload)
     setBusy(false)
     if (!ok) { setErr(ERR[data.error] || data.error || 'No se pudo guardar.'); return }
+    // Guardó, pero el servidor puede haber descartado campos cuya columna no
+    // existe todavía. Cerrar el editor ahí sería mentir: el campo se vería
+    // lleno la próxima vez solo hasta recargar. Se enseña el aviso y NO se
+    // cierra, para que quede a la vista qué falta correr.
+    if (data?.aviso) { setErr(String(data.aviso)); return }
     onSaved()
   }
 
