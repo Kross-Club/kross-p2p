@@ -146,6 +146,14 @@ export function idDe(v: unknown): string | null {
  *      metadata de la suscripción en las FACTURAS. Sin esto, una `invoice.paid`
  *      llega sin saber de quién es.
  *
+ * ⚠️ **El tercero vive en DOS sitios según la versión de API**, y por eso se
+ * miran los dos. Desde `2025-04-30.basil` Stripe movió lo de la suscripción
+ * dentro de `invoice.parent`: `subscription_details` dejó de estar arriba y
+ * pasó a `parent.subscription_details`. Leer solo el viejo deja sin resolver
+ * TODAS las facturas de una cuenta moderna —que es la que se crea hoy— y el
+ * síntoma es el peor posible: los meses no se registran, en silencio, y el
+ * afiliado ve cero sin que nada falle.
+ *
  * `null` no es un error: significa "hay que resolverlo por el customer", y eso
  * lo hace la Edge Function contra `store_subscriptions`.
  */
@@ -154,6 +162,7 @@ export function storeIdDe(o: unknown): string | null {
   return texto(obj(d.metadata).store_id)
     ?? texto(d.client_reference_id)
     ?? texto(obj(obj(d.subscription_details).metadata).store_id)
+    ?? texto(obj(obj(obj(d.parent).subscription_details).metadata).store_id)
 }
 
 export interface EstadoDeSuscripcion {
@@ -243,4 +252,44 @@ export function tramoDeFactura(o: unknown): TramoPagado | null {
     monto_usd: centavos / 100,
     paid_at: fechaDeStripe(obj(f.status_transitions).paid_at) ?? fechaDeStripe(f.created),
   }
+}
+
+// ─── El orden en que llegan las cosas ────────────────────────────────────────
+//
+// **Stripe no garantiza el orden de entrega**, y en el alta de una suscripción
+// eso no es teórico: `invoice.paid` suele llegar ANTES que
+// `checkout.session.completed`, que es justo el evento que enlaza la tienda con
+// su cliente de Stripe. Con un Payment Link —donde el `store_id` viaja solo en
+// el `client_reference_id` de la sesión— ese orden significa que la primera
+// factura llega sin poder saber de quién es.
+//
+// Descartarla sería perder EL PRIMER MES de todas las tiendas, en silencio y
+// sin que nada falle. Así que no se descarta: se pide el reintento.
+//
+// Pero no para siempre. Una suscripción de esa misma cuenta de Stripe que NO
+// sea de Kross tampoco se va a poder resolver nunca, y reintentarla tres días
+// llena el registro de fallos que no son fallos. La ventana separa las dos
+// cosas: la carrera de entrega se resuelve en segundos, así que lo que sigue
+// sin resolver una hora después no es una carrera — es de otro.
+
+/** Cuánto se insiste con un evento que todavía no se puede atribuir. */
+export const VENTANA_DE_REINTENTO_SEG = 3600
+
+/**
+ * ¿Este evento es lo bastante reciente como para que valga reintentarlo?
+ *
+ * `ahoraSeg` entra por parámetro para poder probar la ventana sin esperar una
+ * hora. Un evento sin fecha legible se trata como VIEJO: sin saber cuándo pasó,
+ * insistir es apostar a que Stripe deje de reintentar antes que nosotros de
+ * fallar.
+ */
+export function valeReintentar(
+  eventoAtISO: string | null,
+  ahoraSeg = Math.floor(Date.now() / 1000),
+  ventana = VENTANA_DE_REINTENTO_SEG,
+): boolean {
+  if (!eventoAtISO) return false
+  const t = Date.parse(eventoAtISO)
+  if (Number.isNaN(t)) return false
+  return ahoraSeg - Math.floor(t / 1000) < ventana
 }

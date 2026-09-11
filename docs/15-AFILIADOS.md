@@ -190,7 +190,7 @@ la política correcta (el precedente es `cobros`, §36).
 | `src/pages/afiliado/AfiliadoPage.tsx` | `/afiliado` — el marco del afiliado de fuera |
 | `src/pages/vendedor/AfiliadosPage.tsx` | `Panel → Afiliados` — el programa entero para Kross; el panel propio para el comerciante |
 
-Pruebas: `src/lib/afiliados.test.ts` (43), `src/lib/stripe.test.ts` (18),
+Pruebas: `src/lib/afiliados.test.ts` (43), `src/lib/stripe.test.ts` (22),
 `src/lib/referido.test.ts` (7).
 
 ### Lo que el webhook contesta, y por qué importa
@@ -203,15 +203,41 @@ Stripe reintenta durante tres días todo lo que no sea 2xx:
   por un error transitorio es un mes pagado sin registrar, y eso es un afiliado
   al que no se le paga lo que ganó.
 
-Dos defensas más, cada una contra un problema distinto:
+Tres defensas más, cada una contra un problema distinto:
 
 - **Idempotencia** — índice único sobre `stripe_invoice_id`. La misma factura
   llega dos y tres veces (y `invoice.paid` e `invoice.payment_succeeded` se
   disparan los dos por el mismo cobro).
-- **Orden** — Stripe **no garantiza el orden**. Un `subscription.updated` viejo
-  que llega después de uno nuevo haría retroceder el estado, y una suscripción
-  cancelada volvería a figurar activa sola. Se compara `stripe_event_at` contra
-  lo guardado y se descarta lo viejo.
+- **Orden, en el estado** — Stripe **no garantiza el orden**. Un
+  `subscription.updated` viejo que llega después de uno nuevo haría retroceder
+  el estado, y una suscripción cancelada volvería a figurar activa sola. Se
+  compara `stripe_event_at` contra lo guardado y se descarta lo viejo.
+- **Orden, en el alta** — y acá el mismo problema cuesta un mes de comisión.
+  `invoice.paid` suele llegar **antes** que `checkout.session.completed`, que es
+  el evento que enlaza la tienda con su cliente de Stripe; con un Payment Link
+  —donde el `store_id` viaja solo en el `client_reference_id` de la sesión— esa
+  primera factura llega sin poder atribuirse. Descartarla sería **perder el
+  primer mes de todas las tiendas, en silencio**. Así que no se descarta: se
+  contesta 500 y Stripe la reintenta, y en el segundo intento el enlace ya
+  existe. Pasada una hora (`VENTANA_DE_REINTENTO_SEG`) se deja ir — lo que no se
+  pudo atribuir en una hora no es una carrera de entrega, es una suscripción de
+  esa cuenta de Stripe que no es de Kross.
+
+### La versión de API de Stripe
+
+El webhook lee las dos formas de cada objeto, porque Stripe movió campos y una
+cuenta creada hoy manda la nueva:
+
+| Dato | Antes | Desde `2025-04-30.basil` |
+|---|---|---|
+| La suscripción de una factura | `invoice.subscription` | `invoice.parent.subscription_details.subscription` |
+| El metadata que la factura hereda | `invoice.subscription_details.metadata` | `invoice.parent.subscription_details.metadata` |
+| El fin del periodo | `subscription.current_period_end` | `subscription.items.data[].current_period_end` |
+
+Se leen **los dos caminos** en `_shared/stripe.ts`, con la vieja primero y la
+nueva de respaldo. Leer solo una deja al webhook sin resolver nada contra la
+otra versión, y el síntoma es el peor posible: los meses no se registran, sin
+que nada falle.
 
 ## Cómo se opera
 
@@ -246,12 +272,25 @@ propósito: son unas pocas transferencias al mes.
    supabase functions deploy manage-store    --project-ref ofdjghntvmrdfjhazfvz
    ```
 4. **Stripe** — crear el producto de $67/mes y el endpoint apuntando a
-   `…/functions/v1/stripe-webhook`, suscrito a: `checkout.session.completed`,
-   `customer.subscription.*`, `invoice.paid`, `invoice.payment_failed`.
+   `…/functions/v1/stripe-webhook`, suscrito exactamente a estos seis:
+
+   | Evento | Para qué |
+   |---|---|
+   | `checkout.session.completed` | **Enlaza la tienda con su cliente de Stripe.** Sin este, nada más se puede atribuir |
+   | `customer.subscription.created` · `.updated` · `.deleted` | El semáforo del panel |
+   | `invoice.paid` | **El tramo pagado.** Es lo que decide la comisión |
+   | `invoice.payment_failed` | La lista de a quién llamar |
+
+   `invoice.payment_succeeded` también se atiende, pero se dispara por el mismo
+   cobro que `invoice.paid`: suscribir los dos no agrega nada (el índice único
+   lo absorbe) y tampoco molesta.
 5. **Enlazar cada tienda con su cliente de Stripe.** Es el paso que hay que
    hacer bien o nada cuenta. Dos formas, y la primera es la buena:
-   - **Checkout Link con `client_reference_id = <store_id>`** — el comercio se
-     da de alta solo y el enlace queda hecho.
+   - **Payment Link con `client_reference_id = <store_id>`** — se le pega al
+     final de la URL del link:
+     `https://buy.stripe.com/xxxx?client_reference_id=st_marca_abc123`. El
+     comercio se da de alta solo y el enlace queda hecho. Es **un solo Payment
+     Link** para todas las marcas; lo que cambia es el parámetro.
    - `metadata.store_id` en la suscripción, si se crea desde el dashboard.
 
    Sin ninguno de los dos, el webhook resuelve por `stripe_customer_id` contra

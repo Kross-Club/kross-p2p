@@ -32,6 +32,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { anotar } from '../_shared/api-eventos.ts'
 import {
   firmaValida, storeIdDe, suscripcionDelEvento, tramoDeFactura, idDe, fechaDeStripe,
+  valeReintentar,
 } from '../_shared/stripe.ts'
 
 const supabase = createClient(
@@ -168,7 +169,36 @@ Deno.serve(async (req) => {
         const tramo = tramoDeFactura(objeto)
         if (!tramo) return responder({ received: true, ignorado: 'sin tramo cobrado' })
         const storeId = await tiendaDelEvento(objeto, tramo.stripe_customer_id)
-        if (!storeId) return responder({ received: true, ignorado: 'sin tienda' })
+        if (!storeId) {
+          // ⚠️ **Acá NO se descarta.** Stripe no garantiza el orden, y en el
+          // alta esta factura suele llegar ANTES que
+          // `checkout.session.completed` —el evento que enlaza la tienda con su
+          // cliente—. Contestar 200 sería perder el PRIMER MES de todas las
+          // tiendas, en silencio.
+          //
+          // Así que mientras el evento sea reciente se pide el reintento (500)
+          // y se resuelve solo en el siguiente intento, cuando el enlace ya
+          // existe. Pasada la ventana se deja ir: lo que no se pudo atribuir en
+          // una hora no es una carrera de entrega, es una suscripción que no es
+          // de Kross — y reintentarla tres días llena el registro de fallos que
+          // no son fallos.
+          if (valeReintentar(eventoAt)) {
+            await anotar({
+              proveedor: 'STRIPE', op: 'suscripcion.sin_tienda', outcome: 'RECHAZO',
+              httpStatus: 409, providerRef: eventoId || null,
+              detail: `factura ${tramo.stripe_invoice_id} del cliente ${tramo.stripe_customer_id ?? '?'}`
+                + ' todavía sin tienda enlazada; se reintenta',
+            })
+            return responder({ error: 'tienda todavía sin enlazar', reintentar: true }, 500)
+          }
+          await anotar({
+            proveedor: 'STRIPE', op: 'suscripcion.sin_tienda', outcome: 'RECHAZO',
+            providerRef: eventoId || null,
+            detail: `factura ${tramo.stripe_invoice_id} del cliente ${tramo.stripe_customer_id ?? '?'}`
+              + ' sin tienda tras la ventana de reintento; se descarta',
+          })
+          return responder({ received: true, ignorado: 'sin tienda' })
+        }
 
         // `upsert` sobre `stripe_invoice_id`, que es único (§51.d): Stripe
         // reintenta hasta ver un 200, así que la MISMA factura llega dos y tres
