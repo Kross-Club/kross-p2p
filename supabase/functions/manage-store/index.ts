@@ -1019,6 +1019,31 @@ Deno.serve(async (req) => {
     })
     if (sErr) return json({ error: sErr.message }, 400)
 
+    // ── La tienda nace con su enlace de afiliado (§52) ─────────────────────
+    // El mejor canal de Kross es el comerciante contento recomendándosela a
+    // otro comerciante, y esa persona ya está adentro. Su código es su SLUG:
+    // ya lo conoce —es su subdominio— así que no hay nada nuevo que memorizar.
+    //
+    // Best-effort a propósito: si esto falla, la tienda queda creada igual y su
+    // enlace se le da después desde `Panel → Afiliados`. Perder una marca nueva
+    // por no haber podido escribir una fila de referidos sería el peor negocio
+    // posible — es la misma regla que `api-eventos.ts`: anotar nunca tumba lo
+    // que estaba anotando.
+    //
+    // El sufijo cubre el choque de nombres: un afiliado de fuera pudo haberse
+    // llevado ese código antes.
+    {
+      const { error: eAf } = await supabase.from('affiliates')
+        .insert({ codigo: slug, nombre: body.nombre.trim(), store_id: storeId })
+      if (eAf?.code === '23505') {
+        await supabase.from('affiliates')
+          .insert({ codigo: `${slug}-${storeId.slice(-4)}`, nombre: body.nombre.trim(), store_id: storeId })
+          .then(({ error }) => error && console.error('[manage-store] sin enlace de afiliado', error.message))
+      } else if (eAf) {
+        console.error('[manage-store] sin enlace de afiliado', eAf.message)
+      }
+    }
+
     // Provision the brand's first admin login
     const { data: created, error: authErr } = await supabase.auth.admin.createUser({
       email: body.admin_email.trim(),

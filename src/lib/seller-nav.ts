@@ -55,12 +55,21 @@ export function sellerNavLinks(effective: SellerProfile | null | undefined): Sel
     { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
   ]
 
+  // **Afiliados también para el admin de una marca (§52), y es la MISMA ruta.**
+  // El comerciante no administra el programa: ve SU enlace y las tiendas que
+  // trajo. Es el mismo patrón que `Tiendas`/`Marca` —una ruta, dos contenidos
+  // según el alcance— y no dos rutas, porque dos rutas para la misma pregunta
+  // se contestan distinto en cuanto una de las dos se toca.
+  //
+  // Va al final, después de Marca: es lo que se mira una vez al mes, no lo que
+  // se trabaja todos los días.
   if (storeAdmin) return [
     { to: '/vendedor/pedidos', icon: ShoppingBag, label: 'Pedidos' },
     { to: '/vendedor/clientes', icon: UserPlus, label: 'Clientes' },
     { to: '/vendedor/productos', icon: Package, label: 'Productos' },
     { to: '/vendedor/equipo', icon: Users, label: 'Equipo' },
     { to: '/vendedor/marca', icon: Store, label: 'Marca' },
+    { to: '/vendedor/afiliados', icon: Share2, label: 'Afiliados' },
   ]
 
   // El miembro del equipo tiene UNA entrada, y está bien: su trabajo entero es

@@ -61,7 +61,10 @@ export interface TiendaReferida {
 export interface MesDelAfiliado {
   periodo: string
   transacciones: number
+  /** No contaron porque LA REFERIDA no tenía plan. */
   sin_plan: number
+  /** No contaron porque el afiliado-tienda no tenía el SUYO (§52). */
+  sin_mi_plan: number
   monto: number
   tiendas: AporteDeTienda[]
 }
@@ -79,9 +82,14 @@ export interface PagoAlAfiliado {
 }
 
 export interface MiPanel {
-  yo: { id: string; codigo: string; nombre: string; enlace: string }
+  /** `store_id` distingue al afiliado-tienda (§52) del de fuera. */
+  yo: { id: string; codigo: string; nombre: string; enlace: string; store_id: string | null }
   tarifa: number
   precio_plan_usd: number
+  /** Su PROPIO plan, cuando es una tienda. `null` = afiliado de fuera, que no
+   *  tiene plan que vencer — distinto de `'sin_suscripcion'`, que es una tienda
+   *  que no está pagando. */
+  mi_plan: EstadoSuscripcion | null
   mes: MesDelAfiliado & { tiendas: AporteDeTienda[] }
   pagos: PagoAlAfiliado[]
   equipo: { id: string; codigo: string; nombre: string; nivel: number; active: boolean }[]
@@ -91,6 +99,8 @@ export interface FilaDeAfiliado {
   id: string
   codigo: string
   nombre: string
+  /** De qué tienda es este afiliado, si es una (§52). */
+  store_id?: string | null
   email: string | null
   phone: string | null
   referred_by: string | null
@@ -103,6 +113,7 @@ export interface FilaDeAfiliado {
   tiendas: number
   transacciones: number
   sin_plan: number
+  sin_mi_plan: number
   monto: number
   detalle: AporteDeTienda[]
 }

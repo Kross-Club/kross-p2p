@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   TOLERANCIA_SEG, leerCabeceraDeFirma, firmaValida,
   fechaDeStripe, idDe, storeIdDe, suscripcionDelEvento, tramoDeFactura,
+  valeReintentar, VENTANA_DE_REINTENTO_SEG,
 } from '../../supabase/functions/_shared/stripe.ts'
 
 const SECRETO = 'whsec_pruebaquenoesreal'
@@ -85,6 +86,10 @@ describe('leer los campos que importan', () => {
     expect(storeIdDe({ client_reference_id: 'marca' })).toBe('marca')
     // Donde Stripe copia el metadata de la suscripción en las FACTURAS.
     expect(storeIdDe({ subscription_details: { metadata: { store_id: 'marca' } } })).toBe('marca')
+    // Y donde lo mudó `2025-04-30.basil`: dentro de `parent`. Una cuenta creada
+    // hoy manda ESTA forma, así que leer solo la vieja dejaría sin resolver
+    // todas las facturas — en silencio, que es lo peor.
+    expect(storeIdDe({ parent: { subscription_details: { metadata: { store_id: 'marca' } } } })).toBe('marca')
     // Sin ninguno: no es un error, es «resuélvelo por el customer».
     expect(storeIdDe({ id: 'in_1' })).toBe(null)
   })
@@ -174,5 +179,36 @@ describe('el tramo que cubre una factura', () => {
   it('sin id no hay nada que deduplicar, así que no hay tramo', () => {
     expect(tramoDeFactura(factura({ id: undefined }))).toBe(null)
     expect(tramoDeFactura(null)).toBe(null)
+  })
+})
+
+describe('la factura que llega antes de saber de quién es', () => {
+  const ahora = 1_760_000_000
+  const hace = (seg: number) => new Date((ahora - seg) * 1000).toISOString()
+
+  it('se reintenta mientras el evento sea reciente', () => {
+    // Stripe no garantiza el orden: `invoice.paid` suele llegar ANTES que
+    // `checkout.session.completed`, que es el que enlaza la tienda. Descartarla
+    // sería perder el PRIMER MES de todas las tiendas, en silencio.
+    expect(valeReintentar(hace(5), ahora)).toBe(true)
+    expect(valeReintentar(hace(VENTANA_DE_REINTENTO_SEG - 10), ahora)).toBe(true)
+  })
+
+  it('se deja ir pasada la ventana: eso ya no es una carrera, es de otro', () => {
+    // Una suscripción de la misma cuenta de Stripe que no sea de Kross tampoco
+    // se va a poder resolver nunca, y reintentarla tres días llena el registro
+    // de fallos que no son fallos.
+    expect(valeReintentar(hace(VENTANA_DE_REINTENTO_SEG + 10), ahora)).toBe(false)
+  })
+
+  it('sin fecha legible NO se insiste', () => {
+    // Sin saber cuándo pasó, insistir es apostar a que Stripe deje de
+    // reintentar antes que nosotros de fallar.
+    expect(valeReintentar(null, ahora)).toBe(false)
+    expect(valeReintentar('ayer', ahora)).toBe(false)
+  })
+
+  it('la ventana es de una hora', () => {
+    expect(VENTANA_DE_REINTENTO_SEG).toBe(3600)
   })
 })

@@ -27,10 +27,10 @@ import { administraLaPlataforma } from '../_shared/alcance.ts'
 import {
   TARIFA_AFILIADO, PRECIO_PLAN_USD,
   esCodigoValido, normalizarCodigo, enlaceDeAfiliado,
-  periodoDe, esPeriodo, rangoDelPeriodo, tramosDelPeriodo,
+  periodoDe, esPeriodo, rangoDelPeriodo, tramosDelPeriodo, interseccionDeTramos,
   estadoDeSuscripcion, liquidacionDe, cerrariaCiclo,
   arbolDeAfiliados, aplanarArbol, descendientesDe,
-  type AporteDeTienda, type NodoDeAfiliado,
+  type AporteDeTienda, type NodoDeAfiliado, type PeriodoPagado,
 } from '../_shared/afiliados.ts'
 
 const supabase = createClient(
@@ -51,14 +51,37 @@ const json = (body: unknown, status = 200) =>
 
 // ─── Quién llama ─────────────────────────────────────────────────────────────
 
+/** La fila de `affiliates` que alguien puede mirar como SUYA. */
+interface Yo {
+  id: string
+  codigo: string
+  nombre: string
+  /** De qué tienda es este afiliado, si es una tienda (§52). NULL = de fuera. */
+  store_id: string | null
+}
+
 interface Quien {
   userId: string
   email: string | null
   /** Administra la plataforma. */
   admin: boolean
-  /** Su fila en `affiliates`, si es afiliado. */
-  afiliado: { id: string; codigo: string; nombre: string } | null
+  /**
+   * El afiliado que le toca ver. Dos caminos, y son dos personas distintas del
+   * producto que llegan a la misma pantalla:
+   *
+   *   · el afiliado de FUERA, por su `auth_user_id` — entra a `/afiliado`;
+   *   · el COMERCIANTE, por la tienda que administra (§52) — lo ve dentro de
+   *     su panel, en `Panel → Afiliados`.
+   *
+   * Se resuelve acá, una vez, para que las dos pantallas no puedan discrepar
+   * sobre de quién son los números que están pintando.
+   */
+  afiliado: Yo | null
+  /** La tienda que administra, si administra una. */
+  store_id: string | null
 }
+
+const CAMPOS_YO = 'id, codigo, nombre, store_id'
 
 async function quienLlama(req: Request): Promise<Quien | null> {
   const bearer = req.headers.get('Authorization')?.replace('Bearer ', '') ?? ''
@@ -69,20 +92,36 @@ async function quienLlama(req: Request): Promise<Quien | null> {
 
   // Las dos preguntas se hacen en paralelo porque son independientes: alguien
   // puede ser las dos cosas (el dueño de Kross que además tiene su enlace).
-  const [{ data: seller }, { data: afiliado }] = await Promise.all([
+  const [{ data: seller }, { data: propio }] = await Promise.all([
     supabase.from('sellers')
       .select('store_id, is_admin, is_super_admin')
       .eq('auth_user_id', user.id).maybeSingle(),
     supabase.from('affiliates')
-      .select('id, codigo, nombre')
+      .select(CAMPOS_YO)
       .eq('auth_user_id', user.id).eq('active', true).maybeSingle(),
   ])
+
+  // Administrar la tienda es lo que da acceso a SU enlace, no ser vendedor
+  // raso: la comisión es de la marca, no de quien atiende un pedido. Se mira
+  // `is_admin` sobre `sellers` —el operador de una marca cuenta, igual que en
+  // todo lo demás del panel— y NO el alcance de plataforma, que es otra cosa.
+  const suTienda = seller?.store_id && seller.is_admin && !administraLaPlataforma(seller)
+    ? seller.store_id
+    : null
+
+  let afiliado = (propio ?? null) as Yo | null
+  if (!afiliado && suTienda) {
+    const { data } = await supabase.from('affiliates')
+      .select(CAMPOS_YO).eq('store_id', suTienda).eq('active', true).maybeSingle()
+    afiliado = (data ?? null) as Yo | null
+  }
 
   return {
     userId: user.id,
     email: user.email ?? null,
     admin: administraLaPlataforma(seller),
-    afiliado: afiliado ?? null,
+    afiliado,
+    store_id: suTienda,
   }
 }
 
@@ -119,11 +158,22 @@ interface TiendaReferida {
   affiliate_at: string | null
 }
 
-/** El aporte de cada tienda de un afiliado en un mes. */
-async function aportes(tiendas: TiendaReferida[], periodo: string): Promise<AporteDeTienda[]> {
+/**
+ * El aporte de cada tienda de un afiliado en un mes.
+ *
+ * `tramosMios` son los tramos pagados del afiliado cuando el afiliado ES una
+ * tienda (§52): su propio plan es una segunda compuerta, y mientras no lo pague
+ * sus referidas no le generan comisión. `null` para un afiliado de fuera, que
+ * no tiene plan que vencer — y `null` no es lo mismo que `[]`: la lista vacía
+ * significa "tenía plan y no pagó ni un día", o sea cero comisión.
+ */
+async function aportes(
+  tiendas: TiendaReferida[], periodo: string, tramosMios: PeriodoPagado[] | null,
+): Promise<AporteDeTienda[]> {
   if (tiendas.length === 0) return []
   const { desde, hasta } = rangoDelPeriodo(periodo)
   const ids = tiendas.map(t => t.id)
+  const cubiertoMio = tramosMios === null ? null : tramosDelPeriodo(tramosMios, desde, hasta)
 
   // Los tramos pagados y el estado de hoy, en DOS consultas para todas las
   // tiendas. Una por tienda multiplicaría los viajes por nada: son tablas
@@ -143,21 +193,35 @@ async function aportes(tiendas: TiendaReferida[], periodo: string): Promise<Apor
   const statusDe = new Map((subs ?? []).map(s => [s.store_id, s.status as string | null]))
 
   return await Promise.all(tiendas.map(async (t): Promise<AporteDeTienda> => {
-    const cubiertos = tramosDelPeriodo(tramosDe.get(t.id) ?? [], desde, hasta)
-    // El total del mes y lo que cae dentro de lo pagado. La resta es lo que
-    // NO cuenta, y se enseña: "300 ventas, 0 comisión" sin explicación se lee
-    // como un robo; con el número al lado, la conversación es "tu tienda no
-    // pagó el plan", que además es accionable.
-    const [total, ...porTramo] = await Promise.all([
+    // Tres ventanas y tres conteos, porque hay tres respuestas distintas:
+    //   · el mes entero          → lo que vendió
+    //   · lo que ELLA tenía pagado → lo que sobrevive a la primera compuerta
+    //   · lo que los DOS tenían   → lo que de verdad comisiona (§52)
+    const suyos = tramosDelPeriodo(tramosDe.get(t.id) ?? [], desde, hasta)
+    const ambos = cubiertoMio === null ? suyos : interseccionDeTramos(suyos, cubiertoMio)
+
+    const sumar = async (v: { desde: string; hasta: string }[]) =>
+      (await Promise.all(v.map(c => contar(t.id, c.desde, c.hasta)))).reduce((s, n) => s + n, 0)
+
+    const [total, porElla, transacciones] = await Promise.all([
       contar(t.id, desde, hasta),
-      ...cubiertos.map(c => contar(t.id, c.desde, c.hasta)),
+      sumar(suyos),
+      // Cuando no hay segunda compuerta las dos ventanas son la misma; se
+      // vuelve a contar en vez de reusar `porElla` porque son consultas
+      // idénticas y Postgres las resuelve por el mismo índice. Escribirlo con
+      // un `if` ahorraría una consulta y metería la rama que se olvida de
+      // actualizar cuando la regla cambie.
+      sumar(ambos),
     ])
-    const transacciones = porTramo.reduce((s, n) => s + n, 0)
+
     return {
       store_id: t.id,
       nombre: t.nombre,
       transacciones,
-      sin_plan: Math.max(0, total - transacciones),
+      // Las dos razones por las que algo no contó, separadas: mandan a llamar a
+      // personas distintas. `sin_plan` es de ELLA; `sin_mi_plan` es mío.
+      sin_plan: Math.max(0, total - porElla),
+      sin_mi_plan: Math.max(0, porElla - transacciones),
       estado: estadoDeSuscripcion(statusDe.get(t.id)),
     }
   }))
@@ -172,10 +236,35 @@ async function tiendasDe(afiliadoId: string): Promise<TiendaReferida[]> {
   return (data ?? []) as TiendaReferida[]
 }
 
+/**
+ * Los tramos pagados del afiliado, cuando el afiliado es una tienda (§52).
+ *
+ * `null` para un afiliado de fuera: no tiene plan, así que no hay segunda
+ * compuerta que aplicarle.
+ */
+async function tramosDelAfiliado(storeId: string | null, periodo: string): Promise<PeriodoPagado[] | null> {
+  if (!storeId) return null
+  const { desde, hasta } = rangoDelPeriodo(periodo)
+  const { data } = await supabase.from('subscription_periods')
+    .select('inicio, fin').eq('store_id', storeId).lt('inicio', hasta).gt('fin', desde)
+  return (data ?? []) as PeriodoPagado[]
+}
+
 /** El mes de un afiliado, contado de cero. */
-async function liquidacion(afiliadoId: string, periodo: string) {
-  const tiendas = await tiendasDe(afiliadoId)
-  return { tiendas, ...liquidacionDe(periodo, await aportes(tiendas, periodo)) }
+async function liquidacion(afiliadoId: string, periodo: string, storeId?: string | null) {
+  // Cuando quien pregunta no trae el `store_id` (el listado del admin recorre
+  // ids sueltos), se resuelve acá: la compuerta de §52 no puede depender de
+  // por qué camino se llegó a esta función.
+  let mio = storeId
+  if (mio === undefined) {
+    const { data } = await supabase.from('affiliates').select('store_id').eq('id', afiliadoId).maybeSingle()
+    mio = data?.store_id ?? null
+  }
+  const [tiendas, tramosMios] = await Promise.all([
+    tiendasDe(afiliadoId),
+    tramosDelAfiliado(mio, periodo),
+  ])
+  return { tiendas, ...liquidacionDe(periodo, await aportes(tiendas, periodo, tramosMios)) }
 }
 
 // ─── La API ──────────────────────────────────────────────────────────────────
@@ -207,6 +296,10 @@ Deno.serve(async (req) => {
       case 'quien_soy':
         return json({
           admin: quien.admin,
+          // `store_id` viaja dentro: el login lo mira para NO mandar al
+          // comerciante a `/afiliado`. Su sitio es su propio panel, donde ya
+          // tiene sus pedidos — sacarlo de ahí para enseñarle su enlace sería
+          // mandarlo a una app distinta de la que estaba entrando.
           afiliado: quien.afiliado
             ? { ...quien.afiliado, enlace: enlaceDeAfiliado(quien.afiliado.codigo) }
             : null,
@@ -225,18 +318,27 @@ Deno.serve(async (req) => {
         const bajoMi = new Set(descendientesDe((todos ?? []) as NodoDeAfiliado[], yo.id))
         const rama = (todos ?? []).filter(a => a.id === yo.id || bajoMi.has(a.id))
 
-        const [mes, { data: pagos }] = await Promise.all([
-          liquidacion(yo.id, periodo),
+        const [mes, { data: pagos }, { data: miSub }] = await Promise.all([
+          liquidacion(yo.id, periodo, yo.store_id),
           supabase.from('affiliate_payouts')
             .select('periodo, transacciones, monto_pen, estado, paid_at, referencia')
             .eq('affiliate_id', yo.id).neq('estado', 'ANULADO')
             .order('periodo', { ascending: false }).limit(24),
+          // Su PROPIO plan, cuando es una tienda (§52). Es la segunda compuerta,
+          // y la pantalla tiene que poder decir "el que no está al día eres tú"
+          // en vez de dejarlo buscando el error en sus referidas.
+          yo.store_id
+            ? supabase.from('store_subscriptions').select('status').eq('store_id', yo.store_id).maybeSingle()
+            : Promise.resolve({ data: null }),
         ])
 
         return json({
           yo: { ...yo, enlace: enlaceDeAfiliado(yo.codigo) },
           tarifa: TARIFA_AFILIADO,
           precio_plan_usd: PRECIO_PLAN_USD,
+          // `null` = afiliado de fuera, sin plan que vencer. Es distinto de
+          // 'sin_suscripcion', que es una tienda que NO está pagando.
+          mi_plan: yo.store_id ? estadoDeSuscripcion((miSub as { status?: string | null } | null)?.status) : null,
           mes,
           pagos: pagos ?? [],
           // Aplanado acá y no en la pantalla: el nivel de cada uno sale del
@@ -420,6 +522,18 @@ Deno.serve(async (req) => {
         const { data: tienda } = await supabase.from('stores')
           .select('id, affiliate_id').eq('id', storeId).maybeSingle()
         if (!tienda) return json({ error: 'esa tienda no existe' }, 404)
+
+        // Con §52 cada tienda ES un afiliado, así que atribuirle su propio
+        // afiliado es un ciclo de largo 1: la tienda se cobraría a sí misma su
+        // comisión, mes tras mes, y el número saldría bien en todas las
+        // pantallas. Es el error que solo se ve al pagar.
+        if (afiliadoId) {
+          const { data: af } = await supabase.from('affiliates')
+            .select('store_id').eq('id', afiliadoId).maybeSingle()
+          if (af?.store_id === storeId) {
+            return json({ error: 'una tienda no puede traerse a sí misma' }, 400)
+          }
+        }
         if (tienda.affiliate_id && tienda.affiliate_id !== afiliadoId && body.forzar !== true) {
           return json({ error: 'esa tienda ya está atribuida', actual: tienda.affiliate_id }, 409)
         }
