@@ -104,6 +104,51 @@ export async function firmaValida(
   return cab.v1.some(v => igualesEnTiempoConstante(v, firma))
 }
 
+/**
+ * ¿Lo firmó **alguno** de estos secretos?
+ *
+ * Modo prueba y modo vivo son dos destinos distintos en Stripe, con **dos
+ * secretos distintos**, y hacen falta los dos a la vez: con el cobro real
+ * encendido uno sigue necesitando poder probar un alta de punta a punta sin
+ * mover plata. Un solo secreto obliga a elegir, y en la práctica eso significa
+ * dejar de probar.
+ *
+ * Se prueban en orden y gana el primero que valide. Los vacíos se saltan: tener
+ * solo el de producción configurado es el caso normal, no un error.
+ *
+ * ⚠️ **Que la firma sea válida NO dice que el pago sea real.** Eso lo dice
+ * `livemode` en el evento, y es lo que decide si el mes cuenta para una
+ * comisión (§53.b). Un evento de prueba está tan bien firmado como uno de
+ * verdad — ese es justamente el punto de tener los dos.
+ */
+export async function firmaValidaConAlguno(
+  cuerpo: string, header: string | null, secretos: readonly (string | undefined)[],
+  ahoraSeg = Math.floor(Date.now() / 1000), tolerancia = TOLERANCIA_SEG,
+): Promise<boolean> {
+  for (const secreto of secretos) {
+    if (!secreto) continue
+    if (await firmaValida(cuerpo, header, secreto, ahoraSeg, tolerancia)) return true
+  }
+  return false
+}
+
+/**
+ * ¿Este evento es de PRODUCCIÓN?
+ *
+ * Stripe manda `livemode` en todos sus eventos. Lo que se hace con un `false`
+ * no es descartarlo —ver un pago de prueba entrar es lo que confirma que el
+ * webhook funciona— sino **guardarlo marcado**, para que la liquidación lo
+ * ignore. Ver §53.b.
+ *
+ * Ante la duda, PRUEBA: un evento sin `livemode` legible no puede convertirse
+ * en soles que se le transfieren a una persona. Es la misma regla que
+ * `desgloseDelEvento` en `comision.ts` —una cifra que no se midió no se
+ * inventa—, aplicada a lo que más caro sale equivocarse.
+ */
+export function esProduccion(evento: unknown): boolean {
+  return obj(evento).livemode === true
+}
+
 // ─── Leer el evento ──────────────────────────────────────────────────────────
 //
 // Los objetos de Stripe son grandes y solo interesan cinco campos. Se leen con

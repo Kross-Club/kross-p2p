@@ -10,7 +10,10 @@
 > SQL, los deploys y la cuenta de Stripe conectada — ver *Puesta en marcha*.
 >
 > **§52 (10-set-2026): la tienda también es afiliada.** Cada marca nace con su
-> enlace y lo ve en su propio panel. Ver la sección al final.
+> enlace y lo ve en su propio panel.
+>
+> **§53 (12-set-2026): el enlace es opaco y el modo prueba no paga.** Las dos
+> secciones están al final.
 
 ## Las tres piezas, y quién mueve cada una
 
@@ -64,21 +67,20 @@ vuelve por Google, pregunta por WhatsApp—. La atribución cruza ese hueco en t
 saltos:
 
 ```
-?ref=jhoann          →  localStorage (90 días, primer toque gana)   src/lib/referido.ts
+/u/48291733          →  localStorage (30 días, último toque gana)   src/lib/referido.ts
    ↓ el lead se manda
 web_orders.affiliate_code  (texto)                                   web-order
    ↓ el lead se convierte en tienda
 stores.affiliate_id + affiliate_at  (relación)                       manage-store
 ```
 
+> El enlace lleva un identificador **opaco** y la ventana es de 30 días con
+> **último toque**. Las dos cosas cambiaron en §53; la explicación está allí.
+
 **Se guarda el código en texto durante el tramo del lead y se resuelve a un id
 recién al crear la tienda.** En el momento del lead el código puede no resolver
 —un enlace viejo, un afiliado dado de baja— y un texto que no resuelve es un
 dato que se puede investigar; una FK que no resuelve es un lead que se pierde.
-
-**Primer toque gana**, con ventana de 90 días. Es lo que hace que el programa se
-explique en una frase: *si tú lo trajiste, es tuyo*. Con último toque, quien
-pauta sobre la marca se lleva los referidos que otro trabajó a mano.
 
 Cuando la atribución no viaja sola —el comerciante llegó por el enlace pero se
 dio de alta por teléfono— se cuelga a mano desde *Panel → Afiliados*.
@@ -167,6 +169,8 @@ milisegundo.
 | `subscription_periods` | Los tramos pagados. **Esto sí decide la comisión** |
 | `affiliate_payouts` | El mes cerrado. El único sitio donde una cifra se guarda en vez de calcularse |
 | `affiliates.store_id` (§52) | De qué tienda es este afiliado. NULL = de fuera |
+| `affiliates.public_id` (§53) | Los ocho dígitos opacos del enlace. Lo asigna un trigger |
+| `subscription_periods.livemode` (§53) | Si el pago fue real. **Solo `true` comisiona** |
 
 Más un índice que hace posible contar: `idx_cobros_liquidacion` sobre
 `cobros(store_id, matched_at) WHERE estado = 'MATCHED'`. Sin él, liquidar es un
@@ -262,8 +266,14 @@ propósito: son unas pocas transferencias al mes.
    [`ofdjghntvmrdfjhazfvz`](https://supabase.com/dashboard/project/ofdjghntvmrdfjhazfvz).
    Es idempotente: §51 y §52 se agregan y lo anterior no se toca. §52 hace el
    traspaso: cada tienda que ya existe se queda con su enlace.
-2. **Secreto** — `STRIPE_WEBHOOK_SECRET` = el `whsec_…` del endpoint. **No hace
-   falta ninguna API key de Stripe**: esta función solo escucha.
+2. **Secretos** — uno por modo, y los dos conviven:
+
+   | Secreto | De qué destino |
+   |---|---|
+   | `STRIPE_WEBHOOK_SECRET` | el endpoint de **producción** |
+   | `STRIPE_WEBHOOK_SECRET_TEST` | el endpoint de **prueba** (opcional) |
+
+   **No hace falta ninguna API key de Stripe**: esta función solo escucha.
 3. **Deploys**
    ```
    supabase functions deploy afiliados       --project-ref ofdjghntvmrdfjhazfvz
@@ -290,7 +300,8 @@ propósito: son unas pocas transferencias al mes.
      final de la URL del link:
      `https://buy.stripe.com/xxxx?client_reference_id=st_marca_abc123`. El
      comercio se da de alta solo y el enlace queda hecho. Es **un solo Payment
-     Link** para todas las marcas; lo que cambia es el parámetro.
+     Link** para todas las marcas; lo que cambia es el parámetro. Ojo: el de
+     modo prueba y el de modo vivo son **dos links distintos**.
    - `metadata.store_id` en la suscripción, si se crea desde el dashboard.
 
    Sin ninguno de los dos, el webhook resuelve por `stripe_customer_id` contra
@@ -383,6 +394,94 @@ Quién ve qué lo decide el servidor (`quienLlama`), no la ruta: el enlace de un
 marca lo ve **quien la administra** (`is_admin` sobre `sellers`, así que el
 operador de esa marca también), no el vendedor raso — la comisión es de la marca,
 no de quien atiende un pedido.
+
+## §53 · El enlace no delata a la tienda, y el modo prueba no paga (12-set-2026)
+
+Dos cosas que §52 dejó mal, y las dos se pagan con datos reales.
+
+### El enlace es opaco
+
+§52 usó el **slug** como código, y el código iba en la URL: `?ref=monoshop`. O
+sea que cada vez que un comerciante repartía su enlace estaba publicando **el
+subdominio de su tienda** —su dominio, su marca y su catálogo— a cualquiera que
+lo recibiera. Para un comercio que compite con otros que también usan Kross, eso
+no es un detalle: es entregarle a la competencia la lista de a quién mirar.
+
+Ahora el enlace no lleva nada legible:
+
+```
+krossclub.app/u/48291733
+```
+
+`codigo` **no se va**: sigue siendo cómo se identifica a un afiliado en el panel
+de Kross, que es donde tener un nombre legible sirve. Lo que cambia es que ya no
+aparece en ninguna URL pública.
+
+**Ocho dígitos y no seis.** Seis (900 000 posibles) se barren con un script en
+una tarde, y el premio sería la lista de nombres de todos los afiliados. Ocho lo
+suben a 90 millones: misma pinta, mismo largo al dictarlo, y deja de ser
+barrible. No es un secreto —quien tenga el enlace ve el nombre, que es para lo
+que existe— pero deja de ser una lista pública.
+
+El `public_id` lo asigna **la base**, con un trigger (§53.a). Hay tres caminos
+que crean afiliados (`manage-store`, la acción `crear`, el traspaso de §52.a) y
+un afiliado sin identificador es un afiliado sin enlace, o sea inservible: el
+trigger es el único sitio donde no hay que acordarse.
+
+### «Has sido invitado por Javier López»
+
+El visitante que llega por `/u/…` ve un aviso en el marco de la web pública, en
+todas las páginas. No en un aterrizaje propio: un peaje entre el clic y el
+producto gasta el clic. Y en todas, no solo en la primera — quien reparte el
+enlace quiere que el nombre siga ahí **cuando el visitante llega a decidir**.
+
+⚠️ **El nombre es el de la PERSONA, nunca el de la tienda.**
+`affiliates.nombre` de un afiliado-tienda es el nombre de la marca, y enseñarlo
+publicaría justo lo que esta sección vino a esconder. La acción `invitacion` lo
+resuelve contra `sellers`: el administrador de esa marca. Si no hay
+administrador que nombrar, **no hay aviso** — callarse es preferible a delatar a
+una tienda.
+
+Es la única acción **pública** de la Edge Function (va antes de la
+autenticación: quien la llama es alguien que todavía no tiene cuenta). Devuelve
+un nombre y nada más: ni el código, ni la tienda, ni si el afiliado existe.
+
+### Último toque, 30 días
+
+| | Antes (§51) | Ahora (§53) |
+|---|---|---|
+| Quién gana | el primer enlace pisado | **el más reciente** |
+| Ventana | 90 días | **30 días** |
+
+Manda el enlace más reciente: quien entre por el de otro afiliado queda
+atribuido a ese otro. Con primer toque, el afiliado que de verdad convenció al
+comerciante perdía el crédito contra otro cuyo enlace se pisó de pasada semanas
+antes.
+
+### El modo prueba no puede pagar comisiones
+
+Con los dos modos de Stripe conectados a la vez —que es lo que hace falta para
+poder seguir probando con el cobro real encendido— un pago de **prueba** entra
+por el mismo webhook que uno de verdad. Sin distinguirlos, una tarjeta
+`4242 4242 4242 4242` generaría un tramo pagado, ese tramo habilitaría
+transacciones, y esas transacciones se convertirían en **soles que se le
+transfieren a una persona**. Plata real por un pago que no existió.
+
+Dos piezas:
+
+- **Dos secretos.** `STRIPE_WEBHOOK_SECRET` y `STRIPE_WEBHOOK_SECRET_TEST`; la
+  firma se prueba contra los dos y gana el primero que valide
+  (`firmaValidaConAlguno`). Tener solo el de producción es el caso normal, no un
+  error.
+- **`livemode` guardado.** Stripe lo manda en cada evento. El tramo de prueba
+  **se registra igual** —ver entrar el pago es lo que confirma que el webhook
+  funciona— pero la liquidación cuenta solo `livemode = true`.
+
+⚠️ **Que la firma sea válida no dice que el pago sea real.** Un evento de prueba
+está tan bien firmado como uno de verdad: ese es el punto de tener los dos. Ante
+la duda —un evento sin `livemode` legible— se asume **prueba**: la misma regla
+que `desgloseDelEvento` en `comision.ts` (una cifra que no se midió no se
+inventa), aplicada a lo que más caro sale equivocarse.
 
 ## Lo que falta, y lo que se decidió no hacer
 

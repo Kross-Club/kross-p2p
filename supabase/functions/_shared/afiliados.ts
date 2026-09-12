@@ -90,6 +90,24 @@ export function esCodigoValido(codigo: string): boolean {
   return c.length >= 3 && c === codigo && !CODIGOS_RESERVADOS.has(c)
 }
 
+// ─── 2.b EL ENLACE NO DELATA A NADIE (§53) ───────────────────────────────────
+//
+// El enlace llevaba el CÓDIGO, y el código de una tienda es su slug. O sea que
+// cada vez que un comerciante repartía su enlace estaba publicando **el
+// subdominio de su tienda** a cualquiera que lo recibiera — su dominio, su
+// marca y su catálogo. Para un comercio que compite con otros que también usan
+// Kross, eso es entregarle a la competencia la lista de a quién mirar.
+//
+// Así que lo que va en la URL es un identificador **opaco**, de ocho dígitos y
+// sin relación con nada: `krossclub.app/u/48291733`. El `codigo` se queda, pero
+// solo para el panel de Kross, que es donde tener un nombre legible sirve.
+
+/** ¿Tiene pinta de identificador público? Ocho dígitos (§53.a), con holgura
+ *  hacia arriba por si algún día hacen falta más. */
+export function esPublicId(v: unknown): v is string {
+  return typeof v === 'string' && /^\d{6,12}$/.test(v)
+}
+
 /**
  * El enlace que se le entrega al afiliado.
  *
@@ -97,23 +115,38 @@ export function esCodigoValido(codigo: string): boolean {
  * dentro del subdominio de la marca y ahí lo relativo es la gracia. Este se
  * pega en una bio, se manda por WhatsApp y se dicta — tiene que llevar el
  * dominio escrito o no es un enlace, es una ruta.
+ *
+ * `/u/` y no una query: un enlace con `?` se rompe al pegarlo en sitios que
+ * cortan la URL, y se lee peor cuando alguien lo dicta.
  */
-export function enlaceDeAfiliado(codigo: string, apex = 'krossclub.app'): string {
-  return `https://${apex}/?ref=${encodeURIComponent(codigo)}`
+export function enlaceDeAfiliado(publicId: string, apex = 'krossclub.app'): string {
+  return `https://${apex}/u/${encodeURIComponent(publicId)}`
 }
 
 /**
- * El código que trae una URL, o `null`.
+ * La referencia que trae una URL, o `null`.
  *
- * Lee `?ref=` y lo normaliza, porque nadie escribe el enlace dos veces igual:
- * quien lo comparta a mano va a mandar `?ref=Jhoann` tarde o temprano, y ese
- * visitante tiene que quedar atribuido igual. Normalizar en la puerta es lo que
- * evita tener dos afiliados que son el mismo.
+ * Devuelve **texto sin interpretar**: puede ser un `public_id` (`/u/48291733`)
+ * o un `codigo` (`?ref=jhoann`, la forma anterior). Quién es lo resuelve el
+ * servidor, que es el único que puede mirar la tabla — y lo resuelve probando
+ * las dos cosas, así que un enlace viejo que alguien ya tenga guardado sigue
+ * funcionando.
+ *
+ * El `?ref=` se normaliza porque nadie escribe un código dos veces igual: quien
+ * lo comparta a mano va a mandar `?ref=Jhoann` tarde o temprano, y ese visitante
+ * tiene que quedar atribuido al mismo afiliado.
  */
-export function codigoDeLaUrl(url: string): string | null {
+export function refDeLaUrl(url: string): string | null {
   try {
-    const ref = new URL(url, 'https://krossclub.app').searchParams.get('ref')
+    const u = new URL(url, 'https://krossclub.app')
+    const enRuta = /^\/u\/([^/?#]+)/.exec(u.pathname)
+    if (enRuta) {
+      const id = decodeURIComponent(enRuta[1])
+      return esPublicId(id) ? id : null
+    }
+    const ref = u.searchParams.get('ref')
     if (!ref) return null
+    if (esPublicId(ref)) return ref
     const c = normalizarCodigo(ref)
     return c.length >= 3 ? c : null
   } catch {

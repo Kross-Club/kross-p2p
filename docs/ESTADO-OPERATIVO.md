@@ -34,7 +34,7 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-### El programa de afiliados, y la tienda como afiliada · **SQL** + 2 funciones nuevas + 2 desplegadas + frontend (10-set-2026)
+### El programa de afiliados · **SQL** + 2 funciones nuevas + 2 desplegadas + frontend (12-set-2026)
 
 Diseño completo en [`15-AFILIADOS.md`](./15-AFILIADOS.md). **Nada de esto está
 corrido todavía**: el código está mergeado en `main`, la base no tiene §51 ni
@@ -43,8 +43,10 @@ tanto —las funciones desplegadas siguen siendo las viejas y el frontend nuevo 
 inofensivo sin las tablas—, pero tampoco funciona nada.
 
 ```sql
--- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql
--- (idempotente; trae §51 · el programa, y §52 · la tienda como afiliada)
+-- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql (idempotente)
+--   §51 · el programa
+--   §52 · la tienda como afiliada
+--   §53 · el enlace opaco y el candado del modo prueba
 ```
 ```
 supabase functions deploy afiliados      --project-ref ofdjghntvmrdfjhazfvz
@@ -60,6 +62,12 @@ falta API key de Stripe** — el webhook solo escucha, nunca llama.
 desplegarlas contra una base SIN §51 escribe en columnas que no existen.** Corre
 el SQL PRIMERO. Es la misma ventana que rompió el listado de tiendas el 09-set:
 PostgREST no ignora la columna que falta, devuelve error.
+
+**§53 hace el enlace opaco.** Antes llevaba el slug de la tienda
+(`?ref=monoshop`), o sea que repartirlo publicaba el subdominio del comerciante.
+Ahora es `krossclub.app/u/48291733` y quien lo abre solo ve «Has sido invitado
+por Javier López» —el nombre del administrador, nunca el de la marca—. Y la
+atribución pasa a **último toque, 30 días**: manda el enlace más reciente.
 
 **§52 le da a cada marca su propio enlace.** El SQL hace el traspaso: cada
 tienda que ya existe se queda con un afiliado cuyo código es su slug, y el

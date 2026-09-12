@@ -55,6 +55,9 @@ const json = (body: unknown, status = 200) =>
 interface Yo {
   id: string
   codigo: string
+  /** El identificador OPACO que va en la URL (§53.a). El `codigo` es el slug de
+   *  la tienda y por eso no puede aparecer en un enlace público. */
+  public_id: string | null
   nombre: string
   /** De qué tienda es este afiliado, si es una tienda (§52). NULL = de fuera. */
   store_id: string | null
@@ -81,7 +84,7 @@ interface Quien {
   store_id: string | null
 }
 
-const CAMPOS_YO = 'id, codigo, nombre, store_id'
+const CAMPOS_YO = 'id, codigo, public_id, nombre, store_id'
 
 async function quienLlama(req: Request): Promise<Quien | null> {
   const bearer = req.headers.get('Authorization')?.replace('Bearer ', '') ?? ''
@@ -124,6 +127,16 @@ async function quienLlama(req: Request): Promise<Quien | null> {
     store_id: suTienda,
   }
 }
+
+/**
+ * El enlace público de un afiliado, o `null` si todavía no tiene identificador.
+ *
+ * `null` no debería pasar —lo asigna un trigger de la base (§53.a)— pero si
+ * pasa, es mejor que la pantalla diga "sin enlace" a que reparta
+ * `krossclub.app/u/null`, que es un enlace roto con pinta de bueno.
+ */
+const enlaceDelAfiliado = (a: { public_id?: string | null }): string | null =>
+  a.public_id ? enlaceDeAfiliado(a.public_id) : null
 
 // ─── Contar lo que se debe ───────────────────────────────────────────────────
 
@@ -179,8 +192,12 @@ async function aportes(
   // tiendas. Una por tienda multiplicaría los viajes por nada: son tablas
   // chicas y el filtro es el mismo.
   const [{ data: tramos }, { data: subs }] = await Promise.all([
+    // ⚠️ `.eq('livemode', true)`: un pago de PRUEBA queda registrado igual —ver
+    // entrar el tramo es lo que confirma que el webhook funciona— pero jamás
+    // cuenta. Sin este filtro, una tarjeta 4242 se convertiría en soles que se
+    // le transfieren a una persona (§53.b).
     supabase.from('subscription_periods').select('store_id, inicio, fin')
-      .in('store_id', ids).lt('inicio', hasta).gt('fin', desde),
+      .in('store_id', ids).eq('livemode', true).lt('inicio', hasta).gt('fin', desde),
     supabase.from('store_subscriptions').select('store_id, status').in('store_id', ids),
   ])
 
@@ -246,7 +263,8 @@ async function tramosDelAfiliado(storeId: string | null, periodo: string): Promi
   if (!storeId) return null
   const { desde, hasta } = rangoDelPeriodo(periodo)
   const { data } = await supabase.from('subscription_periods')
-    .select('inicio, fin').eq('store_id', storeId).lt('inicio', hasta).gt('fin', desde)
+    .select('inicio, fin').eq('store_id', storeId).eq('livemode', true)
+    .lt('inicio', hasta).gt('fin', desde)
   return (data ?? []) as PeriodoPagado[]
 }
 
@@ -279,10 +297,55 @@ Deno.serve(async (req) => {
     return json({ error: 'cuerpo ilegible' }, 400)
   }
 
+  const action = String(body.action ?? '')
+
+  // ── LA ÚNICA ACCIÓN PÚBLICA ─────────────────────────────────────────────
+  //
+  // Quién invitó a este visitante, para el aviso de la web pública. Va ANTES de
+  // la autenticación porque quien la llama es alguien que todavía no tiene
+  // cuenta — es justamente el que estamos tratando de convertir en tienda.
+  //
+  // Devuelve **un nombre y nada más**: ni el código, ni la tienda, ni si el
+  // afiliado existe siquiera (un id que no resuelve devuelve `null`, igual que
+  // uno inactivo). Con eso, barrer el espacio de ids solo consigue una lista de
+  // nombres de pila — que es lo mínimo que esta pantalla necesita enseñar.
+  //
+  // ⚠️ **Nunca el nombre de la tienda.** `affiliates.nombre` de un
+  // afiliado-tienda ES el nombre de la marca, y enseñarlo publicaría
+  // exactamente lo que §53 vino a esconder. Se resuelve contra `sellers`: el
+  // nombre de la PERSONA que administra esa marca, «Javier López». Si no hay
+  // administrador que nombrar, no hay aviso — callarse es preferible a delatar
+  // a una tienda.
+  if (action === 'invitacion') {
+    const ref = String(body.ref ?? '').trim().toLowerCase()
+
+    // ⚠️ **Se valida ANTES de tocar la consulta.** Esto entra por `.or(...)`,
+    // que es sintaxis de filtro de PostgREST y no un parámetro: una coma o un
+    // paréntesis en el texto del visitante cambian el filtro, no el valor. Con
+    // el alfabeto cerrado —lo mismo que puede ser un `public_id` o un `codigo`
+    // normalizado— no hay nada que interpretar.
+    if (!/^[a-z0-9-]{3,32}$/.test(ref)) return json({ nombre: null })
+
+    // Por `public_id` (lo normal) o por `codigo` (un enlace de la forma
+    // anterior que alguien todavía tenga guardado).
+    const { data: af } = await supabase.from('affiliates')
+      .select('id, nombre, store_id, active')
+      .or(`public_id.eq.${ref},codigo.eq.${ref}`)
+      .maybeSingle()
+    if (!af?.active) return json({ nombre: null })
+
+    if (!af.store_id) return json({ nombre: af.nombre })
+
+    const { data: admin } = await supabase.from('sellers')
+      .select('nombre').eq('store_id', af.store_id)
+      .eq('is_admin', true).eq('active', true)
+      .order('created_at', { ascending: true }).limit(1).maybeSingle()
+    return json({ nombre: admin?.nombre ?? null })
+  }
+
   const quien = await quienLlama(req)
   if (!quien) return json({ error: 'no autenticado' }, 401)
 
-  const action = String(body.action ?? '')
   // El mes por defecto es el EN CURSO, en hora de Lima. Nunca el de UTC: una
   // venta del 30 a las 20:00 es de setiembre y contarla en octubre le mueve la
   // comisión de mes al afiliado (ver `periodoDe`).
@@ -301,7 +364,7 @@ Deno.serve(async (req) => {
           // tiene sus pedidos — sacarlo de ahí para enseñarle su enlace sería
           // mandarlo a una app distinta de la que estaba entrando.
           afiliado: quien.afiliado
-            ? { ...quien.afiliado, enlace: enlaceDeAfiliado(quien.afiliado.codigo) }
+            ? { ...quien.afiliado, enlace: enlaceDelAfiliado(quien.afiliado) }
             : null,
         })
 
@@ -333,7 +396,7 @@ Deno.serve(async (req) => {
         ])
 
         return json({
-          yo: { ...yo, enlace: enlaceDeAfiliado(yo.codigo) },
+          yo: { ...yo, enlace: enlaceDelAfiliado(yo) },
           tarifa: TARIFA_AFILIADO,
           precio_plan_usd: PRECIO_PLAN_USD,
           // `null` = afiliado de fuera, sin plan que vencer. Es distinto de
@@ -383,7 +446,7 @@ Deno.serve(async (req) => {
       case 'listar': {
         if (!quien.admin) return json({ error: 'sin permiso' }, 403)
         const { data: todos, error } = await supabase.from('affiliates')
-          .select('id, codigo, nombre, email, phone, referred_by, active, nota, auth_user_id, created_at')
+          .select('id, codigo, public_id, nombre, email, phone, referred_by, active, nota, auth_user_id, store_id, created_at')
           .order('created_at', { ascending: true })
         if (error) return json({ error: error.message }, 500)
 
@@ -393,7 +456,7 @@ Deno.serve(async (req) => {
           return {
             ...f.afiliado,
             nivel: f.nivel,
-            enlace: enlaceDeAfiliado((f.afiliado as { codigo: string }).codigo),
+            enlace: enlaceDelAfiliado(f.afiliado as { public_id?: string | null }),
             tiendas: l.tiendas.length,
             transacciones: l.transacciones,
             sin_plan: l.sin_plan,
@@ -437,7 +500,7 @@ Deno.serve(async (req) => {
           referred_by: body.referred_by ? String(body.referred_by) : null,
           nota: String(body.nota ?? '').trim() || null,
           auth_user_id: authUserId,
-        }).select('id, codigo, nombre').single()
+        }).select('id, codigo, public_id, nombre').single()
         // 23505 es el único choque esperable acá, y merece su propio mensaje:
         // "duplicate key value violates unique constraint" no le dice nada a
         // quien está creando un afiliado.
@@ -448,7 +511,7 @@ Deno.serve(async (req) => {
           if (authUserId) await supabase.auth.admin.deleteUser(authUserId).catch(() => {})
           return json({ error: error.code === '23505' ? 'ese código ya está tomado' : error.message }, 400)
         }
-        return json({ ok: true, afiliado: { ...data, enlace: enlaceDeAfiliado(data.codigo) } })
+        return json({ ok: true, afiliado: { ...data, enlace: enlaceDelAfiliado(data) } })
       }
 
       case 'guardar': {

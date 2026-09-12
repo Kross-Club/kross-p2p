@@ -38,6 +38,7 @@ import { isPlatformHost } from './lib/store-context'
 import { anotarReferido } from './lib/referido'
 import AfiliadosPage from './pages/vendedor/AfiliadosPage'
 import AfiliadoPage from './pages/afiliado/AfiliadoPage'
+import InvitacionPage from './pages/publico/InvitacionPage'
 
 // Smart home: seller session → seller dashboard, buyer session → mis-pedidos.
 //
@@ -142,6 +143,11 @@ export default function App() {
             plataforma y cada marca): los términos, la política de devoluciones
             y el Libro de Reclamaciones tienen que ser alcanzables desde
             cualquier URL donde alguien compre. */}
+        {/* El enlace de afiliado (§53). Anota quién trajo a este visitante y
+            lo suelta en la web de siempre. La URL no lleva nada legible: el
+            código de una tienda es su slug, y publicarlo sería entregarle su
+            subdominio a la competencia. */}
+        <Route path="/u/:publicId" element={<InvitacionPage />} />
         <Route path="/servicios" element={<ServiciosPage />} />
         <Route path="/servicios/:slug" element={<ServicioDetallePage />} />
         <Route path="/carrito" element={<CarritoPage />} />

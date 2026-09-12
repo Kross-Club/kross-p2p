@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { ShoppingCart, Menu, X, Phone, Mail, MapPin, Clock, BookOpen, LogIn } from 'lucide-react'
 import { KrossLockup } from '../KrossLogo'
@@ -8,6 +8,7 @@ import { MENSAJES } from '../../config/propuesta'
 import { useCarrito } from '../../lib/carrito'
 import { useKrossTheme } from '../../lib/theme'
 import { isPlatformHost } from '../../lib/store-context'
+import { referidoActual } from '../../lib/referido'
 
 // ─── Marco de la web pública ─────────────────────────────────────────────────
 // Header y footer viven aquí para que TODAS las páginas públicas lleven lo
@@ -58,6 +59,7 @@ export default function PublicLayout({ children, tono = 'kross' }: {
     <div className="web-publica min-h-dvh flex flex-col"
       style={{ background: 'var(--surface-2)', color: 'var(--text)' }}>
       <PendientesBanner />
+      <InvitacionBanner />
 
       <header className="sticky top-0 z-40 backdrop-blur"
         style={{ borderBottom: '1px solid var(--border)', background: 'color-mix(in srgb, var(--surface-2) 92%, transparent)' }}>
@@ -231,6 +233,55 @@ function Footer() {
 
 /** Solo en desarrollo: recuerda qué datos obligatorios siguen vacíos. En
  *  producción no se pinta nada — al comprador no le importa nuestro pendiente. */
+/**
+ * «Has sido invitado por Javier López» (§53).
+ *
+ * El visitante llegó por el enlace de un comerciante, y este aviso es lo único
+ * que lo dice. Va en el marco y no en una página suelta a propósito: quien
+ * reparte el enlace quiere que el nombre siga ahí **cuando el visitante llega a
+ * decidir** —la pantalla de planes, el carrito, el formulario de pago—, no solo
+ * en el primer segundo. Una invitación que se ve una vez y desaparece no
+ * acompaña nada.
+ *
+ * El nombre lo resuelve el servidor: `affiliates` no se lee desde el navegador,
+ * y lo que devuelve es **el nombre de la PERSONA que administra esa marca**,
+ * nunca el de la tienda. Ese es todo el punto de §53 — el enlace no puede
+ * delatar a quién pertenece la tienda.
+ *
+ * Silencioso ante cualquier duda: sin referencia guardada, sin respuesta, o con
+ * un id que no resuelve, no se pinta nada. Un aviso a medias —«Has sido
+ * invitado por …»— es peor que ninguno.
+ */
+function InvitacionBanner() {
+  const [nombre, setNombre] = useState<string | null>(null)
+
+  useEffect(() => {
+    const ref = referidoActual()
+    if (!ref) return
+    let vivo = true
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/afiliados`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'invitacion', ref }),
+    })
+      .then(r => r.json())
+      .then((d: { nombre?: string | null }) => { if (vivo && d?.nombre) setNombre(d.nombre) })
+      .catch(() => { /* sin aviso se navega igual: esto nunca rompe la web */ })
+    return () => { vivo = false }
+  }, [])
+
+  if (!nombre) return null
+  return (
+    <div className="text-xs px-5 py-2 text-center"
+      style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>
+      Has sido invitado por <strong style={{ color: 'var(--text)' }}>{nombre}</strong>
+    </div>
+  )
+}
+
 function PendientesBanner() {
   const faltan = import.meta.env.DEV ? camposPendientes() : []
   if (faltan.length === 0) return null

@@ -992,11 +992,17 @@ Deno.serve(async (req) => {
     // afiliado y NO frena el alta: perder una marca nueva por un código mal
     // tecleado sería el peor negocio posible, y atribuirla después es un
     // botón en el panel.
-    const codigoAfiliado = normalizarCodigo(String(body.affiliate_code ?? ''))
+    //
+    // Se resuelve por `public_id` (§53.a, lo que llevan los enlaces de hoy) o
+    // por `codigo` (la forma anterior, que alguien puede tener guardada). El
+    // alfabeto se valida antes porque esto entra por `.or(...)`, que es sintaxis
+    // de filtro de PostgREST y no un parámetro.
+    const refAfiliado = normalizarCodigo(String(body.affiliate_code ?? ''))
     let affiliateId: string | null = null
-    if (codigoAfiliado) {
+    if (/^[a-z0-9-]{3,32}$/.test(refAfiliado)) {
       const { data: af } = await supabase.from('affiliates')
-        .select('id').eq('codigo', codigoAfiliado).eq('active', true).maybeSingle()
+        .select('id').or(`public_id.eq.${refAfiliado},codigo.eq.${refAfiliado}`)
+        .eq('active', true).maybeSingle()
       affiliateId = af?.id ?? null
     }
 

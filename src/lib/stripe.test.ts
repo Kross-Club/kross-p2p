@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   TOLERANCIA_SEG, leerCabeceraDeFirma, firmaValida,
   fechaDeStripe, idDe, storeIdDe, suscripcionDelEvento, tramoDeFactura,
-  valeReintentar, VENTANA_DE_REINTENTO_SEG,
+  valeReintentar, VENTANA_DE_REINTENTO_SEG, firmaValidaConAlguno, esProduccion,
 } from '../../supabase/functions/_shared/stripe.ts'
 
 const SECRETO = 'whsec_pruebaquenoesreal'
@@ -210,5 +210,53 @@ describe('la factura que llega antes de saber de quién es', () => {
 
   it('la ventana es de una hora', () => {
     expect(VENTANA_DE_REINTENTO_SEG).toBe(3600)
+  })
+})
+
+describe('los dos modos de Stripe conviviendo (§53.b)', () => {
+  const cuerpo = '{"id":"evt_1","type":"invoice.paid"}'
+  const ahora = 1_760_000_000
+  const VIVO = 'whsec_vivo'
+  const PRUEBA = 'whsec_prueba'
+
+  it('acepta lo firmado por producción', async () => {
+    const h = await firmar(cuerpo, ahora, VIVO)
+    expect(await firmaValidaConAlguno(cuerpo, h, [VIVO, PRUEBA], ahora)).toBe(true)
+  })
+
+  it('acepta lo firmado por prueba, con el mismo endpoint', async () => {
+    // Son dos destinos distintos en Stripe con secretos distintos, y hacen
+    // falta los dos: con el cobro real encendido uno sigue necesitando probar
+    // un alta completa sin mover plata.
+    const h = await firmar(cuerpo, ahora, PRUEBA)
+    expect(await firmaValidaConAlguno(cuerpo, h, [VIVO, PRUEBA], ahora)).toBe(true)
+  })
+
+  it('sigue rechazando a un tercero', async () => {
+    const h = await firmar(cuerpo, ahora, 'whsec_de_otro')
+    expect(await firmaValidaConAlguno(cuerpo, h, [VIVO, PRUEBA], ahora)).toBe(false)
+  })
+
+  it('se salta los secretos sin configurar en vez de tratarlos como válidos', async () => {
+    // Tener solo el de producción es el caso NORMAL, no un error.
+    const h = await firmar(cuerpo, ahora, VIVO)
+    expect(await firmaValidaConAlguno(cuerpo, h, [VIVO, undefined], ahora)).toBe(true)
+    expect(await firmaValidaConAlguno(cuerpo, h, [undefined, ''], ahora)).toBe(false)
+  })
+})
+
+describe('qué pago puede convertirse en soles', () => {
+  it('solo el que Stripe marca como real', () => {
+    expect(esProduccion({ livemode: true })).toBe(true)
+    expect(esProduccion({ livemode: false })).toBe(false)
+  })
+
+  it('ante la duda, PRUEBA', () => {
+    // Un evento sin `livemode` legible no puede habilitar una transferencia a
+    // una persona. Misma regla que `desgloseDelEvento`: una cifra que no se
+    // midió no se inventa.
+    expect(esProduccion({})).toBe(false)
+    expect(esProduccion({ livemode: 'true' })).toBe(false)
+    expect(esProduccion(null)).toBe(false)
   })
 })

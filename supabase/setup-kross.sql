@@ -2626,3 +2626,103 @@ ON CONFLICT DO NOTHING;
 UPDATE stores s SET affiliate_id = NULL, affiliate_at = NULL
 WHERE s.affiliate_id IS NOT NULL
   AND EXISTS (SELECT 1 FROM affiliates a WHERE a.id = s.affiliate_id AND a.store_id = s.id);
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §53 · EL ENLACE NO DELATA A LA TIENDA, Y EL MODO PRUEBA NO PAGA  (12-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Dos cosas que §52 dejó mal, y las dos se pagan con datos reales.
+
+-- 53.a EL IDENTIFICADOR PÚBLICO ---------------------------------------------
+-- §52 usó el SLUG como código, y el código iba en la URL: `?ref=monoshop`. O
+-- sea que cada vez que un comerciante repartía su enlace estaba publicando **el
+-- subdominio de su tienda** —su dominio, su marca y su catálogo— a cualquiera
+-- que lo recibiera. Para un comercio que compite con otros que también usan
+-- Kross, eso no es un detalle: es entregarle a la competencia la lista de a
+-- quién mirar.
+--
+-- Así que el enlace deja de llevar nada que se pueda leer:
+--
+--     krossclub.app/u/48291733
+--
+-- `codigo` NO se va — sigue siendo cómo se identifica a un afiliado en el panel
+-- de Kross, que es donde tener un nombre legible sirve. Lo que cambia es que ya
+-- no aparece en ninguna URL pública.
+--
+-- **Ocho dígitos y no seis.** El ejemplo que se pidió tenía seis (900 000
+-- posibles), y con eso un script recorre el espacio entero en una tarde y se
+-- lleva la lista de nombres de todos los afiliados. Ocho lo suben a 90 millones:
+-- misma pinta, mismo largo de tipeo, y deja de ser barrible. No es un secreto
+-- —quien tenga el enlace ve el nombre, que es justamente para lo que existe—
+-- pero sí deja de ser una lista pública.
+ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS public_id text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_affiliates_public_id
+  ON affiliates(public_id) WHERE public_id IS NOT NULL;
+
+-- Lo asigna la BASE y no el código, a propósito. Un afiliado sin `public_id` es
+-- un afiliado sin enlace —o sea inservible— y hay tres caminos que crean filas
+-- (`manage-store`, la acción `crear` y el traspaso de §52.a). Un trigger es el
+-- único sitio donde no hay que acordarse.
+CREATE OR REPLACE FUNCTION public.asignar_public_id() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE cand text; intentos int := 0;
+BEGIN
+  IF NEW.public_id IS NOT NULL THEN RETURN NEW; END IF;
+  LOOP
+    -- 10000000..99999999: ocho dígitos siempre, sin ceros a la izquierda que
+    -- alguien pueda comerse al dictarlo por teléfono.
+    cand := (floor(random() * 90000000) + 10000000)::bigint::text;
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM affiliates WHERE public_id = cand);
+    intentos := intentos + 1;
+    IF intentos > 50 THEN
+      RAISE EXCEPTION 'no se pudo generar un public_id libre en 50 intentos';
+    END IF;
+  END LOOP;
+  NEW.public_id := cand;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_affiliates_public_id ON affiliates;
+CREATE TRIGGER trg_affiliates_public_id BEFORE INSERT ON affiliates
+  FOR EACH ROW EXECUTE FUNCTION public.asignar_public_id();
+
+-- El traspaso de los que ya existen. Mismo bucle, fuera del trigger.
+DO $$
+DECLARE r record; cand text; intentos int;
+BEGIN
+  FOR r IN SELECT id FROM affiliates WHERE public_id IS NULL LOOP
+    intentos := 0;
+    LOOP
+      cand := (floor(random() * 90000000) + 10000000)::bigint::text;
+      EXIT WHEN NOT EXISTS (SELECT 1 FROM affiliates WHERE public_id = cand);
+      intentos := intentos + 1;
+      IF intentos > 50 THEN
+        RAISE EXCEPTION 'no se pudo generar un public_id libre en 50 intentos';
+      END IF;
+    END LOOP;
+    UPDATE affiliates SET public_id = cand WHERE id = r.id;
+  END LOOP;
+END $$;
+
+-- 53.b EL MODO PRUEBA NO PUEDE PAGAR COMISIONES -----------------------------
+-- Con los dos modos de Stripe conectados a la vez —que es lo que hace falta
+-- para poder seguir probando con el cobro real encendido— un pago de PRUEBA
+-- entra por el mismo webhook que uno de verdad. Sin distinguirlos, una tarjeta
+-- `4242 4242 4242 4242` generaría un tramo pagado, ese tramo habilitaría
+-- transacciones, y esas transacciones se convertirían en **soles que se le
+-- transfieren a una persona**. Plata real por un pago que no existió.
+--
+-- Stripe manda `livemode` en cada evento. Se guarda, y la liquidación cuenta
+-- SOLO los tramos de verdad.
+--
+-- `DEFAULT true` y no false: las filas que ya existan —si alguien alcanzó a
+-- correr §51 y conectar algo— son de producción, porque el modo prueba todavía
+-- no estaba soportado. Un default `false` las borraría del conteo en silencio.
+ALTER TABLE subscription_periods ADD COLUMN IF NOT EXISTS livemode boolean NOT NULL DEFAULT true;
+ALTER TABLE store_subscriptions  ADD COLUMN IF NOT EXISTS livemode boolean NOT NULL DEFAULT true;
+
+-- El índice de la liquidación gana la columna: contar ignora las de prueba, así
+-- que filtrarlas después de leerlas sería traer filas para tirarlas.
+CREATE INDEX IF NOT EXISTS idx_sub_periods_store_live
+  ON subscription_periods(store_id, inicio) WHERE livemode;

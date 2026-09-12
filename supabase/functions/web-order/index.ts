@@ -94,8 +94,10 @@ Deno.serve(async (req) => {
       // del afiliado: acá el código puede no resolver todavía —un enlace viejo,
       // un afiliado dado de baja— y un texto que no resuelve es un dato que se
       // puede investigar; una FK que no resuelve es un lead que se pierde.
-      // Se normaliza igual que en la web para que `?ref=Jhoann` y `?ref=jhoann`
-      // sean el mismo afiliado.
+      // Guarda el `public_id` del enlace (§53.a) o el `codigo` de uno anterior;
+      // `manage-store` resuelve las dos formas. Se normaliza igual que en la web
+      // para que `?ref=Jhoann` y `?ref=jhoann` sean el mismo afiliado —los
+      // dígitos de un `public_id` pasan intactos.
       affiliate_code: normalizarCodigo(String(body.affiliate_code ?? '')) || null,
     })
     .select('codigo')

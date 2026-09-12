@@ -31,8 +31,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { anotar } from '../_shared/api-eventos.ts'
 import {
-  firmaValida, storeIdDe, suscripcionDelEvento, tramoDeFactura, idDe, fechaDeStripe,
-  valeReintentar,
+  firmaValidaConAlguno, esProduccion, storeIdDe, suscripcionDelEvento, tramoDeFactura,
+  idDe, fechaDeStripe, valeReintentar,
 } from '../_shared/stripe.ts'
 
 const supabase = createClient(
@@ -101,14 +101,25 @@ Deno.serve(async (req) => {
   // 1. El cuerpo CRUDO, antes de parsear. Re-serializar el JSON cambia orden y
   //    espacios y rompe la firma de un evento legítimo.
   const crudo = await req.text()
-  const secreto = Deno.env.get('STRIPE_WEBHOOK_SECRET') ?? ''
 
-  // 2. La firma. Sin secreto configurado NO se deja pasar: un webhook abierto
-  //    es un endpoint donde cualquiera declara meses pagados que nadie pagó.
-  if (!await firmaValida(crudo, req.headers.get('Stripe-Signature'), secreto)) {
+  // Los DOS secretos: producción y prueba. Son dos destinos distintos en Stripe
+  // y hacen falta a la vez — con el cobro real encendido uno sigue necesitando
+  // probar un alta completa sin mover plata (§53.b). Tener solo el de
+  // producción es el caso normal, no un error.
+  const secretos = [
+    Deno.env.get('STRIPE_WEBHOOK_SECRET'),
+    Deno.env.get('STRIPE_WEBHOOK_SECRET_TEST'),
+  ]
+
+  // 2. La firma. Sin ningún secreto configurado NO se deja pasar: un webhook
+  //    abierto es un endpoint donde cualquiera declara meses pagados que nadie
+  //    pagó.
+  if (!await firmaValidaConAlguno(crudo, req.headers.get('Stripe-Signature'), secretos)) {
     await anotar({
       proveedor: 'STRIPE', op: 'webhook.firma', outcome: 'RECHAZO', httpStatus: 400,
-      detail: secreto ? 'firma inválida o vencida' : 'STRIPE_WEBHOOK_SECRET sin configurar',
+      detail: secretos.some(Boolean)
+        ? 'firma inválida o vencida'
+        : 'ni STRIPE_WEBHOOK_SECRET ni STRIPE_WEBHOOK_SECRET_TEST están configurados',
     })
     return responder({ error: 'firma inválida' }, 400)
   }
@@ -125,6 +136,11 @@ Deno.serve(async (req) => {
   const eventoId = String(evento.id ?? '')
   const objeto = (evento.data as Record<string, unknown> | undefined)?.object
   const eventoAt = fechaDeStripe(evento.created) ?? new Date().toISOString()
+  // ⚠️ Una firma válida NO dice que el pago sea real: un evento de prueba está
+  // tan bien firmado como uno de verdad. Lo que lo dice es esto, y es lo que
+  // impide que una tarjeta 4242 se convierta en soles transferidos a una
+  // persona (§53.b).
+  const live = esProduccion(evento)
 
   try {
     switch (tipo) {
@@ -139,6 +155,7 @@ Deno.serve(async (req) => {
         const r = await guardarEstado(storeId, {
           stripe_customer_id: idDe(s?.customer),
           stripe_subscription_id: idDe(s?.subscription),
+          livemode: live,
         }, eventoAt)
         if (!r.ok) throw new Error(r.error)
         return responder({ received: true, store_id: storeId })
@@ -157,7 +174,7 @@ Deno.serve(async (req) => {
         // estado real es el nombre del evento. Sin esto, una cancelación queda
         // guardada como "active" y el panel enseña al día a quien se fue.
         const status = tipo === 'customer.subscription.deleted' ? 'canceled' : sub.status
-        const r = await guardarEstado(storeId, { ...sub, status }, eventoAt)
+        const r = await guardarEstado(storeId, { ...sub, status, livemode: live }, eventoAt)
         if (!r.ok) throw new Error(r.error)
         return responder({ received: true, store_id: storeId, status })
       }
@@ -216,12 +233,20 @@ Deno.serve(async (req) => {
           fin: tramo.fin,
           monto_usd: tramo.monto_usd,
           paid_at: tramo.paid_at,
+          // La marca que decide si este mes puede comisionar (§53.b). Se guarda
+          // igual en los dos casos: ver entrar un pago de prueba es lo que
+          // confirma que el webhook funciona.
+          livemode: live,
         }, { onConflict: 'stripe_invoice_id' })
         if (error) throw new Error(error.message)
 
         return responder({
-          received: true, store_id: storeId,
+          received: true, store_id: storeId, livemode: live,
           periodo: { inicio: tramo.inicio, fin: tramo.fin },
+          // Dicho con todas sus letras: en prueba el tramo queda registrado
+          // pero NO comisiona. Es lo primero que uno necesita saber mirando la
+          // respuesta en el panel de Stripe.
+          ...(live ? {} : { aviso: 'modo prueba: se registra pero no comisiona' }),
         })
       }
 
@@ -232,7 +257,7 @@ Deno.serve(async (req) => {
       case 'invoice.payment_failed': {
         const customerId = idDe((objeto as Record<string, unknown>)?.customer)
         const storeId = await tiendaDelEvento(objeto, customerId)
-        if (storeId) await guardarEstado(storeId, { status: 'past_due' }, eventoAt)
+        if (storeId) await guardarEstado(storeId, { status: 'past_due', livemode: live }, eventoAt)
         await anotar({
           proveedor: 'STRIPE', op: 'suscripcion.pago_fallido', outcome: 'RECHAZO',
           storeId, detail: `factura ${idDe((objeto as Record<string, unknown>)?.id) ?? '?'}`,

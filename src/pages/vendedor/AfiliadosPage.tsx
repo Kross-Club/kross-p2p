@@ -266,13 +266,17 @@ function Fila({ f, tiendas, abierta, onAbrir, onListo }: {
         <div className="px-3 pb-3 space-y-2" style={{ borderTop: '0.5px solid var(--border)' }}>
           <div className="flex items-center gap-1.5 pt-2">
             <code className="text-[10px] flex-1 truncate px-2 py-1.5 rounded-lg"
-              style={{ background: 'var(--surface-3)', color: 'var(--text-muted)' }}>{f.enlace}</code>
-            <button onClick={async () => {
-              try { await navigator.clipboard.writeText(f.enlace); setCopiado(true); setTimeout(() => setCopiado(false), 1500) } catch { /* visible igual */ }
-            }} className="text-[10px] font-bold px-2 py-1.5 rounded-lg flex items-center gap-1 flex-shrink-0"
-              style={{ border: '0.5px solid var(--border)', color: 'var(--text-muted)' }}>
-              {copiado ? <Check size={11} /> : <Link2 size={11} />} {copiado ? 'Copiado' : 'Copiar'}
-            </button>
+              style={{ background: 'var(--surface-3)', color: f.enlace ? 'var(--text-muted)' : 'var(--warn-fg)' }}>
+              {f.enlace ?? 'sin identificador público — correr §53 del esquema'}
+            </code>
+            {f.enlace && (
+              <button onClick={async () => {
+                try { await navigator.clipboard.writeText(f.enlace!); setCopiado(true); setTimeout(() => setCopiado(false), 1500) } catch { /* visible igual */ }
+              }} className="text-[10px] font-bold px-2 py-1.5 rounded-lg flex items-center gap-1 flex-shrink-0"
+                style={{ border: '0.5px solid var(--border)', color: 'var(--text-muted)' }}>
+                {copiado ? <Check size={11} /> : <Link2 size={11} />} {copiado ? 'Copiado' : 'Copiar'}
+              </button>
+            )}
           </div>
 
           {f.email && <p className="text-[10px]" style={{ color: 'var(--text-faint)' }}>
@@ -491,8 +495,10 @@ function FormularioNuevo({ afiliados, onListo }: { afiliados: FilaDeAfiliado[]; 
         </select>
       </div>
       {codigo && (
-        <p className="text-[10px] tabular" style={{ color: 'var(--text-faint)' }}>
-          Su enlace: krossclub.app/?ref={codigo}
+        <p className="text-[10px]" style={{ color: 'var(--text-faint)' }}>
+          <b className="tabular">/{codigo}</b> es cómo lo identificas tú acá. Su enlace público
+          sale opaco —<span className="tabular">krossclub.app/u/…</span>— y aparece al crearlo:
+          el identificador lo asigna la base, no esta pantalla.
         </p>
       )}
       {error && <p className="text-[10px]" style={{ color: 'var(--danger-fg)' }}>{error}</p>}
