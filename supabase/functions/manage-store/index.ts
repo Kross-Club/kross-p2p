@@ -6,7 +6,8 @@ import { asegurarSesionLat } from '../_shared/shalom-lat-emisor.ts'
 import { olvaLatApiKey, validateAtLat } from '../_shared/olva-lat-api.ts'
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 import { normalizarDominio, variantesDeDominio } from '../_shared/tienda-url.ts'
-import { normalizarCodigo } from '../_shared/afiliados.ts'
+import { crearTienda } from '../_shared/crear-tienda.ts'
+import { SLUGS_RESERVADOS } from '../_shared/alta-de-tienda.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -36,7 +37,11 @@ function cleanSlug(raw: string): string {
     .slice(0, 40)
 }
 
-const RESERVED = new Set(['www', 'app', 'api', 'admin', 'kross', 'krossclub', 'mail', 'assets'])
+// La lista vive en `_shared/alta-de-tienda.ts` desde §54: además de las partes
+// de la plataforma tapa las RUTAS de la propia web (`/u`, `/bienvenido`,
+// `/empezar`…), que un subdominio homónimo volvería ambiguas. Tenerla dos veces
+// dejaría que el renombrado de una marca tomara justo lo que el alta rechaza.
+const RESERVED = SLUGS_RESERVADOS
 
 /**
  * Las columnas de los bloques §49 y §50. Están apartadas por una razón operativa: esta
@@ -973,108 +978,39 @@ Deno.serve(async (req) => {
       return json({ error: 'admin_invalido' }, 400)
     }
 
-    const slug = cleanSlug(body.slug)
-    if (!slug || RESERVED.has(slug)) return json({ error: 'slug_reservado' }, 400)
-    // También contra los subdominios ANTERIORES (§47): una tienda nueva no
-    // puede quedarse con los enlaces viejos de otra. Miraba solo el actual.
-    if (await slugTomado(slug)) return json({ error: 'slug_en_uso' }, 400)
+    // El alta entera vive en `_shared/crear-tienda.ts` desde §54, porque ahora
+    // hay DOS caminos que crean marcas: este —alguien de Kross, a mano— y el
+    // que dispara Stripe cuando un comerciante paga en la landing. Duplicar el
+    // bloque sería garantizar que se separen: el día que una marca nueva tenga
+    // que nacer con un flag distinto, la del panel lo tendría y la que se crea
+    // pagando no, sin que nada falle.
+    const r = await crearTienda(supabase, {
+      nombre: body.nombre,
+      slug: body.slug,
+      adminNombre: body.admin_nombre?.trim() || body.nombre,
+      adminEmail: body.admin_email,
+      adminPassword: body.admin_password,
+      affiliateRef: body.affiliate_code,
+      logoUrl: body.logo_url,
+      colorPrimary: body.color_primary,
+      colorDark: body.color_dark,
+    })
 
-    const storeId = `st_${slug}_${Date.now().toString(36)}`
-
-    // ── Quién trajo esta tienda (§51.b) ────────────────────────────────────
-    // El código llega por dos caminos y los dos terminan acá: escrito a mano
-    // en el alta (`affiliate_code`), o heredado del lead de la web pública
-    // (`web_orders.affiliate_code`, que es donde cayó el `?ref=`).
-    //
-    // Se resuelve a un id AHORA y no se guarda el texto: a partir de este
-    // momento la atribución es una relación, no una pista. Un código que no
-    // resuelve —un enlace viejo, un afiliado dado de baja— deja la tienda sin
-    // afiliado y NO frena el alta: perder una marca nueva por un código mal
-    // tecleado sería el peor negocio posible, y atribuirla después es un
-    // botón en el panel.
-    //
-    // Se resuelve por `public_id` (§53.a, lo que llevan los enlaces de hoy) o
-    // por `codigo` (la forma anterior, que alguien puede tener guardada). El
-    // alfabeto se valida antes porque esto entra por `.or(...)`, que es sintaxis
-    // de filtro de PostgREST y no un parámetro.
-    const refAfiliado = normalizarCodigo(String(body.affiliate_code ?? ''))
-    let affiliateId: string | null = null
-    if (/^[a-z0-9-]{3,32}$/.test(refAfiliado)) {
-      const { data: af } = await supabase.from('affiliates')
-        .select('id').or(`public_id.eq.${refAfiliado},codigo.eq.${refAfiliado}`)
-        .eq('active', true).maybeSingle()
-      affiliateId = af?.id ?? null
+    if (!r.ok) {
+      // Los motivos se traducen a los códigos que el panel ya conoce: esta
+      // pantalla lleva meses leyéndolos y cambiarlos rompería sus mensajes.
+      const codigo = r.motivo === 'sin_slug' ? 'slug_en_uso'
+        : r.motivo === 'cuenta' ? (r.detalle || 'auth_create_failed')
+          : r.detalle || r.motivo
+      return json({ error: codigo }, 400)
     }
 
-    const { error: sErr } = await supabase.from('stores').insert({
-      id: storeId,
-      slug,
-      affiliate_id: affiliateId,
-      affiliate_at: affiliateId ? new Date().toISOString() : null,
-      nombre: body.nombre.trim(),
-      logo_url: body.logo_url ?? null,
-      color_primary: body.color_primary || '#55C8F5',
-      color_dark: body.color_dark || '#060C1A',
-      active: true,
-      // Las marcas nuevas nacen SOLO con recojo en agencia. El domicilio se
-      // prende cuando la marca tenga con quién repartir, y lo prende la
-      // plataforma. La columna tiene default `true` para no apagarle el
-      // domicilio a las marcas que ya existían; el valor explícito de aquí es lo
-      // que hace que eso no aplique a las nuevas.
-      home_delivery_enabled: false,
+    return json({
+      ok: true,
+      store_id: r.tienda.storeId,
+      slug: r.tienda.slug,
+      admin_auth_id: r.tienda.authUserId,
     })
-    if (sErr) return json({ error: sErr.message }, 400)
-
-    // ── La tienda nace con su enlace de afiliado (§52) ─────────────────────
-    // El mejor canal de Kross es el comerciante contento recomendándosela a
-    // otro comerciante, y esa persona ya está adentro. Su código es su SLUG:
-    // ya lo conoce —es su subdominio— así que no hay nada nuevo que memorizar.
-    //
-    // Best-effort a propósito: si esto falla, la tienda queda creada igual y su
-    // enlace se le da después desde `Panel → Afiliados`. Perder una marca nueva
-    // por no haber podido escribir una fila de referidos sería el peor negocio
-    // posible — es la misma regla que `api-eventos.ts`: anotar nunca tumba lo
-    // que estaba anotando.
-    //
-    // El sufijo cubre el choque de nombres: un afiliado de fuera pudo haberse
-    // llevado ese código antes.
-    {
-      const { error: eAf } = await supabase.from('affiliates')
-        .insert({ codigo: slug, nombre: body.nombre.trim(), store_id: storeId })
-      if (eAf?.code === '23505') {
-        await supabase.from('affiliates')
-          .insert({ codigo: `${slug}-${storeId.slice(-4)}`, nombre: body.nombre.trim(), store_id: storeId })
-          .then(({ error }) => error && console.error('[manage-store] sin enlace de afiliado', error.message))
-      } else if (eAf) {
-        console.error('[manage-store] sin enlace de afiliado', eAf.message)
-      }
-    }
-
-    // Provision the brand's first admin login
-    const { data: created, error: authErr } = await supabase.auth.admin.createUser({
-      email: body.admin_email.trim(),
-      password: body.admin_password,
-      email_confirm: true,
-    })
-    if (authErr || !created?.user) {
-      // roll back the store so the slug isn't orphaned
-      await supabase.from('stores').delete().eq('id', storeId)
-      return json({ error: authErr?.message ?? 'auth_create_failed' }, 400)
-    }
-
-    const { error: selErr } = await supabase.from('sellers').insert({
-      auth_user_id: created.user.id,
-      store_id: storeId,
-      nombre: body.admin_nombre?.trim() || body.nombre.trim(),
-      role_label: 'Ventas',
-      is_admin: true,
-      is_super_admin: false,
-      active: true,
-      available: true,
-    })
-    if (selErr) return json({ error: selErr.message }, 400)
-
-    return json({ ok: true, store_id: storeId, slug, admin_auth_id: created.user.id })
   }
 
   // ─── BORRAR UNA TIENDA ──────────────────────────────────────────────────────

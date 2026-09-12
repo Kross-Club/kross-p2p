@@ -2726,3 +2726,85 @@ ALTER TABLE store_subscriptions  ADD COLUMN IF NOT EXISTS livemode boolean NOT N
 -- que filtrarlas después de leerlas sería traer filas para tirarlas.
 CREATE INDEX IF NOT EXISTS idx_sub_periods_store_live
   ON subscription_periods(store_id, inicio) WHERE livemode;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §54 · DARSE DE ALTA SOLO: DE LA LANDING A SU PANEL  (12-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Hasta hoy una tienda nacía a mano: el comerciante llenaba el formulario de la
+-- web, alguien de Kross lo veía, y después entraba a `Panel → Tiendas` a
+-- crearla y a inventarle una contraseña que le pasaba por WhatsApp. Entre el
+-- "quiero" y el "ya puedo entrar" había una persona y unas horas.
+--
+-- Ahora el comerciante paga en la landing y su tienda existe cuando Stripe
+-- termina de cobrar. El camino:
+--
+--   1. La landing le pide DOS cosas —el nombre de su marca y el suyo— y con eso
+--      reserva una fila acá. Todavía no hay tienda: hay una intención.
+--   2. Se va a pagar con `client_reference_id = <token de esta fila>`.
+--   3. Stripe cobra y dispara `checkout.session.completed`. El webhook toma
+--      esta fila, le suma el correo que Stripe capturó, y **crea la tienda**.
+--   4. Stripe lo devuelve a `/bienvenido`, donde elige su contraseña y entra.
+--
+-- ⚠️ **El `client_reference_id` de un alta NO es un `store_id`.** No puede
+-- serlo: cuando el visitante hace clic en «suscribirme», su tienda todavía no
+-- existe. Por eso los tokens de acá llevan prefijo `sg_` y los ids de tienda
+-- `st_` — el webhook mira el prefijo para saber si tiene que CREAR una tienda o
+-- enlazar una que ya estaba (una marca vieja que recién se suscribe).
+
+CREATE TABLE IF NOT EXISTS signups (
+  -- `sg_` + 32 hex. Es una LLAVE: quien lo tiene puede ponerle la contraseña a
+  -- la tienda que se cree. Mismo modelo que el token de un pedido
+  -- (`docs/00-CORE-ARCHITECTURE.md`), con la diferencia de que este caduca.
+  token             text        PRIMARY KEY,
+  marca             text        NOT NULL,
+  nombre_admin      text        NOT NULL,
+  -- El subdominio que se le prometió en la landing. Se vuelve a comprobar al
+  -- crear: entre la reserva y el pago pueden pasar minutos y otro pudo tomarlo.
+  slug              text        NOT NULL,
+  -- Quién lo trajo (§51.b). Viaja acá porque el `localStorage` del visitante no
+  -- sobrevive al salto a Stripe y de vuelta.
+  affiliate_ref     text,
+  -- PENDIENTE (reservado, sin pagar) | CREADA (tienda viva) | ANULADO
+  estado            text        NOT NULL DEFAULT 'PENDIENTE'
+                                CHECK (estado IN ('PENDIENTE','CREADA','ANULADO')),
+  store_id          text        REFERENCES stores(id) ON DELETE SET NULL,
+  -- Lo que pone Stripe al cobrar. El correo es el que el comerciante tecleó en
+  -- el checkout, y es con el que va a poder recuperar su contraseña.
+  email             text,
+  stripe_customer_id     text,
+  stripe_subscription_id text,
+  -- El id de la sesión de checkout. Es cómo `/bienvenido` encuentra su fila:
+  -- Stripe sabe sustituir `{CHECKOUT_SESSION_ID}` en la URL de retorno, pero no
+  -- el `client_reference_id`. Sin esto habría que preguntarle a la API de
+  -- Stripe —o sea cargar una llave— solo para saber a quién acaba de cobrar.
+  checkout_session_id    text,
+  -- Cuándo eligió su contraseña. Es lo que hace el token de UN SOLO USO: una
+  -- vez puesta, ese enlace ya no puede volver a cambiarla.
+  password_set_at   timestamptz,
+  created_at        timestamptz DEFAULT now()
+);
+
+ALTER TABLE signups ENABLE ROW LEVEL SECURITY;  -- sin políticas: solo service role
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_signups_checkout
+  ON signups(checkout_session_id) WHERE checkout_session_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_signups_store
+  ON signups(store_id) WHERE store_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_signups_pendientes
+  ON signups(created_at) WHERE estado = 'PENDIENTE';
+
+-- 54.a LA PURGA -------------------------------------------------------------
+-- Casi todas estas filas mueren sin pagar: el visitante llena el formulario,
+-- ve el precio y se va. Guardarlas para siempre sería acumular los nombres y
+-- las marcas de gente que nunca fue cliente — un dato personal que no nos sirve
+-- de nada. Siete días alcanza de sobra: quien iba a pagar pagó en minutos.
+--
+-- Las `CREADA` no se tocan: son el rastro de cómo nació cada tienda.
+-- `cron.schedule` con el mismo nombre ACTUALIZA el job (§42.b): correr esto dos
+-- veces no crea dos barridos.
+SELECT cron.schedule(
+  'signups-purge',
+  '30 5 * * *',
+  $$ DELETE FROM signups WHERE estado = 'PENDIENTE' AND created_at < now() - interval '7 days' $$
+);

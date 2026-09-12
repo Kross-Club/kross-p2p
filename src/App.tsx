@@ -39,6 +39,8 @@ import { anotarReferido } from './lib/referido'
 import AfiliadosPage from './pages/vendedor/AfiliadosPage'
 import AfiliadoPage from './pages/afiliado/AfiliadoPage'
 import InvitacionPage from './pages/publico/InvitacionPage'
+import EmpezarPage from './pages/publico/EmpezarPage'
+import BienvenidoPage from './pages/publico/BienvenidoPage'
 
 // Smart home: seller session → seller dashboard, buyer session → mis-pedidos.
 //
@@ -148,6 +150,10 @@ export default function App() {
             código de una tienda es su slug, y publicarlo sería entregarle su
             subdominio a la competencia. */}
         <Route path="/u/:publicId" element={<InvitacionPage />} />
+        {/* El alta automática (§54): dos campos, Stripe, y de vuelta a elegir
+            contraseña. La tienda la crea el WEBHOOK, no estas pantallas. */}
+        <Route path="/empezar" element={<EmpezarPage />} />
+        <Route path="/bienvenido" element={<BienvenidoPage />} />
         <Route path="/servicios" element={<ServiciosPage />} />
         <Route path="/servicios/:slug" element={<ServicioDetallePage />} />
         <Route path="/carrito" element={<CarritoPage />} />

@@ -34,6 +34,8 @@ import {
   firmaValidaConAlguno, esProduccion, storeIdDe, suscripcionDelEvento, tramoDeFactura,
   idDe, fechaDeStripe, valeReintentar,
 } from '../_shared/stripe.ts'
+import { esTokenDeAlta } from '../_shared/alta-de-tienda.ts'
+import { crearTienda } from '../_shared/crear-tienda.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -95,6 +97,110 @@ async function guardarEstado(
   return error ? { ok: false, error: error.message } : { ok: true }
 }
 
+/** El correo que el comerciante tecleó en el checkout. Es con el que va a poder
+ *  recuperar su contraseña, así que es el dato que no puede faltar. */
+function correoDeLaSesion(s: Record<string, unknown>): string | null {
+  const directo = typeof s.customer_email === 'string' ? s.customer_email : null
+  const detalles = s.customer_details as Record<string, unknown> | undefined
+  const enDetalles = typeof detalles?.email === 'string' ? detalles.email : null
+  const v = (directo ?? enDetalles ?? '').trim().toLowerCase()
+  return v || null
+}
+
+/**
+ * Crea la tienda de un alta pagada (§54).
+ *
+ * **Idempotente**, y no es opcional: Stripe reintenta hasta ver un 200, así que
+ * este evento llega dos y tres veces. Sin el corte de abajo, el segundo intento
+ * crearía una SEGUNDA tienda para el mismo pago —con otro subdominio, porque el
+ * primero ya estaría tomado— y el comerciante acabaría con dos.
+ *
+ * La contraseña que se pone acá es **aleatoria y se tira**: nadie la conoce, ni
+ * siquiera nosotros. La de verdad la elige él en `/bienvenido`, y si pierde esa
+ * pestaña entra por «recuperar contraseña» con su correo. Crear la cuenta sin
+ * contraseña no es una opción —Auth la pide— y ponerle una previsible sería
+ * dejar la tienda abierta hasta que la cambie.
+ */
+async function altaDeTienda(token: string, ctx: {
+  email: string | null
+  customerId: string | null
+  subId: string | null
+  checkoutSessionId: string | null
+  live: boolean
+  eventoAt: string
+}): Promise<{ cuerpo: Record<string, unknown>; status: number }> {
+  const { data: alta } = await supabase.from('signups')
+    .select('token, marca, nombre_admin, slug, affiliate_ref, estado, store_id')
+    .eq('token', token).maybeSingle()
+
+  // El token no existe: puede ser una purga (§54.a) o un evento de otra cuenta.
+  // 200 y a otra cosa — reintentarlo no lo va a hacer aparecer.
+  if (!alta) return { cuerpo: { received: true, ignorado: 'alta desconocida' }, status: 200 }
+
+  // Ya se creó. Este es un reintento de Stripe: se reconfirma el estado de la
+  // suscripción —que puede haber llegado desordenado— y se contesta 200.
+  if (alta.estado === 'CREADA' && alta.store_id) {
+    await guardarEstado(alta.store_id, {
+      stripe_customer_id: ctx.customerId,
+      stripe_subscription_id: ctx.subId,
+      livemode: ctx.live,
+    }, ctx.eventoAt)
+    return { cuerpo: { received: true, store_id: alta.store_id, ya: true }, status: 200 }
+  }
+
+  // Sin correo no se puede crear la cuenta, y sin cuenta no hay a quién
+  // entregarle la tienda. 500 para que Stripe reintente: es más probable que el
+  // campo llegue en el siguiente intento a que este evento no sirva nunca.
+  if (!ctx.email) {
+    await anotar({
+      proveedor: 'STRIPE', op: 'alta.sin_correo', outcome: 'RECHAZO', httpStatus: 500,
+      detail: `el checkout de ${token} no trajo correo`,
+    })
+    return { cuerpo: { error: 'sin correo en el checkout' }, status: 500 }
+  }
+
+  const r = await crearTienda(supabase, {
+    nombre: alta.marca,
+    slug: alta.slug,
+    adminNombre: alta.nombre_admin,
+    adminEmail: ctx.email,
+    // Aleatoria y desechable: la de verdad la elige él en `/bienvenido`.
+    adminPassword: crypto.randomUUID() + crypto.randomUUID(),
+    affiliateRef: alta.affiliate_ref,
+  })
+
+  if (!r.ok) {
+    await anotar({
+      proveedor: 'STRIPE', op: 'alta.fallida', outcome: 'FALLO', httpStatus: 500,
+      detail: `${token}: ${r.motivo}${'detalle' in r ? ` — ${r.detalle}` : ''}`,
+    })
+    // 500 para que Stripe reintente. El comerciante ya pagó: quedarse sin
+    // tienda por un fallo transitorio de la base es lo peor que puede pasar
+    // acá, y el reintento es gratis.
+    return { cuerpo: { error: 'no se pudo crear la tienda' }, status: 500 }
+  }
+
+  await supabase.from('signups').update({
+    estado: 'CREADA',
+    store_id: r.tienda.storeId,
+    email: ctx.email,
+    stripe_customer_id: ctx.customerId,
+    stripe_subscription_id: ctx.subId,
+    checkout_session_id: ctx.checkoutSessionId,
+  }).eq('token', token)
+
+  await guardarEstado(r.tienda.storeId, {
+    stripe_customer_id: ctx.customerId,
+    stripe_subscription_id: ctx.subId,
+    livemode: ctx.live,
+  }, ctx.eventoAt)
+
+  return {
+    cuerpo: { received: true, store_id: r.tienda.storeId, slug: r.tienda.slug, creada: true },
+    status: 200,
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return responder({ error: 'method not allowed' }, 405)
 
@@ -150,11 +256,34 @@ Deno.serve(async (req) => {
       //    siguientes se sepan de quién son.
       case 'checkout.session.completed': {
         const s = objeto as Record<string, unknown>
-        const storeId = await tiendaDelEvento(s, idDe(s?.customer))
+        const customerId = idDe(s?.customer)
+        const subId = idDe(s?.subscription)
+        const ref = String(s?.client_reference_id ?? '')
+
+        // ── EL ALTA AUTOMÁTICA (§54) ────────────────────────────────────
+        // Un `client_reference_id` con prefijo `sg_` no es una tienda: es una
+        // INTENCIÓN reservada en la landing, y este evento es la única prueba
+        // de que esa intención se pagó. **Acá es donde nace la tienda**, y en
+        // ningún otro sitio: crearla al reservar la regalaría, y crearla en la
+        // pantalla de bienvenida bastaría con navegar a esa URL a mano.
+        if (esTokenDeAlta(ref)) {
+          const nueva = await altaDeTienda(ref, {
+            email: correoDeLaSesion(s),
+            customerId,
+            subId,
+            checkoutSessionId: idDe(s?.id),
+            live,
+            eventoAt,
+          })
+          return responder(nueva.cuerpo, nueva.status)
+        }
+
+        // El camino de siempre: una marca que YA existe y recién se suscribe.
+        const storeId = await tiendaDelEvento(s, customerId)
         if (!storeId) return responder({ received: true, ignorado: 'sin tienda' })
         const r = await guardarEstado(storeId, {
-          stripe_customer_id: idDe(s?.customer),
-          stripe_subscription_id: idDe(s?.subscription),
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subId,
           livemode: live,
         }, eventoAt)
         if (!r.ok) throw new Error(r.error)
