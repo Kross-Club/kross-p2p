@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Check, ShoppingCart } from 'lucide-react'
-import { precioTexto, periodoTexto, type ItemCatalogo } from '../../config/catalogo'
+import { AVISO_DE_PRECIO, precioTexto, periodoTexto, type ItemCatalogo } from '../../config/catalogo'
 import { useCarrito } from '../../lib/carrito'
 
 // Tarjeta del catálogo. Los tres datos que la pasarela exige por producto —foto,
@@ -41,18 +41,31 @@ export default function TarjetaServicio({ item }: { item: ItemCatalogo }) {
 
         <div className="mt-auto pt-4">
           <p className="flex items-baseline gap-1.5">
-            <span className="text-2xl tabular">{precioTexto(item.precio)}</span>
+            <span className="text-2xl tabular">{precioTexto(item.precio, item.moneda)}</span>
             <span className="text-xs" style={{ color: 'var(--text-faint)' }}>{periodoTexto(item.periodo)}</span>
           </p>
-          <p className="text-[11px] mb-3" style={{ color: 'var(--text-faint)' }}>Precio en soles, IGV incluido.</p>
+          <p className="text-[11px] mb-3" style={{ color: 'var(--text-faint)' }}>{AVISO_DE_PRECIO[item.moneda]}</p>
 
           <div className="flex gap-2">
-            <button
-              onClick={() => { agregar(item.slug); marcarAgregado() }}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm active:scale-[.98] transition-transform ${agregado ? '' : 'k-cta'}`}
-              style={agregado ? { background: 'var(--ok-bg)', color: 'var(--ok-on)' } : undefined}>
-              {agregado ? <><Check size={16} /> Agregado</> : <><ShoppingCart size={16} /> Comprar</>}
-            </button>
+            {/* Los dos botones dicen cosas distintas porque hacen cosas
+                distintas: el plan se PAGA acá y su tienda existe al volver
+                (§54); lo demás entra al carrito, que no cobra —registra el
+                pedido y alguien llama—. Ofrecer «Comprar» para lo segundo sería
+                prometer un cobro que no ocurre, y «Agregar al carrito» para lo
+                primero escondería el único camino que sí funciona. */}
+            {item.altaDirecta ? (
+              <Link to="/empezar"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm k-cta active:scale-[.98] transition-transform">
+                <ShoppingCart size={16} /> Crear mi tienda
+              </Link>
+            ) : (
+              <button
+                onClick={() => { agregar(item.slug); marcarAgregado() }}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm active:scale-[.98] transition-transform ${agregado ? '' : 'k-cta'}`}
+                style={agregado ? { background: 'var(--ok-bg)', color: 'var(--ok-on)' } : undefined}>
+                {agregado ? <><Check size={16} /> Agregado</> : <><ShoppingCart size={16} /> Pedir</>}
+              </button>
+            )}
             <Link to={`/servicios/${item.slug}`}
               className="px-4 py-3 rounded-2xl text-sm flex items-center k-cta-2">
               Ver

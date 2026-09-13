@@ -113,7 +113,7 @@ Los cuatro enlaces están en el pie de **todas** las páginas públicas
 
 | Requisito | Estado | Dónde |
 |---|---|---|
-| Mínimo 5 productos (o los que corresponda si son servicios) | ✅ | 6 ítems en `src/config/catalogo.ts` |
+| Mínimo 5 productos (o los que corresponda si son servicios) | 🟡 | **4 ítems** en `src/config/catalogo.ts` — los tres planes se fundieron en uno solo de $67/mes (set-2026, ver §54 de `15-AFILIADOS.md`) y el catálogo bajó de 6 a 4. **Falta un quinto ítem antes de publicar esto**: por debajo de cinco hay que avisarle a 360pay y a Flow, no descubrirlo cuando revisen |
 | Cada uno con foto, descripción clara y precio visible | ✅ | Tarjeta (`TarjetaServicio`) y detalle (`/servicios/:slug`) |
 
 Las portadas son SVG en `public/catalogo/`: cargan siempre, no dependen de un

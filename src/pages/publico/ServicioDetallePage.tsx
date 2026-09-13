@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, ShoppingCart, Minus, Plus } from 'lucide-react'
 import PublicLayout from '../../components/publico/PublicLayout'
-import { porSlug, precioTexto, periodoTexto } from '../../config/catalogo'
+import { AVISO_DE_PRECIO, porSlug, precioTexto, periodoTexto } from '../../config/catalogo'
 import { useCarrito } from '../../lib/carrito'
 
 // Detalle del servicio: la descripción larga y completa que la tarjeta no
@@ -47,32 +47,42 @@ export default function ServicioDetallePage() {
             <p className="text-gray-600 mt-3 leading-relaxed">{item.descripcion}</p>
 
             <p className="flex items-baseline gap-2 mt-6">
-              <span className="text-4xl font-black">{precioTexto(item.precio)}</span>
+              <span className="text-4xl font-black">{precioTexto(item.precio, item.moneda)}</span>
               <span className="text-sm font-bold text-gray-500">{periodoTexto(item.periodo)}</span>
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Precio en soles, IGV incluido. {item.periodo === 'mes'
+              {AVISO_DE_PRECIO[item.moneda]} {item.periodo === 'mes'
                 ? 'Suscripción mensual, se puede cancelar cuando quieras.'
                 : 'Pago único, no se renueva.'}
             </p>
 
-            <div className="flex items-center gap-3 mt-6">
-              <div className="flex items-center rounded-2xl border border-gray-200">
-                <button onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Quitar una unidad"
-                  className="w-11 h-12 flex items-center justify-center text-gray-600 hover:text-gray-900">
-                  <Minus size={16} />
-                </button>
-                <span className="w-10 text-center font-black">{qty}</span>
-                <button onClick={() => setQty((q) => Math.min(20, q + 1))} aria-label="Agregar una unidad"
-                  className="w-11 h-12 flex items-center justify-center text-gray-600 hover:text-gray-900">
-                  <Plus size={16} />
+            {/* El plan se paga acá mismo y no tiene cantidad: nadie contrata
+                dos veces la misma tienda. Lo demás sigue por el carrito, que no
+                cobra — registra el pedido y alguien llama. */}
+            {item.altaDirecta ? (
+              <Link to="/empezar"
+                className="mt-6 w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl active:scale-[.98] transition-transform k-cta">
+                <ShoppingCart size={18} /> Crear mi tienda
+              </Link>
+            ) : (
+              <div className="flex items-center gap-3 mt-6">
+                <div className="flex items-center rounded-2xl border border-gray-200">
+                  <button onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Quitar una unidad"
+                    className="w-11 h-12 flex items-center justify-center text-gray-600 hover:text-gray-900">
+                    <Minus size={16} />
+                  </button>
+                  <span className="w-10 text-center font-black">{qty}</span>
+                  <button onClick={() => setQty((q) => Math.min(20, q + 1))} aria-label="Agregar una unidad"
+                    className="w-11 h-12 flex items-center justify-center text-gray-600 hover:text-gray-900">
+                    <Plus size={16} />
+                  </button>
+                </div>
+                <button onClick={comprar}
+                  className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl active:scale-[.98] transition-transform k-cta">
+                  <ShoppingCart size={18} /> Pedir
                 </button>
               </div>
-              <button onClick={comprar}
-                className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl active:scale-[.98] transition-transform k-cta">
-                <ShoppingCart size={18} /> Comprar
-              </button>
-            </div>
+            )}
 
             <h2 className="font-black mt-8 mb-3">Qué incluye</h2>
             <ul className="space-y-2">
