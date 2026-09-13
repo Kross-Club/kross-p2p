@@ -4,6 +4,17 @@
 // con foto, descripción clara y precio visible. Kross vende software por
 // suscripción, así que el catálogo son sus planes y módulos.
 //
+// ⚠️ **Ese mínimo es un requisito cumplido** (`docs/04-CUMPLIMIENTO-WEB.md`, mapa
+// de requisitos). Bajar de cinco ítems no es una decisión de diseño: hay que
+// avisarle a 360pay y a Flow ANTES de publicarlo, no después.
+//
+// ── Un solo plan (set-2026) ──
+// Había tres —Inicia S/199, Vende S/449, Escala S/899— y ahora hay uno, de
+// $67/mes, que es el que cobra Stripe. La razón es §54: el alta es automática,
+// y elegir entre tres planes antes de pagar es exactamente donde se cae la
+// gente que iba a pagar. Los módulos y la implementación siguen: no compiten
+// con el plan, se suman.
+//
 // El texto de cada ítem tiene que decir lo mismo que la portada
 // (`src/config/propuesta.ts`): lo que se contrata es una tienda que **cobra el
 // adelanto antes de despachar**, no un software de contraentrega. Por eso el
@@ -32,22 +43,40 @@ export interface ItemCatalogo {
   descripcion: string
   /** Qué incluye, en viñetas. */
   incluye: string[]
-  /** Precio en soles, IGV incluido. */
+  /** El importe. La moneda la dice `moneda` — no todos los ítems cobran igual. */
   precio: number
+  /**
+   * En qué se cobra ESTE ítem.
+   *
+   * No es una preferencia de presentación: el plan lo cobra Stripe en dólares y
+   * los servicios se facturan en soles. Escribir los dos en la misma moneda
+   * significaría que el número de la web y el del cargo no coinciden — y el
+   * primero que lo nota es quien acaba de pagar.
+   */
+  moneda: 'USD' | 'PEN'
   /** 'mes' → suscripción mensual · 'unico' → pago único. */
   periodo: 'mes' | 'unico'
   imagen: string
   categoria: 'Plan' | 'Módulo' | 'Servicio'
   /** Marca la tarjeta como recomendada en la home. */
   destacado?: boolean
+  /**
+   * Este ítem se contrata SOLO, pagando en la web (§54). El resto pasa por el
+   * carrito, que no cobra: registra el pedido y alguien llama.
+   *
+   * Es la diferencia entre «comprar» y «pedir», y por eso el botón dice cosas
+   * distintas. Ofrecer «Agregar al carrito» para algo que en realidad se paga
+   * con tarjeta al instante sería esconder el único camino que funciona.
+   */
+  altaDirecta?: boolean
 }
 
 export const MONEDA = 'PEN'
 
 export const CATALOGO: ItemCatalogo[] = [
   {
-    slug: 'plan-inicia',
-    nombre: 'Plan Inicia',
+    slug: 'plan-kross',
+    nombre: 'Plan Kross',
     resumen: 'Tu tienda con app propia, cobrando el adelanto por Yape.',
     descripcion:
       'Para la marca que hoy vende por WhatsApp y anota los pedidos a mano. Incluye tu ' +
@@ -62,54 +91,15 @@ export const CATALOGO: ItemCatalogo[] = [
       'Panel de pedidos para tu equipo',
       'Hasta 500 pedidos al mes',
     ],
-    precio: 199,
+    precio: 67,
+    moneda: 'USD',
     periodo: 'mes',
-    imagen: '/catalogo/plan-inicia.svg',
-    categoria: 'Plan',
-  },
-  {
-    slug: 'plan-vende',
-    nombre: 'Plan Vende',
-    resumen: 'Todo lo de Inicia, más el cierre del que se quedó a medias.',
-    descripcion:
-      'Para la marca que ya tiene tráfico y pierde pedidos por no contestar a tiempo. Suma el ' +
-      'asistente de cierre con IA sobre el chat del pedido, las llamadas grabadas desde la ' +
-      'propia app y el DNI que autocompleta los datos del comprador, para que el formulario ' +
-      'se termine y el adelanto entre.',
-    incluye: [
-      'Todo lo del Plan Inicia',
-      'Asistente de cierre con IA sobre el chat del pedido',
-      'Llamadas de voz grabadas dentro de la app',
-      'Validación de identidad por DNI, con autocompletado',
-      'Recuperación de los pedidos que quedaron sin pagar',
-      'Hasta 2 000 pedidos al mes',
-    ],
-    precio: 449,
-    periodo: 'mes',
-    imagen: '/catalogo/plan-vende.svg',
+    imagen: '/catalogo/plan-kross.svg',
     categoria: 'Plan',
     destacado: true,
-  },
-  {
-    slug: 'plan-escala',
-    nombre: 'Plan Escala',
-    resumen: 'Operación completa: varios agentes, CRM y campañas.',
-    descripcion:
-      'Para la operación con equipo de ventas. Reparte los pedidos entre varios agentes, mide a ' +
-      'cada uno y activa campañas de recompra por WhatsApp sobre el historial real de tus ' +
-      'compradores.',
-    incluye: [
-      'Todo lo del Plan Vende',
-      'Equipo multi-agente con reparto automático de pedidos',
-      'CRM de compradores con historial y puntaje',
-      'Campañas de recompra y recuperación por WhatsApp',
-      'Reportes de venta, cobro, entrega y retención',
-      'Pedidos ilimitados',
-    ],
-    precio: 899,
-    periodo: 'mes',
-    imagen: '/catalogo/plan-escala.svg',
-    categoria: 'Plan',
+    // Es el único que se paga en la web: el visitante pone dos datos, pasa por
+    // Stripe y su tienda existe al volver (§54 de `setup-kross.sql`).
+    altaDirecta: true,
   },
   {
     slug: 'modulo-logistica',
@@ -126,6 +116,7 @@ export const CATALOGO: ItemCatalogo[] = [
       'Panel de motorizados con estados de entrega',
     ],
     precio: 149,
+    moneda: 'PEN',
     periodo: 'mes',
     imagen: '/catalogo/modulo-logistica.svg',
     categoria: 'Módulo',
@@ -145,6 +136,7 @@ export const CATALOGO: ItemCatalogo[] = [
       'Medición de valor de vida del cliente (LTV)',
     ],
     precio: 129,
+    moneda: 'PEN',
     periodo: 'mes',
     imagen: '/catalogo/modulo-loyalty.svg',
     categoria: 'Módulo',
@@ -165,6 +157,7 @@ export const CATALOGO: ItemCatalogo[] = [
       'Acompañamiento los primeros 30 días',
     ],
     precio: 690,
+    moneda: 'PEN',
     periodo: 'unico',
     imagen: '/catalogo/implementacion.svg',
     categoria: 'Servicio',
@@ -180,10 +173,33 @@ export const CATALOGO_VITRINA: ItemCatalogo[] = [...CATALOGO].sort((a, b) => {
   return orden[a.categoria] - orden[b.categoria]
 })
 
-/** Precio con formato peruano: S/ 199. Nunca deja ver un NaN al comprador. */
-export function precioTexto(precio: number): string {
+/**
+ * El precio como se publica: `$ 67` o `S/ 149`.
+ *
+ * La moneda entra por parámetro y no se asume: el plan lo cobra Stripe en
+ * dólares y los servicios se facturan en soles. Un `S/` delante de un cargo en
+ * dólares es una cifra que no coincide con la del estado de cuenta, y eso lo
+ * descubre quien ya pagó.
+ *
+ * Nunca deja ver un NaN al comprador.
+ */
+export function precioTexto(precio: number, moneda: ItemCatalogo['moneda'] = 'PEN'): string {
   if (!Number.isFinite(precio)) return 'Consultar'
-  return `S/ ${precio.toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+  const n = precio.toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return moneda === 'USD' ? `$ ${n}` : `S/ ${n}`
+}
+
+/**
+ * La letra chica del precio, según la moneda.
+ *
+ * El plan lo cobra Stripe en dólares: decir «IGV incluido» ahí sería inventarle
+ * un impuesto peruano a un cargo que no lo lleva. Y decir el equivalente en
+ * soles sería publicar un número que cambia solo con el tipo de cambio y que
+ * nunca va a coincidir con el estado de cuenta.
+ */
+export const AVISO_DE_PRECIO: Record<ItemCatalogo['moneda'], string> = {
+  USD: 'Precio en dólares. Se cobra con tarjeta.',
+  PEN: 'Precio en soles, IGV incluido.',
 }
 
 export const periodoTexto = (p: ItemCatalogo['periodo']): string =>

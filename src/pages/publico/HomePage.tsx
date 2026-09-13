@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import PublicLayout from '../../components/publico/PublicLayout'
 import TarjetaServicio from '../../components/publico/TarjetaServicio'
-import { CATALOGO_VITRINA } from '../../config/catalogo'
+import { CATALOGO, CATALOGO_VITRINA, precioTexto, periodoTexto } from '../../config/catalogo'
 import { EMPRESA } from '../../config/empresa'
 import {
   MENSAJES, CIFRAS, PILARES, COMPARATIVA, PASOS_COBRO, GARANTIAS, type IconoPilar,
@@ -44,6 +44,11 @@ const ICONOS: Record<IconoPilar, ReactNode> = {
   recompra: <Repeat size={20} />,
 }
 
+/** El plan que se contrata en la web. Sale del catálogo y no de un número
+ *  escrito acá: dos sitios con el mismo precio se separan en cuanto uno cambia,
+ *  y el que se queda viejo es siempre el que nadie recuerda que existe. */
+const PLAN = CATALOGO.find(i => i.altaDirecta) ?? CATALOGO[0]
+
 export default function HomePage() {
   return (
     <PublicLayout>
@@ -76,6 +81,18 @@ export default function HomePage() {
             Ver planes y precios
           </Link>
         </div>
+
+        {/* El precio, junto al botón que lleva a pagarlo. Estuvo un día sin
+            estar: el visitante pulsaba «Crear mi tienda» y los $67 aparecían
+            por primera vez en la pantalla de Stripe. Además de perder gente,
+            un precio que solo se ve en el checkout es justo lo que el
+            requisito de la pasarela prohíbe (`docs/04-CUMPLIMIENTO-WEB.md`). */}
+        <p className="mt-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+          <strong className="tabular" style={{ color: 'var(--text)' }}>
+            {precioTexto(PLAN.precio, PLAN.moneda)} {periodoTexto(PLAN.periodo)}
+          </strong>
+          {' · '}sin permanencia, cancelas cuando quieras.
+        </p>
 
         <dl className="mt-14 grid gap-px sm:grid-cols-3" style={{ background: 'var(--border)' }}>
           {CIFRAS.map((c) => (

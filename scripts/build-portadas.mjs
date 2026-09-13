@@ -66,38 +66,7 @@ const portadas = {}
   c += r(140, 270, 22, 50, BONE) + r(172, 270, 18, 18, BONE) + r(172, 302, 18, 18, BONE)
   c += r(590, 250, 90, 90, S1, 16, ` stroke="${BORDE}"`)
   c += r(610, 270, 50, 12, S2, 6) + r(610, 292, 34, 12, S2, 6) + r(610, 314, 44, 12, S2, 6)
-  portadas['plan-inicia'] = marco('Plan Inicia — tu app instalable cobrando el adelanto', c)
-}
-
-// ── Plan Vende — el checkout de tres pasos, cobrando en el tercero ──────────
-{
-  let c = r(180, 100, 440, 400, S1, 14, ` stroke="${BORDE}"`)
-  c += r(210, 132, 120, 8, BONE, 4) + r(346, 132, 120, 8, BONE, 4) + r(482, 132, 108, 8, LIME, 4)
-  c += r(210, 172, 380, 52, S2, 8) + r(226, 192, 130, 12, T3, 6)
-  c += r(210, 240, 380, 52, S2, 8) + r(226, 260, 190, 12, T3, 6)
-  c += r(210, 308, 182, 52, S2, 8) + r(226, 328, 90, 12, T3, 6)
-  c += r(408, 308, 182, 52, S2, 8) + r(424, 328, 110, 12, T3, 6)
-  c += r(210, 376, 380, 64, S2, 8) + r(226, 396, 120, 12, T3, 6) + r(226, 416, 76, 10, T2, 5)
-  c += r(470, 394, 104, 28, BONE, 6)
-  c += r(210, 456, 380, 24, BONE, 8)
-  portadas['plan-vende'] = marco('Plan Vende — checkout de tres pasos con cobro del adelanto', c)
-}
-
-// ── Plan Escala — el tablero del equipo ─────────────────────────────────────
-{
-  let c = r(110, 100, 580, 400, S1, 14, ` stroke="${BORDE}"`)
-  c += r(110, 100, 92, 400, INK, 14) + r(190, 100, 12, 400, INK)
-  rango(140, 340, 52).forEach((y, i) => {
-    c += r(130, y, 52, 28, S2, 6)
-    if (i === 1) c += r(116, y + 7, 6, 14, LIME)   // §6: indicador de nav activa
-  })
-  rango(140, 460, 62).forEach((y) => {
-    c += r(222, y, 448, 50, S2, 8)
-    c += `  <circle cx="250" cy="${y + 25}" r="14" fill="${STRUCT}"/>\n`
-    c += r(276, y + 14, 128, 10, T2, 5) + r(276, y + 30, 84, 8, T3, 4)
-    c += r(560, y + 14, 92, 22, STRUCT, 11)
-  })
-  portadas['plan-escala'] = marco('Plan Escala — tablero con varios agentes y estados de pedido', c)
+  portadas['plan-kross'] = marco('Plan Kross — tu app instalable cobrando el adelanto', c)
 }
 
 // ── Smart Logistics — la ruta (§6.2: recorrido lima, pendiente apagado) ─────
