@@ -82,8 +82,13 @@ export interface PagoAlAfiliado {
 }
 
 export interface MiPanel {
-  /** `store_id` distingue al afiliado-tienda (§52) del de fuera. */
-  yo: { id: string; codigo: string; nombre: string; enlace: string; store_id: string | null }
+  /** `store_id` distingue al afiliado-tienda (§52) del de fuera. `enlace` sale
+   *  del `public_id` opaco (§53) y es `null` si la base todavía no le asignó
+   *  uno — mejor "sin enlace" que repartir uno roto. */
+  yo: {
+    id: string; codigo: string; public_id: string | null
+    nombre: string; enlace: string | null; store_id: string | null
+  }
   tarifa: number
   precio_plan_usd: number
   /** Su PROPIO plan, cuando es una tienda. `null` = afiliado de fuera, que no
@@ -101,6 +106,8 @@ export interface FilaDeAfiliado {
   nombre: string
   /** De qué tienda es este afiliado, si es una (§52). */
   store_id?: string | null
+  /** El identificador OPACO del enlace público (§53). */
+  public_id?: string | null
   email: string | null
   phone: string | null
   referred_by: string | null
@@ -109,7 +116,7 @@ export interface FilaDeAfiliado {
   auth_user_id: string | null
   created_at: string
   nivel: number
-  enlace: string
+  enlace: string | null
   tiendas: number
   transacciones: number
   sin_plan: number

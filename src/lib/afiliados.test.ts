@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   TARIFA_AFILIADO, HORAS_LIMA,
-  normalizarCodigo, esCodigoValido, enlaceDeAfiliado, codigoDeLaUrl,
+  normalizarCodigo, esCodigoValido, enlaceDeAfiliado, refDeLaUrl, esPublicId,
   periodoDe, esPeriodo, rangoDelPeriodo, periodoAnterior, nombreDelPeriodo,
   cubierta, estadoDeSuscripcion, tramosDelPeriodo, interseccionDeTramos,
   comisionDeAfiliado, liquidacionDe,
@@ -50,17 +50,35 @@ describe('el código, que es el enlace', () => {
     expect(esCodigoValido('soporte')).toBe(false)
   })
 
-  it('el enlace es absoluto: se pega en una bio, no es una ruta', () => {
-    expect(enlaceDeAfiliado('jhoann')).toBe('https://krossclub.app/?ref=jhoann')
+  it('el enlace es absoluto y OPACO: no delata el subdominio de la tienda', () => {
+    // §53: el código de una tienda es su slug, y un enlace con el slug publica
+    // su dominio y su catálogo a todo el que lo reciba.
+    expect(enlaceDeAfiliado('48291733')).toBe('https://krossclub.app/u/48291733')
   })
 
-  it('lee el código de una URL y lo normaliza en la puerta', () => {
-    expect(codigoDeLaUrl('https://krossclub.app/?ref=jhoann')).toBe('jhoann')
+  it('ocho dígitos, no seis: seis se barren en una tarde', () => {
+    expect(esPublicId('48291733')).toBe(true)
+    expect(esPublicId('monoshop')).toBe(false)
+    expect(esPublicId('1234')).toBe(false)          // muy corto
+    expect(esPublicId(48291733)).toBe(false)        // texto, no número
+  })
+
+  it('lee la referencia de `/u/…`', () => {
+    expect(refDeLaUrl('https://krossclub.app/u/48291733')).toBe('48291733')
+    expect(refDeLaUrl('https://krossclub.app/u/48291733?utm_source=ig')).toBe('48291733')
+    // Una ruta que no es un id no es una referencia.
+    expect(refDeLaUrl('https://krossclub.app/u/monoshop')).toBe(null)
+    expect(refDeLaUrl('https://krossclub.app/')).toBe(null)
+  })
+
+  it('sigue leyendo el `?ref=` de la forma anterior, normalizado', () => {
+    // Un enlace viejo que alguien ya tenga guardado no puede dejar de atribuir.
     // Quien lo comparta a mano va a mandar la mayúscula tarde o temprano, y ese
     // visitante tiene que quedar atribuido al MISMO afiliado.
-    expect(codigoDeLaUrl('https://krossclub.app/servicios?ref=Jhoann')).toBe('jhoann')
-    expect(codigoDeLaUrl('https://krossclub.app/')).toBe(null)
-    expect(codigoDeLaUrl('https://krossclub.app/?ref=ab')).toBe(null)
+    expect(refDeLaUrl('https://krossclub.app/?ref=jhoann')).toBe('jhoann')
+    expect(refDeLaUrl('https://krossclub.app/servicios?ref=Jhoann')).toBe('jhoann')
+    expect(refDeLaUrl('https://krossclub.app/?ref=48291733')).toBe('48291733')
+    expect(refDeLaUrl('https://krossclub.app/?ref=ab')).toBe(null)
   })
 })
 

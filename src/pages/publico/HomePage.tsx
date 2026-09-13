@@ -64,12 +64,16 @@ export default function HomePage() {
           {MENSAJES.bajada}
         </p>
 
+        {/* §54: el primer botón ya no manda a mirar, manda a EMPEZAR. El alta
+            entera son dos campos y el pago, así que interponer una pantalla de
+            catálogo entre la intención y el alta es gastar la intención. Quien
+            todavía quiere comparar tiene los planes al lado. */}
         <div className="mt-9 flex flex-wrap gap-3">
-          <Link to="/servicios" className="px-6 py-3.5 rounded-2xl text-sm k-cta">
-            Ver planes y precios
+          <Link to="/empezar" className="px-6 py-3.5 rounded-2xl text-sm k-cta">
+            Crear mi tienda
           </Link>
-          <Link to="/contacto" className="px-6 py-3.5 rounded-2xl text-sm k-cta-2">
-            Hablar con ventas
+          <Link to="/servicios" className="px-6 py-3.5 rounded-2xl text-sm k-cta-2">
+            Ver planes y precios
           </Link>
         </div>
 

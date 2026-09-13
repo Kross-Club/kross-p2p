@@ -10,7 +10,12 @@
 > SQL, los deploys y la cuenta de Stripe conectada — ver *Puesta en marcha*.
 >
 > **§52 (10-set-2026): la tienda también es afiliada.** Cada marca nace con su
-> enlace y lo ve en su propio panel. Ver la sección al final.
+> enlace y lo ve en su propio panel.
+>
+> **§53 (12-set-2026): el enlace es opaco y el modo prueba no paga.**
+>
+> **§54 (12-set-2026): darse de alta solo.** El comerciante paga en la landing y
+> su tienda existe cuando Stripe termina de cobrar. Las secciones están al final.
 
 ## Las tres piezas, y quién mueve cada una
 
@@ -64,21 +69,20 @@ vuelve por Google, pregunta por WhatsApp—. La atribución cruza ese hueco en t
 saltos:
 
 ```
-?ref=jhoann          →  localStorage (90 días, primer toque gana)   src/lib/referido.ts
+/u/48291733          →  localStorage (30 días, último toque gana)   src/lib/referido.ts
    ↓ el lead se manda
 web_orders.affiliate_code  (texto)                                   web-order
    ↓ el lead se convierte en tienda
 stores.affiliate_id + affiliate_at  (relación)                       manage-store
 ```
 
+> El enlace lleva un identificador **opaco** y la ventana es de 30 días con
+> **último toque**. Las dos cosas cambiaron en §53; la explicación está allí.
+
 **Se guarda el código en texto durante el tramo del lead y se resuelve a un id
 recién al crear la tienda.** En el momento del lead el código puede no resolver
 —un enlace viejo, un afiliado dado de baja— y un texto que no resuelve es un
 dato que se puede investigar; una FK que no resuelve es un lead que se pierde.
-
-**Primer toque gana**, con ventana de 90 días. Es lo que hace que el programa se
-explique en una frase: *si tú lo trajiste, es tuyo*. Con último toque, quien
-pauta sobre la marca se lleva los referidos que otro trabajó a mano.
 
 Cuando la atribución no viaja sola —el comerciante llegó por el enlace pero se
 dio de alta por teléfono— se cuelga a mano desde *Panel → Afiliados*.
@@ -167,6 +171,8 @@ milisegundo.
 | `subscription_periods` | Los tramos pagados. **Esto sí decide la comisión** |
 | `affiliate_payouts` | El mes cerrado. El único sitio donde una cifra se guarda en vez de calcularse |
 | `affiliates.store_id` (§52) | De qué tienda es este afiliado. NULL = de fuera |
+| `affiliates.public_id` (§53) | Los ocho dígitos opacos del enlace. Lo asigna un trigger |
+| `subscription_periods.livemode` (§53) | Si el pago fue real. **Solo `true` comisiona** |
 
 Más un índice que hace posible contar: `idx_cobros_liquidacion` sobre
 `cobros(store_id, matched_at) WHERE estado = 'MATCHED'`. Sin él, liquidar es un
@@ -185,13 +191,18 @@ la política correcta (el precedente es `cobros`, §36).
 | `supabase/functions/_shared/stripe.ts` | **Leer a Stripe.** Firma HMAC con ventana de replay y lectura defensiva de sus objetos. Sin SDK: el webhook solo escucha, nunca llama |
 | `supabase/functions/stripe-webhook/` | Guarda estado y tramos. `--no-verify-jwt` |
 | `supabase/functions/afiliados/` | La API de las dos pantallas |
+| `supabase/functions/_shared/alta-de-tienda.ts` (§54) | **Las reglas del alta.** Subdominio, token, validación. Puro |
+| `supabase/functions/_shared/crear-tienda.ts` (§54) | **Crear una marca**, compartido por el panel y el webhook |
+| `supabase/functions/alta/` (§54) | `reservar` · `estado` · `clave`. Sin autenticación: quien la llama no tiene cuenta |
+| `src/pages/publico/EmpezarPage.tsx` (§54) | `/empezar` — dos campos y al pago |
+| `src/pages/publico/BienvenidoPage.tsx` (§54) | `/bienvenido` — espera, contraseña y entra |
 | `src/lib/referido.ts` | El `?ref=` en el dispositivo, 90 días, primer toque |
 | `src/components/PanelDeAfiliado.tsx` | **El panel del afiliado**, compartido por el comerciante y el de fuera |
 | `src/pages/afiliado/AfiliadoPage.tsx` | `/afiliado` — el marco del afiliado de fuera |
 | `src/pages/vendedor/AfiliadosPage.tsx` | `Panel → Afiliados` — el programa entero para Kross; el panel propio para el comerciante |
 
 Pruebas: `src/lib/afiliados.test.ts` (43), `src/lib/stripe.test.ts` (22),
-`src/lib/referido.test.ts` (7).
+`src/lib/referido.test.ts` (10), `src/lib/alta-de-tienda.test.ts` (15).
 
 ### Lo que el webhook contesta, y por qué importa
 
@@ -262,11 +273,19 @@ propósito: son unas pocas transferencias al mes.
    [`ofdjghntvmrdfjhazfvz`](https://supabase.com/dashboard/project/ofdjghntvmrdfjhazfvz).
    Es idempotente: §51 y §52 se agregan y lo anterior no se toca. §52 hace el
    traspaso: cada tienda que ya existe se queda con su enlace.
-2. **Secreto** — `STRIPE_WEBHOOK_SECRET` = el `whsec_…` del endpoint. **No hace
-   falta ninguna API key de Stripe**: esta función solo escucha.
+2. **Secretos** — uno por modo, y los dos conviven:
+
+   | Secreto | De qué destino |
+   |---|---|
+   | `STRIPE_WEBHOOK_SECRET` | el endpoint de **producción** |
+   | `STRIPE_WEBHOOK_SECRET_TEST` | el endpoint de **prueba** (opcional) |
+   | `STRIPE_PAYMENT_LINK` | el `https://buy.stripe.com/…` del plan (§54) |
+
+   **No hace falta ninguna API key de Stripe**: esta función solo escucha.
 3. **Deploys**
    ```
    supabase functions deploy afiliados       --project-ref ofdjghntvmrdfjhazfvz
+   supabase functions deploy alta            --project-ref ofdjghntvmrdfjhazfvz
    supabase functions deploy stripe-webhook  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
    supabase functions deploy web-order       --project-ref ofdjghntvmrdfjhazfvz
    supabase functions deploy manage-store    --project-ref ofdjghntvmrdfjhazfvz
@@ -290,7 +309,14 @@ propósito: son unas pocas transferencias al mes.
      final de la URL del link:
      `https://buy.stripe.com/xxxx?client_reference_id=st_marca_abc123`. El
      comercio se da de alta solo y el enlace queda hecho. Es **un solo Payment
-     Link** para todas las marcas; lo que cambia es el parámetro.
+     Link** para todas las marcas; lo que cambia es el parámetro. Ojo: el de
+     modo prueba y el de modo vivo son **dos links distintos**.
+
+     ⚠️ Con el alta automática (§54) el `client_reference_id` **lo pone la
+     función `alta`**, no tú: es el token del alta, no un `store_id`. Lo que sí
+     hay que configurar en el Payment Link es su retorno —*Después del pago →
+     Redirigir* — apuntando a
+     `https://krossclub.app/bienvenido?cs={CHECKOUT_SESSION_ID}`.
    - `metadata.store_id` en la suscripción, si se crea desde el dashboard.
 
    Sin ninguno de los dos, el webhook resuelve por `stripe_customer_id` contra
@@ -383,6 +409,208 @@ Quién ve qué lo decide el servidor (`quienLlama`), no la ruta: el enlace de un
 marca lo ve **quien la administra** (`is_admin` sobre `sellers`, así que el
 operador de esa marca también), no el vendedor raso — la comisión es de la marca,
 no de quien atiende un pedido.
+
+## §53 · El enlace no delata a la tienda, y el modo prueba no paga (12-set-2026)
+
+Dos cosas que §52 dejó mal, y las dos se pagan con datos reales.
+
+### El enlace es opaco
+
+§52 usó el **slug** como código, y el código iba en la URL: `?ref=monoshop`. O
+sea que cada vez que un comerciante repartía su enlace estaba publicando **el
+subdominio de su tienda** —su dominio, su marca y su catálogo— a cualquiera que
+lo recibiera. Para un comercio que compite con otros que también usan Kross, eso
+no es un detalle: es entregarle a la competencia la lista de a quién mirar.
+
+Ahora el enlace no lleva nada legible:
+
+```
+krossclub.app/u/48291733
+```
+
+`codigo` **no se va**: sigue siendo cómo se identifica a un afiliado en el panel
+de Kross, que es donde tener un nombre legible sirve. Lo que cambia es que ya no
+aparece en ninguna URL pública.
+
+**Ocho dígitos y no seis.** Seis (900 000 posibles) se barren con un script en
+una tarde, y el premio sería la lista de nombres de todos los afiliados. Ocho lo
+suben a 90 millones: misma pinta, mismo largo al dictarlo, y deja de ser
+barrible. No es un secreto —quien tenga el enlace ve el nombre, que es para lo
+que existe— pero deja de ser una lista pública.
+
+El `public_id` lo asigna **la base**, con un trigger (§53.a). Hay tres caminos
+que crean afiliados (`manage-store`, la acción `crear`, el traspaso de §52.a) y
+un afiliado sin identificador es un afiliado sin enlace, o sea inservible: el
+trigger es el único sitio donde no hay que acordarse.
+
+### «Has sido invitado por Javier López»
+
+El visitante que llega por `/u/…` ve un aviso en el marco de la web pública, en
+todas las páginas. No en un aterrizaje propio: un peaje entre el clic y el
+producto gasta el clic. Y en todas, no solo en la primera — quien reparte el
+enlace quiere que el nombre siga ahí **cuando el visitante llega a decidir**.
+
+⚠️ **El nombre es el de la PERSONA, nunca el de la tienda.**
+`affiliates.nombre` de un afiliado-tienda es el nombre de la marca, y enseñarlo
+publicaría justo lo que esta sección vino a esconder. La acción `invitacion` lo
+resuelve contra `sellers`: el administrador de esa marca. Si no hay
+administrador que nombrar, **no hay aviso** — callarse es preferible a delatar a
+una tienda.
+
+Es la única acción **pública** de la Edge Function (va antes de la
+autenticación: quien la llama es alguien que todavía no tiene cuenta). Devuelve
+un nombre y nada más: ni el código, ni la tienda, ni si el afiliado existe.
+
+### Último toque, 30 días
+
+| | Antes (§51) | Ahora (§53) |
+|---|---|---|
+| Quién gana | el primer enlace pisado | **el más reciente** |
+| Ventana | 90 días | **30 días** |
+
+Manda el enlace más reciente: quien entre por el de otro afiliado queda
+atribuido a ese otro. Con primer toque, el afiliado que de verdad convenció al
+comerciante perdía el crédito contra otro cuyo enlace se pisó de pasada semanas
+antes.
+
+### El modo prueba no puede pagar comisiones
+
+Con los dos modos de Stripe conectados a la vez —que es lo que hace falta para
+poder seguir probando con el cobro real encendido— un pago de **prueba** entra
+por el mismo webhook que uno de verdad. Sin distinguirlos, una tarjeta
+`4242 4242 4242 4242` generaría un tramo pagado, ese tramo habilitaría
+transacciones, y esas transacciones se convertirían en **soles que se le
+transfieren a una persona**. Plata real por un pago que no existió.
+
+Dos piezas:
+
+- **Dos secretos.** `STRIPE_WEBHOOK_SECRET` y `STRIPE_WEBHOOK_SECRET_TEST`; la
+  firma se prueba contra los dos y gana el primero que valide
+  (`firmaValidaConAlguno`). Tener solo el de producción es el caso normal, no un
+  error.
+- **`livemode` guardado.** Stripe lo manda en cada evento. El tramo de prueba
+  **se registra igual** —ver entrar el pago es lo que confirma que el webhook
+  funciona— pero la liquidación cuenta solo `livemode = true`.
+
+⚠️ **Que la firma sea válida no dice que el pago sea real.** Un evento de prueba
+está tan bien firmado como uno de verdad: ese es el punto de tener los dos. Ante
+la duda —un evento sin `livemode` legible— se asume **prueba**: la misma regla
+que `desgloseDelEvento` en `comision.ts` (una cifra que no se midió no se
+inventa), aplicada a lo que más caro sale equivocarse.
+
+## §54 · Darse de alta solo: de la landing a su panel (12-set-2026)
+
+Hasta hoy una tienda nacía a mano: el comerciante llenaba el formulario de la
+web, alguien de Kross lo veía, y después entraba a *Panel → Tiendas* a crearla y
+a inventarle una contraseña que le pasaba por WhatsApp. Entre el «quiero» y el
+«ya puedo entrar» había **una persona y unas horas**.
+
+### El camino
+
+```
+/empezar          marca + su nombre  →  fila en `signups` (PENDIENTE)      alta · reservar
+   ↓ redirect con client_reference_id = sg_…
+buy.stripe.com    el comerciante paga
+   ↓ checkout.session.completed  (firmado)
+stripe-webhook    CREA la tienda + su admin + su enlace de afiliado        crear-tienda
+   ↓ redirect a /bienvenido?cs={CHECKOUT_SESSION_ID}
+/bienvenido       espera, elige contraseña, entra                          alta · estado, clave
+```
+
+### Dónde nace la tienda, y por qué solo ahí
+
+**La crea el webhook, y nada más que el webhook.** Es la única pieza del camino
+que tiene una prueba firmada de que alguien pagó:
+
+- si la creara `/empezar`, cualquiera que llene el formulario tendría una tienda
+  gratis;
+- si la creara `/bienvenido`, bastaría con navegar a esa URL a mano.
+
+⚠️ **El `client_reference_id` de un alta NO es un `store_id`.** No puede serlo:
+cuando el visitante hace clic en «suscribirme», su tienda todavía no existe. Por
+eso los tokens llevan prefijo `sg_` y los ids de tienda `st_` — el webhook mira
+el prefijo para saber si le toca **crear** una tienda o **enlazar** una que ya
+estaba (una marca vieja que recién se suscribe). Los dos caminos siguen vivos.
+
+**Idempotente**, y no es opcional: Stripe reintenta hasta ver un 200, así que
+este evento llega dos y tres veces. Sin el corte, el segundo intento crearía una
+segunda tienda para el mismo pago —con otro subdominio, porque el primero ya
+estaría tomado— y el comerciante acabaría con dos.
+
+### Dos campos, y por qué esos dos
+
+Solo **el nombre de la marca y el suyo**. El correo lo captura Stripe en el
+checkout, así que pedirlo antes sería pedirlo dos veces.
+
+Cada campo antes del pago es gente que se va, y lo que falta —logo, colores,
+productos— se edita después en *Marca* sin que nadie espere. Lo único que **no**
+se arregla cómodamente después es el subdominio: cambiarlo rompe los enlaces ya
+enviados (§47). Por eso ese sí se le enseña antes de cobrarle, en vivo, derivado
+con `slugDeLaMarca` — **la misma función que lo va a crear**. Una copia en el
+front se separaría, y lo que se separaría es la promesa que se le hizo a alguien
+antes de cobrarle.
+
+Sin guiones: «Mono Shop» → `monoshop`, no `mono-shop`. Un subdominio se dicta por
+teléfono y se escribe en una bio; los guiones se pierden en las dos. El precio
+son más choques, y eso ya está resuelto (`slugLibre` pone sufijo) mientras que un
+guion mal dictado no lo resuelve nadie.
+
+> Entre la reserva y el pago pueden pasar minutos, y en ese hueco otro pudo tomar
+> el subdominio. Al crear se vuelve a resolver: `monoshop2`. Devolverle un error
+> a alguien que **ya pagó** no es una opción.
+
+### El primer ingreso, sin correos
+
+Stripe lo devuelve a `/bienvenido`, ahí elige su contraseña y entra. **Sin
+enlaces por correo**: es una cosa más que puede caer en spam, y el peor momento
+para hacer esperar a alguien es el minuto siguiente a cobrarle $67.
+
+La contraseña que pone el webhook al crear la cuenta es **aleatoria y se tira**:
+nadie la conoce, ni nosotros. Crear la cuenta sin contraseña no es una opción
+—Auth la pide— y ponerle una previsible dejaría la tienda abierta hasta que la
+cambie.
+
+Si pierde esa pestaña, el camino de vuelta es **«Recuperar contraseña»** con el
+correo con el que pagó, que ya es su cuenta. Es también lo que dice la pantalla
+cuando el webhook tarda de más, junto con lo único que de verdad le preocupa en
+ese momento: *su pago está confirmado*.
+
+**El token es una llave.** Quien lo tiene puede ponerle la contraseña al primer
+administrador, así que es de **un solo uso** (`password_set_at`) y caduca a las
+**24 horas**. Los tres rechazos —no existe, ya se usó, caducó— dan **el mismo
+mensaje**: distinguirlos solo le sirve a quien está probando tokens ajenos, y al
+legítimo le sirve la salida, que es la misma en los tres casos.
+
+Se encuentra su fila por dos caminos, y hacen falta los dos: el token en
+`localStorage` (lo puso `/empezar`) y el `?cs=` de la URL de retorno. Stripe
+**no sabe** devolver el `client_reference_id`; solo sustituye
+`{CHECKOUT_SESSION_ID}`. Sin el `cs` habría que preguntarle a la API de Stripe
+—o sea cargar una llave— solo para saber a quién acaba de cobrar.
+
+### Crear una tienda vive en un solo sitio
+
+`_shared/crear-tienda.ts`. Dar de alta una marca son cuatro escrituras que van
+juntas —la tienda, su enlace de afiliado (§52), la cuenta de su administrador y
+su fila en `sellers`— y desde §54 hay **dos** caminos que las hacen. Duplicar el
+bloque sería garantizar que se separen: el día que una marca nueva tenga que
+nacer con un flag distinto, la del panel lo tendría y la que se crea pagando no,
+sin que nada falle.
+
+Si la cuenta de Auth no se puede crear —el correo ya existe, por ejemplo— la
+tienda **se borra**: una `stores` huérfana se queda con el subdominio y nadie
+puede entrar a usarlo.
+
+### La tabla
+
+`signups` (§54): `token`, `marca`, `nombre_admin`, `slug`, `affiliate_ref`,
+`estado`, `store_id`, `email`, los ids de Stripe, `checkout_session_id` y
+`password_set_at`. RLS encendido y sin políticas: solo *service role*.
+
+Se purgan las `PENDIENTE` a los **7 días** (`signups-purge`, pg_cron). Casi todas
+mueren sin pagar —el visitante ve el precio y se va— y guardar para siempre el
+nombre y la marca de gente que nunca fue cliente es acumular un dato personal que
+no sirve de nada. Las `CREADA` no se tocan: son el rastro de cómo nació cada
+tienda.
 
 ## Lo que falta, y lo que se decidió no hacer
 

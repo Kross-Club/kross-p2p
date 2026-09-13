@@ -2626,3 +2626,185 @@ ON CONFLICT DO NOTHING;
 UPDATE stores s SET affiliate_id = NULL, affiliate_at = NULL
 WHERE s.affiliate_id IS NOT NULL
   AND EXISTS (SELECT 1 FROM affiliates a WHERE a.id = s.affiliate_id AND a.store_id = s.id);
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §53 · EL ENLACE NO DELATA A LA TIENDA, Y EL MODO PRUEBA NO PAGA  (12-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Dos cosas que §52 dejó mal, y las dos se pagan con datos reales.
+
+-- 53.a EL IDENTIFICADOR PÚBLICO ---------------------------------------------
+-- §52 usó el SLUG como código, y el código iba en la URL: `?ref=monoshop`. O
+-- sea que cada vez que un comerciante repartía su enlace estaba publicando **el
+-- subdominio de su tienda** —su dominio, su marca y su catálogo— a cualquiera
+-- que lo recibiera. Para un comercio que compite con otros que también usan
+-- Kross, eso no es un detalle: es entregarle a la competencia la lista de a
+-- quién mirar.
+--
+-- Así que el enlace deja de llevar nada que se pueda leer:
+--
+--     krossclub.app/u/48291733
+--
+-- `codigo` NO se va — sigue siendo cómo se identifica a un afiliado en el panel
+-- de Kross, que es donde tener un nombre legible sirve. Lo que cambia es que ya
+-- no aparece en ninguna URL pública.
+--
+-- **Ocho dígitos y no seis.** El ejemplo que se pidió tenía seis (900 000
+-- posibles), y con eso un script recorre el espacio entero en una tarde y se
+-- lleva la lista de nombres de todos los afiliados. Ocho lo suben a 90 millones:
+-- misma pinta, mismo largo de tipeo, y deja de ser barrible. No es un secreto
+-- —quien tenga el enlace ve el nombre, que es justamente para lo que existe—
+-- pero sí deja de ser una lista pública.
+ALTER TABLE affiliates ADD COLUMN IF NOT EXISTS public_id text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_affiliates_public_id
+  ON affiliates(public_id) WHERE public_id IS NOT NULL;
+
+-- Lo asigna la BASE y no el código, a propósito. Un afiliado sin `public_id` es
+-- un afiliado sin enlace —o sea inservible— y hay tres caminos que crean filas
+-- (`manage-store`, la acción `crear` y el traspaso de §52.a). Un trigger es el
+-- único sitio donde no hay que acordarse.
+CREATE OR REPLACE FUNCTION public.asignar_public_id() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE cand text; intentos int := 0;
+BEGIN
+  IF NEW.public_id IS NOT NULL THEN RETURN NEW; END IF;
+  LOOP
+    -- 10000000..99999999: ocho dígitos siempre, sin ceros a la izquierda que
+    -- alguien pueda comerse al dictarlo por teléfono.
+    cand := (floor(random() * 90000000) + 10000000)::bigint::text;
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM affiliates WHERE public_id = cand);
+    intentos := intentos + 1;
+    IF intentos > 50 THEN
+      RAISE EXCEPTION 'no se pudo generar un public_id libre en 50 intentos';
+    END IF;
+  END LOOP;
+  NEW.public_id := cand;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_affiliates_public_id ON affiliates;
+CREATE TRIGGER trg_affiliates_public_id BEFORE INSERT ON affiliates
+  FOR EACH ROW EXECUTE FUNCTION public.asignar_public_id();
+
+-- El traspaso de los que ya existen. Mismo bucle, fuera del trigger.
+DO $$
+DECLARE r record; cand text; intentos int;
+BEGIN
+  FOR r IN SELECT id FROM affiliates WHERE public_id IS NULL LOOP
+    intentos := 0;
+    LOOP
+      cand := (floor(random() * 90000000) + 10000000)::bigint::text;
+      EXIT WHEN NOT EXISTS (SELECT 1 FROM affiliates WHERE public_id = cand);
+      intentos := intentos + 1;
+      IF intentos > 50 THEN
+        RAISE EXCEPTION 'no se pudo generar un public_id libre en 50 intentos';
+      END IF;
+    END LOOP;
+    UPDATE affiliates SET public_id = cand WHERE id = r.id;
+  END LOOP;
+END $$;
+
+-- 53.b EL MODO PRUEBA NO PUEDE PAGAR COMISIONES -----------------------------
+-- Con los dos modos de Stripe conectados a la vez —que es lo que hace falta
+-- para poder seguir probando con el cobro real encendido— un pago de PRUEBA
+-- entra por el mismo webhook que uno de verdad. Sin distinguirlos, una tarjeta
+-- `4242 4242 4242 4242` generaría un tramo pagado, ese tramo habilitaría
+-- transacciones, y esas transacciones se convertirían en **soles que se le
+-- transfieren a una persona**. Plata real por un pago que no existió.
+--
+-- Stripe manda `livemode` en cada evento. Se guarda, y la liquidación cuenta
+-- SOLO los tramos de verdad.
+--
+-- `DEFAULT true` y no false: las filas que ya existan —si alguien alcanzó a
+-- correr §51 y conectar algo— son de producción, porque el modo prueba todavía
+-- no estaba soportado. Un default `false` las borraría del conteo en silencio.
+ALTER TABLE subscription_periods ADD COLUMN IF NOT EXISTS livemode boolean NOT NULL DEFAULT true;
+ALTER TABLE store_subscriptions  ADD COLUMN IF NOT EXISTS livemode boolean NOT NULL DEFAULT true;
+
+-- El índice de la liquidación gana la columna: contar ignora las de prueba, así
+-- que filtrarlas después de leerlas sería traer filas para tirarlas.
+CREATE INDEX IF NOT EXISTS idx_sub_periods_store_live
+  ON subscription_periods(store_id, inicio) WHERE livemode;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §54 · DARSE DE ALTA SOLO: DE LA LANDING A SU PANEL  (12-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Hasta hoy una tienda nacía a mano: el comerciante llenaba el formulario de la
+-- web, alguien de Kross lo veía, y después entraba a `Panel → Tiendas` a
+-- crearla y a inventarle una contraseña que le pasaba por WhatsApp. Entre el
+-- "quiero" y el "ya puedo entrar" había una persona y unas horas.
+--
+-- Ahora el comerciante paga en la landing y su tienda existe cuando Stripe
+-- termina de cobrar. El camino:
+--
+--   1. La landing le pide DOS cosas —el nombre de su marca y el suyo— y con eso
+--      reserva una fila acá. Todavía no hay tienda: hay una intención.
+--   2. Se va a pagar con `client_reference_id = <token de esta fila>`.
+--   3. Stripe cobra y dispara `checkout.session.completed`. El webhook toma
+--      esta fila, le suma el correo que Stripe capturó, y **crea la tienda**.
+--   4. Stripe lo devuelve a `/bienvenido`, donde elige su contraseña y entra.
+--
+-- ⚠️ **El `client_reference_id` de un alta NO es un `store_id`.** No puede
+-- serlo: cuando el visitante hace clic en «suscribirme», su tienda todavía no
+-- existe. Por eso los tokens de acá llevan prefijo `sg_` y los ids de tienda
+-- `st_` — el webhook mira el prefijo para saber si tiene que CREAR una tienda o
+-- enlazar una que ya estaba (una marca vieja que recién se suscribe).
+
+CREATE TABLE IF NOT EXISTS signups (
+  -- `sg_` + 32 hex. Es una LLAVE: quien lo tiene puede ponerle la contraseña a
+  -- la tienda que se cree. Mismo modelo que el token de un pedido
+  -- (`docs/00-CORE-ARCHITECTURE.md`), con la diferencia de que este caduca.
+  token             text        PRIMARY KEY,
+  marca             text        NOT NULL,
+  nombre_admin      text        NOT NULL,
+  -- El subdominio que se le prometió en la landing. Se vuelve a comprobar al
+  -- crear: entre la reserva y el pago pueden pasar minutos y otro pudo tomarlo.
+  slug              text        NOT NULL,
+  -- Quién lo trajo (§51.b). Viaja acá porque el `localStorage` del visitante no
+  -- sobrevive al salto a Stripe y de vuelta.
+  affiliate_ref     text,
+  -- PENDIENTE (reservado, sin pagar) | CREADA (tienda viva) | ANULADO
+  estado            text        NOT NULL DEFAULT 'PENDIENTE'
+                                CHECK (estado IN ('PENDIENTE','CREADA','ANULADO')),
+  store_id          text        REFERENCES stores(id) ON DELETE SET NULL,
+  -- Lo que pone Stripe al cobrar. El correo es el que el comerciante tecleó en
+  -- el checkout, y es con el que va a poder recuperar su contraseña.
+  email             text,
+  stripe_customer_id     text,
+  stripe_subscription_id text,
+  -- El id de la sesión de checkout. Es cómo `/bienvenido` encuentra su fila:
+  -- Stripe sabe sustituir `{CHECKOUT_SESSION_ID}` en la URL de retorno, pero no
+  -- el `client_reference_id`. Sin esto habría que preguntarle a la API de
+  -- Stripe —o sea cargar una llave— solo para saber a quién acaba de cobrar.
+  checkout_session_id    text,
+  -- Cuándo eligió su contraseña. Es lo que hace el token de UN SOLO USO: una
+  -- vez puesta, ese enlace ya no puede volver a cambiarla.
+  password_set_at   timestamptz,
+  created_at        timestamptz DEFAULT now()
+);
+
+ALTER TABLE signups ENABLE ROW LEVEL SECURITY;  -- sin políticas: solo service role
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_signups_checkout
+  ON signups(checkout_session_id) WHERE checkout_session_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_signups_store
+  ON signups(store_id) WHERE store_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_signups_pendientes
+  ON signups(created_at) WHERE estado = 'PENDIENTE';
+
+-- 54.a LA PURGA -------------------------------------------------------------
+-- Casi todas estas filas mueren sin pagar: el visitante llena el formulario,
+-- ve el precio y se va. Guardarlas para siempre sería acumular los nombres y
+-- las marcas de gente que nunca fue cliente — un dato personal que no nos sirve
+-- de nada. Siete días alcanza de sobra: quien iba a pagar pagó en minutos.
+--
+-- Las `CREADA` no se tocan: son el rastro de cómo nació cada tienda.
+-- `cron.schedule` con el mismo nombre ACTUALIZA el job (§42.b): correr esto dos
+-- veces no crea dos barridos.
+SELECT cron.schedule(
+  'signups-purge',
+  '30 5 * * *',
+  $$ DELETE FROM signups WHERE estado = 'PENDIENTE' AND created_at < now() - interval '7 days' $$
+);

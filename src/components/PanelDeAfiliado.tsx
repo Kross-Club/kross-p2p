@@ -157,11 +157,21 @@ export default function PanelDeAfiliado({ suelto = false }: { suelto?: boolean }
           style={{ color: 'var(--text-faint)' }}>
           <Link2 size={12} /> Tu enlace
         </p>
-        <CopyRow label="Compártelo" value={yo.enlace} />
+        {yo.enlace
+          ? <CopyRow label="Compártelo" value={yo.enlace} />
+          : <p className="text-[11px]" style={{ color: 'var(--warn-fg)' }}>
+              Tu enlace todavía no está listo. Escríbenos y lo activamos.
+            </p>}
         <p className="text-[10px] leading-snug mt-1" style={{ color: 'var(--text-faint)' }}>
           Quien se dé de alta desde aquí queda a tu nombre. Ganas <b>{soles(tarifa)}</b> por cada
           transacción que haga esa tienda, mientras tenga su plan de ${precio_plan_usd}/mes al día
           {mi_plan !== null && <> —y tú el tuyo—</>}.
+        </p>
+        {/* §53: lo que el enlace NO dice. Es tranquilizador para el comerciante
+            que duda de repartirlo, y es literalmente por lo que se rediseñó. */}
+        <p className="text-[10px] leading-snug mt-1.5" style={{ color: 'var(--text-faint)' }}>
+          El enlace no revela el nombre ni la dirección de tu tienda: quien lo abra solo ve que
+          lo invitaste tú.
         </p>
       </section>
 
