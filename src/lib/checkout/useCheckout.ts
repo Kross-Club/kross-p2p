@@ -21,6 +21,10 @@ export interface UseCheckoutOptions {
   /** `stores.home_delivery_enabled`. Por defecto `true` para que la demo y
    *  cualquier montaje sin tienda se comporten como antes de existir el switch. */
   homeDeliveryEnabled?: boolean
+  /** `products.permite_mitad`. Por defecto `false`: el total es el default. */
+  permiteMitad?: boolean
+  /** `products.descuento_pen`. Por defecto 0: sin oferta de salida. */
+  productDiscountPen?: number
 }
 
 export interface UseCheckout {
@@ -50,10 +54,10 @@ export function hasProgress(state: CheckoutState): boolean {
 }
 
 export function useCheckout({
-  initialPack, onPartialLead, homeDeliveryEnabled = true,
+  initialPack, onPartialLead, homeDeliveryEnabled = true, permiteMitad = false, productDiscountPen = 0,
 }: UseCheckoutOptions): UseCheckout {
   const [state, dispatch] = useReducer(checkoutReducer, null,
-    () => initialCheckoutState(initialPack, resolveVariant(), homeDeliveryEnabled))
+    () => initialCheckoutState(initialPack, resolveVariant(), homeDeliveryEnabled, permiteMitad, productDiscountPen))
   const [touched, setTouched] = useState<Set<FieldName>>(new Set())
   const timer = useRef(createStepTimer())
 
@@ -65,14 +69,17 @@ export function useCheckout({
     // El flag de la TIENDA gana sobre el del borrador, igual que la variante: si
     // el admin apagó el domicilio ayer, un borrador de ayer no puede seguir
     // ofreciéndolo. Se pisa aquí porque `persistence` no conoce la tienda.
-    if (draft) dispatch({ type: 'RESTORE', state: { ...draft, homeDeliveryEnabled } })
+    // Las reglas del PRODUCTO igual: la mitad y la oferta salen de él hoy, no
+    // de lo que el producto permitía cuando se guardó el borrador.
+    if (draft) dispatch({ type: 'RESTORE', state: { ...draft, homeDeliveryEnabled, permiteMitad, productDiscountPen } })
     trackEvent({ name: 'checkout_opened' })
     // Solo al montar: retomar un borrador después sería pisar lo que escribe.
-    // `homeDeliveryEnabled` queda fuera de las deps a propósito — si entrara,
-    // que la tienda resuelva su config un tick después re-restauraría el
-    // borrador encima de lo que el comprador ya está escribiendo. El valor del
-    // montaje es el correcto: `derive()` normaliza el método igual en cada
-    // acción, así que no hace falta volver a restaurar para que se aplique.
+    // `homeDeliveryEnabled` (y las reglas del producto) quedan fuera de las
+    // deps a propósito — si entraran, que la tienda resuelva su config un tick
+    // después re-restauraría el borrador encima de lo que el comprador ya está
+    // escribiendo. El valor del montaje es el correcto: `derive()` normaliza el
+    // método (y la mitad) igual en cada acción, así que no hace falta volver a
+    // restaurar para que se aplique.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

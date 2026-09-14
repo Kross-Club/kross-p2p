@@ -11,9 +11,11 @@ import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-p
 
 // ─── Una tienda de ejemplo que sí vende ──────────────────────────────────────
 //
-// Reproduce una marca que despacha ~1.000 pedidos al día entre tres productos
-// (S/150, S/120 y S/180), con meses de historial detrás: clientes que repiten,
-// otros que se están yendo, y una ventana viva de pedidos en todas las etapas.
+// Reproduce una marca con stock que despacha ~100 pedidos al día —3.000 al
+// mes, la escala que Gabriel pidió enseñar el 14-set-2026— entre tres productos
+// propios (S/150, S/120 y S/180), con meses de historial detrás: clientes que
+// repiten, otros que se están yendo, y una ventana viva de pedidos en todas
+// las etapas.
 //
 // Tres reglas para que esto no se vuelva una mentira:
 //
@@ -29,7 +31,7 @@ import { soles, textoDeCobro } from '../../../supabase/functions/_shared/cobro-p
 // Nada de esto toca la base de datos.
 
 /** Cuántos pedidos al día representa esta tienda. Sale en la barra del panel. */
-export const PEDIDOS_POR_DIA = 1000
+export const PEDIDOS_POR_DIA = 100
 
 /**
  * La ventana VIVA: lo que el panel muestra de verdad.
@@ -99,12 +101,19 @@ export interface ProductoDemo {
   images: string[]
   packs: { nombre: string; precio: number }[]
   vendidos: number
+  /** Cobro (§56). Los tres productos del demo permiten la mitad —los pedidos
+   *  que enseñan saldo lo necesitan— y ofrecen los S/5 de siempre. */
+  permite_mitad: boolean
+  descuento_pen: number
 }
 
 const CATALOGO: { id: string; nombre: string; precio: number }[] = [
-  { id: 'demo-prod-1', nombre: 'Faja Reductora Premium', precio: 150 },
-  { id: 'demo-prod-2', nombre: 'Set de Ollas Antiadherentes', precio: 120 },
-  { id: 'demo-prod-3', nombre: 'Colchón Inflable Doble', precio: 180 },
+  // Productos de MARCA, con stock (14-set-2026): antes eran los de un catálogo
+  // de impulso (faja, ollas, colchón). Mismas tres entradas y mismos precios:
+  // cambiar la cantidad o el orden correría el azar de todos los pedidos.
+  { id: 'demo-prod-1', nombre: 'Sérum de Vitamina C 30 ml', precio: 150 },
+  { id: 'demo-prod-2', nombre: 'Café de especialidad · 2 bolsas de 250 g', precio: 120 },
+  { id: 'demo-prod-3', nombre: 'Colágeno hidrolizado 300 g', precio: 180 },
 ]
 
 const NOMBRES = [
@@ -731,6 +740,10 @@ async function construir(): Promise<TiendaDemo> {
       { nombre: 'Pack 3', precio: Math.round(p.precio * 2.3) },
     ],
     vendidos: vendidosPorProducto.get(String(p.precio)) ?? 0,
+    // Paridad con la tienda real: el sorteo mitad/todo de los pedidos de arriba
+    // solo es verdad si el producto permite la mitad.
+    permite_mitad: true,
+    descuento_pen: 5,
   }))
 
   // Uno de cada seis compradores de la ventana viva está mirando la app. Sale

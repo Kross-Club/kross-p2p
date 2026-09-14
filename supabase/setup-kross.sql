@@ -2826,3 +2826,105 @@ SELECT cron.schedule(
 -- Esto apaga la bandera en las tiendas que la tenían: el ruteo ya la ignora,
 -- pero una bandera encendida que no hace nada es un dato que miente.
 UPDATE stores SET pay360_enabled = false WHERE pay360_enabled IS TRUE;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §56 · EL TOTAL ES EL DEFAULT; LA MITAD LA PERMITE CADA PRODUCTO  (14-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El comprador paga el pedido COMPLETO antes de que se despache. «Pagar la
+-- mitad ahora» deja de ser el default del checkout y pasa a ser una opción que
+-- cada producto enciende (`permite_mitad`). Y la oferta de salida —el descuento
+-- de «SOLO POR ESTA VEZ» al intentar cerrar el checkout— deja de ser un número
+-- de la plataforma (S/5 para todos) y pasa a ser de cada producto
+-- (`descuento_pen`; 0 = ese producto no ofrece nada).
+--
+-- La regla que decide con estos dos campos vive en UN sitio:
+-- `_shared/advance.ts` (`eleccionDeAdelanto`, `ofertaDelProducto`), que
+-- importan `register-buyer`, `manage-product` y el checkout del front.
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS permite_mitad boolean NOT NULL DEFAULT false;
+
+-- `descuento_pen` se rellena con 5 SOLO al crear la columna: es lo que la
+-- plataforma ofrecía hasta hoy, y un producto que ya vendía con esa oferta no
+-- debe perderla en silencio. Un rerun jamás pisa el 0 que un vendedor puso a
+-- propósito — por eso el relleno va dentro del IF y no como UPDATE suelto.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'products' AND column_name = 'descuento_pen'
+  ) THEN
+    ALTER TABLE products ADD COLUMN descuento_pen numeric NOT NULL DEFAULT 0
+      CHECK (descuento_pen >= 0);
+    UPDATE products SET descuento_pen = 5;
+  END IF;
+END $$;
+
+-- Las filas nuevas nacen en FULL. Las viejas sin `advance_choice` conservan
+-- HALF: `flow-order` y `pay360-coupon` re-derivan sus montos con `?? 'HALF'`
+-- porque son de la era en que la mitad era el default, y cambiarles la
+-- elección cobraría un saldo que el comprador ya negoció distinto.
+ALTER TABLE order_sessions ALTER COLUMN advance_choice SET DEFAULT 'FULL';
+
+-- El rastro del descuento que ESTE pedido llevó. Antes el servidor no lo
+-- aplicaba (cobraba el precio de lista aunque el comprador vio S/5 menos); con
+-- la columna, el precio cobrado y la razón quedan escritos en la fila.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS descuento_pen numeric NOT NULL DEFAULT 0;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §57 · DE QUÉ PLATAFORMA ES CADA SUSCRIPCIÓN, Y WHATSAPP POR TIENDA  (14-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Hasta hoy no se podía contestar «¿cuántos compradores de iPhone reciben
+-- avisos?»: `push_subscriptions` guardaba el JSON de la suscripción y nada más.
+-- Desde ahora cada fila dice de qué plataforma salió (por el user-agent de la
+-- petición que la creó), qué servicio de push la sirve (por el host del
+-- endpoint) y si vino de la app instalada o del navegador suelto — que es la
+-- pregunta del día: Android web ya puede suscribirse SIN instalar; iPhone no.
+-- La regla vive en `_shared/push-plataforma.ts`.
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS platform     text;     -- 'ios' | 'android' | 'desktop' | 'otro'
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS push_service text;     -- 'apple' | 'fcm' | 'mozilla' | 'wns' | 'otro'
+ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS standalone   boolean;  -- true = app instalada; NULL = no se sabe
+
+-- Las filas viejas: el servicio se deduce del endpoint (es un hecho); la
+-- plataforma NO se inventa, queda NULL.
+UPDATE push_subscriptions SET push_service = CASE
+  WHEN subscription->>'endpoint' LIKE 'https://web.push.apple.com/%'   THEN 'apple'
+  WHEN subscription->>'endpoint' LIKE 'https://fcm.googleapis.com/%'   THEN 'fcm'
+  WHEN subscription->>'endpoint' LIKE 'https://updates.push.services.mozilla.com/%' THEN 'mozilla'
+  WHEN subscription->>'endpoint' LIKE 'https://%.notify.windows.com/%' THEN 'wns'
+  ELSE 'otro' END
+WHERE push_service IS NULL;
+
+-- La bitácora dice ahora a CUÁNTAS suscripciones se intentó (antes solo cuántas
+-- aceptaron: un `push_count = 0` no distinguía «no tiene push» de «tiene y
+-- falló») y cómo fue por plataforma: {"android":{"ok":1,"total":1},"ios":{...}}.
+ALTER TABLE notifications_log ADD COLUMN IF NOT EXISTS push_subs           integer DEFAULT 0;
+ALTER TABLE notifications_log ADD COLUMN IF NOT EXISTS push_por_plataforma jsonb;
+
+-- El respaldo por WhatsApp deja de ser el env global `WA_AUTO_FALLBACK` (que
+-- nadie tenía en `on`) y pasa a ser DE CADA TIENDA: cuesta centavos de USD por
+-- aviso y lo paga la marca, así que lo decide la marca en *Marca*. Solo actúa
+-- si la tienda tiene WhatsApp Cloud API configurado (`wa_enabled` +
+-- `wa_phone_number_id`); `manage-store` no deja encenderlo sin eso.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_fallback_enabled boolean NOT NULL DEFAULT false;
+
+-- Cobertura de push por plataforma del PEDIDO, para leerla de un vistazo:
+-- de los pedidos de cada plataforma (por el user-agent del checkout,
+-- `order_sessions.ad_client_ua`), cuántos tienen al menos una suscripción.
+CREATE OR REPLACE VIEW push_cobertura AS
+SELECT
+  o.origin_store_id AS store_id,
+  CASE
+    WHEN o.ad_client_ua ~* 'iphone|ipad|ipod' THEN 'ios'
+    WHEN o.ad_client_ua ~* 'android'          THEN 'android'
+    WHEN o.ad_client_ua IS NULL               THEN 'otro'
+    ELSE 'desktop' END AS platform,
+  count(*)                                   AS pedidos,
+  count(*) FILTER (WHERE EXISTS (
+    SELECT 1 FROM push_subscriptions ps
+    -- `session_id` es uuid en `push_subscriptions` (el `::text` que había acá
+    -- rompía el bloque entero: «operator does not exist: uuid = text»).
+    WHERE ps.sub_role = 'buyer' AND (ps.session_id = o.id OR ps.buyer_id = o.buyer_id)
+  ))                                          AS con_push
+FROM order_sessions o
+WHERE o.created_at > now() - interval '90 days'
+GROUP BY 1, 2;

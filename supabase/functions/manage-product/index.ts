@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { isDeclaredContent, isShalomSize } from '../_shared/shalom-orders.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
+import { saneaProducto } from '../_shared/advance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -39,6 +40,11 @@ Deno.serve(async (req) => {
     // de catálogo.
     olva_origin_agency_code?: string | null
     package_weight_kg?: number | string | null
+    // Cobro (§56): si este producto deja pagar la mitad ahora (el default es
+    // el total) y cuánto descuenta su oferta de salida (0 = no ofrece nada).
+    // Los sanea `_shared/advance.ts`, la misma regla que usa el checkout.
+    permite_mitad?: boolean
+    descuento_pen?: number | string | null
     store_id?: string   // super admin: target store when managing a brand they entered
   }
 
@@ -86,6 +92,11 @@ Deno.serve(async (req) => {
     declared_content: isDeclaredContent(body.declared_content) ? body.declared_content : null,
     olva_origin_agency_code: /^[A-Z0-9][A-Z0-9-]{2,29}$/.test(origenOlva) ? origenOlva : null,
     package_weight_kg: Number.isFinite(peso) && peso > 0 && peso <= 100 ? Math.round(peso * 100) / 100 : null,
+    // Cobro (§56). Solo entra lo que el body trae: `row` reescribe el producto
+    // entero, y un panel de antes que no mande estos campos no debe borrarlos.
+    // Esta función se despliega ANTES que el panel: al revés, un guardado del
+    // panel nuevo caería con «column does not exist».
+    ...saneaProducto(body),
   }
 
   let result

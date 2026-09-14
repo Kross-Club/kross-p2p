@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, X, Trash2, Copy, Image as ImageIcon, ExternalLink, GripVertical, Truck } from 'lucide-react'
+import { Plus, X, Trash2, Copy, Image as ImageIcon, ExternalLink, GripVertical, Truck, Wallet } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 import { demoActivo } from '../../lib/demo/modo-demo'
@@ -47,6 +47,10 @@ interface Product {
   package_weight_kg?: number | null
   package_size?: string | null
   declared_content?: string | null
+  /** Cobro (§56): si deja pagar la mitad ahora (el default es el total) y
+   *  cuánto descuenta su oferta de salida (0 = no ofrece nada). */
+  permite_mitad?: boolean | null
+  descuento_pen?: number | string | null
 }
 
 /** El host de una dirección, para nombrar el botón sin el `https://`. */
@@ -231,6 +235,10 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
   const [precio, setPrecio] = useState(String(product.precio || ''))
   const [images, setImages] = useState<string[]>(product.images)
   const [packs, setPacks] = useState<Pack[]>(product.packs)
+  // ─── Cobro ─────────────────────────────────────────────────────────────────
+  const [permiteMitad, setPermiteMitad] = useState<boolean>(product.permite_mitad === true)
+  const [descuento, setDescuento] = useState<string>(
+    Number(product.descuento_pen) > 0 ? String(Number(product.descuento_pen)) : '')
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -358,6 +366,8 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
           shalom_origin_branch_id: origen, package_size: size, declared_content: contenido,
           olva_origin_agency_code: origenOlva.trim() || null,
           package_weight_kg: peso.trim() ? Number(peso) : null,
+          permite_mitad: permiteMitad,
+          descuento_pen: descuento.trim() ? Number(descuento) : 0,
         }),
       })
       if (!res.ok) {
@@ -401,6 +411,43 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
         <label className="text-xs font-bold text-gray-500 mb-1 block">Precio base (S/)</label>
         <input value={precio} onChange={e => setPrecio(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" placeholder="189"
           className="w-full bg-gray-100 rounded-2xl px-4 py-3 text-sm outline-none mb-4" />
+
+        {/* ── Cobro. El comprador paga el pedido completo antes de que se
+              despache; esto es lo que ESTE producto cambia de esa regla. ── */}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--surface-2)', border: '0.5px solid var(--border)' }}>
+          <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--text)' }}>
+            <Wallet size={14} /> Cobro
+          </span>
+          <p className="text-[10px] text-gray-500 mt-1 mb-2 leading-snug">
+            El comprador paga el pedido <b>completo</b> por Yape al confirmar. Si prefieres
+            dejarle pagar la mitad y cobrar el resto al entregar, enciéndelo aquí.
+          </p>
+          <button type="button" role="switch" aria-checked={permiteMitad}
+            onClick={() => setPermiteMitad(v => !v)}
+            className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-white border mb-3"
+            style={{ borderColor: 'var(--border)' }}>
+            <span className="text-left">
+              <span className="block text-xs font-black text-gray-900">Permitir pagar la mitad ahora</span>
+              <span className="block text-[10px] text-gray-500">El saldo se cobra al recibir o por la app antes de recoger.</span>
+            </span>
+            <span className="relative rounded-full transition-colors flex-shrink-0"
+              style={{ width: 34, height: 20, background: permiteMitad ? 'var(--brand)' : 'var(--border-strong)' }}>
+              <span className="absolute top-[3px] rounded-full transition-all"
+                style={{ width: 14, height: 14, background: '#fff', left: permiteMitad ? 17 : 3 }} />
+            </span>
+          </button>
+
+          <label className="text-[11px] font-bold text-gray-500 mb-1 block">
+            Oferta de salida (S/) <span className="font-bold text-gray-400">(0 = sin oferta)</span>
+          </label>
+          <input value={descuento} onChange={e => setDescuento(e.target.value.replace(/[^\d.]/g, ''))}
+            inputMode="decimal" placeholder="5"
+            className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--border)' }} />
+          <p className="text-[10px] text-gray-400 mt-1 leading-snug">
+            Se le ofrece <b>una sola vez</b>, cuando intenta cerrar el checkout con sus datos ya
+            puestos: «SOLO POR ESTA VEZ, S/{descuento.trim() || '0'} de descuento». Se resta de cada pack.
+          </p>
+        </div>
 
         {/* Imágenes de la landing */}
         <div className="flex items-center justify-between mb-2">

@@ -35,7 +35,7 @@
 //      instala—.
 
 import { useEffect, useState } from 'react'
-import { Check, Download, ExternalLink, FileText, Smartphone, Wallet } from 'lucide-react'
+import { Bell, Check, Download, ExternalLink, FileText, Smartphone, Wallet } from 'lucide-react'
 import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
 import { useStore } from '../../lib/store-context'
@@ -43,7 +43,7 @@ import BajoLaMarca from './BajoLaMarca'
 import Flotante from '../Flotante'
 import { cajaDeLaMarca, ESQUINAS_DEL_PEDIDO, estiloValido, fondoDeMarca, tintaSobreDegradado } from '../../lib/degradado'
 import { enlaceDeComprobante } from '../../lib/comprobante'
-import { subscribePush } from '../../lib/push'
+import { notifPermission, pushSupported, subscribePush } from '../../lib/push'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { AndroidSteps, IOSInstallVideo, isInstalled } from '../InstallBanner'
 
@@ -354,6 +354,17 @@ function InstalarApp({ sessionId, nombre, logo }: {
   const [instalada, setInstalada] = useState(false)
   const [ayuda, setAyuda] = useState(false)
   const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
+  // ─── Avisos sin instalar (14-set-2026) ─────────────────────────────────────
+  // Chrome de Android deja suscribirse al push desde la web, con un toque: es
+  // el camino corto y pasa a ser el botón primario; instalar queda como texto.
+  // En iPhone no existe (Safari solo da push dentro de la app instalada), así
+  // que ahí no cambia nada: sigue el video. El prompt nativo EXIGE un gesto,
+  // por eso es un botón y no una llamada al cargar.
+  const puedeAvisarSinInstalar = !isIOS && pushSupported() && notifPermission() !== 'denied'
+  const avisosBloqueados = !isIOS && pushSupported() && notifPermission() === 'denied'
+  // Acuse de ESTA visita, como `instalada`. Arranca en falso siempre.
+  const [avisosOk, setAvisosOk] = useState(false)
+  const [pidiendoAvisos, setPidiendoAvisos] = useState(false)
 
   useEffect(() => {
     const ready = () => setPrompt((window as { __deferredInstallPrompt?: never }).__deferredInstallPrompt ?? null)
@@ -367,6 +378,33 @@ function InstalarApp({ sessionId, nombre, logo }: {
       window.removeEventListener('appinstalled', installed)
     }
   }, [])
+
+  // Si ya dio el permiso antes (otro pedido, o volvió a esta página), la
+  // suscripción se ata a ESTE pedido en silencio: sin prompt, sin gesto —
+  // `requestPermission` con permiso ya dado no pregunta nada— y el dedupe por
+  // endpoint del servidor lo hace idempotente.
+  useEffect(() => {
+    if (!sessionId || !puedeAvisarSinInstalar || notifPermission() !== 'granted') return
+    let vivo = true
+    subscribePush({ sessionId, role: 'buyer' })
+      .then(ok => { if (vivo && ok) setAvisosOk(true) })
+      .catch(() => {})
+    return () => { vivo = false }
+    // Solo al montar: `sessionId` no cambia en esta pantalla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const avisarme = async () => {
+    if (!sessionId || pidiendoAvisos) return
+    setPidiendoAvisos(true)
+    try {
+      // Desde el gesto: es lo que abre el prompt nativo del navegador.
+      const ok = await subscribePush({ sessionId, role: 'buyer' })
+      if (ok) setAvisosOk(true)
+    } finally {
+      setPidiendoAvisos(false)
+    }
+  }
 
   const instalar = async () => {
     if (!prompt) { setAyuda(true); return }
@@ -417,8 +455,51 @@ function InstalarApp({ sessionId, nombre, logo }: {
           <p className="text-xs text-gray-500 mb-1">{COPY.doneInstallIos}</p>
           <IOSInstallVideo />
         </div>
+      ) : avisosOk ? (
+        // Ya tiene los avisos en este celular: es lo que vino a conseguir. La
+        // app queda ofrecida en una línea, sin competir.
+        <>
+          <p className="text-base font-black text-gray-900 leading-snug mt-3">{COPY.doneAvisosReady}</p>
+          <p className="text-sm text-gray-600 leading-snug mt-1 px-2">{COPY.doneAvisosBody}</p>
+          <button type="button" onClick={instalar}
+            className="mt-3 text-[11px] font-bold text-gray-500 underline focus:outline-none focus-visible:ring-2 rounded">
+            {COPY.doneInstallAlso}
+          </button>
+          {ayuda && !desktop && (
+            <div className="mt-3">
+              <p className="text-[11px] text-gray-500 mb-1">{COPY.doneInstallHelp}</p>
+              <div className="flex justify-center"><AndroidSteps /></div>
+            </div>
+          )}
+        </>
+      ) : puedeAvisarSinInstalar && sessionId ? (
+        // Android web: un toque y listo, sin instalar. Instalar es la segunda.
+        <>
+          <button type="button" onClick={avisarme} disabled={pidiendoAvisos}
+            className="mt-4 flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-black text-base text-white
+              disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={{ background: 'var(--brand)' }}>
+            <Bell size={18} strokeWidth={2.5} /> {pidiendoAvisos ? 'Un momento…' : COPY.doneAvisosCta}
+          </button>
+          <p className="text-[11px] text-gray-500 mt-2">{COPY.doneAvisosSub}</p>
+          <button type="button" onClick={instalar}
+            className="mt-3 text-[11px] font-bold text-gray-500 underline focus:outline-none focus-visible:ring-2 rounded">
+            {COPY.doneInstallAlso}
+          </button>
+          {ayuda && (desktop
+            ? <p className="text-[11px] text-gray-500 mt-2 px-2">{COPY.doneInstallDesktop}</p>
+            : (
+              <div className="mt-3">
+                <p className="text-[11px] text-gray-500 mb-1">{COPY.doneInstallHelp}</p>
+                <div className="flex justify-center"><AndroidSteps /></div>
+              </div>
+            ))}
+        </>
       ) : (
         <>
+          {/* Con los avisos bloqueados en el navegador no hay prompt que abrir:
+              se dice, y la app es el camino (tiene su propio permiso). */}
+          {avisosBloqueados && <p className="text-[11px] text-gray-500 mt-3 px-2">{COPY.doneAvisosDenied}</p>}
           <button type="button" onClick={instalar}
             className="mt-4 flex items-center justify-center gap-2 w-full py-4 rounded-2xl font-black text-base text-white
               focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"

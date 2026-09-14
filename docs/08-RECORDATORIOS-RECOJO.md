@@ -219,6 +219,13 @@ automática" no es una opción en este canal.
 La sede y la fecha se resuelven server-side desde el pedido (patrón `mapping` de
 `send-wa-template`), nunca en el cliente.
 
+> **El respaldo por WhatsApp lo decide la tienda (14-set-2026, §57).** Todo aviso que
+> salga por `_shared/notificar.ts` —los pasos de esta cascada incluidos— solo cae a
+> WhatsApp si ningún push llegó **y** la marca encendió «Avisar por WhatsApp cuando el
+> push no llega» en *Marca* (`stores.wa_fallback_enabled`), con Cloud API configurado.
+> El env global `WA_AUTO_FALLBACK` ya no existe. La regla es `debeCaerAWhatsApp()` en
+> `_shared/respaldo-wa.ts`, probada en `src/lib/push-plataforma.test.ts`.
+
 ## Arquitectura del disparador
 
 ```

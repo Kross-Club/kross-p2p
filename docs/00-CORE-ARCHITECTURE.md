@@ -711,7 +711,7 @@ pide, vuelve a `system` solo — así no hace falta un tercer botón "automátic
 
 **Modo demo** (`src/lib/demo/`, interruptor en *Marca*): llena **todo** el panel —Pedidos en
 sus cuatro modos, Clientes en los tres, Productos y Equipo— con una tienda de ejemplo que
-despacha ~1.000 pedidos al día entre tres productos (S/150, S/120, S/180) y arrastra seis meses
+despacha ~100 pedidos al día (3.000 al mes, desde el 14-set-2026; antes 1.000/día) entre tres productos de marca (S/150, S/120, S/180) y arrastra seis meses
 de recompras. Sirve para enseñar cómo se ve la herramienta funcionando sin esperar a que la
 marca venda.
 
@@ -842,7 +842,8 @@ Mapeo actual → objetivo:
 | `sale.paymentMethod` | `order_sessions.payment_method` (def `CONTRAENTREGA`) — escrito por checkout | ✅ |
 | `sale.closedBy` | `order_sessions.closed_by` (def `DIRECT_CHECKOUT`) — escrito por checkout | ✅ |
 | `advance.amountPen` | `order_sessions.advance_amount` — lo deriva el SERVIDOR (`_shared/advance.ts`) sobre el precio **verificado contra `products.packs`**, nunca sobre el del body | ✅ |
-| `advance.choice` | `order_sessions.advance_choice` (def `'HALF'`) — sin esto el cobro no puede reproducir el monto mostrado | ✅ |
+| `advance.choice` | `order_sessions.advance_choice` (def `'FULL'` desde 14-set-2026; `'HALF'` solo si `products.permite_mitad` — §56) — sin esto el cobro no puede reproducir el monto mostrado | ✅ |
+| `advance.exitDiscountPen` | `order_sessions.descuento_pen` — la oferta de salida que este pedido llevó; el monto sale de `products.descuento_pen`, nunca del body (§56) | ✅ |
 | `advance.verification` | `order_sessions.payment_verification` — la fija `pay360-webhook` | ✅ |
 | `advance.provider` | `order_sessions.payment_provider` — '360PAY' o NULL | ✅ |
 | `advance.providerChargeId` | `payment_events.provider_charge_id` (por `matched_order_id`) | ✅ |

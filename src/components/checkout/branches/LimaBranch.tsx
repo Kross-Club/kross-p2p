@@ -112,7 +112,14 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
           S/5. Peor que no decir nada: el comprador lee que no paga nada ahora y
           dos pantallas después le piden yapear — que es exactamente la sorpresa
           que este checkout existe para no dar. */}
-      {method && (
+      {method && (state.advanceChoice === 'FULL' ? (
+        /* Pago completo (el default): no hay «resto» que anunciar. */
+        <p className="text-[11px] text-gray-500 bg-green-50 rounded-xl px-3 py-2.5">
+          ✅ <strong className="font-black text-green-800">
+            Pagas S/{state.advanceAmount} ahora
+          </strong> y listo: {method === 'AGENCIA' ? 'recoges sin pagar nada más.' : 'nada más al recibirlo.'}
+        </p>
+      ) : (
         <p className="text-[11px] text-gray-500 bg-green-50 rounded-xl px-3 py-2.5">
           ✅ <strong className="font-black text-green-800">
             Adelanto de S/{state.advanceAmount}
@@ -122,7 +129,7 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
             ? 'El resto lo pagas por la app cuando tu pedido ya esté enviado.'
             : 'El resto lo pagas al recibir.'}
         </p>
-      )}
+      ))}
     </div>
   )
 }

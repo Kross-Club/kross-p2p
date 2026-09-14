@@ -5,7 +5,8 @@
 // propio al centro de la pantalla: nada más que decidir en ese instante.
 //
 // Dos variantes:
-//   offer → la oferta única de S/EXIT_DISCOUNT_PEN, con el monto como héroe.
+//   offer → la oferta única del producto (`monto`, su `descuento_pen`), con el
+//           monto como héroe.
 //   plain → la confirmación seca, cuando ya se le ofreció el descuento antes.
 //
 // Accesibilidad: role="alertdialog", foco en la acción que retiene, trap de Tab
@@ -13,11 +14,14 @@
 
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
-import { COPY, EXIT_DISCOUNT_PEN } from '../../lib/checkout/checkout.config'
+import { COPY } from '../../lib/checkout/checkout.config'
 
 interface ExitOfferProps {
   /** ¿Toca ofrecer el descuento, o solo confirmar la salida? */
   offerDiscount: boolean
+  /** Cuánto descuenta: el `descuento_pen` del producto. Quien llama ya decidió
+   *  que es > 0 cuando `offerDiscount` es true. */
+  monto: number
   onApplyDiscount: () => void
   /** Quedarse en el checkout. Es la acción por defecto y la del Esc. */
   onCancel: () => void
@@ -25,7 +29,7 @@ interface ExitOfferProps {
   onConfirm: () => void
 }
 
-export default function ExitOffer({ offerDiscount, onApplyDiscount, onCancel, onConfirm }: ExitOfferProps) {
+export default function ExitOffer({ offerDiscount, monto, onApplyDiscount, onCancel, onConfirm }: ExitOfferProps) {
   const boxRef = useRef<HTMLDivElement>(null)
   const primaryRef = useRef<HTMLButtonElement>(null)
 
@@ -94,7 +98,7 @@ export default function ExitOffer({ offerDiscount, onApplyDiscount, onCancel, on
             {/* El monto es el héroe: es lo único que tiene que entenderse de un
                 vistazo antes de que el dedo siga camino a cerrar. */}
             <p className="text-5xl font-black leading-none" style={{ color: '#16A34A' }}>
-              S/{EXIT_DISCOUNT_PEN}
+              S/{monto}
             </p>
             <p className="text-[11px] font-bold text-gray-500 mt-1.5 mb-4">{COPY.exitAmountLabel}</p>
 

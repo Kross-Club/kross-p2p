@@ -97,6 +97,14 @@ Detalle técnico y pendientes en `02-SMART-LOGISTICS.md` §3.
 
 ### ⚠️ Tensión abierta: el adelanto de Kross está 3–5× por encima del mercado
 
+> **Se disuelve con el ICP nuevo (14-set-2026).** Esta tensión era del comprador COD: el que
+> adelanta S/20 porque no conoce a la marca. El foco desde set-2026 son **marcas con stock**
+> cuyos clientes ya les compran con contenido y anuncios y **pagan el 100 % antes de
+> despachar** —el default del checkout desde §56—. Para ese comprador la pregunta no es
+> «¿cuánto adelanto?» sino «¿me llega?», y esa la responde la app con sus avisos. La mitad
+> sigue existiendo como opción por producto, para la marca que sí venda a un público que la
+> necesite. Lo de abajo queda como registro de por qué se dudó.
+
 No es una decisión tomada sino un riesgo que la validación destapó y que **no está
 medido**.
 

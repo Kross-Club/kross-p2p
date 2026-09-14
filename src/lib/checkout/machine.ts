@@ -6,7 +6,8 @@
 // `courierSurcharge` y `deliveryNote` son DERIVADOS. Ninguna acción los setea
 // directamente — se recalculan en `derive()` después de cada cambio.
 
-import { EXIT_DISCOUNT_PEN, advanceFor } from './checkout.config'
+import { advanceFor } from './checkout.config'
+import { ofertaDelProducto } from '../../../supabase/functions/_shared/advance.ts'
 import { effectivePrice } from './product-packs'
 import { isLimaMetro, methodForCoverage } from './services/DistrictCoverageService'
 import { resolveVariant } from './variant'
@@ -33,15 +34,19 @@ export function initialCheckoutState(
   selectedPack: PackId | null = null,
   variant: CheckoutVariant = 'A',
   homeDeliveryEnabled = true,
+  permiteMitad = false,
+  productDiscountPen = 0,
 ): CheckoutState {
   return {
     orderId: newOrderId(),
     step: 1,
     selectedPack,
     packPrice: 0,
-    advanceChoice: 'HALF',
+    advanceChoice: 'FULL',
     variant,
     homeDeliveryEnabled,
+    permiteMitad,
+    productDiscountPen,
     customerInfo: { dni: '', whatsapp: '', receiverName: '' },
     locationType: null,
     limaAddress: null,
@@ -127,14 +132,22 @@ function derive(state: CheckoutState): CheckoutState {
   // entra por la puerta de atrás: un borrador guardado cuando la marca sí
   // repartía conservaba el método y cerraba el pedido prometiendo una entrega a
   // la puerta que el admin ya había apagado.
-  const s: CheckoutState = !state.homeDeliveryEnabled && state.deliveryMethod === 'DOMICILIO'
+  const s0: CheckoutState = !state.homeDeliveryEnabled && state.deliveryMethod === 'DOMICILIO'
     ? { ...state, deliveryMethod: 'AGENCIA' }
     : state
+  // Misma idea con la mitad: un producto que no la permite no puede quedar en
+  // HALF, venga de una acción o de un borrador guardado cuando sí la permitía.
+  // El total es la dirección segura y es lo que el servidor va a cobrar igual
+  // (`eleccionDeAdelanto` en `_shared/advance.ts`).
+  const s: CheckoutState = !s0.permiteMitad && s0.advanceChoice === 'HALF'
+    ? { ...s0, advanceChoice: 'FULL' }
+    : s0
 
   const isProvincia = s.locationType === 'PROVINCIA'
-  // El adelanto es un porcentaje del pedido, no una tabla por destino: la mitad
-  // como mínimo, o el total si el comprador lo elige. Sobre el precio EFECTIVO,
-  // para no adelantar sobre plata que el descuento ya le quitó.
+  // El adelanto es un porcentaje del pedido, no una tabla por destino: el
+  // total, o la mitad si el producto lo permite y el comprador la elige. Sobre
+  // el precio EFECTIVO, para no adelantar sobre plata que el descuento ya le
+  // quitó.
   const advanceAmount = advanceFor(effectivePrice(s.packPrice, s.discountPen), s.advanceChoice)
 
   // El pedido se cierra SIN coordenada: la cobertura se decide por distrito. La
@@ -401,8 +414,9 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       return { ...state, exitOfferShown: true }
 
     case 'APPLY_EXIT_DISCOUNT':
-      // No se acumula: aplicarlo dos veces no duplica el descuento.
-      return derive({ ...state, discountPen: EXIT_DISCOUNT_PEN, exitOfferShown: true })
+      // No se acumula: aplicarlo dos veces no duplica el descuento. Y el monto
+      // es el del PRODUCTO: con 0 el descuento no existe aunque se dispare.
+      return derive({ ...state, discountPen: ofertaDelProducto(state.productDiscountPen, true), exitOfferShown: true })
 
     case 'GOTO':
       return { ...state, step: action.step }

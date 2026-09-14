@@ -139,6 +139,7 @@ Deno.serve(async (req) => {
     /** delete: el `slug` de la tienda, tecleado por quien borra. Ver la acción. */
     confirmar?: string
     wa_enabled?: boolean
+    wa_fallback_enabled?: boolean
     wa_phone_number_id?: string
     wa_display_phone?: string
     wa_codigo_template?: string
@@ -225,7 +226,7 @@ Deno.serve(async (req) => {
   // ─── LIST STORES ───────────────────────────────────────────────────────────
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
-    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone'
+    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_fallback_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone'
     type Respuesta = { data: Record<string, unknown>[] | null; error: { code?: string; message?: string } | null }
     const pedir = async (campos: string): Promise<Respuesta> => {
       const q = supabase.from('stores').select(campos).order('created_at', { ascending: true })
@@ -598,6 +599,23 @@ Deno.serve(async (req) => {
     if (isSuper && typeof body.wa_phone_number_id === 'string') patch.wa_phone_number_id = body.wa_phone_number_id.trim()
     if (isSuper && typeof body.wa_display_phone === 'string') patch.wa_display_phone = body.wa_display_phone.trim()
     if (isSuper && typeof body.wa_business_account_id === 'string') patch.wa_business_account_id = body.wa_business_account_id.trim()
+    // El RESPALDO automático por WhatsApp (§57) sí es del admin de la marca:
+    // cuesta centavos de USD por aviso y los paga ella. Pero encenderlo solo
+    // vale con Cloud API configurado (lo de arriba, que es de la plataforma):
+    // sin número no hay por dónde mandar, y un interruptor encendido que no
+    // hace nada es un dato que miente. Se mira la fila, no el body: el panel
+    // puede mandar ambas cosas en el mismo guardado y ganar la vieja.
+    if (typeof body.wa_fallback_enabled === 'boolean') {
+      if (!body.wa_fallback_enabled) {
+        patch.wa_fallback_enabled = false
+      } else {
+        const { data: cfg } = await supabase.from('stores')
+          .select('wa_enabled, wa_phone_number_id').eq('id', targetId).maybeSingle()
+        const waListo = (patch.wa_enabled ?? cfg?.wa_enabled) === true
+          && String(patch.wa_phone_number_id ?? cfg?.wa_phone_number_id ?? '').trim().length > 0
+        patch.wa_fallback_enabled = waListo
+      }
+    }
     // ⚠️ La plantilla del CÓDIGO DE ACCESO no es una config más: es el
     // interruptor de la seguridad del comprador. En cuanto tiene nombre (con
     // WhatsApp encendido y su número), `buyer-login` deja de aceptar el DNI a

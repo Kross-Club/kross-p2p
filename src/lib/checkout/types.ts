@@ -164,6 +164,20 @@ export interface CheckoutState {
    * seguir ofreciéndolo.
    */
   homeDeliveryEnabled: boolean
+  /**
+   * ¿Este producto deja pagar la mitad ahora? (`products.permite_mitad`, §56).
+   * El default es pagar el total; sin esto el paso 3 no ofrece el reparto y
+   * `derive()` fuerza FULL — también sobre un borrador viejo que trajera HALF.
+   * Como `homeDeliveryEnabled`, se resuelve del producto en cada montaje y NO
+   * se restaura del borrador.
+   */
+  permiteMitad: boolean
+  /**
+   * Cuánto descuenta la oferta de salida de ESTE producto
+   * (`products.descuento_pen`). 0 = el producto no ofrece nada, y el diálogo
+   * de salida no ofrece descuento. Mismo trato que `permiteMitad`.
+   */
+  productDiscountPen: number
   limaAddress: LimaAddress | null
   provinciaConfig: ProvinciaConfig | null
   /**
@@ -198,7 +212,8 @@ export interface CheckoutState {
    * veces cuando el comprador acepta la oferta de salida.
    */
   packPrice: number
-  /** Mitad (mínimo) o todo. Lo elige el comprador en el paso de pago. */
+  /** Todo (default) o la mitad, si el producto lo permite y el comprador la
+   *  elige en el paso de pago. */
   advanceChoice: AdvanceChoice
   /** Derivado del precio y de esa elección. Nunca editable a mano. */
   advanceAmount: number

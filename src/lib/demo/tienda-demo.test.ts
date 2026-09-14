@@ -85,7 +85,8 @@ describe('el equipo y la escala', () => {
   })
 
   it('declara la escala que representa', () => {
-    expect(PEDIDOS_POR_DIA).toBe(1000)
+    // 3.000 al mes: la escala de una marca con stock (14-set-2026).
+    expect(PEDIDOS_POR_DIA).toBe(100)
   })
 })
 
@@ -250,7 +251,7 @@ describe('la bandeja del demo', () => {
 })
 
 describe('quién está en línea', () => {
-  // Un tablero de mil pedidos al día donde ningún cliente está conectado no
+  // Un tablero de cien pedidos al día donde ningún cliente está conectado no
   // enseña la herramienta: enseña un dato apagado.
   it('hay compradores conectados, pero no todos', () => {
     expect(t.enLinea.length).toBeGreaterThan(3)
