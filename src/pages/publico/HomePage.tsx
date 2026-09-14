@@ -264,7 +264,8 @@ export default function HomePage() {
             <div>
               <h2 className="text-2xl md:text-3xl">Planes y precios</h2>
               <p className="mt-3" style={{ color: 'var(--text-muted)' }}>
-                Suscripción mensual, sin permanencia. Todos los precios están en soles e incluyen IGV.
+                Suscripción mensual, sin permanencia. El plan se cobra en dólares con tarjeta; los
+                servicios adicionales, en soles con IGV incluido.
               </p>
             </div>
             <Link to="/servicios" className="text-sm inline-flex items-center gap-1" style={{ color: 'var(--text)' }}>
