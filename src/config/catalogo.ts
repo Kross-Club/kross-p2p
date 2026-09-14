@@ -1,12 +1,10 @@
 // ─── CATÁLOGO PÚBLICO (krossclub.app) ────────────────────────────────────────
 //
-// La pasarela exige que la web muestre **mínimo 5 productos o servicios**, cada uno
-// con foto, descripción clara y precio visible. Kross vende software por
-// suscripción, así que el catálogo son sus planes y módulos.
-//
-// ⚠️ **Ese mínimo es un requisito cumplido** (`docs/04-CUMPLIMIENTO-WEB.md`, mapa
-// de requisitos). Bajar de cinco ítems no es una decisión de diseño: hay que
-// avisarle a 360pay y a Flow ANTES de publicarlo, no después.
+// Lo que Kross vende, con foto, descripción clara y precio visible. Nació como
+// el checklist de Culqi —que exigía «mínimo 5 productos»— y ese requisito murió
+// con Culqi en ago-2026: ni Flow ni 360pay piden nada sobre esta web. Así que el
+// catálogo tiene los ítems que existen de verdad y ni uno más; rellenarlo para
+// llegar a una cifra sería publicar una oferta que no se vende.
 //
 // ── Un solo plan (set-2026) ──
 // Había tres —Inicia S/199, Vende S/449, Escala S/899— y ahora hay uno, de
