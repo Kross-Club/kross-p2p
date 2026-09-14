@@ -41,6 +41,9 @@ interface StoreRow {
   active: boolean
   created_at?: string
   wa_enabled?: boolean
+  /** Respaldo automático por WhatsApp cuando el push no llega (§57). De la
+   *  marca, porque lo paga la marca. */
+  wa_fallback_enabled?: boolean
   home_delivery_enabled?: boolean
   wa_phone_number_id?: string | null
   wa_display_phone?: string | null
@@ -426,6 +429,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [loginImgs, setLoginImgs] = useState<(string | null)[]>(() => imagenesPorSitio(store.login_images))
   const [active, setActive] = useState(store.active)
   const [waEnabled, setWaEnabled] = useState(!!store.wa_enabled)
+  const [waFallback, setWaFallback] = useState(!!store.wa_fallback_enabled)
   // `?? true` y no `!!`: una marca cargada antes de que existiera la columna
   // llega con el campo ausente, y un `false` accidental le apagaría el
   // domicilio al guardar cualquier otro cambio.
@@ -630,6 +634,9 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
       // Pixel IDs (públicos): son la cuenta publicitaria de la marca. Vacío
       // pausa el pixel. Los tokens de CAPI van aparte (connectAdsCapi).
       meta_pixel_id: metaPixel.trim(), tiktok_pixel_id: tiktokPixel.trim(),
+      // El respaldo por WhatsApp es de la marca (lo paga ella). El servidor
+      // solo lo deja encendido si Cloud API está configurado.
+      wa_fallback_enabled: waFallback,
     }
     if (isSuper) {
       payload.slug = slug; payload.active = active
@@ -1572,21 +1579,54 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
           )}
         </div>
 
-        {/* WhatsApp fallback — infra, solo super admin. Se activa cuando la marca
+        {/* ── Avisos por WhatsApp cuando el push no llega (§57). Es de la
+              MARCA —cada aviso cuesta centavos de USD y los paga ella—, pero
+              solo vale con Cloud API configurado (el bloque de infra de abajo,
+              que es de la plataforma). Sin eso, el interruptor se enseña
+              apagado y bloqueado con la razón. ── */}
+        {(() => {
+          const waListo = !!store.wa_enabled && !!(store.wa_phone_number_id ?? '').trim()
+          const activo = waFallback && waListo
+          return (
+            <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--surface-2)', border: '0.5px solid var(--border)' }}>
+              <button type="button" role="switch" aria-checked={activo} disabled={!waListo}
+                onClick={() => setWaFallback(v => !v)}
+                className="w-full flex items-center justify-between gap-3 disabled:opacity-60">
+                <span className="text-left">
+                  <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--text)' }}>
+                    <MessageCircle size={14} /> Avisar por WhatsApp cuando el push no llega
+                  </span>
+                  <span className="block text-[10px] text-gray-500 mt-0.5 leading-snug">
+                    {waListo
+                      ? 'Solo se manda si ningún aviso push llegó al comprador. Cuesta centavos de USD por aviso, a cargo de la marca.'
+                      : 'Necesita el número de WhatsApp Cloud API de la marca; lo configura Kross.'}
+                  </span>
+                </span>
+                <span className="relative rounded-full transition-colors flex-shrink-0"
+                  style={{ width: 34, height: 20, background: activo ? 'var(--brand)' : 'var(--border-strong)' }}>
+                  <span className="absolute top-[3px] rounded-full transition-all"
+                    style={{ width: 14, height: 14, background: '#fff', left: activo ? 17 : 3 }} />
+                </span>
+              </button>
+            </div>
+          )
+        })()}
+
+        {/* WhatsApp Cloud API — infra, solo super admin. Se activa cuando la marca
             ya tiene su número en WhatsApp Cloud API. */}
         {isSuper && (
           <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--ok-bg-soft)', border: '0.5px solid var(--ok-border)' }}>
             <button onClick={() => setWaEnabled(v => !v)}
               className="w-full flex items-center justify-between mb-2">
               <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--ok-fg)' }}>
-                <MessageCircle size={14} /> Fallback por WhatsApp
+                <MessageCircle size={14} /> WhatsApp Cloud API
               </span>
               <span className="text-[10px] font-black px-2 py-1 rounded-full"
                 style={{ background: waEnabled ? '#16A34A' : '#E5E7EB', color: waEnabled ? '#fff' : '#6B7280' }}>
                 {waEnabled ? 'ACTIVO' : 'APAGADO'}
               </span>
             </button>
-            <p className="text-[10px] text-gray-500 mb-2">Si el cliente no tiene push, el aviso se envía por WhatsApp (Cloud API).</p>
+            <p className="text-[10px] text-gray-500 mb-2">El número de la marca en WhatsApp Cloud API. Con esto salen las plantillas que el vendedor manda desde el pedido y, si la marca lo enciende arriba, el respaldo automático cuando el push no llega.</p>
             <input value={waPhoneId} onChange={e => setWaPhoneId(e.target.value)} placeholder="Phone Number ID (WhatsApp Cloud API)"
               className="w-full bg-white border rounded-xl px-3 py-2.5 text-sm outline-none mb-2 font-mono" />
             <input value={waBiz} onChange={e => setWaBiz(e.target.value)} placeholder="WABA ID (para listar plantillas)"

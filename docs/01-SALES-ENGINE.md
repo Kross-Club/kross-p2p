@@ -683,13 +683,25 @@ de la marca— y un solo botón *Descargar la app* con el subtítulo *Dale segui
 tu pedido*. Pide instalar con el MOTIVO, no con la mecánica, y es la única acción de
 la pantalla. Cómo se comporta:
 
-- **Android/Chrome**: usa el `beforeinstallprompt` que `main.tsx` guarda en
+- **Android/Chrome — los avisos SIN instalar (14-set-2026).** Chrome de Android deja
+  suscribirse al push desde la web, con un toque, así que el botón primario pasa a ser
+  **«Avisarme por aquí»**: abre el prompt nativo desde el gesto (el navegador lo exige;
+  una llamada al cargar no abre nada), suscribe al pedido y la tarjeta cambia a «¡Listo!
+  Te avisamos por aquí». Instalar queda como texto secundario. Si el comprador ya había
+  dado el permiso (otro pedido, o volvió a la página), la suscripción se ata al pedido en
+  silencio al montar. Con los avisos **bloqueados** en el navegador no hay prompt que
+  abrir: se dice, y la app es el camino (tiene su propio permiso). Cada suscripción queda
+  etiquetada con plataforma, servicio y si vino de la app instalada (§57,
+  `_shared/push-plataforma.ts`), para poder leer la cobertura por plataforma
+  (`push_cobertura`).
+- **Android/Chrome — instalar**: usa el `beforeinstallprompt` que `main.tsx` guarda en
   `window.__deferredInstallPrompt`. Si acepta, se activa el push del pedido
-  (`subscribePush({ sessionId, role: 'buyer' })`) y se abre `/p/<token>`: la app
-  nace con el pedido adentro, no vacía. Si el navegador no dio el aviso, se enseña
-  «Abre el menú ⋮ y elige Instalar app».
-- **iPhone**: Apple no deja instalar con un clic. Se muestran los dos toques
-  (`IOSSteps`, el mismo dibujo del `InstallBanner`).
+  (`subscribePush({ sessionId, role: 'buyer' })`): la app nace con el pedido adentro, no
+  vacía. Si el navegador no dio el aviso, se enseña «Abre el menú ⋮ y elige Instalar app».
+- **iPhone**: Apple no deja instalar con un clic, y **no hay web push fuera de la app
+  instalada** (ver *«Activar avisos» solo donde el navegador puede*, más abajo). Se muestra
+  el **video** de cómo instalarla (`IOSInstallVideo`; antes eran los dos toques dibujados
+  de `IOSSteps`). Para quien no instala, el respaldo es el WhatsApp por tienda (§57).
 - **Ya instalada**: el botón pasa a *Abrir mi pedido en la app*.
 - **Escritorio**: «Abre esta página desde tu celular para instalar la app».
 
@@ -803,6 +815,9 @@ Lo que cambió alrededor:
   el botón no hacía nada, sin decir por qué. En Chrome de Android sí funciona en la web, así
   que el botón no se quita, se condiciona (`pushSupported()`). En iPhone el camino es
   instalar la app, que el chat ya ofrece cuando el vendedor toca el ícono del celular.
+  Desde el 14-set-2026 la confirmación del pedido ofrece ese mismo camino de Android web
+  como botón primario («Avisarme por aquí»), y el respaldo para quien no tiene push lo
+  decide cada tienda en *Marca* («Avisar por WhatsApp cuando el push no llega», §57).
 - **El teléfono de la tienda salió del ticket.** «Si necesitas ayuda, llama a…» abría un
   canal fuera del chat: una llamada no deja rastro en el hilo, no la ve el equipo que sigue
   el pedido y nadie la puede atender a la hora en que suene. La atención es el chat. El

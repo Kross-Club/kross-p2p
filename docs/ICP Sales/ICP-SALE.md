@@ -99,8 +99,8 @@ subdominio pinta su propia identidad sin recompilar.
 - **Envío manual controlado por el vendedor**: botón de WhatsApp en el pedido para elegir
   cualquier plantilla aprobada, con **mapeo de variables configurable**
   (`list-wa-templates`, `send-wa-template`). Nota de chat en vivo solo para el vendedor.
-- Fallback push-first → WhatsApp cuando el comprador está inalcanzable (gateado por
-  `WA_AUTO_FALLBACK`, apagado por defecto).
+- Fallback push-first → WhatsApp cuando el comprador está inalcanzable (lo enciende
+  cada tienda en *Marca*: `stores.wa_fallback_enabled`, apagado por defecto — §57).
 
 ### 4.8 CRM, productos, stats
 - `CRMPage.tsx`, `ProductosPage.tsx` (`manage-product`), `EstadisticasPage.tsx`.

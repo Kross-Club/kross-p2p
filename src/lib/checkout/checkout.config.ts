@@ -462,6 +462,16 @@ export const COPY = {
     `Dale seguimiento y haz tus consultas desde la app de ${tienda}. Se instala con un clic.`,
   doneInstallCta: 'Descargar la app',
   doneInstallSub: 'Dale seguimiento a tu pedido',
+  // ─── Android web (14-set-2026): los avisos SIN instalar ────────────────────
+  // Chrome de Android deja suscribirse desde la web, con un toque. Es el camino
+  // corto: instalar queda como segunda opción. En iPhone no existe (Safari solo
+  // da push dentro de la app instalada) y ahí sigue el video.
+  doneAvisosCta: 'Avisarme por aquí',
+  doneAvisosSub: 'Te llega un aviso en este celular cuando tu pedido avance.',
+  doneAvisosReady: '¡Listo! Te avisamos por aquí',
+  doneAvisosBody: 'Cuando tu pedido avance te llega un aviso en este celular.',
+  doneInstallAlso: 'También puedes descargar la app',
+  doneAvisosDenied: 'Tu navegador tiene los avisos bloqueados para esta página. Puedes descargar la app:',
   // Ya instalada. NO se ofrece abrir nada: el comprador está en su pedido y lo
   // único que le falta saber es con qué ícono encontrar la app en su celular.
   doneInstallReady: '¡Listo! Ya tienes la app',

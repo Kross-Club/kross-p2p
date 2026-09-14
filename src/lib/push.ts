@@ -19,6 +19,17 @@ export const pushSupported = () =>
   typeof navigator !== 'undefined' && 'serviceWorker' in navigator &&
   typeof window !== 'undefined' && 'PushManager' in window && notifSupported()
 
+/** ¿Corre como app instalada? Se manda con la suscripción (§57) para saber si
+ *  el aviso llegó desde la app o desde el navegador suelto. */
+export const corriendoInstalada = (): boolean => {
+  try {
+    return (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches)
+      || (typeof navigator !== 'undefined' && (navigator as { standalone?: boolean }).standalone === true)
+  } catch {
+    return false
+  }
+}
+
 // ─── Preferencias por dispositivo (equipo) ────────────────────────────────────
 // Qué avisos quiere ESTE navegador. Viven en localStorage para pintar la UI y
 // decidir el sonido en primer plano; el servidor guarda una copia en la fila de
@@ -89,6 +100,7 @@ export async function subscribePush(opts: {
         // Solo aplican al equipo; para el comprador van en true y no filtran nada.
         notify_new_client: prefs.new_client,
         notify_new_message: prefs.new_message,
+        standalone: corriendoInstalada(),
       }),
     })
 

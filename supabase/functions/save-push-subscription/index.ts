@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { plataformaDePush, standaloneDelBody } from '../_shared/push-plataforma.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -24,6 +25,9 @@ Deno.serve(async (req) => {
     endpoint?: string
     notify_new_client?: boolean
     notify_new_message?: boolean
+    // ¿Corre como app instalada? Lo dice el navegador (`display-mode:
+    // standalone`). Un cliente viejo no lo manda y queda NULL: no se inventa.
+    standalone?: boolean
   }
   const action = body.action ?? 'subscribe'
 
@@ -60,7 +64,7 @@ Deno.serve(async (req) => {
     await supabase.from('push_subscriptions').delete().eq('subscription->>endpoint', endpoint)
   }
 
-  const { error } = await supabase.from('push_subscriptions').insert({
+  const fila = {
     session_id: session_id ?? null,
     seller_id: seller_id ?? null,
     buyer_id: buyer_id ?? null,
@@ -68,7 +72,16 @@ Deno.serve(async (req) => {
     subscription,
     notify_new_client: body.notify_new_client !== false,
     notify_new_message: body.notify_new_message !== false,
-  })
+  }
+  // De qué plataforma es (§57): por el user-agent de ESTA petición y el host
+  // del endpoint. Si el SQL del §57 no corrió todavía, la fila entra igual sin
+  // esas columnas — una suscripción sin etiqueta vale más que ninguna.
+  const etiqueta = {
+    ...plataformaDePush(req.headers.get('user-agent'), endpoint ?? null),
+    standalone: standaloneDelBody(body.standalone),
+  }
+  let { error } = await supabase.from('push_subscriptions').insert({ ...fila, ...etiqueta })
+  if (error) ({ error } = await supabase.from('push_subscriptions').insert(fila))
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), {

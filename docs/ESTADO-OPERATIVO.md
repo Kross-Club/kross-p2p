@@ -34,6 +34,60 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Push en Android web sin instalar, WhatsApp por tienda, cobertura por plataforma y poda · **SQL §57** + 5 funciones + frontend (14-set-2026)
+
+**La decisión.** La PWA sigue, pero en iPhone instalarla cuesta y no hay web push fuera de
+la app instalada (Safari). Así que: en **Android web** la confirmación del pedido ofrece los
+avisos **sin instalar** («Avisarme por aquí» abre el prompt nativo desde el toque; instalar
+queda como segunda opción); en **iPhone** sigue el video de instalar y el respaldo es
+**WhatsApp**, que ahora **enciende cada tienda** en *Marca* («Avisar por WhatsApp cuando el
+push no llega», `stores.wa_fallback_enabled`, solo con Cloud API configurado) en vez del env
+global `WA_AUTO_FALLBACK`, que nadie tenía en `on` y deja de existir. Y para saber si
+funciona: cada suscripción queda etiquetada con **plataforma** (por el user-agent), **servicio
+de push** (por el endpoint) y si vino de la **app instalada**; la bitácora dice a cuántas se
+intentó y cómo fue por plataforma; y las suscripciones que el servicio da por muertas
+(404/410) **se borran al vuelo** en vez de reintentarse para siempre. Diseño en
+`01-SALES-ENGINE.md` (§ *La pantalla de gracias*, Android web) y `08-RECORDATORIOS-RECOJO.md`.
+
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql (idempotente)
+--   §57 · push_subscriptions.platform/push_service/standalone (rellena el servicio
+--        de las viejas), notifications_log.push_subs/push_por_plataforma,
+--        stores.wa_fallback_enabled, VIEW push_cobertura
+```
+```
+supabase functions deploy save-push-subscription --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store           --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy seller-send-message    --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pickup-reminders       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy pay360-webhook         --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+(Las tres últimas son las que importan `_shared/notificar.ts`.)
+
+**Qué se ve si no entra:** todo degrada a lo de antes. Sin el SQL, `save-push-subscription`
+guarda la fila sin etiqueta (reintenta con la fila legada), `notificar` lee las suscripciones
+sin `platform` y anota la bitácora sin las columnas nuevas, y el respaldo por WhatsApp queda
+apagado (la tienda no tiene la columna → no cae). Sin las funciones, el botón nuevo suscribe
+igual: es el mismo `subscribePush` de siempre con un campo más que el servidor viejo ignora.
+
+**Cómo leer la cobertura.** `select * from push_cobertura where store_id = '<id>'`: de los
+pedidos de cada plataforma en 90 días, cuántos tienen al menos una suscripción. Y en
+`notifications_log`, `push_subs` vs `push_count` y `push_por_plataforma` por aviso: un
+`push_count = 0` con `push_subs = 0` es «no tiene push»; con `push_subs > 0` es «tiene y falló».
+
+**Verificación manual (Android Chrome, en la web, sin instalar).** Confirmación del pedido →
+«Avisarme por aquí» → prompt del navegador → aceptar → la tarjeta dice «¡Listo! Te avisamos
+por aquí» y en `push_subscriptions` aparece la fila con `platform='android'`,
+`push_service='fcm'`, `standalone=false`. Un mensaje del equipo → `notifications_log` con
+`push_subs=1, push_count=1, push_por_plataforma={"android":{"ok":1,"total":1}}`. Revocar el
+permiso en el navegador → el siguiente aviso borra la fila (FCM contesta 410). En *Marca*, el
+interruptor de WhatsApp aparece bloqueado si la marca no tiene Cloud API, y encendido solo
+cae a WhatsApp cuando ningún push llegó.
+
+**Deuda anotada.** `seller-call-token` conserva su copia vieja de `notifyBuyer` leyendo
+`WA_AUTO_FALLBACK` (que ya no existe → apagado). Migrarlo a `_shared/notificar.ts` es la
+misma deuda de siempre, no parte de este cambio.
+
 ### Pago total por defecto, la mitad por producto, oferta por producto · **SQL §56** + 2 funciones + frontend (14-set-2026)
 
 **La decisión.** El comprador paga el pedido **completo** antes de que se despache.
@@ -1852,7 +1906,8 @@ comprador con la app cerrada no se entera hasta abrir.
 `pay360-webhook` ahora manda el **push** con el acuse ("✅ <marca> · Pago recibido") apenas cruza
 un cobro — adelanto, saldo o extra. Abre directo el chat del pedido, donde está el botón del
 comprobante. El aviso vive en **`_shared/notificar.ts`** (se mudó desde `seller-send-message`,
-que ahora lo importa): push primero, WhatsApp de respaldo si `WA_AUTO_FALLBACK=on`, todo en
+que ahora lo importa): push primero, WhatsApp de respaldo si la tienda lo encendió (desde el
+14-set-2026 es `stores.wa_fallback_enabled`, no el env `WA_AUTO_FALLBACK`), todo en
 `notifications_log`. Best-effort siempre — el 2xx del webhook jamás depende de un aviso.
 
 ```
