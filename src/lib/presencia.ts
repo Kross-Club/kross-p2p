@@ -19,7 +19,7 @@ const VACIO: ReadonlySet<string> = new Set()
  * Los `buyer_id` conectados en este momento.
  *
  * En demo sale del generador: la presencia real es de Supabase y en una tienda
- * de ejemplo nunca hay nadie: un tablero de mil pedidos al día donde ningún
+ * de ejemplo nunca hay nadie: un tablero de cien pedidos al día donde ningún
  * cliente está conectado no enseña la herramienta, enseña un dato apagado.
  */
 export function useCompradoresEnLinea(storeId: string | null | undefined): ReadonlySet<string> {

@@ -8,6 +8,14 @@
 
 ---
 
+> **Cómo leer este doc (14-set-2026).** Tiene dos capas mezcladas por historia. **Lo vigente:**
+> qué dice la web y con qué tono (§ *Qué dice la web*), lo que exige la ley peruana —INDECOPI,
+> Libro de Reclamaciones, términos, privacidad— y cómo está hecho el Libro. **La herencia de
+> Culqi** (ago-2026): el checklist de 5 ítems, «cuando lleguen las llaves de la pasarela» y el
+> carrito con RUC y comprobante. Culqi se descartó; el plan se cobra por **Stripe** con alta
+> automática (`15-AFILIADOS.md` §54) y el pedido del comprador por **Flow** (`12-FLOW.md`).
+> Lo heredado queda marcado como tal, no borrado: explica por qué la web tiene lo que tiene.
+
 ## Por qué existe esta web
 
 `krossclub.app` era, para cualquiera de fuera, una pantalla de login. Sin sesión
@@ -231,10 +239,13 @@ No confundirlos, porque viven en sitios distintos:
 
 | | Qué cobra | Dónde |
 |---|---|---|
-| **Adelanto COD** | El adelanto del pedido de un comprador, con Yape | `pay360-coupon` / `pay360-webhook`, en el checkout de las marcas. En producción y **con pago real cobrado**: se emite un cupón por el adelanto y el comprador lo paga con un botón que abre Yape. No hace falta acreditación PCI — nunca tocamos credenciales de pago. Ver [`06-360PAY.md`](./06-360PAY.md) |
-| **Suscripción de la plataforma** | El plan que una marca le compra a Kross en `krossclub.app` | `/pago` → `web-order`. **Todavía no cobra** |
+| **El pago del pedido** | El pedido de un comprador (completo, o la mitad si el producto lo permite), con Yape | **Flow** (`flow-order` / `flow-confirm`), en el checkout de las marcas. En producción y **con pago real cobrado**. No hace falta acreditación PCI — nunca tocamos credenciales de pago. Ver [`12-FLOW.md`](./12-FLOW.md). 360pay (`pay360-*`) está dormido desde set-2026 |
+| **Suscripción de la plataforma** | El plan que una marca le compra a Kross en `krossclub.app` | **Stripe**, con alta automática: `/empezar` → Payment Link → `stripe-webhook` crea la tienda → `/bienvenido`. Ver [`15-AFILIADOS.md`](./15-AFILIADOS.md) §54. El carrito `/pago` → `web-order` queda para los módulos, y **no cobra**: es herencia de Culqi |
 
-## Cuando lleguen las llaves de la pasarela
+## Cuando lleguen las llaves de la pasarela (herencia de Culqi)
+
+> Escrito para Culqi en ago-2026. El plan ya se cobra por Stripe (§54); esto aplicaría solo si
+> algún día el carrito de módulos cobrara en línea.
 
 `/pago` hoy **registra** el pedido; no cobra. Al conectar la pasarela:
 

@@ -711,7 +711,7 @@ pide, vuelve a `system` solo — así no hace falta un tercer botón "automátic
 
 **Modo demo** (`src/lib/demo/`, interruptor en *Marca*): llena **todo** el panel —Pedidos en
 sus cuatro modos, Clientes en los tres, Productos y Equipo— con una tienda de ejemplo que
-despacha ~1.000 pedidos al día entre tres productos (S/150, S/120, S/180) y arrastra seis meses
+despacha ~100 pedidos al día (3.000 al mes, desde el 14-set-2026; antes 1.000/día) entre tres productos de marca (S/150, S/120, S/180) y arrastra seis meses
 de recompras. Sirve para enseñar cómo se ve la herramienta funcionando sin esperar a que la
 marca venda.
 

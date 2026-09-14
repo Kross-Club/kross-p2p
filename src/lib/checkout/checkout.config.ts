@@ -145,10 +145,13 @@ export const SHOW_PACK_SAVINGS = true
  * frase tiene que ser verdad en TODOS los caminos —todavía no eligió domicilio
  * ni agencia—, porque una que el paso 3 desmienta hace más daño que su ausencia:
  *
- *  · **"Pagas un adelanto"** reemplaza a *"Pagas el resto al recibir"*, que era
- *    falso en agencia: ahí el saldo se paga por la app y es lo que suelta la
- *    clave de recojo, no se paga en el mostrador
- *    (`advanceHeadsUpShortPickup`).
+ *  · **"Pagas y listo"** (14-set-2026) reemplaza a *"Pagas un adelanto"*, que
+ *    quedó viejo con el pago completo por defecto (§56), y antes a *"Pagas el
+ *    resto al recibir"*, que era falso en agencia: ahí el saldo se paga por la
+ *    app y es lo que suelta la clave de recojo, no se paga en el mostrador
+ *    (`advanceHeadsUpShortPickup`). «Y listo» es verdad en los dos caminos:
+ *    quien paga todo no debe nada, y quien paga la mitad —solo donde el
+ *    producto lo permite— lo lee en el paso 3 antes de pagar.
  *  · **"Entrega rápida" va SIN plazo a propósito.** El plazo lo pone el courier
  *    y cambia con el destino, que en este paso todavía no existe. Una cifra acá
  *    —"24 h", "48 h"— sería una promesa nuestra sobre un camión ajeno, y el
@@ -163,7 +166,7 @@ export const SHOW_PACK_SAVINGS = true
  *    esta línea se cae de la lista.
  */
 export const TRUST_BADGES: readonly string[] = [
-  '💵 Pagas un adelanto',
+  '💵 Pagas y listo',
   '⚡ Entrega rápida',
   '🚚 Envío todo el Perú',
   '📲 Pagas con Yape',
@@ -286,7 +289,7 @@ export const COPY = {
   // que el comprador puede verificar convierte mejor que "para crear tu cuenta".
   // Se muestra también en Lima, donde no hay agencia. La razón honesta y común
   // a los dos casos es que el adelanto tiene que quedar a nombre de alguien.
-  dniWhy: 'Con esto confirmamos tu pedido y tu adelanto a tu nombre.',
+  dniWhy: 'Con esto confirmamos tu pedido y tu pago a tu nombre.',
   dniOtherReceiver: '¿Lo recibe otra persona?',
   referencePlaceholder: 'Portón negro, frente a la bodega',
 
@@ -340,10 +343,10 @@ export const COPY = {
   yapeCopied: '¡Copiado!',
   // Sin cobro en línea conectado el paso 3 no pide nada, pero tampoco se queda
   // mudo: quien esperaba pagar ahora tiene que saber qué sigue.
-  advanceByChatTitle: 'Tu adelanto lo coordinamos por el chat',
-  advanceByChatHint: 'Termina tu pedido y un asesor te escribe para acordar el adelanto. No tienes que pagar nada en esta pantalla.',
+  advanceByChatTitle: 'Tu pago lo coordinamos por el chat',
+  advanceByChatHint: 'Termina tu pedido y un asesor te escribe para acordar el pago. No tienes que pagar nada en esta pantalla.',
 
-  doneUnpaid: 'Registramos tu pedido. Un asesor te escribirá por el chat para coordinar el adelanto.',
+  doneUnpaid: 'Registramos tu pedido. Un asesor te escribirá por el chat para coordinar tu pago.',
   /** La landing, cuando quedó un pedido con el pago pendiente. Nombra lo que el
    *  botón HACE —abrir el chat, donde un asesor cobra— y no lo que uno querría
    *  que hiciera: decía "Termina el pago" y llevaba al chat, prometiendo un
@@ -358,11 +361,11 @@ export const COPY = {
   // Pedido creado + pago no resuelto: la pantalla que no puede decir "error" a
   // secas. Primero lo que SÍ pasó (tu pedido existe), después lo que falta.
   paymentPendingTitle: 'Tu pedido está guardado — falta el pago',
-  paymentPendingBody: 'No perdiste nada de lo que llenaste. Solo falta cobrar tu adelanto.',
+  paymentPendingBody: 'No perdiste nada de lo que llenaste. Solo falta tu pago.',
   retryPaymentCta: 'Reintentar el pago',
   contactMeInstead: 'Prefiero que me escriban para pagar',
 
-  pay360Title: 'Paga tu adelanto con Yape',
+  pay360Title: 'Paga tu pedido con Yape',
   pay360Intro: 'Toca el botón y Yape se abre con todo listo. No tienes que escribir el monto ni buscar ningún número.',
   pay360AmountLabel: 'Monto a pagar',
   pay360Cta: 'Pagar con Yape',
@@ -402,7 +405,7 @@ export const COPY = {
   // esta pantalla se queda esperando — el mismo recorrido que 360pay. La única
   // diferencia que se le cuenta es que en Yape lo que hace es APROBAR una
   // compra que ya está armada, no pagar un servicio con un código.
-  flowYapeTitle: 'Paga tu adelanto con Yape',
+  flowYapeTitle: 'Paga tu pedido con Yape',
   flowYapeIntro: 'Toca el botón y se abre tu Yape con la compra lista para aprobar. No tienes que escribir el monto ni ningún número.',
   flowYapeCta: 'Pagar con Yape',
   flowYapeFallback: '¿No se abrió Yape? Paga desde la página de pago',
@@ -485,7 +488,7 @@ export const COPY = {
   // escribirla acá a mano ya nos hizo enseñar una opción que no existe.
   doneInstallHelp: 'En tu navegador:',
 
-  advancePendingByChat: 'Un asesor te escribe por el chat para coordinar tu adelanto.',
+  advancePendingByChat: 'Un asesor te escribe por el chat para coordinar tu pago.',
   verifyingCanClose: 'Puedes cerrar esta ventana: tu pedido ya está registrado.',
   verifyMatched: '¡Pago confirmado! Tu pedido está en camino.',
   verifyUnmatched: 'Recibimos tu comprobante, un asesor lo está validando.',

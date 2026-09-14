@@ -52,8 +52,8 @@ export default function TerminosPage() {
 
       <Seccion titulo="3. Precios, pagos y comprobantes">
         <ul>
-          <li>Los precios se muestran en soles (S/) e incluyen IGV.</li>
-          <li>Las suscripciones se facturan por adelantado y se renuevan cada 30 días hasta que las canceles.</li>
+          <li>El plan se muestra y se cobra en dólares (USD) con tarjeta, a través de Stripe. Los servicios adicionales se muestran en soles (S/) e incluyen IGV.</li>
+          <li>Las suscripciones se facturan por adelantado y se renuevan cada mes hasta que las canceles.</li>
           <li>Los servicios marcados como pago único se facturan una sola vez, al contratarlos.</li>
           <li>Emitimos boleta o factura electrónica con los datos que registras en el checkout. Es tu responsabilidad que sean correctos.</li>
           <li>Podemos actualizar los precios avisando con 30 días calendario de anticipación; el cambio nunca aplica a un periodo ya pagado.</li>
