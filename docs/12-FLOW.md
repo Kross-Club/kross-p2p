@@ -1,5 +1,10 @@
-# 12 · FLOW PAGOS, EL SEGUNDO RIEL
+# 12 · FLOW PAGOS, EL RIEL DE COBRO
 
+> **Desde el 14-set-2026 Flow es el ÚNICO riel activo.** 360pay quedó dormido —apagado en todas
+> las tiendas, invisible en el panel y fuera del ruteo (`RIELES_ACTIVOS = ['FLOW']` en
+> `_shared/comision.ts`)—; el corte de S/90 que describe §1 sigue escrito y probado, pero
+> **no rutea nada** mientras 360pay no vuelva. Ver `ESTADO-OPERATIVO.md` (14-set) para revivirlo.
+>
 > Estado: **✅ cobra de punta a punta** (08-set-2026). `ORD-1788900938194`: adelanto de S/6 con
 > Yape One Shot, cruzado a MATCHED por `flow-confirm`, comprobante y guía de Shalom sola. Con esa
 > compra quedaron resueltas las incógnitas del riel —`amount` en soles, el `paymentMethod` del
@@ -21,6 +26,11 @@ margen negativo.
 
 Así que el ruteo es **`< S/90 → Flow · ≥ S/90 → 360pay`**, y vive en un solo sitio:
 `_shared/comision.ts` (`CRUCE_DE_RIELES`, `proveedorPara`, `rielPara`).
+
+**⚠️ Dormido desde el 14-set-2026.** `rielPara()` filtra primero contra `RIELES_ACTIVOS`, que
+hoy es solo `['FLOW']`: un adelanto de S/300 va por Flow igual, y una tienda que solo tuviera
+360pay se queda sin riel (`null`, coordinado por chat). La economía de arriba se conserva como
+documentación del cruce y para el día que 360pay vuelva.
 
 ### ⚠️ El S/0.80, y por qué el código NO lo cuenta (02-sep-2026)
 

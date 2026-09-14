@@ -604,7 +604,7 @@ async function construir(): Promise<TiendaDemo> {
       // daba false en todo el demo, así que ni el comprador veía su botón de
       // pagar el saldo ni el vendedor el de mandarle la tarjeta: dos funciones
       // enteras invisibles justo donde se enseñan.
-      payment_provider: '360PAY',
+      payment_provider: 'FLOW',
       // Los cobros como LISTA (bloque §36), que es lo que lee el panel desde la
       // mudanza. Se generan a partir de los mismos datos que las columnas de
       // arriba: si el demo armara una lista distinta de sus propias columnas,

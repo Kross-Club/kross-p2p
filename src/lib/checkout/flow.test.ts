@@ -11,7 +11,7 @@ import {
   EMAIL_DEL_PAGADOR, esFinalSinPago, esPagada, firmar, flowBaseUrl, hmacHex,
   llavesDeTienda, montoParaFlow, normalizar, orderExpiryFrom, tokenDelWebhook, unwrap,
 } from '../../../supabase/functions/_shared/flow.ts'
-import { esRielEnLinea, rielPara, RIELES } from '../../../supabase/functions/_shared/comision.ts'
+import { esRielEnLinea, rielPara, RIELES, RIELES_ACTIVOS } from '../../../supabase/functions/_shared/comision.ts'
 
 describe('bases por ambiente', () => {
   it('separa sandbox por HOST, no por prefijo de ruta', () => {
@@ -171,11 +171,20 @@ describe('el seam de proveedor', () => {
     expect(esRielEnLinea('CULQI')).toBe(false)
   })
 
-  it('con los dos encendidos manda el corte; con uno, ese; sin ninguno, null', () => {
+  it('hoy solo Flow está vivo: 360pay existe, pero no se elige (14-set-2026)', () => {
+    expect(RIELES_ACTIVOS).toEqual(['FLOW'])
+    // El literal sigue siendo un riel en línea: hay cobros históricos por ahí.
+    expect(esRielEnLinea('360PAY')).toBe(true)
+  })
+
+  it('un riel dormido no cobra aunque la tienda lo tenga encendido', () => {
+    // Con los dos encendidos, antes mandaba el corte de S/90 y un cobro de
+    // S/100 iba por 360pay. Ahora va por Flow: el corte quedó documentado, no
+    // vigente.
     expect(rielPara(10, ['360PAY', 'FLOW'])).toBe('FLOW')
-    expect(rielPara(100, ['360PAY', 'FLOW'])).toBe('360PAY')
-    // Solo 360pay: un cobro chico va igual por 360pay — nunca por un riel apagado.
-    expect(rielPara(10, ['360PAY'])).toBe('360PAY')
+    expect(rielPara(100, ['360PAY', 'FLOW'])).toBe('FLOW')
+    // Solo 360pay encendido: NO se cobra por ahí. `null` = lo coordina un asesor.
+    expect(rielPara(10, ['360PAY'])).toBeNull()
     expect(rielPara(300, ['FLOW'])).toBe('FLOW')
     expect(rielPara(10, [])).toBeNull()
   })

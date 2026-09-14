@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { comisionDeKross, costoDePasarela, proveedorPara } from '../../../supabase/functions/_shared/comision.ts'
+import { comisionDeKross, costoDePasarela, esRielEnLinea, RIELES_ACTIVOS, rielPara } from '../../../supabase/functions/_shared/comision.ts'
 import { siguientePaso } from '../order-tracking'
 import { resumenDelPedido } from '../../../supabase/functions/_shared/resumen-pedido.ts'
 import { cobradoDelPedido, saldoDelPedido } from '../order-money'
@@ -292,7 +292,7 @@ export function comisionDemo(monto: number | string, entro: boolean) {
   const m = Math.max(0, Number(monto) || 0)
   return {
     comision_pen: comisionDeKross(m),
-    costo_pasarela_pen: costoDePasarela(m, proveedorPara(m)),
+    costo_pasarela_pen: costoDePasarela(m, rielPara(m, RIELES_ACTIVOS) ?? 'FLOW'),
   }
 }
 
@@ -563,7 +563,7 @@ export function avanzarEnDemo(p: PedidoDemo): RespuestaDemo {
     // y nadie la mandó ya. El que la acepta a los diez segundos es quien llamó
     // (`VendedorPedidoPage`), como todas las tarjetas del demo.
     const debe = saldoDelPedido(p)
-    if (debe > 0 && p.payment_provider === '360PAY'
+    if (debe > 0 && esRielEnLinea(p.payment_provider)
       && !(p.chat_messages ?? []).some(m => m.type === 'cobro' && !m.cobro_id)) {
       aviso('cobro', textoDeCobro(soles(debe)))
     }
@@ -956,10 +956,10 @@ export function cobroExtraPagadoEnDemo(p: PedidoDemo, cobroId: string): CambioDe
     c.id === cobroId
       ? { ...c, estado: 'MATCHED', matched_at: new Date().toISOString(),
           ...comisionDemo(c.monto, true),
-          // El código de pago del COMPRADOR, que es el que usa un extra en la
-          // tienda real (`pay360-coupon` emite con `session.pay360_consumer_code`,
-          // estable por comprador). Sin él la tarjeta verde salía sin código.
-          pay360_consumer_code: p.payment_trace?.payment_code ?? null }
+          // La marca del riel, para que `rielDelCobro` diga por dónde entró:
+          // hoy es Flow, y Flow deja su token en el cobro. Reusa el código de
+          // pago del demo como token (sin tirada de azar nueva).
+          flow_token: p.payment_trace?.payment_code ?? null }
       : c)
   const patch = { cobros }
   guardarCambio(p.id, patch)

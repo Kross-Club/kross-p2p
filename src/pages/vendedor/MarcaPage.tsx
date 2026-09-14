@@ -12,6 +12,13 @@ import { ESTILOS_DE_DEGRADADO, estiloValido, fondoDeMarca, imagenesPorSitio } fr
 import { normalizarDominio } from '../../lib/dominio'
 import type { EstiloDeDegradado } from '../../lib/degradado'
 
+// 360pay está DORMIDO desde el 14-set-2026: el producto cobra solo por Flow.
+// El bloque de alta y el toggle se quedan escritos —volver a 360pay es poner
+// esto en `true` y agregarlo a `RIELES_ACTIVOS`—, pero no se pintan: un
+// interruptor que no enciende nada es peor que ninguno. Misma forma que
+// `MOSTRAR_FIDELIZACION` en `MisPedidosPage`.
+const MOSTRAR_360PAY: boolean = false
+
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
@@ -616,7 +623,8 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
       login_images: loginImgs.map(u => u ?? null),
       // Cobros: los gestiona el admin de la tienda (manage-store exige el JWT
       // verificado para estos campos — redirigen dinero, no un logo).
-      pay360_enabled: pay360On, pay360_env: pay360Env,
+      // `pay360_enabled` ya no viaja: 360pay está dormido y `manage-store` lo
+      // rechaza de todas formas (ver MOSTRAR_360PAY).
       flow_enabled: flowOn, flow_env: flowEnv,
       flow_payment_method: flowMethod.trim() ? Number(flowMethod.trim()) : null,
       // Pixel IDs (públicos): son la cuenta publicitaria de la marca. Vacío
@@ -1050,14 +1058,13 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
           </div>
         )}
         {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU cuenta
-              de 360pay. El backend exige el JWT verificado para todo esto: son
+              de Flow. El backend exige el JWT verificado para todo esto: son
               campos que redirigen dinero. ── */}
         <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--violet-bg)', border: '0.5px solid var(--border)' }}>
           <p className="text-xs font-black mb-2" style={{ color: 'var(--violet-fg)' }}>💜 Cobros de la marca</p>
 
-          {/* 360pay: cobro EN el checkout con el botón de Yape. Sin esto, la
-              marca no cobra adelantos en línea — el pedido se cierra igual y lo
-              coordina un asesor por el chat. */}
+          {/* 360pay: DORMIDO. Ver MOSTRAR_360PAY arriba. */}
+          {MOSTRAR_360PAY && (
           <div>
             <button onClick={() => pay360Connected && setPay360On(v => !v)}
               className="w-full flex items-center justify-between mb-1"
@@ -1126,11 +1133,11 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               <option value="live">Producción</option>
             </select>
           </div>
+          )}
 
-          {/* Flow: el segundo riel. Con los dos encendidos, el servidor manda
-              cada cobro por el que conviene (bajo S/90 Flow, desde S/90 360pay).
-              El comprador SALE a la página de Flow a pagar y vuelve solo. */}
-          <div className="mt-3 pt-3" style={{ borderTop: '0.5px solid var(--border)' }}>
+          {/* Flow: EL riel de cobro de la marca (14-set-2026). El comprador
+              SALE a la página de Flow a pagar con Yape y vuelve solo. */}
+          <div className={MOSTRAR_360PAY ? 'mt-3 pt-3' : ''} style={MOSTRAR_360PAY ? { borderTop: '0.5px solid var(--border)' } : undefined}>
             <button onClick={() => flowConnected && setFlowOn(v => !v)}
               className="w-full flex items-center justify-between mb-1"
               style={{ opacity: flowConnected || flowOn ? 1 : 0.5 }}>
@@ -1143,9 +1150,8 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               </span>
             </button>
             <p className="text-[10px] text-gray-500 mb-2">
-              Conviene en cobros chicos (cobra un porcentaje, no un fijo). Con los dos encendidos,
-              cada cobro va por el riel que le sale más barato a la marca. El comprador paga en la
-              página de Flow con su código de aprobación de Yape y vuelve solo.
+              Es el riel de cobro de la marca. El comprador toca «pagar», sale a la página de Flow,
+              aprueba con Yape y vuelve solo: el pago se confirma sin capturas ni códigos.
             </p>
 
             {flowConnected && !flowKeysEditing ? (

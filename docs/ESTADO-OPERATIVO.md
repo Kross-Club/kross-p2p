@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 10-set-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 14-set-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -18,7 +18,7 @@ Para refrescar la tabla de abajo en cinco segundos, en el SQL Editor de
 
 ```sql
 select s.id, s.slug, s.nombre, s.active,
-       s.pay360_enabled, s.pay360_env, s.pay360_payment_prefix,
+       s.flow_enabled, s.pay360_enabled, -- pay360 dormido desde 14-set: debe salir false
        s.pay360_business_id is not null as conectado,
        s.home_delivery_enabled, s.checkout_ab_mode, s.wa_enabled,
        (select count(*) from products p where p.store_id = s.id) as productos,
@@ -33,6 +33,43 @@ fecha de arriba.
 
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
+
+### Solo Flow: 360pay se apaga para todas, no se borra · **SQL §55** + 3 funciones + frontend (14-set-2026)
+
+**La decisión.** Kross cobra **solo por Flow** desde hoy. 360pay queda **dormido**: apagado en
+todas las tiendas, invisible en el panel (*Marca* y *Conexiones*) y fuera del ruteo. El código,
+las columnas `pay360_*`, los secretos y las funciones `pay360-coupon`/`pay360-webhook` **se
+quedan** —los cobros históricos de ese riel se siguen leyendo, sus saldos se siguen cobrando por
+su cupón y el comprobante sigue diciendo «360pay»—, para que volver sea una línea y no un
+proyecto.
+
+**Dónde vive el interruptor.** `_shared/comision.ts` → `RIELES_ACTIVOS = ['FLOW']`.
+`rielPara()` filtra los rieles habilitados de la tienda contra esa lista antes de preferir, así
+que una tienda solo con 360pay registra pedidos con `payment_provider = null` (el adelanto lo
+coordina el asesor por el chat), nunca `'360PAY'`. `register-buyer` ya no hace passthrough del
+riel que manda el cliente sin pasar por ahí. Para revivir 360pay: agregarlo a `RIELES_ACTIVOS`,
+poner `MOSTRAR_360PAY = true` en `MarcaPage.tsx`, quitar `dormida` de su entrada en
+`_shared/integraciones.ts` y volver a leer `pay360_enabled` en `LandingProductoPage.tsx`.
+
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql (idempotente)
+--   §55 · 360pay se apaga (UPDATE stores SET pay360_enabled = false), nada se borra
+```
+```
+supabase functions deploy register-buyer --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy integraciones  --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**Qué se ve si no entra:** con el front desplegado y el SQL sin correr, nada se rompe: el
+checkout ya no lee `pay360_enabled`, así que una tienda con la bandera vieja en `true` cobra
+por Flow si lo tiene y, si no, coordina por chat. El SQL solo deja la base diciendo lo mismo
+que el código.
+
+**Verificación manual.** Una tienda con `flow_enabled = false` y el viejo `pay360_enabled = true`
+registra un pedido con `payment_provider` null (no `360PAY`). Un pedido viejo de 360pay sigue
+enseñando «(360pay)» en su tarjeta de cobro y conserva el botón *Reemitir cupón*; uno de Flow
+o coordinado no lo tiene. *Conexiones* ya no lista 360pay; *Marca* solo enseña Flow.
 
 ### El programa de afiliados y el alta automática · **SQL** + 3 funciones nuevas + 2 desplegadas + frontend (12-set-2026)
 

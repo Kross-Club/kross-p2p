@@ -8,7 +8,7 @@ import { seCobraPorChat } from '../lib/cobro-por-chat'
 import { sePuedeBorrar } from '../../supabase/functions/_shared/cobros.ts'
 import { vigenciaDeCupon, sePuedeEnviarCobro, avisoDeVigencia } from '../lib/vigencia-de-cupon'
 import type { OrderSession, PagoTrazado } from '../lib/order-api'
-import { NOMBRE_RIEL } from '../../supabase/functions/_shared/comision.ts'
+import { NOMBRE_RIEL, esRielEnLinea } from '../../supabase/functions/_shared/comision.ts'
 import type { Proveedor } from '../../supabase/functions/_shared/comision.ts'
 
 // ─── La plata que entró, operación por operación ─────────────────────────────
@@ -54,7 +54,8 @@ const TITULO_BASE: Record<TipoDeCobro, string> = {
 
 /** El título con el riel de ESTE cobro. Sale del cobro y no del pedido: con
  *  dos rieles, el pedido no dice por dónde fue cada uno. */
-const titulo = (tipo: TipoDeCobro, riel: Proveedor) => `${TITULO_BASE[tipo]} (${NOMBRE_RIEL[riel]})`
+const titulo = (tipo: TipoDeCobro, riel: Proveedor | null) =>
+  riel ? `${TITULO_BASE[tipo]} (${NOMBRE_RIEL[riel]})` : TITULO_BASE[tipo]
 
 /**
  * Lo que significa un cobro que no ha entrado. Son DOS estados y confundirlos
@@ -123,9 +124,10 @@ export default function PagoTrace({ session, onCobrar, onReemitir, onQuitar }: {
           // repetiría y React pintaría uno solo.
           key={cobro.id ?? cobro.tipo}
           cobro={cobro}
-          // El de la fila cuando lo hay; si no, el del pedido. Los cobros de las
-          // columnas viejas no lo traen y son todos de 360pay.
-          riel={cobro.riel ?? (session.payment_provider === 'FLOW' ? 'FLOW' : '360PAY')}
+          // El de la fila cuando lo hay; si no, el del pedido; si tampoco, ninguno.
+          // Antes cualquier cobro sin riel se rotulaba «360pay» —también los de
+          // pedidos coordinados por chat, que no pasaron por pasarela alguna—.
+          riel={cobro.riel ?? (esRielEnLinea(session.payment_provider) ? session.payment_provider : null)}
           orderId={session.order_id ?? null}
           trace={rastroDe(cobro, session)}
           cobradoEn={cobro.matchedAt
@@ -177,7 +179,8 @@ function rastroDe(cobro: Cobro, session: OrderSession): PagoTrazado | null {
  */
 function TarjetaDeCobro({ cobro, riel, orderId, trace, cobradoEn, falta, venceEl, ahora, onCobrar, onReemitir, onQuitar }: {
   cobro: Cobro
-  riel: Proveedor
+  /** Por dónde entró ESTE cobro. `null` = no pasó por pasarela (o no se sabe). */
+  riel: Proveedor | null
   orderId: string | null
   trace: PagoTrazado | null
   /** Cuándo entró la plata. Es lo que ubica la transacción en un listado de
@@ -306,7 +309,7 @@ function TarjetaDeCobro({ cobro, riel, orderId, trace, cobradoEn, falta, venceEl
             style={{ border: '0.5px solid var(--ok-border)', color: 'var(--ok-fg)' }}
           >
             {copiado ? <Check size={11} /> : <Copy size={11} />}
-            {copiado ? 'Copiado' : `Copiar para soporte ${NOMBRE_RIEL[riel]}`}
+            {copiado ? 'Copiado' : riel ? `Copiar para soporte ${NOMBRE_RIEL[riel]}` : 'Copiar para soporte'}
           </button>
         )}
 

@@ -67,17 +67,23 @@ export interface Integracion {
   critico: boolean
   /** Si tiene un suplente que la cubre, cuál. */
   suplente?: Proveedor
+  /**
+   * Dormida: existió, hay eventos suyos en `api_events`, pero hoy no se usa y
+   * el panel no la enseña. Se queda en el catálogo para que su historial siga
+   * teniendo nombre. 360pay desde el 14-set-2026.
+   */
+  dormida?: true
 }
 
 // Ordenado por lo que duele: primero cobrar, después despachar, después hablar.
 export const INTEGRACIONES: Integracion[] = [
   {
-    id: 'PAY360', nombre: '360pay', que: 'Cobra el adelanto y el saldo por Yape (riel por defecto)',
-    dueno: '360pay', host: 'api.360pay.pe', alcance: 'marca', secreto: null, critico: true,
+    id: 'FLOW', nombre: 'Flow Pagos', que: 'Cobra el adelanto y el saldo por Yape: el riel de cobro del producto',
+    dueno: 'Flow', host: 'flow.cl', alcance: 'marca', secreto: null, critico: true,
   },
   {
-    id: 'FLOW', nombre: 'Flow Pagos', que: 'Checkout alojado para los montos bajos (el segundo riel)',
-    dueno: 'Flow', host: 'flow.cl', alcance: 'marca', secreto: null, critico: true,
+    id: 'PAY360', nombre: '360pay', que: 'Cobraba por Yape hasta set-2026. Dormida: no se elige para ningún pedido nuevo',
+    dueno: '360pay', host: 'api.360pay.pe', alcance: 'marca', secreto: null, critico: false, dormida: true,
   },
   {
     id: 'STRIPE', nombre: 'Stripe', que: 'Cobra el plan mensual del comercio ($67/mes). Es la LLAVE de la comisión del afiliado: sin mes pagado, ese mes no comisiona',

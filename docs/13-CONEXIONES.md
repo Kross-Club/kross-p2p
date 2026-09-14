@@ -183,7 +183,7 @@ Todo el stack, en el punto donde se sabe **de qué marca** era la llamada:
 
 | Proveedor | Dónde se anota |
 |---|---|
-| **360pay** | `pay360-coupon` (cliente y cupón), `pay360-webhook` (firma rechazada, estado del cupón) |
+| **360pay** 💤 | `pay360-coupon` (cliente y cupón), `pay360-webhook` (firma rechazada, estado del cupón). **Dormida desde el 14-set-2026** (`dormida: true` en `_shared/integraciones.ts`): *Conexiones* no la pinta, pero el id se queda en la unión porque los `api_events` históricos lo referencian |
 | **Flow** | `flow-order` (crear la orden), `flow-confirm` (consultar su estado) |
 | **Shalom PE** | su helper `llamar()` en `shalom-order` cubre catálogo, persona, emisión, reconciliación y el PDF; más el barrido y la consulta puntual en `_shared/shalom-rastreo.ts` |
 | **Shalom LAT** | su propio `llamar()` en `shalom-lat-emisor` (instancia, sesión, pendientes, emisión) y el rastreo en el router |

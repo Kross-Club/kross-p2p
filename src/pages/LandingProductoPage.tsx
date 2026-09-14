@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import CheckoutModal from '../components/checkout/CheckoutModal'
 import { enlaceDelChat, enlaceDeMiPedido } from '../lib/enlaces'
 import { COPY } from '../lib/checkout/checkout.config'
-import type { StoreFlow, StorePay360 } from '../lib/checkout/types'
+import type { StoreFlow } from '../lib/checkout/types'
 import { abModeOf, type CheckoutAbMode } from '../lib/checkout/variant'
 import { buildPackSelection } from '../lib/checkout/product-packs'
 import { loadLastOrder, type LastOrder } from '../lib/checkout/persistence'
@@ -46,7 +46,6 @@ export default function LandingProductoPage() {
   // en el mismo fetch que el Yape y la opción desaparece antes del paso 2.
   const [homeDelivery, setHomeDelivery] = useState(true)
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
-  const [pay360, setPay360] = useState<StorePay360 | null>(null)
   const [flow, setFlow] = useState<StoreFlow | null>(null)
   // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
   const [abMode, setAbMode] = useState<CheckoutAbMode>('SPLIT')
@@ -86,17 +85,17 @@ export default function LandingProductoPage() {
     const storeId = product?.store_id
     if (!storeId) return
     // Flow va en su PROPIA consulta y no en la de abajo, a propósito: una
-    // columna que falta tumba el `select` entero, y con `pay360_enabled` adentro
-    // eso apagaría el cobro en línea de la única tienda que sí lo tiene — justo
+    // columna que falta tumba el `select` entero, y una columna nueva en el de
+    // abajo apagaría el cobro en línea de las tiendas que sí lo tienen — justo
     // al mergear, que es cuando Vercel despliega el front y el SQL puede no
     // haber corrido todavía. Best-effort: si falla, Flow queda apagado (el
-    // default seguro, igual que 360pay) y nada más cambia.
+    // default seguro) y nada más cambia.
     supabase.from('stores').select('flow_enabled').eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         setFlow((data as { flow_enabled?: boolean | null } | null)?.flow_enabled ? { enabled: true } : null)
       })
     supabase.from('stores')
-      .select('home_delivery_enabled, pay360_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
+      .select('home_delivery_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
       .eq('id', storeId).maybeSingle()
       .then(({ data }) => {
         // Degradación POR CAMPO: si el select entero falla (p. ej. una columna
@@ -106,11 +105,8 @@ export default function LandingProductoPage() {
         // `?? true` y no `!!`: una tienda de antes de la columna llega con el
         // campo ausente, y apagarle el domicilio por eso rompería su operación.
         setHomeDelivery(data.home_delivery_enabled ?? true)
-        // `!!` y no `?? true`: una tienda sin la columna migrada NO debe caer en
-        // el cobro con 360pay. Al revés que el domicilio, acá el default seguro
-        // es apagado — encenderlo sin negocio dado de alta deja al comprador
-        // con un pedido creado y sin forma de pagar.
-        setPay360(data.pay360_enabled ? { enabled: true } : null)
+        // 360pay está dormido (14-set-2026): ya no se lee `pay360_enabled`; el
+        // único riel en línea es Flow, resuelto arriba con `flow_enabled`.
         // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
         // reparto por defecto nunca puede depender de un dato mal escrito.
         setAbMode(abModeOf(data.checkout_ab_mode))
@@ -205,7 +201,6 @@ export default function LandingProductoPage() {
           onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
           onPartialLead={state => saveCheckoutDraft(state, product)}
           homeDeliveryEnabled={homeDelivery}
-          pay360={pay360}
           flow={flow}
           abMode={abMode}
           submitContext={{

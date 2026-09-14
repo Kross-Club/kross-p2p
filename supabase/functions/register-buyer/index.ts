@@ -385,8 +385,11 @@ Deno.serve(async (req) => {
     ]
     // Sin fila de tienda (una columna aún sin migrar) se respeta la preferencia
     // del front: es lo que hacía esta función antes del ruteo, y apagar el
-    // cobro por una columna nueva perdería ventas en silencio.
-    paymentProvider = rieles ? rielPara(advanceAmount, habilitados) : body.payment_provider
+    // cobro por una columna nueva perdería ventas en silencio. Pero pasa por
+    // `rielPara` igual: un riel dormido no se persiste ni por ese camino.
+    paymentProvider = rieles
+      ? rielPara(advanceAmount, habilitados)
+      : rielPara(advanceAmount, [body.payment_provider])
   }
   const paymentVerification = advanceAmount > 0 ? 'PENDING' : 'NOT_REQUIRED'
 

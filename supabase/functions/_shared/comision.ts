@@ -50,8 +50,26 @@ export const TARIFA_KROSS = { pct: 0.05, fijo: 1.20 }
 export type Proveedor = '360PAY' | 'FLOW'
 
 /** Los rieles que cobran en línea. `payment_provider` solo puede valer uno de
- *  estos o NULL (sin cobro en línea: el adelanto lo coordina un asesor). */
+ *  estos o NULL (sin cobro en línea: el adelanto lo coordina un asesor).
+ *
+ *  Es la lista de los que EXISTIERON: hay cobros históricos por 360pay y su
+ *  comprobante tiene que seguir diciendo por dónde entró la plata. Cuáles se
+ *  pueden ELEGIR hoy lo dice `RIELES_ACTIVOS`. */
 export const RIELES: readonly Proveedor[] = ['360PAY', 'FLOW'] as const
+
+/**
+ * Los rieles por los que se puede cobrar HOY.
+ *
+ * 360pay está dormido desde el 14-set-2026: el producto cobra solo por Flow. No
+ * se borra nada —ni columnas, ni funciones, ni el literal del tipo—, porque los
+ * pedidos que ya se cobraron por ahí son de verdad y hay que poder leerlos. Lo
+ * que cambia es que ningún pedido NUEVO puede salir por 360pay, aunque una
+ * tienda tenga `pay360_enabled` encendido por un dato viejo.
+ *
+ * Para volver a 360pay basta con agregarlo acá. Todo lo demás lo sigue
+ * entendiendo.
+ */
+export const RIELES_ACTIVOS: readonly Proveedor[] = ['FLOW'] as const
 
 /** Cómo se llama cada riel para el COMERCIO. Es con quién habla cuando un cobro
  *  se discute, así que sí se nombra — al comprador no, a Ventas sí. Vive acá y
@@ -99,10 +117,14 @@ export function esRielEnLinea(p: string | null | undefined): p is Proveedor {
 export function rielPara(
   monto: number | string, habilitados: readonly Proveedor[],
 ): Proveedor | null {
-  if (habilitados.length === 0) return null
+  // Primero lo que existe hoy: un riel dormido no cobra aunque la tienda lo
+  // tenga encendido. Es lo que hace que apagar 360pay sea UNA línea arriba y no
+  // una migración de todas las tiendas.
+  const vivos = habilitados.filter(r => RIELES_ACTIVOS.includes(r))
+  if (vivos.length === 0) return null
   const preferido = proveedorPara(monto)
-  if (habilitados.includes(preferido)) return preferido
-  return habilitados[0]
+  if (vivos.includes(preferido)) return preferido
+  return vivos[0]
 }
 
 /**
