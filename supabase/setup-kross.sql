@@ -2921,7 +2921,9 @@ SELECT
   count(*)                                   AS pedidos,
   count(*) FILTER (WHERE EXISTS (
     SELECT 1 FROM push_subscriptions ps
-    WHERE ps.sub_role = 'buyer' AND (ps.session_id = o.id::text OR ps.buyer_id = o.buyer_id)
+    -- `session_id` es uuid en `push_subscriptions` (el `::text` que había acá
+    -- rompía el bloque entero: «operator does not exist: uuid = text»).
+    WHERE ps.sub_role = 'buyer' AND (ps.session_id = o.id OR ps.buyer_id = o.buyer_id)
   ))                                          AS con_push
 FROM order_sessions o
 WHERE o.created_at > now() - interval '90 days'
