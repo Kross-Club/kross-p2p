@@ -796,7 +796,10 @@ Deno.serve(async (req) => {
     }
 
     let wroteSecretsPay360 = false
-    if (typeof body.pay360_enabled === 'boolean') patch.pay360_enabled = body.pay360_enabled
+    // `pay360_enabled` ya no se acepta (14-set-2026): 360pay está dormido y el
+    // ruteo lo ignora igual (`RIELES_ACTIVOS`), pero un toggle que se deja
+    // encender pinta un estado que no es verdad. El resto del alta de 360pay
+    // queda dormido detrás de `pay360_connect`, por si vuelve.
     if (body.pay360_env === 'sandbox' || body.pay360_env === 'live') patch.pay360_env = body.pay360_env
 
     // ─── Alta en 360pay ───────────────────────────────────────────────────────

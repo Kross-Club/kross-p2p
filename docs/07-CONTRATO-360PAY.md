@@ -5,6 +5,9 @@
 > que una decisión de producto o de código depende de una cláusula.
 > El PDF firmado es el documento que vale; esto es el mapa.
 >
+> **14-set-2026: el riel está dormido.** Kross cobra solo por Flow; el contrato sigue firmado y
+> lo que obliga en el código (comprobantes, retención de cobros históricos) sigue vigente.
+>
 > **Datos omitidos a propósito:** número de cuenta bancaria, domicilios y
 > teléfonos personales. No hacen falta para construir y no deben vivir en un
 > repositorio. Están en el PDF.

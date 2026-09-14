@@ -25,6 +25,15 @@ describe('la tarifa cabe en el margen', () => {
     expect(margenDeKross(300, '360PAY')).toBeGreaterThan(TARIFA_AFILIADO)
   })
 
+  it('y con solo Flow —que es lo que cobra hoy— tampoco, en ningún monto', () => {
+    // Desde el 14-set-2026 todo va por Flow: el 4.13 % crece con el monto, pero
+    // la tarifa de Kross (5 % + S/1.20) crece más, así que el margen nunca
+    // baja de la comisión del afiliado.
+    for (const m of [5, 10, 90, 300, 1000]) {
+      expect(margenDeKross(m, 'FLOW')).toBeGreaterThan(TARIFA_AFILIADO)
+    }
+  })
+
   it('es un fijo, no un porcentaje: diez céntimos por venta', () => {
     expect(TARIFA_AFILIADO).toBe(0.10)
   })

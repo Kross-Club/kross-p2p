@@ -143,6 +143,9 @@ queda con `margenDeKross()` —S/1.98 por transacción en el corte de riel, S/1.
 en el peor caso del ruteo por monto—, así que S/0.10 es como mucho el 8 % de ese
 margen. El único caso donde el margen sería negativo es un monto bajo cobrado por
 360pay, y eso lo previene el ruteo por monto (`proveedorPara`), no este programa.
+Desde el 14-set-2026 **todo va por Flow** (360pay dormido): `afiliados.test.ts` comprueba que
+`margenDeKross(monto, 'FLOW')` supera los S/0.10 en todo el rango, S/5 a S/1.000 —con un solo
+riel ya no hay corte que salve un monto mal ruteado, así que se prueba el riel entero.
 
 **Las transacciones que NO cuentan se enseñan, no se esconden.** Un afiliado que
 ve *"300 ventas, S/0.00"* sin explicación asume que el sistema le robó; con el

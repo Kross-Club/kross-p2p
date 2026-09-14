@@ -3,7 +3,7 @@ import { Plug, RefreshCw, Search, ChevronDown, ChevronRight } from 'lucide-react
 import { supabase } from '../../lib/supabase'
 import { useSeller } from '../../lib/seller-session'
 import {
-  INTEGRACIONES, ROTULO_RESULTADO, ROTULO_SALUD, suplenteDe,
+  INTEGRACIONES, ROTULO_RESULTADO, ROTULO_SALUD, integracionDe, suplenteDe,
   type EventoApi, type Integracion, type Salud,
 } from '../../../supabase/functions/_shared/integraciones.ts'
 
@@ -89,7 +89,11 @@ function porQueNoSePudo(status: number): string {
 }
 
 /** El catálogo sin estado en vivo: los nombres siempre se pueden mostrar. */
-const SIN_ESTADO: EstadoIntegracion[] = INTEGRACIONES.map(i => ({
+// Las DORMIDAS no se pintan (360pay desde el 14-set-2026): siguen en el
+// catálogo para que su historial en `api_events` tenga nombre, pero enseñar en
+// el tablero una integración que ningún pedido usa es un semáforo que nadie
+// puede accionar.
+const SIN_ESTADO: EstadoIntegracion[] = INTEGRACIONES.filter(i => !i.dormida).map(i => ({
   ...i,
   configurado: false,
   ping: null,
@@ -178,7 +182,7 @@ export default function ConexionesPage() {
     return <div className="p-6 text-sm text-gray-500">Esta pantalla es de los administradores.</div>
   }
 
-  const ordenada = [...(lista ?? [])].sort((a, b) =>
+  const ordenada = [...(lista ?? [])].filter(i => !integracionDe(i.id)?.dormida).sort((a, b) =>
     (URGENCIA[a.salud] - URGENCIA[b.salud]) || Number(b.critico) - Number(a.critico) || a.nombre.localeCompare(b.nombre))
   const enProblemas = ordenada.filter(i => i.salud === 'CAIDA' || i.salud === 'INESTABLE')
 

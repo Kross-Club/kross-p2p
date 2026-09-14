@@ -224,24 +224,24 @@ export function pay360ActiveFor(
  * veces, y el corte de S/90 vive en un solo sitio (`_shared/comision.ts`).
  */
 export function onlinePayActiveFor(
-  s: Pick<CheckoutState, 'pay360' | 'flow' | 'locationType' | 'advanceAmount'>,
+  s: Pick<CheckoutState, 'flow' | 'locationType' | 'advanceAmount'>,
 ): boolean {
-  return (!!s.pay360?.enabled || !!s.flow?.enabled) && s.advanceAmount > 0 && !!s.locationType
+  // Solo Flow (14-set-2026). `pay360` sigue en el estado por los pedidos que ya
+  // se cobraron por ahí, pero no enciende el cobro de ninguno nuevo.
+  return !!s.flow?.enabled && s.advanceAmount > 0 && !!s.locationType
 }
 
 /**
  * El riel que el front PREFIERE, para mandárselo a `register-buyer`.
  *
- * Es una preferencia, no una decisión: con los dos encendidos el servidor
- * rutea por monto y puede devolver el otro. Existe para que una función
- * desplegada antes del ruteo —que solo entiende `'360PAY'`— siga cobrando
- * igual en una tienda que solo tiene 360pay.
+ * Es una preferencia, no una decisión: el servidor la pasa por `rielPara` y
+ * puede devolver otra cosa (o nada). Con un solo riel activo, es Flow.
  */
 export function preferredRailFor(
-  s: Pick<CheckoutState, 'pay360' | 'flow' | 'locationType' | 'advanceAmount'>,
+  s: Pick<CheckoutState, 'flow' | 'locationType' | 'advanceAmount'>,
 ): '360PAY' | 'FLOW' | undefined {
   if (!onlinePayActiveFor(s)) return undefined
-  return s.pay360?.enabled ? '360PAY' : 'FLOW'
+  return 'FLOW'
 }
 
 // ─── Verificación del adelanto ───────────────────────────────────────────────

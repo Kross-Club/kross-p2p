@@ -2808,3 +2808,21 @@ SELECT cron.schedule(
   '30 5 * * *',
   $$ DELETE FROM signups WHERE estado = 'PENDIENTE' AND created_at < now() - interval '7 days' $$
 );
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §55 · 360PAY SE APAGA, NO SE BORRA  (14-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El producto cobra solo por Flow. 360pay queda DORMIDO: ningún pedido nuevo
+-- sale por ahí (`RIELES_ACTIVOS` en `_shared/comision.ts` es la única lista que
+-- manda), el panel no lo enseña y `manage-store` ya no acepta encenderlo.
+--
+-- Lo que NO se toca, a propósito: las columnas `pay360_*` de `stores`,
+-- `store_secrets`, `order_sessions` y `cobros`, las funciones `pay360-coupon` y
+-- `pay360-webhook`, y el literal `'360PAY'` en `payment_provider`. Hay cobros
+-- reales que entraron por ahí y su comprobante tiene que seguir diciendo por
+-- dónde entró la plata. Borrar sería reescribir la historia de lo cobrado.
+--
+-- Esto apaga la bandera en las tiendas que la tenían: el ruteo ya la ignora,
+-- pero una bandera encendida que no hace nada es un dato que miente.
+UPDATE stores SET pay360_enabled = false WHERE pay360_enabled IS TRUE;

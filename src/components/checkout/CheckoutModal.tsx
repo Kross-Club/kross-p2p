@@ -494,9 +494,11 @@ export default function CheckoutModal({
               funcione. */}
           {phase.k === 'AWAITING' && (
             <div className="py-2">
-              {phase.rail === 'FLOW'
-                ? <FlowYapeBox coupon={phase.coupon} />
-                : <Pay360Box coupon={phase.coupon} />}
+              {/* Explícito por riel, no por descarte: un riel nulo o desconocido
+                  caía en la caja de 360pay, que ya no cobra. */}
+              {phase.rail === '360PAY'
+                ? <Pay360Box coupon={phase.coupon} />
+                : <FlowYapeBox coupon={phase.coupon} />}
               <div className="mt-4 flex items-center justify-center gap-2 text-center">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-[#742284]" />
                 <p className="text-lg font-black text-gray-900">{COPY.pay360Waiting}</p>

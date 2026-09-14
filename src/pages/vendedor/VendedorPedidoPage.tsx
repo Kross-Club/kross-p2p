@@ -1544,7 +1544,11 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           hay), con su monto y su rastro contra el banco. Acá había además un
           `AdvancePanel` que repetía el mismo monto con otras palabras; se
           eliminó con la línea de la ficha del cliente que hacía lo mismo. */}
-      <PagoTrace session={session} onCobrar={cobrarPorChat} onReemitir={reemitirCupon} onQuitar={quitarCobro} />
+      <PagoTrace session={session} onCobrar={cobrarPorChat}
+        // Reemitir un cupón es cosa de 360pay (dormido desde set-2026): solo
+        // los pedidos viejos de ese riel conservan el botón.
+        onReemitir={session.payment_provider === '360PAY' ? reemitirCupon : undefined}
+        onQuitar={quitarCobro} />
       {/* El motivo del fallo, que no es del cobro sino de la EMISIÓN: por qué
           un pedido con adelanto ni siquiera tiene cupón. */}
       {session.payment_reason && session.payment_verification !== 'MATCHED' && (
