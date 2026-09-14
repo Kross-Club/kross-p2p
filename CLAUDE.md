@@ -7,14 +7,20 @@
 ## Qué es Kross
 
 **La tecnología de una tienda en línea peruana.** PWA white-label multi-tenant: cada marca
-tiene su app instalable en `marca.krossclub.app`. El pedido **se cobra antes de despacharse**
-—la mitad o el total, con Yape validado automático— y de ahí sigue las 3 fases:
+tiene su app instalable en `marca.krossclub.app`. El pedido **se cobra completo antes de
+despacharse** —con Yape validado automático, por Flow; «la mitad ahora» solo si el producto
+lo permite (§56)— y de ahí sigue las 3 fases:
 **vender** (Sales) → **entregar** (Logistics) → **retener** (Loyalty).
 
+**Para quién (14-set-2026):** marcas **con stock**, que venden con contenido orgánico y
+anuncios, formales, con menos de 100 pedidos al mes, dos a cuatro vendedores en WhatsApp Web,
+y que cobran el 100 % antes de despachar. Todo en el contexto del celular.
+
 > ⚠️ **No lo llames COD ni contraentrega.** Contraentrega significa cobrar todo en la puerta,
-> y eso no es lo que hace el producto: el checkout cobra el adelanto —mitad o total— dentro
-> del formulario y contra entrega queda, como mucho, el saldo. El posicionamiento vivo está
-> en `src/config/propuesta.ts` y explicado en `docs/04-CUMPLIMIENTO-WEB.md`.
+> y eso no es lo que hace el producto: el checkout cobra el pedido dentro del formulario y
+> contra entrega queda, como mucho, el saldo de un producto que permite la mitad. El
+> posicionamiento vivo está en `src/config/propuesta.ts` y explicado en
+> `docs/04-CUMPLIMIENTO-WEB.md`.
 
 ## Stack
 
@@ -53,7 +59,7 @@ comando, comparten organización pero **no** comparten esquema ni convenciones.
 | `docs/09-PIXELS-CAPI.md` | Pixel de Meta/TikTok + CAPI por marca: embudo en el Events Manager del cliente y Purchase server-side de los que adelantaron |
 | `docs/10-MANUAL-DE-MARCA.md` | **Manual de marca v2.0** (ago-2026): símbolo modular, paleta ink/lima, tipografía, sistema de interfaz y voz. Reemplaza al manual de la etapa agencia |
 | `docs/12-FLOW.md` | **Flow Pagos, el ÚNICO riel de cobro** (set-2026): checkout alojado con deeplink a Yape en celular, `flow-order`/`flow-confirm`/`flow-return`. El ruteo por monto contra 360pay sigue escrito pero dormido |
-| `docs/13-CONEXIONES.md` | **Las APIs de terceros y sus fallos** (sep-2026): el catálogo de las 15 integraciones, la tabla `api_events` con su referencia `KX-…` para reclamarle al proveedor, y la pantalla *Panel → Conexiones*. Léelo antes de tocar cualquier llamada a un tercero |
+| `docs/13-CONEXIONES.md` | **Las APIs de terceros y sus fallos** (sep-2026): el catálogo de integraciones (360pay dormida desde set-2026), la tabla `api_events` con su referencia `KX-…` para reclamarle al proveedor, y la pantalla *Panel → Conexiones*. Léelo antes de tocar cualquier llamada a un tercero |
 | `docs/14-EVALUACION-KROSS-CLUB.md` | **Evaluación crítica del concepto Kross Club / «Vuelve a jugar»** (sep-2026): por qué el universo narrativo y los minijuegos no son ventaja competitiva hoy, qué sí puede serlo (Kross ID, adelanto protegido, puntos de coalición, club de operadores), roadmap a 10 años con compuertas y experimentos con criterio de muerte. Léelo antes de tocar marca, web pública o la app del comprador |
 | `docs/15-AFILIADOS.md` | **El programa de afiliados** (set-2026): el enlace `?ref=`, el árbol de quién trajo a quién, la suscripción de $67/mes por Stripe como LLAVE de la comisión (S/0.10 por transacción, pagada por transferencia y **no** por Stripe), y por qué la comisión se CUENTA de `cobros` en vez de acumularse. **§52: cada tienda ES un afiliado** —nace con su enlace y lo ve en su panel—, con su propio plan como segunda compuerta. **§53: el enlace es opaco** (`/u/48291733`, nunca el slug: repartirlo delataría el subdominio del comerciante), último toque a 30 días, y el modo prueba de Stripe se registra pero NO comisiona. **§54: el alta automática** —`/empezar` reserva, Stripe cobra, el WEBHOOK crea la tienda (`_shared/crear-tienda.ts`, compartido con el panel) y `/bienvenido` pone la contraseña—. Léelo antes de tocar `affiliates`, `subscription_periods` o el alta de una tienda |
 | `docs/11-RELACIONES.md` | **Qué es una cosa y qué es una vista** en el panel: Cliente y Pedido son las únicas entidades; chats, llamadas, CRM y Stats son eventos o vistas del pedido. El menú 10 → 5, y **la bitácora del rediseño del panel** (ago-2026): bandeja por prioridad, pipeline con Curiosos y Anulado, anillo de pago, mapa de entregas. Lee la sección con fecha antes de tocar el panel |
@@ -87,7 +93,7 @@ comparten el mismo estado del cliente (Sales lo cierra, Logistics lo entrega, Lo
   tipos de sesión —el store y el seed de maqueta se borraron (27-ago-2026)—; lo que queda ahí
   lo usa la capa de checkout.
 - **Modo demo** (`src/lib/demo/`): un interruptor en *Marca* llena todo el panel con una tienda
-  de ejemplo (~1.000 pedidos/día) para enseñar la herramienta. **La regla del demo es paridad**:
+  de ejemplo (~100 pedidos/día, 3.000 al mes) para enseñar la herramienta. **La regla del demo es paridad**:
   lo que el demo enseña es exactamente lo que la tienda real hace, y todo lo que se construye
   para la tienda real se enseña en el demo — un demo que se comporte distinto vende un producto
   que no existe. Vive en el dispositivo, no en

@@ -8,6 +8,14 @@
 
 ---
 
+> **Cómo leer este doc (14-set-2026).** Tiene dos capas mezcladas por historia. **Lo vigente:**
+> qué dice la web y con qué tono (§ *Qué dice la web*), lo que exige la ley peruana —INDECOPI,
+> Libro de Reclamaciones, términos, privacidad— y cómo está hecho el Libro. **La herencia de
+> Culqi** (ago-2026): el checklist de 5 ítems, «cuando lleguen las llaves de la pasarela» y el
+> carrito con RUC y comprobante. Culqi se descartó; el plan se cobra por **Stripe** con alta
+> automática (`15-AFILIADOS.md` §54) y el pedido del comprador por **Flow** (`12-FLOW.md`).
+> Lo heredado queda marcado como tal, no borrado: explica por qué la web tiene lo que tiene.
+
 ## Por qué existe esta web
 
 `krossclub.app` era, para cualquiera de fuera, una pantalla de login. Sin sesión
@@ -86,6 +94,13 @@ una sola aparición de lima por portada, sin degradados y sin texto. No se edita
 
 ## Mapa de requisitos
 
+> ⚠️ **De dónde salió esta lista (14-set-2026).** Este checklist se armó para la revisión de
+> **Culqi**, que se descartó en ago-2026. Lo que sigue siendo obligatorio no depende de ninguna
+> pasarela: es ley peruana (INDECOPI: Libro de Reclamaciones, términos, devoluciones,
+> privacidad) y sentido común (contacto real, precio visible). Lo que era capricho de Culqi
+> —el mínimo de 5 productos, el carrito como único camino de compra— queda tachado. Ni Flow ni
+> 360pay tienen requisitos sobre la web pública de la plataforma.
+
 ### Información general obligatoria
 
 | Requisito | Estado | Dónde |
@@ -113,7 +128,7 @@ Los cuatro enlaces están en el pie de **todas** las páginas públicas
 
 | Requisito | Estado | Dónde |
 |---|---|---|
-| Mínimo 5 productos (o los que corresponda si son servicios) | 🟡 | **4 ítems** en `src/config/catalogo.ts` — los tres planes se fundieron en uno solo de $67/mes (set-2026, ver §54 de `15-AFILIADOS.md`) y el catálogo bajó de 6 a 4. **Falta un quinto ítem antes de publicar esto**: por debajo de cinco hay que avisarle a 360pay y a Flow, no descubrirlo cuando revisen |
+| ~~Mínimo 5 productos~~ | ✅ no aplica | Era un requisito de **Culqi**, que se descartó en ago-2026 (§16 del esquema borró sus columnas). Ni Flow ni 360pay lo piden. El catálogo tiene los 4 ítems que Kross vende de verdad (`src/config/catalogo.ts`) y no se rellena para llegar a una cifra que ya nadie exige (14-set-2026) |
 | Cada uno con foto, descripción clara y precio visible | ✅ | Tarjeta (`TarjetaServicio`) y detalle (`/servicios/:slug`) |
 
 Las portadas son SVG en `public/catalogo/`: cargan siempre, no dependen de un
@@ -224,10 +239,13 @@ No confundirlos, porque viven en sitios distintos:
 
 | | Qué cobra | Dónde |
 |---|---|---|
-| **Adelanto COD** | El adelanto del pedido de un comprador, con Yape | `pay360-coupon` / `pay360-webhook`, en el checkout de las marcas. En producción y **con pago real cobrado**: se emite un cupón por el adelanto y el comprador lo paga con un botón que abre Yape. No hace falta acreditación PCI — nunca tocamos credenciales de pago. Ver [`06-360PAY.md`](./06-360PAY.md) |
-| **Suscripción de la plataforma** | El plan que una marca le compra a Kross en `krossclub.app` | `/pago` → `web-order`. **Todavía no cobra** |
+| **El pago del pedido** | El pedido de un comprador (completo, o la mitad si el producto lo permite), con Yape | **Flow** (`flow-order` / `flow-confirm`), en el checkout de las marcas. En producción y **con pago real cobrado**. No hace falta acreditación PCI — nunca tocamos credenciales de pago. Ver [`12-FLOW.md`](./12-FLOW.md). 360pay (`pay360-*`) está dormido desde set-2026 |
+| **Suscripción de la plataforma** | El plan que una marca le compra a Kross en `krossclub.app` | **Stripe**, con alta automática: `/empezar` → Payment Link → `stripe-webhook` crea la tienda → `/bienvenido`. Ver [`15-AFILIADOS.md`](./15-AFILIADOS.md) §54. El carrito `/pago` → `web-order` queda para los módulos, y **no cobra**: es herencia de Culqi |
 
-## Cuando lleguen las llaves de la pasarela
+## Cuando lleguen las llaves de la pasarela (herencia de Culqi)
+
+> Escrito para Culqi en ago-2026. El plan ya se cobra por Stripe (§54); esto aplicaría solo si
+> algún día el carrito de módulos cobrara en línea.
 
 `/pago` hoy **registra** el pedido; no cobra. Al conectar la pasarela:
 

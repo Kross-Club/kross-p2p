@@ -19,10 +19,11 @@ export default function ServiciosPage() {
       <div className="max-w-[1120px] mx-auto px-5 py-12">
         <h1 className="text-3xl md:text-4xl">Planes y precios</h1>
         <p className="mt-3 max-w-[680px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          Todos los planes traen lo mismo de base: tu app con tu marca y el checkout que le cobra a
-          tu cliente {ADELANTO_MINIMO_PCT} del pedido —o el total— con Yape, validado solo. De ahí
-          para arriba cambia cuánto vende tu equipo y cuánto despacha. Suscripción mensual, sin
-          permanencia, salvo la implementación, que es un pago único. Precios en soles, IGV incluido.
+          Todo parte del plan: tu app con tu marca y el checkout que le cobra a tu cliente el
+          pedido completo con Yape, validado solo (o {ADELANTO_MINIMO_PCT}, si tú lo permites en
+          un producto). Los módulos suman despacho y recompra. Suscripción mensual, sin
+          permanencia, salvo la implementación, que es un pago único. El plan se cobra en dólares
+          con tarjeta; los módulos, en soles con IGV incluido.
         </p>
 
         <h2 className="text-xl mt-12 mb-5">Planes</h2>

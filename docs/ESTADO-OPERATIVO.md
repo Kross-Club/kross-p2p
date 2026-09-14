@@ -34,6 +34,29 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Reposicionamiento: marcas con stock, pago completo, el demo a 3.000/mes · solo frontend y docs (14-set-2026)
+
+**La decisión.** El foco son **marcas con stock** —contenido orgánico y anuncios, formales,
+menos de 100 pedidos al mes, dos a cuatro vendedores en WhatsApp Web, cobran el 100 % antes
+de despachar—. Con eso la web pública deja de discutir contra la contraentrega: la sección
+«Esto ya no es contraentrega» **se reemplazó** por *Para marcas que ya tienen el producto* (las
+cuatro señas del ICP) y *la experiencia de su cliente* (app con su marca, ve su pedido, cobro
+validado solo, todo desde el celular). Todo el copy vive en `src/config/propuesta.ts`
+(`PARA_QUIEN`, `EXPERIENCIA`; `COMPARATIVA` se fue). «Cómo se contrata» describe el alta real
+(§54: plan → marca y nombre → Stripe → panel). El catálogo y el checkout dicen «pedido
+completo» y «Pagas y listo» donde decían «adelanto». `CLAUDE.md`, `docs/README.md` (cinco
+capas, tres géneros), `04-CUMPLIMIENTO-WEB` (vigente vs herencia de Culqi) y los ICP quedaron
+diciendo lo mismo.
+
+**El demo** enseña ahora **~100 pedidos al día (3.000 al mes)** con tres productos de marca
+(sérum, café, colágeno; mismos precios y mismas tres entradas, sin tirada de azar nueva).
+`PEDIDOS_POR_DIA = 100` en `tienda-demo.ts`; el equipo del demo se queda como está porque
+cambiarlo corre el azar del generador.
+
+**Nada que desplegar** fuera del front (Vercel al mergear). Verificación: leer `krossclub.app`
+de arriba abajo con el ICP nuevo en la cabeza — nada debe decir COD, mitad-por-defecto, 360pay
+ni soles en el plan.
+
 ### Push en Android web sin instalar, WhatsApp por tienda, cobertura por plataforma y poda · **SQL §57** + 5 funciones + frontend (14-set-2026)
 
 **La decisión.** La PWA sigue, pero en iPhone instalarla cuesta y no hay web push fuera de

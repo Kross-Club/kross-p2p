@@ -9,6 +9,16 @@ Kross se **reposiciona de herramienta de adquisición a producto de retención**
 ICP no es el dropshipper por impulso, sino la **marca de recompra**: productos consumibles
 o de identidad de marca donde el cliente vuelve — suplementos, cosmética, café, skincare.
 
+> **Precisión del 14-set-2026 (no es un tercer enfoque, es este mismo con el foco puesto).**
+> La marca de recompra que Kross busca **tiene stock** —el producto está en su almacén, no en
+> el de un proveedor—, vende con **contenido orgánico y anuncios**, es **formal**, cierra
+> **menos de 100 pedidos al mes** con **dos a cuatro vendedores en WhatsApp Web** y **cobra el
+> 100 % antes de despachar**. Consecuencias en el producto: solo Flow como riel (`12-FLOW.md`),
+> pago total por defecto con la mitad opt-in por producto (§56), avisos push en Android web
+> sin instalar y WhatsApp por tienda (§57), y la web pública hablando de la marca y de la
+> experiencia de su cliente en vez de discutir contra la contraentrega
+> (`src/config/propuesta.ts`).
+
 **Por qué el giro (racional de negocio):**
 - El valor no está en cerrar un pedido, sino en el **LTV** (que el cliente compre otra vez).
 - El activo defensible de Kross es el **canal propio**: una app instalable de marca que la

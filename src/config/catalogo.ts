@@ -1,12 +1,10 @@
 // ─── CATÁLOGO PÚBLICO (krossclub.app) ────────────────────────────────────────
 //
-// La pasarela exige que la web muestre **mínimo 5 productos o servicios**, cada uno
-// con foto, descripción clara y precio visible. Kross vende software por
-// suscripción, así que el catálogo son sus planes y módulos.
-//
-// ⚠️ **Ese mínimo es un requisito cumplido** (`docs/04-CUMPLIMIENTO-WEB.md`, mapa
-// de requisitos). Bajar de cinco ítems no es una decisión de diseño: hay que
-// avisarle a 360pay y a Flow ANTES de publicarlo, no después.
+// Lo que Kross vende, con foto, descripción clara y precio visible. Nació como
+// el checklist de Culqi —que exigía «mínimo 5 productos»— y ese requisito murió
+// con Culqi en ago-2026: ni Flow ni 360pay piden nada sobre esta web. Así que el
+// catálogo tiene los ítems que existen de verdad y ni uno más; rellenarlo para
+// llegar a una cifra sería publicar una oferta que no se vende.
 //
 // ── Un solo plan (set-2026) ──
 // Había tres —Inicia S/199, Vende S/449, Escala S/899— y ahora hay uno, de
@@ -17,9 +15,9 @@
 //
 // El texto de cada ítem tiene que decir lo mismo que la portada
 // (`src/config/propuesta.ts`): lo que se contrata es una tienda que **cobra el
-// adelanto antes de despachar**, no un software de contraentrega. Por eso el
-// cobro con Yape validado solo vive en el plan de entrada y no como un extra:
-// es el producto, no un módulo.
+// pedido completo antes de despachar**, para marcas con stock, no un software
+// de contraentrega. Por eso el cobro con Yape validado solo vive en el plan de
+// entrada y no como un extra: es el producto, no un módulo.
 //
 // ⚠️ PRECIOS: son los de la lista comercial. Si cambian, se cambian aquí y se
 // actualizan la home, el detalle, el carrito y el checkout a la vez. Reviselos
@@ -77,19 +75,20 @@ export const CATALOGO: ItemCatalogo[] = [
   {
     slug: 'plan-kross',
     nombre: 'Plan Kross',
-    resumen: 'Tu tienda con app propia, cobrando el adelanto por Yape.',
+    resumen: 'Tu tienda con app propia, cobrando el pedido completo por Yape.',
     descripcion:
-      'Para la marca que hoy vende por WhatsApp y anota los pedidos a mano. Incluye tu ' +
-      'aplicación instalable en tu propio subdominio (tumarca.krossclub.app), el checkout de ' +
-      'tres pasos que le cobra a tu cliente la mitad del pedido —o el total— con Yape antes de ' +
-      'que despaches, y el chat donde sigue su pedido hasta la entrega.',
+      'Para la marca con stock que hoy vende por WhatsApp con dos a cuatro vendedores y anota ' +
+      'los pedidos a mano. Incluye tu aplicación instalable en tu propio subdominio ' +
+      '(tumarca.krossclub.app), el checkout de tres pasos que le cobra a tu cliente el pedido ' +
+      'completo con Yape antes de que despaches —o la mitad, si tú lo permites en un ' +
+      'producto—, y el chat donde sigue su pedido hasta la entrega.',
     incluye: [
       'App web instalable con tu logo, colores y nombre',
-      'Checkout de 3 pasos que cobra el adelanto con Yape',
+      'Checkout de 3 pasos que cobra el pedido con Yape',
       'Validación automática del pago: sin capturas ni códigos que dictar',
-      'Chat del pedido con notificaciones al comprador',
-      'Panel de pedidos para tu equipo',
-      'Hasta 500 pedidos al mes',
+      'Chat del pedido con avisos al comprador en su celular',
+      'Panel de pedidos para tu equipo de vendedores',
+      'Hasta 500 pedidos al mes (pensado para marcas que hoy cierran menos de 100)',
     ],
     precio: 67,
     moneda: 'USD',

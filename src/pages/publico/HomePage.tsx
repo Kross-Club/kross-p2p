@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  DollarSign, Zap, Truck, Repeat, ChevronRight, Lock, Check, X,
+  DollarSign, Zap, Truck, Repeat, ChevronRight, Lock, Check,
   Phone, Mail, MapPin, Store, BadgeCheck,
 } from 'lucide-react'
 import PublicLayout from '../../components/publico/PublicLayout'
@@ -9,23 +9,24 @@ import TarjetaServicio from '../../components/publico/TarjetaServicio'
 import { CATALOGO, CATALOGO_VITRINA, precioTexto, periodoTexto } from '../../config/catalogo'
 import { EMPRESA } from '../../config/empresa'
 import {
-  MENSAJES, CIFRAS, PILARES, COMPARATIVA, PASOS_COBRO, GARANTIAS, type IconoPilar,
+  MENSAJES, CIFRAS, PILARES, PARA_QUIEN, EXPERIENCIA, PASOS_COBRO, GARANTIAS, type IconoPilar,
 } from '../../config/propuesta'
 
 // ─── Portada de krossclub.app ────────────────────────────────────────────────
 //
-// Qué vende esta página, en una línea: **Kross es la tecnología de tu tienda**,
-// y lo que la distingue es CUÁNDO entra la plata.
+// Qué vende esta página, en una línea: **Kross es la tecnología de tu tienda**:
+// el pedido se cobra completo antes de despachar y el cliente lo vive bajo la
+// marca, desde el celular.
 //
 // El rediseño de ago-2026 cambió las dos cosas que decía la portada anterior:
 //
 //  · **El posicionamiento.** Decía "software para comercio contraentrega".
 //    Contraentrega significa que todo el dinero se cobra en la puerta, y eso
-//    dejó de ser lo que hace el producto: el checkout cobra la mitad o el total
-//    del pedido dentro del formulario, con Yape validado solo, y el saldo es lo
-//    único que queda contra entrega. Por eso la sección «Esto ya no es
-//    contraentrega» está arriba del catálogo: la suposición hay que romperla
-//    antes de hablar de precios.
+//    dejó de ser lo que hace el producto: el checkout cobra el pedido dentro
+//    del formulario, con Yape validado solo. Hasta set-2026 la portada lo
+//    discutía con una comparativa «Esto ya no es contraentrega»; con el foco
+//    en marcas con stock (14-set-2026) esa discusión sobra —ese cliente nunca
+//    fue COD— y la sección pasó a ser para quién es y qué vive su cliente.
 //  · **El tono.** Era el celeste del sistema viejo. Ahora es ink + lima, el
 //    manual v2.0 — era el pendiente de su §10.1.
 //
@@ -58,7 +59,7 @@ export default function HomePage() {
           sigue en peso 500 y sin degradados, que es lo que el manual protege. */}
       <section className="max-w-[1120px] mx-auto px-5 pt-16 pb-14 md:pt-24 md:pb-20">
         <p className="text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--text-faint)' }}>
-          Software peruano para tiendas en línea
+          Software peruano para marcas que venden en línea
         </p>
 
         <h1 className="mt-4 text-[34px] leading-[1.05] md:text-[56px] max-w-[820px]">
@@ -104,59 +105,33 @@ export default function HomePage() {
         </dl>
       </section>
 
-      {/* ── El diferencial: cuándo entra la plata ───────────────────────── */}
+      {/* ── Para quién es, y qué vive su cliente ────────────────────────── */}
       <section style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
         <div className="max-w-[1120px] mx-auto px-5 py-16">
-          <h2 className="text-2xl md:text-3xl">Esto ya no es contraentrega</h2>
+          <h2 className="text-2xl md:text-3xl">{PARA_QUIEN.titulo}</h2>
           <p className="mt-3 max-w-[680px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            Contraentrega quiere decir que el dinero se cobra en la puerta, y que hasta ese
-            momento la tienda puso el producto, el empaque y el flete. Kross mueve el cobro al
-            principio: al despacho solo entran pedidos con el adelanto cobrado.
+            {PARA_QUIEN.texto}
           </p>
-
-          {/* En móvil la tabla se sale de pantalla y lo que queda cortado es
-              justo la columna que importa —la de Kross—, así que ahí cada fila
-              se lee como bloque y la tabla aparece recién en escritorio. */}
-          <ul className="mt-8 grid gap-4 md:hidden">
-            {COMPARATIVA.map((f) => (
-              <li key={f.tema} className="rounded-3xl p-5"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-faint)' }}>{f.tema}</p>
-                <p className="mt-3 flex gap-2 text-[13px] leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-                  <X size={14} className="mt-0.5 shrink-0" /> {f.cod}
-                </p>
-                <p className="mt-2 flex gap-2 text-[13px] leading-relaxed">
-                  <Check size={14} className="mt-0.5 shrink-0" /> {f.kross}
-                </p>
+          <ul className="mt-6 grid gap-2.5 md:grid-cols-2 max-w-[820px]">
+            {PARA_QUIEN.senas.map((s) => (
+              <li key={s} className="flex gap-2.5 text-[13px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                <Check size={16} className="mt-0.5 shrink-0" style={{ color: 'var(--text-faint)' }} />
+                <span>{s}</span>
               </li>
             ))}
           </ul>
 
-          <div className="mt-10 overflow-x-auto hidden md:block">
-            <table className="w-full min-w-[620px] text-left text-sm border-collapse">
-              <thead>
-                <tr style={{ color: 'var(--text-faint)' }}>
-                  <th className="py-3 pr-4 font-normal text-[11px] uppercase tracking-wide w-[26%]"></th>
-                  <th className="py-3 pr-4 font-normal text-[11px] uppercase tracking-wide">
-                    <span className="inline-flex items-center gap-1.5"><X size={13} /> Contraentrega pura</span>
-                  </th>
-                  <th className="py-3 font-normal text-[11px] uppercase tracking-wide" style={{ color: 'var(--text)' }}>
-                    <span className="inline-flex items-center gap-1.5"><Check size={13} /> Con Kross</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARATIVA.map((f) => (
-                  <tr key={f.tema} style={{ borderTop: '1px solid var(--border)' }}>
-                    <th scope="row" className="py-4 pr-4 align-top font-normal" style={{ color: 'var(--text-faint)' }}>
-                      {f.tema}
-                    </th>
-                    <td className="py-4 pr-4 align-top leading-relaxed" style={{ color: 'var(--text-faint)' }}>{f.cod}</td>
-                    <td className="py-4 align-top leading-relaxed" style={{ color: 'var(--text)' }}>{f.kross}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* La experiencia de SU cliente, bajo SU marca. Es lo que se compra:
+              no un cobrador, sino que comprarle se sienta como comprarle a una
+              marca — desde el celular, sin que nadie del equipo lo persiga. */}
+          <div className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {EXPERIENCIA.map((e) => (
+              <div key={e.titulo} className="rounded-3xl p-5"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                <h3 className="text-[15px]">{e.titulo}</h3>
+                <p className="text-[13px] mt-2 leading-relaxed" style={{ color: 'var(--text-muted)' }}>{e.texto}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -264,7 +239,8 @@ export default function HomePage() {
             <div>
               <h2 className="text-2xl md:text-3xl">Planes y precios</h2>
               <p className="mt-3" style={{ color: 'var(--text-muted)' }}>
-                Suscripción mensual, sin permanencia. Todos los precios están en soles e incluyen IGV.
+                Suscripción mensual, sin permanencia. El plan se cobra en dólares con tarjeta; los
+                servicios adicionales, en soles con IGV incluido.
               </p>
             </div>
             <Link to="/servicios" className="text-sm inline-flex items-center gap-1" style={{ color: 'var(--text)' }}>
@@ -281,11 +257,14 @@ export default function HomePage() {
       {/* ── Cómo se contrata ────────────────────────────────────────────── */}
       <section className="max-w-[1120px] mx-auto px-5 py-16">
         <h2 className="text-2xl md:text-3xl">Cómo se contrata</h2>
+        {/* El flujo REAL del alta automática (§54): dos datos, Stripe, y la
+            tienda existe al volver. Antes describía un carrito con RUC y
+            comprobante que el plan ya no recorre. */}
         <div className="grid gap-5 md:grid-cols-4 mt-10">
-          <Paso n={1} titulo="Elige tu plan" texto="Agrega al carrito el plan y los módulos que necesitas." />
-          <Paso n={2} titulo="Revisa tu carrito" texto="Cambia cantidades y confirma el total antes de pagar." />
-          <Paso n={3} titulo="Completa tus datos" texto="Nombre o razón social, RUC o DNI, correo y teléfono para tu comprobante." />
-          <Paso n={4} titulo="Paga y activamos" texto="Registramos tu pedido con un código y montamos tu tienda." />
+          <Paso n={1} titulo="Elige el plan" texto={`${PLAN.nombre}, ${precioTexto(PLAN.precio, PLAN.moneda)} ${periodoTexto(PLAN.periodo)}. Sin permanencia.`} />
+          <Paso n={2} titulo="Pon tu marca y tu nombre" texto="Dos datos y nada más: con eso reservamos tu subdominio." />
+          <Paso n={3} titulo="Paga con tarjeta" texto="La suscripción se cobra por Stripe, en dólares." />
+          <Paso n={4} titulo="Entra a tu panel" texto="Al volver, tu tienda ya existe: pones tu contraseña y subes tu primer producto." />
         </div>
 
         <div className="mt-8 flex items-center gap-3 text-[13px] rounded-2xl px-5 py-4"

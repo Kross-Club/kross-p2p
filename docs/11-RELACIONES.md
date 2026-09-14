@@ -649,7 +649,7 @@ que uno hace: a quien está mirando la pantalla se le escribe, y al que no, se l
 vive en `src/lib/presencia.ts` y lo leen las tres.
 
 En demo sale del generador. La presencia real es de Supabase y en una tienda de ejemplo no hay
-nadie conectado: un tablero de mil pedidos al día donde ningún cliente está en línea no enseña
+nadie conectado: un tablero de cien pedidos al día donde ningún cliente está en línea no enseña
 la herramienta, enseña un dato apagado.
 
 ### Avanzar de etapa pregunta antes

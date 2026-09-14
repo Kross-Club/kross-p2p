@@ -81,14 +81,14 @@ export default function CambiosDevolucionesPage() {
       <Seccion titulo="7. Productos comprados a una marca que usa Kross">
         <p>
           Cuando compras un producto físico en la aplicación de una marca (por ejemplo{' '}
-          <i>tumarca.krossclub.app</i>), el vendedor es esa marca, no {titular}. En esas compras se
-          adelanta parte del pedido —la mitad o el total— al momento de hacerlo, y el saldo, si
-          queda, se paga al recibirlo. En ese caso:
+          <i>tumarca.krossclub.app</i>), el vendedor es esa marca, no {titular}. En esas compras el
+          pedido se paga al momento de hacerlo —completo, o la mitad si la marca lo permite en ese
+          producto— y el saldo, si queda, se paga al recibirlo. En ese caso:
         </p>
         <ul>
           <li>Puedes revisar el producto <b>al recibirlo</b> y rechazarlo si no corresponde a lo pedido; si quedaba saldo por pagar, no lo pagas.</li>
           <li>Los cambios por producto errado, incompleto o defectuoso los atiende la marca vendedora, dentro de los plazos que la ley de protección al consumidor establece.</li>
-          <li>El adelanto se devuelve si el pedido no llega a enviarse, o si no se entrega por causa de la marca.</li>
+          <li>Lo pagado se devuelve si el pedido no llega a enviarse, o si no se entrega por causa de la marca.</li>
           <li>{titular} facilita el canal de contacto con la marca y conserva el historial del pedido como respaldo del reclamo.</li>
         </ul>
       </Seccion>
