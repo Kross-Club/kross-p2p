@@ -86,6 +86,13 @@ una sola aparición de lima por portada, sin degradados y sin texto. No se edita
 
 ## Mapa de requisitos
 
+> ⚠️ **De dónde salió esta lista (14-set-2026).** Este checklist se armó para la revisión de
+> **Culqi**, que se descartó en ago-2026. Lo que sigue siendo obligatorio no depende de ninguna
+> pasarela: es ley peruana (INDECOPI: Libro de Reclamaciones, términos, devoluciones,
+> privacidad) y sentido común (contacto real, precio visible). Lo que era capricho de Culqi
+> —el mínimo de 5 productos, el carrito como único camino de compra— queda tachado. Ni Flow ni
+> 360pay tienen requisitos sobre la web pública de la plataforma.
+
 ### Información general obligatoria
 
 | Requisito | Estado | Dónde |
@@ -113,7 +120,7 @@ Los cuatro enlaces están en el pie de **todas** las páginas públicas
 
 | Requisito | Estado | Dónde |
 |---|---|---|
-| Mínimo 5 productos (o los que corresponda si son servicios) | 🟡 | **4 ítems** en `src/config/catalogo.ts` — los tres planes se fundieron en uno solo de $67/mes (set-2026, ver §54 de `15-AFILIADOS.md`) y el catálogo bajó de 6 a 4. **Falta un quinto ítem antes de publicar esto**: por debajo de cinco hay que avisarle a 360pay y a Flow, no descubrirlo cuando revisen |
+| ~~Mínimo 5 productos~~ | ✅ no aplica | Era un requisito de **Culqi**, que se descartó en ago-2026 (§16 del esquema borró sus columnas). Ni Flow ni 360pay lo piden. El catálogo tiene los 4 ítems que Kross vende de verdad (`src/config/catalogo.ts`) y no se rellena para llegar a una cifra que ya nadie exige (14-set-2026) |
 | Cada uno con foto, descripción clara y precio visible | ✅ | Tarjeta (`TarjetaServicio`) y detalle (`/servicios/:slug`) |
 
 Las portadas son SVG en `public/catalogo/`: cargan siempre, no dependen de un
