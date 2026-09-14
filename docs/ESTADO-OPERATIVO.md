@@ -34,6 +34,30 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La «guía» que era el rótulo: el voucher se repone solo · 3 funciones (14-set-2026)
+
+**Qué pasó.** En un pedido de prueba el botón *Ver mi guía de Shalom* abrió la **etiqueta del
+paquete** (rótulo: número de orden, código, destinatario) y no la guía con QR. `descargarPdfDeGuia`
+pide el voucher y, si Shalom no lo tiene listo, cae al rótulo —bien—, pero lo guardaba con el
+**mismo nombre** y `reponerPdfDeGuia` solo actuaba sobre mensajes **sin** PDF: el rótulo tapaba el
+hueco para siempre. El porqué del voucher fallido está en *Panel → Conexiones → Shalom PE*, op
+`guia.voucher` (o `select op, outcome, http_status, detail from api_events where op like 'guia.%'
+order by created_at desc`).
+
+**El arreglo.** El rótulo se guarda como `<numero>-rotulo.pdf` (`esRotuloDeGuia`), y
+`reponerPdfDeGuia` también repone cuando el mensaje tiene un rótulo: en la siguiente novedad del
+rastreo pide el voucher y, si baja, lo reemplaza. Si sigue sin bajar, deja el rótulo.
+
+```
+supabase functions deploy shalom-order         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-webhook       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+Sin SQL. El pedido de prueba con DNI `00000000` se queda con su rótulo hasta la siguiente novedad
+de rastreo; con un DNI real, RENIEC rellena el destinatario (el `00 00 00` de esa etiqueta es del
+DNI inventado, no del código).
+
 ### Reposicionamiento: marcas con stock, pago completo, el demo a 3.000/mes · solo frontend y docs (14-set-2026)
 
 **La decisión.** El foco son **marcas con stock** —contenido orgánico y anuncios, formales,

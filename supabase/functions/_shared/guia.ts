@@ -227,11 +227,26 @@ export async function authShalomPro(storeId: string): Promise<AuthShalomPro | nu
   return { 'X-API-Key': key, 'X-Shalom-Email': email, 'X-Shalom-Password': password }
 }
 
+/** El rótulo se guarda con este sufijo para poder reconocerlo después: es lo
+ *  que deja a `reponerPdfDeGuia` cambiarlo por el voucher cuando por fin baja. */
+const SUFIJO_ROTULO = '-rotulo.pdf'
+
+/** ¿Esta URL es el rótulo (la etiqueta del paquete) y no la guía con QR? */
+export function esRotuloDeGuia(url: string | null | undefined): boolean {
+  return typeof url === 'string' && url.endsWith(SUFIJO_ROTULO)
+}
+
 /**
  * Baja el voucher (y si no, el rótulo) y lo sube al bucket. Devuelve la URL
  * pública o `null`. Best-effort y con timeout propio: un PDF que no baja no
  * puede retrasar ni tumbar el registro de la guía. Sin `ose_id` no hay nada
  * que pedir (Shalom LAT no lo maneja).
+ *
+ * El rótulo es el plan B, no el resultado: Shalom puede no tener el voucher
+ * listo el día de la emisión (pasó el 14-set-2026: el comprador abrió su
+ * «guía» y era la etiqueta del paquete, sin QR). Por eso se guarda con otro
+ * nombre y `reponerPdfDeGuia` lo vuelve a intentar en la siguiente novedad
+ * del rastreo.
  */
 export async function descargarPdfDeGuia(p: {
   sessionId: string
@@ -265,7 +280,7 @@ export async function descargarPdfDeGuia(p: {
         })
         continue
       }
-      const path = `${p.sessionId}/${p.numero ?? p.oseId}.pdf`
+      const path = `${p.sessionId}/${p.numero ?? p.oseId}${doc === 'label' ? SUFIJO_ROTULO : '.pdf'}`
       const up = await supabase.storage.from('shalom-guias')
         .upload(path, bytes, { contentType: 'application/pdf', upsert: true })
       if (up.error) {
@@ -283,8 +298,9 @@ export async function descargarPdfDeGuia(p: {
 }
 
 /**
- * Si el mensaje de guía del pedido quedó SIN PDF y ya se conoce el `ose_id`,
- * lo baja ahora y se lo pone al mensaje. Lo llaman el webhook y el barrido de
+ * Si el mensaje de guía del pedido quedó SIN PDF —o con el RÓTULO en vez de
+ * la guía— y ya se conoce el `ose_id`, baja el voucher ahora y se lo pone al
+ * mensaje. Lo llaman el webhook y el barrido de
  * Shalom en cada novedad del rastreo —no en cada chequeo—, así que cuesta un
  * puñado de requests por pedido, no una por cada media hora durante 21 días.
  * El chat lo enseña con el botón en su siguiente apertura; la pantalla de
@@ -297,14 +313,19 @@ export async function reponerPdfDeGuia(
 ): Promise<boolean> {
   const oseId = row.tracking_ose_id ?? oseIdLeido ?? null
   if (!oseId || !row.store_id) return false
-  const { data: msg } = await supabase.from('chat_messages').select('id')
-    .eq('session_id', row.id).eq('type', 'guia').is('media_url', null)
+  const { data: msg } = await supabase.from('chat_messages').select('id, media_url')
+    .eq('session_id', row.id).eq('type', 'guia')
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (!msg) return false
+  const teniaRotulo = esRotuloDeGuia(msg.media_url)
+  // Con la guía de verdad ya puesta no hay nada que reponer.
+  if (msg.media_url && !teniaRotulo) return false
   const auth = await authShalomPro(row.store_id)
   if (!auth) return false
   const url = await descargarPdfDeGuia({ sessionId: row.id, storeId: row.store_id, oseId, numero: row.tracking_numero, auth })
   if (!url) return false
+  // Sigue sin voucher: el rótulo que ya tiene vale lo mismo que el nuevo.
+  if (teniaRotulo && esRotuloDeGuia(url)) return false
   const { error } = await supabase.from('chat_messages').update({ media_url: url }).eq('id', msg.id)
   if (error) { console.error('[guia] no se pudo poner el PDF al mensaje', row.id, error.message); return false }
   return true
