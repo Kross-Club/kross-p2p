@@ -123,7 +123,7 @@ describe('avanzar en el demo', () => {
   // oficial y, si el pedido debe su saldo, la tarjeta de pago — sola, con la
   // MISMA copy que la del vendedor.
   it('entrar a origen anuncia la guía oficial y manda la tarjeta del saldo', () => {
-    const p = pedido({ stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY' })
+    const p = pedido({ stage: 'en_camino', tracking_numero: '145446', payment_provider: 'FLOW' })
     avanzarEnDemo(p)
     const msgs = conCambios(p).chat_messages ?? []
     expect(msgs.some(m => m.body === mensajeDeOrigen('SHALOM'))).toBe(true)
@@ -133,7 +133,7 @@ describe('avanzar en el demo', () => {
   })
 
   it('sin deuda no hay tarjeta: el aviso va solo', () => {
-    const p = pedido({ stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY', advance_amount: 150 })
+    const p = pedido({ stage: 'en_camino', tracking_numero: '145446', payment_provider: 'FLOW', advance_amount: 150 })
     avanzarEnDemo(p)
     const msgs = conCambios(p).chat_messages ?? []
     expect(msgs.some(m => m.body === mensajeDeOrigen('SHALOM'))).toBe(true)
@@ -144,7 +144,7 @@ describe('avanzar en el demo', () => {
   // repetírsela es cobrarle dos veces a la vista (misma regla que el tracking).
   it('si la tarjeta ya está en el hilo, no se repite', () => {
     const p = pedido({
-      stage: 'en_camino', tracking_numero: '145446', payment_provider: '360PAY',
+      stage: 'en_camino', tracking_numero: '145446', payment_provider: 'FLOW',
       chat_messages: [{ id: 'x', sender_role: 'seller', type: 'cobro', body: 'Te queda un saldo de S/ 75.', created_at: '', read_at: null }],
     })
     avanzarEnDemo(p)
@@ -335,7 +335,7 @@ describe('el carrito en el demo', () => {
   it('el saldo sin cupón: se crea su fila, con su monto, y la tarjeta se pone verde', () => {
     const base = pedido({
       product_price: 150, advance_amount: 75,
-      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      payment_verification: 'MATCHED', payment_provider: 'FLOW',
       cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
     })
     // Antes de pagar: no es una fila, pero el panel lo enseña igual.
@@ -355,7 +355,7 @@ describe('el carrito en el demo', () => {
   it('y el acuse dice el monto de verdad, con su comprobante', () => {
     const base = pedido({
       product_price: 150, advance_amount: 75,
-      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      payment_verification: 'MATCHED', payment_provider: 'FLOW',
       dispatch_type: 'AGENCIA_PROVINCIA',
       cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
     })
@@ -376,7 +376,7 @@ describe('el carrito en el demo', () => {
   it('el saldo pagado deja su código de pago, con la serie del generador', () => {
     const base = pedido({
       id: 'demo-ped-13', product_price: 150, advance_amount: 75,
-      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      payment_verification: 'MATCHED', payment_provider: 'FLOW',
       cobros: [{ id: 'a', tipo: 'adelanto', monto: 75, estado: 'MATCHED' }],
     })
     saldoPagadoEnDemo(base)
@@ -385,19 +385,19 @@ describe('el carrito en el demo', () => {
     expect(p.saldo_trace?.operation_number).toBeTruthy()
   })
 
-  // Y el extra pagado lleva el código del COMPRADOR, que es el que usa en la
-  // tienda real: `pay360-coupon` emite sus cupones con el código estable del
-  // cliente, no con uno propio.
-  it('el extra pagado lleva el código de pago del comprador', () => {
+  // Y el extra pagado lleva la marca del riel (el token de Flow), para que
+  // `rielDelCobro` diga por dónde entró — igual que el webhook en la tienda
+  // real. Reusa el código de pago del demo: sin tirada de azar nueva.
+  it('el extra pagado lleva la marca de Flow', () => {
     const base = pedido({
       product_price: 150, advance_amount: 75,
-      payment_verification: 'MATCHED', payment_provider: '360PAY',
+      payment_verification: 'MATCHED', payment_provider: 'FLOW',
       payment_trace: { payment_code: 'KSH1042', coupon_id: null, operation_number: '1', bank: 'BCP' },
     })
     const { id } = cobroExtraEnDemo(base, 50, 'Flete')
     cobroExtraPagadoEnDemo(conCambios(base), id)
     const suyo = conCambios(base).cobros?.find(c => c.id === id)
-    expect(suyo).toMatchObject({ estado: 'MATCHED', pay360_consumer_code: 'KSH1042' })
+    expect(suyo).toMatchObject({ estado: 'MATCHED', flow_token: 'KSH1042' })
   })
 
   // Y en la LISTA, que es de donde lee el panel desde el bloque §36. El
