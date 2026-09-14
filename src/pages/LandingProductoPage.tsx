@@ -28,6 +28,10 @@ export interface Pack { nombre: string; descripcion?: string; precio: number; im
 export interface Product {
   id: string; store_id: string | null; nombre: string
   precio: number; images: string[]; packs: Pack[]
+  /** Reglas de cobro del producto (§56). Ausentes en una base sin migrar:
+   *  caen en el default —total, sin oferta—, que es el seguro. */
+  permite_mitad?: boolean | null
+  descuento_pen?: number | string | null
 }
 
 export default function LandingProductoPage() {
@@ -61,7 +65,7 @@ export default function LandingProductoPage() {
     void (async () => {
       try {
         const { data, error } = await supabase
-          .from('products').select('id, store_id, nombre, precio, images, packs')
+          .from('products').select('id, store_id, nombre, precio, images, packs, permite_mitad, descuento_pen')
           .eq('id', landingId).maybeSingle()
         if (!alive) return
         // Un `error` del servidor (p. ej. un id mal escrito en el link) NO es
@@ -201,6 +205,8 @@ export default function LandingProductoPage() {
           onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
           onPartialLead={state => saveCheckoutDraft(state, product)}
           homeDeliveryEnabled={homeDelivery}
+          permiteMitad={product.permite_mitad === true}
+          descuentoPen={Math.max(0, Number(product.descuento_pen) || 0)}
           flow={flow}
           abMode={abMode}
           submitContext={{

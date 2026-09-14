@@ -48,7 +48,7 @@ export const ADVANCE_HALF_SHARE = 0.5
  * mal. El redondeo es hacia arriba en el .5 (`Math.round`), así que la marca
  * nunca cobra de menos que la mitad exacta.
  */
-export function advanceFor(price: number, choice: AdvanceChoice = 'HALF'): number {
+export function advanceFor(price: number, choice: AdvanceChoice = 'FULL'): number {
   if (!Number.isFinite(price) || price <= 0) return 0
   return choice === 'FULL' ? Math.round(price) : Math.round(price * ADVANCE_HALF_SHARE)
 }
@@ -177,9 +177,15 @@ export const TRUST_BADGES: readonly string[] = [
  * Descuento que se ofrece cuando el comprador intenta cerrar el modal con datos
  * ya ingresados. Se descuenta de CADA pack.
  *
- * Ojo con dos cosas al mover este número: se paga también en los pedidos de
- * quien iba a comprar igual, y sobre un margen típico de S/49–78 por pedido,
- * S/5 es 7–10 %. Por eso se ofrece UNA sola vez por checkout.
+ * Desde el 14-set-2026 es DE CADA PRODUCTO (`products.descuento_pen`, §56):
+ * el checkout usa el del producto (`state.productDiscountPen`) y no este
+ * número. Esta constante queda como el valor con el que nació la columna y el
+ * que enseña el demo — no la lee ninguna pantalla real. La regla que decide
+ * cuánto se descuenta vive en `_shared/advance.ts` (`ofertaDelProducto`).
+ *
+ * Ojo con dos cosas al mover ese número en un producto: se paga también en
+ * los pedidos de quien iba a comprar igual, y sobre un margen típico de
+ * S/49–78 por pedido, S/5 es 7–10 %. Por eso se ofrece UNA sola vez por checkout.
  */
 export const EXIT_DISCOUNT_PEN = 5
 
@@ -320,10 +326,17 @@ export const COPY = {
   // hasta que la elección exista; la mecánica exacta llega con ella.
   advanceHeadsUpNoAmount:
     'Se adelanta una parte del envío por Yape y se descuenta del total: el resto lo pagas después.',
+  // ─── Pago completo (el default desde el 14-set-2026) ──────────────────────
+  // El pedido se paga entero por Yape antes de despacharse. Nada queda para el
+  // recibo ni para la app: decirlo cierra la duda de «¿y después cuánto?».
+  fullHeadsUp: 'Pagas tu pedido completo por Yape y listo: nada más al recibirlo.',
+  fullHeadsUpPickup: 'Pagas tu pedido completo por Yape y listo: recoges sin pagar nada más.',
+  fullHeadsUpNoAmount: 'Tu pedido se paga completo por Yape al confirmar; el monto exacto lo ves en el último paso.',
 
   // ─── Paso 3 ────────────────────────────────────────────────────────────────
   step3Title: 'Último paso: confirma tu pedido',
   step3TitleAdvance: 'Último paso: adelanta tu envío',
+  step3TitleFull: 'Último paso: paga tu pedido',
   yapeCopied: '¡Copiado!',
   // Sin cobro en línea conectado el paso 3 no pide nada, pero tampoco se queda
   // mudo: quien esperaba pagar ahora tiene que saber qué sigue.

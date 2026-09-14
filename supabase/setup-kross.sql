@@ -2826,3 +2826,46 @@ SELECT cron.schedule(
 -- Esto apaga la bandera en las tiendas que la tenían: el ruteo ya la ignora,
 -- pero una bandera encendida que no hace nada es un dato que miente.
 UPDATE stores SET pay360_enabled = false WHERE pay360_enabled IS TRUE;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §56 · EL TOTAL ES EL DEFAULT; LA MITAD LA PERMITE CADA PRODUCTO  (14-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El comprador paga el pedido COMPLETO antes de que se despache. «Pagar la
+-- mitad ahora» deja de ser el default del checkout y pasa a ser una opción que
+-- cada producto enciende (`permite_mitad`). Y la oferta de salida —el descuento
+-- de «SOLO POR ESTA VEZ» al intentar cerrar el checkout— deja de ser un número
+-- de la plataforma (S/5 para todos) y pasa a ser de cada producto
+-- (`descuento_pen`; 0 = ese producto no ofrece nada).
+--
+-- La regla que decide con estos dos campos vive en UN sitio:
+-- `_shared/advance.ts` (`eleccionDeAdelanto`, `ofertaDelProducto`), que
+-- importan `register-buyer`, `manage-product` y el checkout del front.
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS permite_mitad boolean NOT NULL DEFAULT false;
+
+-- `descuento_pen` se rellena con 5 SOLO al crear la columna: es lo que la
+-- plataforma ofrecía hasta hoy, y un producto que ya vendía con esa oferta no
+-- debe perderla en silencio. Un rerun jamás pisa el 0 que un vendedor puso a
+-- propósito — por eso el relleno va dentro del IF y no como UPDATE suelto.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'products' AND column_name = 'descuento_pen'
+  ) THEN
+    ALTER TABLE products ADD COLUMN descuento_pen numeric NOT NULL DEFAULT 0
+      CHECK (descuento_pen >= 0);
+    UPDATE products SET descuento_pen = 5;
+  END IF;
+END $$;
+
+-- Las filas nuevas nacen en FULL. Las viejas sin `advance_choice` conservan
+-- HALF: `flow-order` y `pay360-coupon` re-derivan sus montos con `?? 'HALF'`
+-- porque son de la era en que la mitad era el default, y cambiarles la
+-- elección cobraría un saldo que el comprador ya negoció distinto.
+ALTER TABLE order_sessions ALTER COLUMN advance_choice SET DEFAULT 'FULL';
+
+-- El rastro del descuento que ESTE pedido llevó. Antes el servidor no lo
+-- aplicaba (cobraba el precio de lista aunque el comprador vio S/5 menos); con
+-- la columna, el precio cobrado y la razón quedan escritos en la fila.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS descuento_pen numeric NOT NULL DEFAULT 0;

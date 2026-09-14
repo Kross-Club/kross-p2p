@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2, X } from 'lucide-react'
 import { useCheckout } from '../../lib/checkout/useCheckout'
 import { enlaceDeMiPedido } from '../../lib/enlaces'
-import { COPY, EXIT_DISCOUNT_ONCE, EXIT_DISCOUNT_PEN, PAY360_POLL_MS, onlinePayActiveFor, preferredRailFor } from '../../lib/checkout/checkout.config'
+import { COPY, EXIT_DISCOUNT_ONCE, PAY360_POLL_MS, onlinePayActiveFor, preferredRailFor } from '../../lib/checkout/checkout.config'
 import { trackEvent } from '../../lib/checkout/analytics'
 import type { CheckoutState, StoreFlow, StorePay360 } from '../../lib/checkout/types'
 import { esRielEnLinea } from '../../../supabase/functions/_shared/comision.ts'
@@ -49,6 +49,12 @@ interface CheckoutModalProps {
   /** `stores.home_delivery_enabled`. Si es false la marca solo ofrece recojo en
    *  agencia y el checkout no muestra nunca la opción de entrega a domicilio. */
   homeDeliveryEnabled?: boolean
+  /** `products.permite_mitad`: si el paso 3 ofrece pagar la mitad. El default
+   *  es el total (§56). */
+  permiteMitad?: boolean
+  /** `products.descuento_pen`: cuánto descuenta la oferta de salida de ESTE
+   *  producto. Con 0 el diálogo de salida no ofrece nada. */
+  descuentoPen?: number
   /** Config 360pay de la tienda (columnas públicas). Puede llegar asíncrona. */
   pay360?: StorePay360 | null
   /** Íd. para Flow. Cuál de los dos cobra este pedido lo decide el servidor. */
@@ -60,9 +66,10 @@ interface CheckoutModalProps {
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, homeDeliveryEnabled = true, pay360 = null, flow = null, abMode = 'SPLIT',
+  submitContext, homeDeliveryEnabled = true, permiteMitad = false, descuentoPen = 0,
+  pay360 = null, flow = null, abMode = 'SPLIT',
 }: CheckoutModalProps) {
-  const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled })
+  const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled, permiteMitad, productDiscountPen: descuentoPen })
   const { state, dispatch, errors, touch } = co
   const [confirmingClose, setConfirmingClose] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -111,7 +118,9 @@ export default function CheckoutModal({
       // El descuento se ofrece una sola vez por checkout: insistir cada vez le
       // enseña al comprador que salir es la forma de conseguirlo. `exitOfferShown`
       // vive en el estado, así que la regla sobrevive a una recarga.
-      const firstOffer = state.discountPen === 0 && (!EXIT_DISCOUNT_ONCE || !state.exitOfferShown)
+      // Y solo si el PRODUCTO ofrece algo: con `descuento_pen` 0 el diálogo es
+      // la confirmación seca, sin prometer un descuento que no existe.
+      const firstOffer = state.productDiscountPen > 0 && state.discountPen === 0 && (!EXIT_DISCOUNT_ONCE || !state.exitOfferShown)
       setOfferDiscount(firstOffer)
       setConfirmingClose(true)
       if (firstOffer) {
@@ -122,7 +131,7 @@ export default function CheckoutModal({
     }
     co.abandon()
     onClose()
-  }, [co, confirmingClose, onClose, phase, state.exitOfferShown, state.discountPen, state.step, dispatch])
+  }, [co, confirmingClose, onClose, phase, state.exitOfferShown, state.discountPen, state.productDiscountPen, state.step, dispatch])
 
   // El handler vive en un ref para que el efecto de abajo se monte UNA sola vez.
   // Si dependiera de `requestClose` —que cambia de identidad en cada render— su
@@ -592,9 +601,10 @@ export default function CheckoutModal({
       {confirmingClose && (
         <ExitOffer
           offerDiscount={offerDiscount}
+          monto={state.productDiscountPen}
           onApplyDiscount={() => {
             dispatch({ type: 'APPLY_EXIT_DISCOUNT' })
-            trackEvent({ name: 'exit_discount_applied', amount: EXIT_DISCOUNT_PEN })
+            trackEvent({ name: 'exit_discount_applied', amount: state.productDiscountPen })
             setConfirmingClose(false)
             // Vuelve al paso 1 para que vea los precios nuevos: el descuento que
             // no se ve no retiene a nadie.

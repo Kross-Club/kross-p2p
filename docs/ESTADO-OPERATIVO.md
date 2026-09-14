@@ -34,6 +34,49 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Pago total por defecto, la mitad por producto, oferta por producto · **SQL §56** + 2 funciones + frontend (14-set-2026)
+
+**La decisión.** El comprador paga el pedido **completo** antes de que se despache.
+«Pagar la mitad ahora» es opt-in **por producto** (`products.permite_mitad`, apagado por
+defecto), y la oferta de salida de «SOLO POR ESTA VEZ» es **de cada producto**
+(`products.descuento_pen`; al crear la columna se rellena con los S/5 que la plataforma
+ofrecía, y 0 la apaga). Las dos se editan en *Productos → Cobro*. La regla vive en
+`_shared/advance.ts` y la comparten front y servidor. Diseño en `01-SALES-ENGINE.md`
+(§ *El adelanto es el total…* y § *d) Descuento de retención*).
+
+**De paso se cerró un hueco real:** el servidor **nunca aplicaba** el descuento de salida
+—cobraba el precio de lista aunque el comprador vio S/5 menos—. Hoy `register-buyer` lo
+resta él mismo con el `descuento_pen` del producto y deja el rastro en
+`order_sessions.descuento_pen`.
+
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql (idempotente)
+--   §56 · products.permite_mitad, products.descuento_pen (5 solo al crearla),
+--        order_sessions.advance_choice DEFAULT 'FULL', order_sessions.descuento_pen
+```
+```
+supabase functions deploy manage-product --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy register-buyer --project-ref ofdjghntvmrdfjhazfvz
+```
+
+**En este orden, y antes del front.** `manage-product` reescribe el producto entero en
+cada guardado: si el panel nuevo llega antes que la función, guardar un producto cae con
+«column does not exist»; si la función llega antes que el SQL, lo mismo. El SQL primero,
+las funciones después, el front al final (Vercel al mergear).
+
+**Qué se ve si no entra:** con el front desplegado y el SQL sin correr, el checkout lee
+`permite_mitad`/`descuento_pen` ausentes y cae en el default seguro (total, sin oferta);
+`register-buyer` viejo sigue cobrando la mitad por default hasta desplegarse. Nada se
+rompe; solo enseña una cosa y cobra otra hasta terminar el deploy.
+
+**Verificación manual.** Producto sin `permite_mitad`: el paso 3 no enseña el reparto, la
+fila dice «Pagas ahora S/X» sin saldo, y `order_sessions` queda con `advance_choice='FULL'`
+y `advance_amount = product_price`. Con `permite_mitad`: aparece el reparto (total primero),
+elegir la mitad persiste `HALF`. Un `curl` a `register-buyer` con `advance_choice:'HALF'`
+sobre un producto sin permiso cae en `FULL` con un warn en los logs. Producto con
+`descuento_pen=0`: cerrar el checkout con datos puestos muestra la confirmación seca, sin
+oferta. Un pedido viejo en `HALF` sigue cobrando su saldo bien por `flow-order`.
+
 ### Solo Flow: 360pay se apaga para todas, no se borra · **SQL §55** + 3 funciones + frontend (14-set-2026)
 
 **La decisión.** Kross cobra **solo por Flow** desde hoy. 360pay queda **dormido**: apagado en

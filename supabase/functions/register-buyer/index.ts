@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push'
 import { esRielEnLinea, rielPara, type Proveedor } from '../_shared/comision.ts'
-import { advanceForServer, priceFromPacks } from '../_shared/advance.ts'
+import { advanceForServer, eleccionDeAdelanto, ofertaDelProducto, priceFromPacks } from '../_shared/advance.ts'
 import { imagenDelPack } from '../_shared/packs.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 import { anotarConversion } from '../_shared/api-eventos.ts'
@@ -42,6 +42,10 @@ Deno.serve(async (req) => {
     product_name: string
     product_price: number
     advance_choice?: string
+    // El comprador aceptó la oferta de salida. Es una bandera del cliente,
+    // pero está ACOTADA por el `descuento_pen` del producto: solo dice "aplica
+    // lo que el producto ofrece", nunca cuánto.
+    exit_offer_applied?: boolean
     pack_name?: string
     buyer_name: string
     buyer_phone: string
@@ -306,12 +310,20 @@ Deno.serve(async (req) => {
   // pack que eligió, y las dos cosas —cuánto cuesta y cómo se ve— salen de la
   // misma fila del producto. Eran dos viajes a la base para leer dos columnas
   // de la misma fila.
+  //
+  // Y las DOS reglas por producto (§56): si permite pagar la mitad y cuánto
+  // vale su oferta de salida. Salen de la misma fila que el precio.
   let verifiedPrice: number | null = null
   let itemImage: string | null = null
+  let permiteMitad = false
+  let descuentoProducto = 0
   if (body.product_id) {
-    const { data: prod } = await supabase.from('products').select('packs, images').eq('id', body.product_id).maybeSingle()
+    const { data: prod } = await supabase.from('products')
+      .select('packs, images, permite_mitad, descuento_pen').eq('id', body.product_id).maybeSingle()
     verifiedPrice = priceFromPacks(prod?.packs, body.product_price, body.pack_name ?? null)
     itemImage = imagenDelPack(prod?.packs, body.pack_name ?? null, prod?.images)
+    permiteMitad = prod?.permite_mitad === true
+    descuentoProducto = ofertaDelProducto(prod?.descuento_pen, body.exit_offer_applied === true)
     if (verifiedPrice === null) {
       console.warn('[register-buyer] precio no verificable contra los packs', JSON.stringify({
         product_id: body.product_id, claimed: body.product_price, pack: body.pack_name ?? null,
@@ -320,19 +332,36 @@ Deno.serve(async (req) => {
   }
   const basePrice = verifiedPrice ?? body.product_price
 
+  // ─── La elección del adelanto ──────────────────────────────────────────────
+  // El total es el default; la mitad solo si el comprador la pidió Y el
+  // producto la permite. Un HALF a un producto que no lo ofrece cae en FULL
+  // con aviso: es la dirección segura (más adelanto) y no bloquea la venta —
+  // la misma filosofía que el warn del precio de arriba.
+  const advanceChoice = eleccionDeAdelanto(body.advance_choice, permiteMitad)
+  if (body.advance_choice === 'HALF' && advanceChoice !== 'HALF') {
+    console.warn('[register-buyer] pidió HALF en un producto que no lo permite; va en FULL', JSON.stringify({
+      product_id: body.product_id ?? null, checkout_id: body.checkout_id ?? null,
+    }))
+  }
+
+  // ─── Los descuentos ────────────────────────────────────────────────────────
+  // Primero la oferta de salida del producto (la que el comprador aceptó al
+  // intentar cerrar el checkout; antes el servidor NO la aplicaba y cobraba el
+  // precio de lista aunque el comprador vio S/5 menos), y sobre eso los puntos.
+  //
   // Points redemption → discount on this order. usedPoints capped by balance AND
   // by the order price, so you can't over-redeem.
-  let finalPrice = basePrice
+  let finalPrice = Math.max(0, basePrice - descuentoProducto)
   let discount = 0
   if (body.redeem_points && body.redeem_points > 0) {
     const { data: st } = await supabase.from('stores').select('points_rate').eq('id', body.store_id).maybeSingle()
     const rate = Number(st?.points_rate ?? 0)
     if (rate > 0) {
-      const maxByPrice = Math.floor(basePrice / rate)
+      const maxByPrice = Math.floor(finalPrice / rate)
       const usedPoints = Math.min(body.redeem_points, buyer.puntos ?? 0, maxByPrice)
       if (usedPoints > 0) {
         discount = usedPoints * rate
-        finalPrice = Math.max(0, basePrice - discount)
+        finalPrice = Math.max(0, finalPrice - discount)
         await supabase.from('buyers').update({ puntos: (buyer.puntos ?? 0) - usedPoints }).eq('id', buyer.id)
       }
     }
@@ -347,14 +376,14 @@ Deno.serve(async (req) => {
   // cobraría de verdad y el pedido se auto-confirmaría. El body solo sirve para detectar
   // front desalineado.
   //
-  // Es la mitad del pedido, o el total si el comprador lo eligió. `finalPrice`
-  // ya trae el precio verificado contra los packs y el descuento de puntos
-  // aplicado, que es exactamente lo que va a pagar.
+  // Es el total del pedido, o la mitad si el comprador la eligió y el producto
+  // lo permite (`advanceChoice`, arriba). `finalPrice` ya trae el precio
+  // verificado contra los packs y los descuentos aplicados, que es
+  // exactamente lo que va a pagar.
   //
   // El AI closer conserva su monto negociado: su flujo no pasa por esta regla.
   const closedBy = body.closed_by === 'AI_CLOSER' ? 'AI_CLOSER' : 'DIRECT_CHECKOUT'
   const bodyAdvance = typeof body.advance_amount === 'number' && body.advance_amount > 0 ? body.advance_amount : 0
-  const advanceChoice = body.advance_choice === 'FULL' ? 'FULL' : 'HALF'
   const advanceAmount = closedBy === 'DIRECT_CHECKOUT'
     ? advanceForServer(finalPrice, advanceChoice)
     : bodyAdvance
@@ -420,6 +449,8 @@ Deno.serve(async (req) => {
       product_name: body.product_name,
       product_price: finalPrice,
       advance_choice: advanceChoice,
+      // El rastro de la oferta de salida que este pedido llevó (§56).
+      descuento_pen: descuentoProducto,
       pack_name: body.pack_name ?? null,
       items: [{ product_id: body.product_id ?? null, nombre: body.product_name, precio: finalPrice, unit_price: finalPrice, qty: 1, pack_name: body.pack_name ?? null, image: itemImage }],
       status: 'active',

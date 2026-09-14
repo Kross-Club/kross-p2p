@@ -99,6 +99,10 @@ export interface ProductoDemo {
   images: string[]
   packs: { nombre: string; precio: number }[]
   vendidos: number
+  /** Cobro (§56). Los tres productos del demo permiten la mitad —los pedidos
+   *  que enseñan saldo lo necesitan— y ofrecen los S/5 de siempre. */
+  permite_mitad: boolean
+  descuento_pen: number
 }
 
 const CATALOGO: { id: string; nombre: string; precio: number }[] = [
@@ -731,6 +735,10 @@ async function construir(): Promise<TiendaDemo> {
       { nombre: 'Pack 3', precio: Math.round(p.precio * 2.3) },
     ],
     vendidos: vendidosPorProducto.get(String(p.precio)) ?? 0,
+    // Paridad con la tienda real: el sorteo mitad/todo de los pedidos de arriba
+    // solo es verdad si el producto permite la mitad.
+    permite_mitad: true,
+    descuento_pen: 5,
   }))
 
   // Uno de cada seis compradores de la ventana viva está mirando la app. Sale

@@ -140,6 +140,9 @@ export async function submitOrder(s: CheckoutState, ctx: SubmitContext): Promise
       checkout_variant: s.variant,
       advance_amount: s.advanceAmount,
       advance_choice: s.advanceChoice,
+      // Aceptó la oferta de salida. Es solo la bandera: CUÁNTO descuenta lo
+      // decide el servidor con el `descuento_pen` del producto (§56).
+      exit_offer_applied: s.discountPen > 0,
       // Atribución del anuncio: la guarda el servidor en la orden para el
       // Purchase de CAPI (el IP y el user-agent los captura el server de los
       // headers, no del body — el IP es spoofeable).

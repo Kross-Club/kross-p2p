@@ -186,12 +186,20 @@ export default function ProvinciaBranch({ state, dispatch, errors, touch }: Prov
           <PackageCheck size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#EA580C' }} />
           <span>
             {method === 'DOMICILIO' || state.pickup.agency ? (
-              <>
-                <strong className="font-black">Adelanto de S/{state.advanceAmount}.</strong>{' '}
-                {/* En agencia el saldo se paga por la app, no al recibir. */}
-                {method === 'DOMICILIO' ? COPY.advanceHeadsUpShort : COPY.advanceHeadsUpShortPickup}
-              </>
-            ) : COPY.advanceHeadsUpNoAmount}
+              state.advanceChoice === 'FULL' ? (
+                /* Pago completo (el default): sin «resto» que anunciar. */
+                <>
+                  <strong className="font-black">Pagas S/{state.advanceAmount} ahora.</strong>{' '}
+                  {method === 'DOMICILIO' ? COPY.fullHeadsUp : COPY.fullHeadsUpPickup}
+                </>
+              ) : (
+                <>
+                  <strong className="font-black">Adelanto de S/{state.advanceAmount}.</strong>{' '}
+                  {/* En agencia el saldo se paga por la app, no al recibir. */}
+                  {method === 'DOMICILIO' ? COPY.advanceHeadsUpShort : COPY.advanceHeadsUpShortPickup}
+                </>
+              )
+            ) : state.advanceChoice === 'FULL' ? COPY.fullHeadsUpNoAmount : COPY.advanceHeadsUpNoAmount}
           </span>
         </p>
       )}

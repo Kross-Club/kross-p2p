@@ -1,4 +1,8 @@
-// ─── PASO 3 · Resumen y adelanto ─────────────────────────────────────────────
+// ─── PASO 3 · Resumen y pago ─────────────────────────────────────────────────
+// Desde el 14-set-2026 el default es pagar el TOTAL: el reparto mitad/todo
+// (`AdvancePicker`) solo aparece cuando el producto lo permite
+// (`state.permiteMitad`), y las filas del saldo solo cuando queda saldo.
+//
 // El paso 3 **no pide nada**. Nunca. Con 360pay activo no anuncia nada extra:
 // el resumen ya dice cuánto se adelanta y la pantalla de Yape aparece DESPUÉS
 // de terminar el pedido — anunciarla aquí duplicaba el monto en la misma
@@ -38,6 +42,10 @@ export default function Step3Confirm({
   state, packName, price, onlinePay, onAdvanceChoice, submitError,
 }: Step3Props) {
   const advance = state.advanceAmount
+  const saldo = Math.max(0, price - advance)
+  // Paga todo: no hay saldo que anunciar ni «adelanto» que nombrar.
+  const pagaTodo = advance > 0 && saldo === 0
+  const pickup = state.deliveryMethod === 'AGENCIA'
   const isProvincia = state.locationType === 'PROVINCIA'
   const p = state.provinciaConfig
 
@@ -50,12 +58,14 @@ export default function Step3Confirm({
   return (
     <>
       <h2 className="text-xl font-black text-gray-900 mb-0.5">
-        {advance > 0 ? COPY.step3TitleAdvance : COPY.step3Title}
+        {pagaTodo ? COPY.step3TitleFull : advance > 0 ? COPY.step3TitleAdvance : COPY.step3Title}
       </h2>
       <p className="text-sm text-gray-500 mb-4">
-        {advance > 0
-          ? (state.deliveryMethod === 'AGENCIA' ? COPY.advanceHeadsUpShortPickup : COPY.advanceHeadsUpShort)
-          : COPY.doneCod}
+        {pagaTodo
+          ? (pickup ? COPY.fullHeadsUpPickup : COPY.fullHeadsUp)
+          : advance > 0
+            ? (pickup ? COPY.advanceHeadsUpShortPickup : COPY.advanceHeadsUpShort)
+            : COPY.doneCod}
       </p>
 
       {/* ── Resumen ── */}
@@ -66,22 +76,28 @@ export default function Step3Confirm({
         <Row label="Total" value={`S/${price}`} strong />
         {advance > 0 && (
           <>
-            <Row label="Adelantas ahora" value={`S/${advance}`} strong accent />
+            <Row label={pagaTodo ? 'Pagas ahora' : 'Adelantas ahora'} value={`S/${advance}`} strong accent />
             {/* El saldo explícito evita el reclamo de "pensé que ya había pagado
                 todo". Es la cifra que el comprador va a recordar. En agencia el
                 saldo NO se paga al recoger: se paga por la app (suelta la clave
-                de recojo), y la etiqueta no puede prometer lo contrario. */}
-            <Row
-              label={state.deliveryMethod === 'AGENCIA' ? 'Saldo (lo pagas por la app)' : 'Pagas al recibir'}
-              value={`S/${Math.max(0, price - advance)}`}
-            />
+                de recojo), y la etiqueta no puede prometer lo contrario.
+                Con el pago completo la fila no existe: un «Pagas al recibir:
+                S/0» es una pregunta, no una respuesta. */}
+            {saldo > 0 && (
+              <Row
+                label={pickup ? 'Saldo (lo pagas por la app)' : 'Pagas al recibir'}
+                value={`S/${saldo}`}
+              />
+            )}
           </>
         )}
       </dl>
 
-      {price > 0 && (
+      {/* El reparto solo se ofrece si el PRODUCTO lo permite: para el resto el
+          total es el único camino y no hay nada que elegir. */}
+      {price > 0 && state.permiteMitad && (
         <AdvancePicker price={price} choice={state.advanceChoice}
-          pickup={state.deliveryMethod === 'AGENCIA'} onPick={onAdvanceChoice} />
+          pickup={pickup} onPick={onAdvanceChoice} />
       )}
 
       {state.deliveryNote && (
@@ -120,7 +136,8 @@ export default function Step3Confirm({
 }
 
 // ─── Cuánto adelanta ─────────────────────────────────────────────────────────
-// La mitad es el mínimo; el total es opcional. Se pregunta ACÁ y no en el paso 2
+// Solo en productos con `permite_mitad`. El total va primero porque es el
+// default y lo que el comprador ya tiene elegido. Se pregunta ACÁ y no en el paso 2
 // porque es lo último antes de yapear: preguntarlo antes obligaba al comprador a
 // decidir sobre un monto que todavía podía cambiar de pack.
 //
@@ -136,14 +153,14 @@ function AdvancePicker({ price, choice, pickup, onPick }: {
   onPick: (c: AdvanceChoice) => void
 }) {
   const options: { id: AdvanceChoice; title: string; now: number; perk?: string }[] = [
-    { id: 'HALF', title: 'Pago la mitad ahora', now: advanceFor(price, 'HALF') },
     { id: 'FULL', title: 'Pago todo ahora', now: advanceFor(price, 'FULL'), perk: COPY.advanceFullPerk },
+    { id: 'HALF', title: 'Pago la mitad ahora', now: advanceFor(price, 'HALF') },
   ]
 
   return (
     <div className="mb-4">
-      <p className="text-xs font-black text-gray-700 mb-2">¿Cuánto quieres adelantar? *</p>
-      <div className="space-y-2" role="radiogroup" aria-label="¿Cuánto quieres adelantar?">
+      <p className="text-xs font-black text-gray-700 mb-2">¿Cuánto quieres pagar ahora? *</p>
+      <div className="space-y-2" role="radiogroup" aria-label="¿Cuánto quieres pagar ahora?">
         {options.map(({ id, title, now, perk }) => {
           const active = choice === id
           const rest = Math.max(0, price - now)

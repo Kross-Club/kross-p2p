@@ -23,12 +23,16 @@ const run = (state: CheckoutState, ...actions: CheckoutAction[]): CheckoutState 
   actions.reduce(checkoutReducer, state)
 
 const base = () => initialCheckoutState('pack-2')
+/** El mismo checkout sobre un producto que PERMITE la mitad y ofrece los S/5
+ *  de salida (§56). El default —`base()`— es el total y sin oferta. */
+const baseMitad = () => initialCheckoutState('pack-2', 'A', true, true, EXIT_DISCOUNT_PEN)
 
 /** El adelanto es un porcentaje del pedido, así que sin precio en el estado sale
  *  0 y no hay nada que verificar. 140 parte limpio en dos. */
 const PRECIO = 140
 const PACK: CheckoutAction = { type: 'SET_PACK', packId: 'pack-2', price: PRECIO }
 const conPack = () => run(base(), PACK)
+const conPackMitad = () => run(baseMitad(), PACK)
 
 // Elegir distrito es lo ÚNICO que fija la región: `locationType` se deriva de él
 // vía `isLimaMetro()`. Antes había un toggle Lima/Provincia y estas dos
@@ -242,9 +246,30 @@ describe('tienda solo con recojo en agencia', () => {
 })
 
 describe('máquina · derivados', () => {
-  it('el adelanto es la mitad del pedido, en las dos regiones', () => {
-    expect(run(conPack(), LIMA_D).advanceAmount).toBe(PRECIO / 2)
-    expect(run(conPack(), PROV_D).advanceAmount).toBe(PRECIO / 2)
+  it('el adelanto es el TOTAL del pedido por defecto, en las dos regiones', () => {
+    // Desde el 14-set-2026 el comprador paga todo antes del despacho (§56).
+    expect(run(conPack(), LIMA_D).advanceAmount).toBe(PRECIO)
+    expect(run(conPack(), PROV_D).advanceAmount).toBe(PRECIO)
+  })
+
+  it('la mitad solo existe si el producto la permite', () => {
+    const half: CheckoutAction = { type: 'SET_ADVANCE_CHOICE', choice: 'HALF' }
+    // Con permiso: la elección vale y el adelanto baja a la mitad.
+    expect(run(conPackMitad(), PROV_D, half).advanceAmount).toBe(PRECIO / 2)
+    expect(run(conPackMitad(), PROV_D, half).advanceChoice).toBe('HALF')
+    // Sin permiso: la misma acción no baja nada — `derive()` fuerza FULL, que
+    // es lo que el servidor va a cobrar igual (`eleccionDeAdelanto`).
+    expect(run(conPack(), PROV_D, half).advanceAmount).toBe(PRECIO)
+    expect(run(conPack(), PROV_D, half).advanceChoice).toBe('FULL')
+  })
+
+  it('un borrador en HALF de un producto que ya no lo permite vuelve a FULL al restaurar', () => {
+    const viejo = run(conPackMitad(), PROV_D, { type: 'SET_ADVANCE_CHOICE', choice: 'HALF' })
+    expect(viejo.advanceChoice).toBe('HALF')
+    // El hook pisa las reglas del producto al restaurar (como `homeDeliveryEnabled`).
+    const hoy = checkoutReducer(viejo, { type: 'RESTORE', state: { ...viejo, permiteMitad: false } })
+    expect(hoy.advanceChoice).toBe('FULL')
+    expect(hoy.advanceAmount).toBe(PRECIO)
   })
 
   it('sin pack elegido no hay adelanto que cobrar', () => {
@@ -254,7 +279,7 @@ describe('máquina · derivados', () => {
   it('el adelanto sale de la config, no de un número suelto en el reducer', () => {
     // Si esto falla es que alguien hardcodeó la proporción: cambiar la mitad por
     // otra parte debe ser editar UNA línea de checkout.config.ts.
-    expect(run(conPack(), PROV_D).advanceAmount).toBe(advanceFor(PRECIO, 'HALF'))
+    expect(run(conPack(), PROV_D).advanceAmount).toBe(advanceFor(PRECIO, 'FULL'))
   })
 
   it('pagar todo deja el saldo en cero', () => {
@@ -265,8 +290,21 @@ describe('máquina · derivados', () => {
   it('el descuento de retención baja también el adelanto', () => {
     // Adelantar sobre un precio que el comprador ya no va a pagar le cobra de
     // más justo después de haberle prometido un descuento.
+    const s = run(conPackMitad(), PROV_D, { type: 'APPLY_EXIT_DISCOUNT' })
+    expect(s.advanceAmount).toBe(advanceFor(PRECIO - EXIT_DISCOUNT_PEN, 'FULL'))
+  })
+
+  it('la oferta de salida vale lo que el PRODUCTO ofrece: con 0 no descuenta nada', () => {
+    // `base()` es un producto sin oferta (`descuento_pen` 0): aplicar la
+    // acción no baja el precio ni el adelanto, aunque marque la oferta como vista.
     const s = run(conPack(), PROV_D, { type: 'APPLY_EXIT_DISCOUNT' })
-    expect(s.advanceAmount).toBe(advanceFor(PRECIO - EXIT_DISCOUNT_PEN, 'HALF'))
+    expect(s.discountPen).toBe(0)
+    expect(s.advanceAmount).toBe(PRECIO)
+    expect(s.exitOfferShown).toBe(true)
+    // Y con S/8 en el producto, descuenta S/8: el número no es de la plataforma.
+    const ocho = run(run(initialCheckoutState('pack-2', 'A', true, false, 8), PACK), PROV_D, { type: 'APPLY_EXIT_DISCOUNT' })
+    expect(ocho.discountPen).toBe(8)
+    expect(ocho.advanceAmount).toBe(PRECIO - 8)
   })
 
   it('marca needsLocationConfirmation en Lima mientras no haya pin', () => {
@@ -496,7 +534,7 @@ describe('persistencia', () => {
     // Y el adelanto sobrevive al viaje: sale del precio del pack, que el
     // borrador también guarda.
     expect(checkoutReducer(restored!, { type: 'RESTORE', state: restored! }).advanceAmount)
-      .toBe(advanceFor(PRECIO, 'HALF'))
+      .toBe(advanceFor(PRECIO, 'FULL'))
   })
 
   it('descarta borradores vencidos', () => {
@@ -917,11 +955,11 @@ describe('ajustes tras la revisión de Fase 2', () => {
 
   it('ni la agencia ni el método mueven el adelanto', () => {
     const prov = run(conPack(), PROV_D)
-    const mitad = advanceFor(PRECIO, 'HALF')
-    expect(run(prov, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(mitad)
-    expect(run(prov, { type: 'SET_AGENCY', agency: 'OLVA' }).advanceAmount).toBe(mitad)
-    expect(run(prov, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' }).advanceAmount).toBe(mitad)
-    expect(run(conPack(), LIMA_D).advanceAmount).toBe(mitad)
+    const total = advanceFor(PRECIO, 'FULL')
+    expect(run(prov, { type: 'SET_AGENCY', agency: 'SHALOM' }).advanceAmount).toBe(total)
+    expect(run(prov, { type: 'SET_AGENCY', agency: 'OLVA' }).advanceAmount).toBe(total)
+    expect(run(prov, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' }).advanceAmount).toBe(total)
+    expect(run(conPack(), LIMA_D).advanceAmount).toBe(total)
   })
 
   it('elegir "en casa" después de una agencia limpia la agencia', () => {
@@ -1031,7 +1069,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
   })
 
   it('aplicar el descuento dos veces no lo duplica', () => {
-    const una = run(base(), { type: 'APPLY_EXIT_DISCOUNT' })
+    const una = run(baseMitad(), { type: 'APPLY_EXIT_DISCOUNT' })
     const dos = run(una, { type: 'APPLY_EXIT_DISCOUNT' })
     expect(una.discountPen).toBe(EXIT_DISCOUNT_PEN)
     expect(dos.discountPen).toBe(EXIT_DISCOUNT_PEN)
@@ -1046,7 +1084,7 @@ describe('ajustes tras la revisión de Fase 2', () => {
 
   it('el descuento sobrevive a la recarga', () => {
     localStorage.clear()
-    const s = run(base(),
+    const s = run(baseMitad(),
       { type: 'SET_WHATSAPP', whatsapp: '987654321' },
       { type: 'APPLY_EXIT_DISCOUNT' },
     )
@@ -1269,13 +1307,13 @@ describe('elegir un punto de recojo', () => {
       PROV_D,
       { type: 'SET_PICKUP_POINT', agency: 'OLVA', branchId: '695' },
     )
-    const mitad = advanceFor(PRECIO, 'HALF')
-    expect(s.advanceAmount).toBe(mitad)
+    const total = advanceFor(PRECIO, 'FULL')
+    expect(s.advanceAmount).toBe(total)
 
     const otro = run(s, { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' })
     expect(otro.pickup.agency).toBe('SHALOM')
     expect(otro.pickup.branchId).toBe('4')
-    expect(otro.advanceAmount).toBe(mitad)
+    expect(otro.advanceAmount).toBe(total)
   })
 
   it('elegir un punto del listado descarta el texto libre de OTRO', () => {

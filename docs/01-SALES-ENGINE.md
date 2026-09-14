@@ -197,7 +197,18 @@ cambiar de tarjeta. Hoy el adelanto sale del precio del pack, es el mismo elija 
 que elija, y **la tarjeta de la sede ya no muestra monto**.
 
 **d) Descuento de retención al intentar salir ✅.** Al cerrar el modal con datos
-ingresados se ofrecen **S/5 de descuento sobre cada pack** antes de dejarlo ir.
+ingresados se ofrece **el descuento del producto sobre cada pack** antes de dejarlo ir.
+
+> **Desde el 14-set-2026 la oferta es DE CADA PRODUCTO** (`products.descuento_pen`, §56):
+> el vendedor la fija en *Productos → Cobro* (0 = ese producto no ofrece nada y el diálogo
+> de salida es la confirmación seca). `EXIT_DISCOUNT_PEN` ya no la lee ninguna pantalla:
+> es solo el valor con el que nació la columna (S/5, lo que ofrecía la plataforma). Y **el
+> servidor por fin la aplica**: hasta esa fecha `register-buyer` cobraba el precio de lista
+> aunque el comprador vio S/5 menos —el front mandaba el precio descontado, el servidor lo
+> re-verificaba contra los packs y ganaba el de lista—. Hoy el front manda solo la bandera
+> `exit_offer_applied` y el servidor resta lo que el producto ofrece
+> (`ofertaDelProducto()` en `_shared/advance.ts`), dejando el rastro en
+> `order_sessions.descuento_pen`.
 
 - **Disparador:** el toque en la X (o Esc en desktop). Se descartó `mouseleave`, el
   exit-intent clásico: no existe en móvil, y el tráfico de anuncios de Meta es casi todo
@@ -221,8 +232,8 @@ ingresados se ofrecen **S/5 de descuento sobre cada pack** antes de dejarlo ir.
 - ⚠️ **Cuesta margen y puede enseñar a abandonar.** S/5 sobre una ganancia típica de
   S/49–78 por pedido es 7–10 %, y se paga también en los pedidos de quien iba a comprar
   igual. Los eventos `exit_offer_shown` y `exit_discount_applied` están instrumentados:
-  **medirlo contra un grupo de control antes de darlo por bueno.** El monto se cambia en
-  una línea de `checkout.config.ts`.
+  **medirlo contra un grupo de control antes de darlo por bueno.** El monto se cambia
+  por producto, en el panel.
 
 **f) Los borradores de versiones anteriores se migran, no se descartan ✅.** Al agregar
 `discountPen` al estado, los borradores ya guardados volvían sin ese campo y el paso 1
@@ -1009,21 +1020,33 @@ de pedírsela a todos por si acaso en el checkout.
 lleva — también en Lima. Dejarlo como escotilla de emergencia significaba que el
 botón de emergencia era "cobrar S/0", que es peor que la emergencia.
 
-### El adelanto es la mitad del pedido, o el total ✅ (vigente desde ago-2026)
+### El adelanto es el total del pedido, o la mitad si el producto lo permite ✅ (vigente desde 14-set-2026)
+
+> **Cambio de default (14-set-2026, §56).** El comprador paga el pedido **completo** por
+> Yape antes de que se despache. «Pagar la mitad ahora» dejó de ser el default y pasó a
+> ser una opción que **cada producto enciende** en *Productos → Cobro*
+> (`products.permite_mitad`). Sin ella el paso 3 no enseña el `AdvancePicker`, el resumen
+> dice «Pagas ahora» sin fila de saldo, y `derive()` fuerza `FULL` aunque un borrador
+> viejo traiga `HALF`. La regla vive en `_shared/advance.ts` (`eleccionDeAdelanto`) y la
+> comparten el front y `register-buyer`: un `HALF` a un producto que no lo permite cae en
+> `FULL` con `console.warn` —más adelanto, nunca menos, y nunca se bloquea la venta—.
+> Las filas viejas de `order_sessions` sin `advance_choice` siguen siendo `HALF`
+> (`flow-order` y `pay360-coupon` re-derivan con `?? 'HALF'`): son de la era de la mitad.
 
 ```ts
 export type AdvanceChoice = 'HALF' | 'FULL'
 export const ADVANCE_HALF_SHARE = 0.5
 
-export function advanceFor(price: number, choice: AdvanceChoice = 'HALF'): number {
+export function advanceFor(price: number, choice: AdvanceChoice = 'FULL'): number {
   if (!Number.isFinite(price) || price <= 0) return 0
   return choice === 'FULL' ? Math.round(price) : Math.round(price * ADVANCE_HALF_SHARE)
 }
 ```
 
-El comprador elige en el paso 3 (`AdvancePicker`) y cada tarjeta muestra **lo que
-paga ahora y lo que le queda** — la duda real no es "cuánto pago" sino "cuánto me
-falta después".
+En los productos que lo permiten, el comprador elige en el paso 3 (`AdvancePicker`,
+con el total primero) y cada tarjeta muestra **lo que paga ahora y lo que le queda** —
+la duda real no es "cuánto pago" sino "cuánto me falta después". El test de paridad
+front ↔ servidor vive en `src/lib/checkout/advance-parity.test.ts`.
 
 **Por qué reemplazó a la tabla por destino.** La comisión de 360pay es plana
 (S/3.15 + IGV = **S/3.72** por transacción): sobre un adelanto de S/5 es el
@@ -1049,10 +1072,11 @@ calcular. Si no se puede verificar (sin `product_id`, producto sin packs) **no s
 bloquea la venta** —el pedido vale más que la comprobación— pero queda un
 `console.warn`, y el adelanto sale del precio verificado cuando existe.
 
-`choice` sí puede venir del cliente sin riesgo: solo elige entre mitad y total, y
-ninguna de las dos baja del mínimo. Se persiste en
-`order_sessions.advance_choice` (def `'HALF'`) porque el cobro en línea necesita
-**re-derivar exactamente** el monto que se mostró.
+`choice` viene del cliente pero **no se acepta tal cual** desde §56: `HALF` solo vale si
+el producto lo permite (`eleccionDeAdelanto`); lo demás es `FULL`. Se persiste en
+`order_sessions.advance_choice` (def `'FULL'` desde el 14-set; las filas viejas quedan
+en `'HALF'`) porque el cobro en línea necesita **re-derivar exactamente** el monto que
+se mostró.
 
 #### Los montos viejos ⛔ histórico
 
