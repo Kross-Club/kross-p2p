@@ -79,5 +79,5 @@ export function repartosPosibles(t: FormasDeReparto): Reparto[] {
 /** Cómo se llama cada forma en el panel. El comprador nunca lee esto. */
 export const NOMBRE_DE_REPARTO: Record<Reparto, string> = {
   PROPIO: 'Motorizado propio',
-  COURIER: 'Courier en Lima y Callao',
+  COURIER: 'Eva Courier (Lima y Callao)',
 }

@@ -771,7 +771,7 @@ type MerchantCustomerSession = {
                // Lima, y "agencia" ya no significa provincia.
                dispatchType: 'MOTORIZADO_LIMA' | 'MOTORIZADO_PROVINCIA'
                            | 'AGENCIA_PROVINCIA' | 'AGENCIA_LIMA'
-               agencyName?: 'SHALOM' | 'OLVA' }
+               agencyName?: 'SHALOM' | 'OLVA' | 'EVA' }
   sale:      { productId: string
                paymentMethod: 'YAPE_PLIN' | 'CONTRAENTREGA' | 'TARJETA'
                closedBy: 'AI_CLOSER' | 'DIRECT_CHECKOUT' }
@@ -799,7 +799,7 @@ type MerchantCustomerSession = {
   // contra la API del courier y refleja la fase. La fase dispara la cobranza
   // del saldo al llegar a EN_DESTINO — pero NUNCA mueve `stage` sola: el
   // pipeline lo avanza una persona (misma regla que `no_entregado`).
-  shipment?: { courier: 'SHALOM' | 'OLVA'
+  shipment?: { courier: 'SHALOM' | 'OLVA' | 'EVA'
                // Shalom rastrea por numero+codigo (u oseId); Olva por
                // numero+year (año de emisión en 2 dígitos, sin código).
                ref: { numero?: string; codigo?: string; oseId?: string; year?: string }

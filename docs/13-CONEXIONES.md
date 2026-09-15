@@ -9,10 +9,11 @@
 
 ## El problema que resuelve (03-set-2026)
 
-Kross se apoya en **dieciocho APIs que no controla**: el riel de cobro (más 360pay,
-dormida desde set-2026), los **cuatro** proveedores de tracking (Shalom y Olva tienen
-dos cada uno, ninguno oficial; los de Olva dormidos desde el 15-set porque el proveedor
-no entrega la API), WhatsApp, RENIEC, LiveKit, los CAPI de Meta y TikTok,
+Kross se apoya en **diecinueve APIs que no controla**: el riel de cobro (más 360pay,
+dormida desde set-2026), los **cuatro** proveedores de tracking por agencia (Shalom y Olva
+tienen dos cada uno, ninguno oficial; los de Olva dormidos desde el 15-set porque el proveedor
+no entrega la API), **Eva Courier** para el reparto a domicilio en Lima y Callao, WhatsApp,
+RENIEC, LiveKit, los CAPI de Meta y TikTok,
 la voz de IA, el correo de reclamaciones, el push, el geocoding, **Stripe**, que cobra
 el plan mensual del comercio, y **Nubefact**, que emite la boleta.
 
@@ -62,7 +63,7 @@ cuando ya se publicó.
 
 | Pieza | Qué hace |
 |---|---|
-| `_shared/integraciones.ts` | **Pura y compartida** con el panel: el catálogo de las dieciocho, `sanear()`, `nuevaRef()`, `refDelProveedor()` y `saludDe()`. Servidor y pantalla dicen lo mismo porque leen lo mismo |
+| `_shared/integraciones.ts` | **Pura y compartida** con el panel: el catálogo de las diecinueve, `sanear()`, `nuevaRef()`, `refDelProveedor()` y `saludDe()`. Servidor y pantalla dicen lo mismo porque leen lo mismo |
 | `_shared/api-eventos.ts` | La que escribe. `anotar`, `anotarRespuesta`, `anotarSinRespuesta`, `anotarResultado` (para `flow.ts`/`pay360.ts`, que son puros) y `anotarCapi` |
 | `supabase/functions/integraciones` | La que lee: acciones `estado`, `eventos` y `evento` |
 | `src/pages/vendedor/ConexionesPage.tsx` | La pantalla |
@@ -118,8 +119,8 @@ proveedor y su respuesta. Es el caso de uso de soporte y por eso está primero.
 Al lado del nombre puede haber una de dos, y ninguna es un diagnóstico — son el
 **papel** que cumple esa API, no su estado:
 
-- **crítica** — si se cae, se frena vender o despachar. Son **cuatro** de dieciocho: el
-  riel de cobro, los dos rieles de Shalom y RENIEC. (360pay y los dos de Olva están
+- **crítica** — si se cae, se frena vender o despachar. Son **cinco** de diecinueve: el
+  riel de cobro, los dos rieles de Shalom, Eva Courier y RENIEC. (360pay y los dos de Olva están
   dormidos, y lo dormido no cuenta: no se elige para ningún pedido nuevo.) Una integración crítica
   puede estar perfectamente sana; lo que dice la etiqueta es cuánto duele que no
   lo esté.
@@ -198,6 +199,7 @@ Todo el stack, en el punto donde se sabe **de qué marca** era la llamada:
 | **Twilio (SMS)** · dieciséis (05-set-2026) · ⚠️ **apagado por precio desde el 06-set** (US$0.2476 por segmento a Perú contra S/1.28 que Kross gana por cobro; los recordatorios pasaron a plantilla de WhatsApp). El riel sigue montado: `SMS_ENABLED=on` lo revive | `_shared/sms.ts` — cada envío rechazado o caído, con el código de Twilio en `error_code` y su `Twilio-Request-Id` en `provider_ref`. El chequeo del tablero lista **un** mensaje (`GET Accounts/{sid}/Messages?PageSize=1`): gratis, y es una lectura sobre el mismo recurso en el que escribimos. Preguntar por `GET Accounts/{sid}` rebotaba con una API key aunque el envío funcionara, y el panel pintaba *Caída* un riel que estaba mandando SMS (06-set-2026). Si el chequeo falla, queda anotado con su `KX-…`. Secreto que la enciende: `TWILIO_ACCOUNT_SID` (más el token o una API key, y el remitente: ver `ESTADO-OPERATIVO.md` § *El riel SMS*) |
 | **ElevenLabs · Resend · Nominatim** | sus funciones |
 | **Stripe** · diecisiete (10-set-2026) — cobra el plan mensual del comercio ($67/mes). No es crítica para vender ni despachar, **pero sí para pagar**: es la que dice qué meses pagó cada tienda, y sin ese dato la comisión del afiliado de ese mes no se acumula (`docs/15-AFILIADOS.md`) | `stripe-webhook` — la firma rechazada, el pago de plan fallido (`suscripcion.pago_fallido`, que es la lista de a quién llamar) y cualquier escritura que no entre. **Solo escucha**: no hay ninguna llamada saliente a Stripe, así que no hay API key que se pueda filtrar. Secreto que la enciende: `STRIPE_WEBHOOK_SECRET` |
+| **Eva Courier** · diecinueve (15-set-2026) — el reparto a domicilio en Lima y Callao (`docs/17-EVA.md`). **Crítica**: sin ella no se despacha lo que va por courier. Una cuenta de la plataforma | `eva-order` — `reparto.registrar` (OK con el tracking en `provider_ref` / RECHAZO con el motivo de Eva: distrito, teléfono, llave / FALLO en 5xx / SIN_RESPUESTA, que es el caso en que hay que mirar en app.evacourier.pe antes de reintentar), `reparto.rotulo` y `reparto.storage`; `eva-webhook` — `webhook.evento` (OK por cada estado, con el tracking). El chequeo del tablero es un `GET` a un tracking que no existe: 404 = la llave entró; 401/403 = no sirve. Secretos: `EVA_API_KEY`, `EVA_WEBHOOK_SECRET` |
 | **Nubefact** · dieciocho (15-set-2026) — emite la boleta electrónica del pedido pagado completo, desde la cuenta de la marca —su ruta y su token; el RUC del emisor no viaja en el JSON (`docs/16-NUBEFACT.md`). No es crítica para vender ni despachar: sin ella el paso «Boleta electrónica» del pedido queda pendiente | `_shared/boleta.ts` — `boleta.emitir` (OK / RECHAZO con el código de Nubefact en `error_code` / FALLO / SIN_RESPUESTA) y `boleta.consultar` (cuando contestó «ya existe»). Secreto: la ruta y el token de cada marca, en `store_secrets` |
 
 Dos detalles de diseño que evitan inundar la tabla: en las **campañas** y las

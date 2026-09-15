@@ -335,3 +335,27 @@ describe('cada paso lleva lo suyo', () => {
     expect(buildTicket(base()).pasos.at(-1)?.detail).toBe('En Shalom · Juliaca Centro, con el DNI 12345678 y tu clave de recojo.')
   })
 })
+
+describe('ticket · domicilio con courier (Eva, §64)', () => {
+  it('nombra al courier en «en camino», y solo ahí', () => {
+    const t = buildTicket({
+      state: domicilioLima(), price: 140, packName: null, paid: true, unpaid: false, branch: null,
+      courierDomicilio: 'Eva Courier',
+    })
+    const camino = t.pasos.find(p => p.tipo === 'camino')!
+    expect(camino.detail).toContain('Con motorizado de Eva Courier.')
+    expect(t.pasos.filter(p => p.tipo !== 'camino').every(p => !String(p.detail ?? '').includes('Eva'))).toBe(true)
+  })
+  it('sin courier no nombra a nadie: el motorizado propio no se presenta', () => {
+    const t = buildTicket({ state: domicilioLima(), price: 140, packName: null, paid: true, unpaid: false, branch: null })
+    expect(t.pasos.find(p => p.tipo === 'camino')!.detail).not.toContain('motorizado de')
+  })
+  it('a domicilio sigue sin haber guía que enseñar, aunque el courier sea Eva', () => {
+    const t = buildTicket({
+      state: domicilioLima(), price: 140, packName: null, paid: true, unpaid: false, branch: null,
+      courierDomicilio: 'Eva Courier', guide: { courier: 'EVA', numero: 'K8X9', codigo: null, oseId: null, href: '/x' },
+    })
+    expect(t.guide).toBeNull()
+    expect(t.pasos.some(p => p.tipo === 'guia')).toBe(false)
+  })
+})

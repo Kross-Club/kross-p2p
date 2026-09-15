@@ -1155,7 +1155,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               <button onClick={() => setCourierLima(v => !v)}
                 className="w-full flex items-center justify-between mb-2">
                 <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--info-fg)' }}>
-                  <Truck size={14} /> Courier en Lima y Callao
+                  <Truck size={14} /> Eva Courier · Lima y Callao
                 </span>
                 <span className="text-[10px] font-black px-2 py-1 rounded-full"
                   style={{ background: courierLima ? '#2563EB' : '#E5E7EB', color: courierLima ? '#fff' : '#6B7280' }}>
@@ -1164,8 +1164,8 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               </button>
               <p className="text-[10px] text-gray-500">
                 {courierLima
-                  ? 'Lima y Callao tienen entrega a la puerta aunque la marca no tenga motorizado. En provincia no cambia nada: ahí solo reparte el motorizado propio.'
-                  : 'Un courier tercero que reparte solo en Lima y Callao. Enciéndelo cuando el servicio esté contratado.'}
+                  ? 'Lima y Callao tienen entrega a la puerta con Eva Courier aunque la marca no tenga motorizado: Eva recoge en el local y el pedido se registra solo al pagarse. En provincia no cambia nada.'
+                  : 'Eva Courier reparte solo en Lima y Callao. Enciéndelo cuando el servicio esté contratado y la plataforma tenga su API Key.'}
               </p>
               {homeDelivery && courierLima && (
                 <p className="text-[10px] mt-1.5" style={{ color: 'var(--info-fg)' }}>

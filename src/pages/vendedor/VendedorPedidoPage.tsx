@@ -11,6 +11,7 @@ import type { StoreOrder } from '../../lib/store-orders'
 import IncomingCallOverlay from '../../components/IncomingCallOverlay'
 import AddressBar from '../../components/AddressBar'
 import TrackingBar from '../../components/TrackingBar'
+import EnvioEva from '../../components/EnvioEva'
 import type { TrackingFields } from '../../components/TrackingBar'
 import OrderDetailModal from '../../components/OrderDetailModal'
 import OfferCard from '../../components/OfferCard'
@@ -1625,6 +1626,16 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
             reloadSession()
           },
         } : undefined}
+      />
+
+      {/* El reparto con Eva Courier (§64): un DOMICILIO que va por courier.
+          Tracking, estado, el rótulo para imprimir y el reintento. No se pinta
+          en pedidos que no son de Eva. */}
+      <EnvioEva
+        sessionId={session.id}
+        pedido={session}
+        tienda={tiendaDelPedido}
+        onUpdated={t => setSession(s => s ? { ...s, ...t } : s)}
       />
 
       {/* El pedido en sí —productos, cantidades, nota del CRM, cancelar— cierra

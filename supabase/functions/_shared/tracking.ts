@@ -213,7 +213,12 @@ async function onTransition(row: TrackedRow, phase: Phase) {
  */
 export async function applyTracking(
   row: TrackedRow,
-  reading: { phase: Phase | null; demoraIso: string | null; oseId?: string | null }
+  reading: { phase: Phase | null; demoraIso: string | null; oseId?: string | null },
+  /** Un courier que NO es de agencia (Eva, §64) trae sus propios avisos: los
+   *  de `onTransition` hablan de «tu agencia», y un domicilio no tiene. Con
+   *  `alAvanzar` se reemplaza SOLO el aviso; la regla de solo-hacia-adelante y
+   *  la escritura siguen siendo las mismas para todos. */
+  hooks: { alAvanzar?: (phase: Phase) => Promise<void> } = {},
 ): Promise<{ transitioned: boolean }> {
   const now = new Date().toISOString()
   const update: Record<string, unknown> = { tracking_checked_at: now }
@@ -231,7 +236,8 @@ export async function applyTracking(
   if (transitioned && reading.phase) {
     update.tracking_phase = reading.phase
     update.tracking_phase_at = now
-    await onTransition(row, reading.phase)
+    if (hooks.alAvanzar) await hooks.alAvanzar(reading.phase)
+    else await onTransition(row, reading.phase)
   }
 
   const { error } = await supabase.from('order_sessions').update(update).eq('id', row.id)

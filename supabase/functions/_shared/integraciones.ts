@@ -14,7 +14,7 @@
 
 /** Cada API de terceros de la que Kross depende. El id es el que se guarda. */
 export const PROVEEDORES = [
-  'SHALOM_PE', 'SHALOM_LAT', 'OLVA', 'OLVA_LAT',
+  'SHALOM_PE', 'SHALOM_LAT', 'OLVA', 'OLVA_LAT', 'EVA',
   'PAY360', 'FLOW', 'STRIPE', 'NUBEFACT',
   'WHATSAPP', 'META_CAPI', 'TIKTOK_CAPI',
   'LIVEKIT', 'ELEVENLABS', 'DECOLECTA', 'RESEND', 'WEB_PUSH', 'NOMINATIM',
@@ -113,6 +113,11 @@ export const INTEGRACIONES: Integracion[] = [
     que: 'El segundo riel de Olva: rastreo con webhook, 404 de verdad y emisión de guías',
     dueno: 'Olva API LAT (tercero, no es Olva)', host: 'api.olva-api.lat',
     alcance: 'plataforma', secreto: 'OLVA_LAT_API_KEY', critico: false, dormida: true,
+  },
+  {
+    id: 'EVA', nombre: 'Eva Courier',
+    que: 'Reparto a domicilio en Lima y Callao: registra el pedido, baja el rótulo y rastrea por webhook (§64)',
+    dueno: 'Fly Express (EVA 3.0)', host: 'api.evacourier.pe', alcance: 'plataforma', secreto: 'EVA_API_KEY', critico: true,
   },
   {
     id: 'WHATSAPP', nombre: 'WhatsApp Cloud API', que: 'Plantillas de recojo, campañas e invitaciones',

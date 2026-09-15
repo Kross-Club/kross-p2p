@@ -7,6 +7,7 @@ import { administraLaPlataforma } from '../_shared/alcance.ts'
 import { resumenDelPedido, montoTexto } from '../_shared/resumen-pedido.ts'
 import { sePuedeBorrar } from '../_shared/cobros.ts'
 import { NOMBRE_DE_REPARTO, esReparto, repartosPosibles } from '../_shared/reparto.ts'
+import { runInBackground } from '../_shared/capi.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -157,7 +158,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, origin_store_id, reparto_lima, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, shalom_order_status, olva_order_status, tracking_phase')
+    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, origin_store_id, reparto_lima, eva_order_status, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, shalom_order_status, olva_order_status, tracking_phase')
     .eq('id', body.session_id)
     .single()
 
@@ -230,6 +231,12 @@ Deno.serve(async (req) => {
     }
     const elegido = body.reparto ?? null
     if (elegido !== null && !esReparto(elegido)) return json({ error: 'reparto inválido' }, 400)
+    // Un reparto que YA está en Eva no se puede «des-mandar» desde acá: el
+    // motorizado ya lo tiene en su lista. Se cancela en el portal de Eva y
+    // recién ahí se cambia quién lo lleva.
+    if (elegido !== 'COURIER' && String(session.eva_order_status ?? '').toUpperCase() === 'CREATED') {
+      return json({ error: 'este pedido ya está registrado en Eva Courier: cancélalo en app.evacourier.pe antes de cambiar quién lo lleva' }, 400)
+    }
 
     const storeId = session.origin_store_id ?? session.store_id
     const { data: formas, error: errFormas } = await supabase.from('stores')
@@ -241,7 +248,34 @@ Deno.serve(async (req) => {
 
     await supabase.from('order_sessions').update({ reparto_lima: elegido }).eq('id', session.id)
     await broadcast(session.id, 'reparto_update', { reparto_lima: elegido })
+    // Elegir COURIER en un pedido ya pagado ES el disparo del registro en Eva
+    // (§64): `flow-confirm` no lo pudo hacer porque en ese momento la marca
+    // tenía las dos formas y nadie había decidido. En segundo plano y con su
+    // propio candado, como los otros generadores.
+    if (elegido === 'COURIER' && session.payment_verification === 'MATCHED') {
+      runInBackground(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/eva-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+        body: JSON.stringify({ session_id: session.id }),
+      }))
+    }
     return json({ ok: true, reparto_lima: elegido })
+  }
+
+  // ─── REINTENTAR EN EVA (§64) ───────────────────────────────────────────────
+  // Solo reabre un expediente FAILED, y solo después de que una persona miró
+  // en app.evacourier.pe que el pedido no existe (el mensaje del chat lo
+  // dice). `eva-order` vuelve a aplicar su candado.
+  if (body.action === 'retry_eva') {
+    if (String(session.eva_order_status ?? '').toUpperCase() !== 'FAILED') return json({ error: 'no_aplica' }, 400)
+    const r = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/eva-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+      body: JSON.stringify({ session_id: session.id, retry: true }),
+    })
+    const cuerpo = await r.json().catch(() => ({})) as { tracking?: unknown; error?: string; skipped?: string }
+    if (r.ok && cuerpo.tracking) return json({ ok: true, tracking: cuerpo.tracking })
+    return json({ ok: false, error: cuerpo.error ?? cuerpo.skipped ?? 'reintento fallido' }, 502)
   }
 
   // ─── ANULAR ────────────────────────────────────────────────────────────────

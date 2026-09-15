@@ -51,9 +51,9 @@ export interface PedidoRastreable {
 }
 
 /** El courier que mueve este pedido, si es uno de los que sabemos rastrear. */
-export function courierDelPedido(p: PedidoRastreable): 'SHALOM' | 'OLVA' | null {
+export function courierDelPedido(p: PedidoRastreable): 'SHALOM' | 'OLVA' | 'EVA' | null {
   const c = String(p.tracking_courier ?? p.agency_name ?? '').toUpperCase()
-  return c === 'SHALOM' || c === 'OLVA' ? c : null
+  return c === 'SHALOM' || c === 'OLVA' || c === 'EVA' ? c : null
 }
 
 /**
@@ -302,7 +302,11 @@ function indicePorFase(fase: string | null | undefined, claves: PasoKey[]): numb
     EN_ORIGEN: 'en_origen', EN_TRANSITO: 'transito',
     EN_DESTINO: 'en_agencia', ENTREGADO: 'entregado',
   }
-  const key = equivalente[String(fase ?? '').toUpperCase()]
+  const f = String(fase ?? '').toUpperCase()
+  // A domicilio (§64, Eva) el courier también reporta: EN_TRANSITO es «en
+  // camino», que es el único paso de la calle que esa línea tiene. Sin esto,
+  // un domicilio con el motorizado en ruta se quedaba en «confirmado».
+  const key = claves.includes('en_camino') && f === 'EN_TRANSITO' ? 'en_camino' : equivalente[f]
   const i = key ? claves.indexOf(key) : -1
   return i >= 0 ? i : -1
 }

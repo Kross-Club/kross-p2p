@@ -22,6 +22,7 @@ import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import { olvaApiKey } from '../_shared/olva-key.ts'
 import { olvaLatApiKey, OLVA_LAT_BASE } from '../_shared/olva-lat-api.ts'
 import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
+import { baseEva, cabeceraEva, rutaDePedido } from '../_shared/eva.ts'
 import {
   esProveedor, INTEGRACIONES, saludDe, type Proveedor, type Salud,
 } from '../_shared/integraciones.ts'
@@ -79,7 +80,27 @@ async function pingDe(id: Proveedor, llaves: Record<string, string | null>): Pro
     // vive — que es la mitad de las veces que una integración "se cae".
     return llaves.OLVA_LAT ? ping(`${OLVA_LAT_BASE}/validate`, { 'x-api-key': llaves.OLVA_LAT }) : null
   }
+  if (id === 'EVA') {
+    // Eva no tiene /healthz ni /validate. Se le pregunta por un tracking que no
+    // existe: un 404 dice que la llave entró y Eva contestó; 401/403 que la
+    // llave no sirve. Es gratis y no crea nada.
+    return llaves.EVA ? pingEva(llaves.EVA) : null
+  }
   return null
+}
+
+async function pingEva(apiKey: string): Promise<boolean> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 5000)
+  try {
+    const base = baseEva({ EVA_API_BASE: Deno.env.get('EVA_API_BASE') })
+    const r = await fetch(rutaDePedido(base, 'KROSS-PING'), { headers: cabeceraEva(apiKey), signal: ctrl.signal })
+    return r.status === 404 || r.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(t)
+  }
 }
 
 Deno.serve(async (req) => {
@@ -119,6 +140,7 @@ Deno.serve(async (req) => {
     ])
     const llaves: Record<string, string | null> = {
       SHALOM_PE: keyPE, SHALOM_LAT: keyLAT, OLVA: keyOlva, OLVA_LAT: keyOlvaLat,
+      EVA: String(Deno.env.get('EVA_API_KEY') ?? '').trim() || null,
     }
 
     // Los fallos de las últimas 24 h, de una sola consulta: una por proveedor

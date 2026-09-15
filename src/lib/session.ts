@@ -43,7 +43,7 @@ export type ClosedBy = 'AI_CLOSER' | 'DIRECT_CHECKOUT'
  *  `TrackingPhase` de los servicios de tracking; aquí vive el del contrato. */
 export type ShipmentPhase = 'EN_ORIGEN' | 'EN_TRANSITO' | 'EN_DESTINO' | 'ENTREGADO'
 /** Couriers con reflejo de tracking construido. */
-export type ShipmentCourier = 'SHALOM' | 'OLVA'
+export type ShipmentCourier = 'SHALOM' | 'OLVA' | 'EVA'
 
 // Etapas REALES del pedido (alineadas a order_sessions.stage)
 // El tipo vive en `order-stages.ts` junto con el orden y las etiquetas: tenerlo
