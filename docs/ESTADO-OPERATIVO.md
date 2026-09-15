@@ -34,6 +34,28 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La serie de la boleta y su numeración · 2 funciones + frontend (15-set-2026)
+
+**Qué enseñó la primera prueba.** La boleta no salía y no había pista: la emisión corre en
+segundo plano y los caminos que no emiten se devolvían mudos. Ya no — todos dejan rastro en el
+log de la función (`[boleta] no se emitió …` con el motivo) y, si la marca encendió la
+facturación y le falta una pieza, también en *Conexiones*.
+
+**Y la causa era la serie.** La cuenta de Nubefact de Mono Shop solo emite `BBB1`; con `B001`
+—el default— contesta `[21] No puedes emitir comprobantes con esta serie`, sin nombrar la serie.
+El panel ahora lo advierte debajo del campo. Además, esa cuenta ya tenía boletas (BBB1-1 a
+BBB1-6): por eso hay un campo **Última boleta emitida** para que la numeración de Kross arranque
+donde la cuenta va, y por eso el servidor **salta** un número tomado en vez de adoptar la boleta
+de otro (`16-NUBEFACT.md` §2.b).
+
+```
+supabase functions deploy flow-confirm  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy order-manage  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store  --project-ref ofdjghntvmrdfjhazfvz
+```
+
+Sin SQL: `boleta_correlativo` ya existe desde §58.
+
 ### La boleta electrónica con Nubefact · **SQL §58** + 5 funciones + frontend (15-set-2026)
 
 **Qué entra.** Quien paga el pedido completo recibe su boleta de venta electrónica, emitida por

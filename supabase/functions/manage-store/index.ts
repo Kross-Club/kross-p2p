@@ -149,6 +149,11 @@ Deno.serve(async (req) => {
     razon_social?: string | null
     direccion_fiscal?: string | null
     boleta_serie?: string | null
+    /** El número de la ÚLTIMA boleta emitida en la cuenta de Nubefact de la
+     *  marca. La siguiente sale de ahí +1. Se pone a mano porque una cuenta
+     *  que ya facturaba (a mano, o desde otro sistema) tiene números usados y
+     *  arrancar en 1 los choca uno por uno. */
+    boleta_correlativo?: number | null
     /** `{ ruta, token }` para guardarlos; `null` para quitarlos (apaga la
      *  facturación). Los dos o nada. */
     nubefact_keys?: { ruta?: unknown; token?: unknown } | null
@@ -948,6 +953,11 @@ Deno.serve(async (req) => {
       const serie = String(body.boleta_serie ?? '').trim().toUpperCase()
       if (serie && !esSerieDeBoleta(serie)) return json({ error: 'serie_invalida' }, 400)
       if (serie) patch.boleta_serie = serie
+    }
+    if (body.boleta_correlativo !== undefined && body.boleta_correlativo !== null) {
+      const n = Math.trunc(Number(body.boleta_correlativo))
+      if (!Number.isFinite(n) || n < 0 || n > 99_999_999) return json({ error: 'correlativo_invalido' }, 400)
+      patch.boleta_correlativo = n
     }
     if (body.nubefact_keys !== undefined) {
       const nk = (body.nubefact_keys ?? {}) as { ruta?: unknown; token?: unknown }

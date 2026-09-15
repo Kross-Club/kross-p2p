@@ -30,6 +30,32 @@ El interruptor solo se enciende con las cinco piezas (`puedeFacturar` en `_share
 lo valida el panel y lo vuelve a validar `manage-store`. Sin ellas no se emite nada y el paso del
 pedido queda pendiente, con su botón apagado.
 
+## 2.b La serie y la numeración: lo que cuesta una prueba entera
+
+Dos cosas se aprenden caras (15-set-2026, con la cuenta de Mono Shop):
+
+**La serie tiene que ser una que la cuenta YA EMITA.** Nubefact no las crea al vuelo: una serie
+que no está habilitada se rechaza con **`[21] No puedes emitir comprobantes con esta serie`** — un
+mensaje que no menciona la serie por ningún lado. `B001` y `BB01` fallaron; `BBB1`, que era la de
+la cuenta, funcionó. Se ve en Nubefact → *Ver Facturas, Boletas y Notas*. El panel lo dice debajo
+del campo.
+
+**La numeración arranca donde la cuenta va, no en 1.** Una cuenta que ya facturaba —a mano, o
+desde otro sistema— tiene números usados; empezar en 1 los choca uno por uno. Por eso *Marca →
+Boleta electrónica* tiene **Última boleta emitida**: se pone el número de la última de esa serie y
+la próxima sale con el siguiente.
+
+Y si igual choca, el servidor **salta el número, nunca adopta la boleta ajena**. Un `23` («ya
+existe») significa dos cosas distintas según de quién sea el número:
+
+| El número… | Qué significa el 23 | Qué hace |
+|---|---|---|
+| lo acabamos de reservar | está tomado por otro documento de la cuenta | pide el siguiente y reintenta (hasta 4 veces) |
+| ya estaba en el pedido, de un intento anterior | la emitimos nosotros y no nos enteramos (un timeout) | la consulta y la adopta: es la suya |
+
+Sin esa distinción, un pedido se quedaría con el comprobante de otra persona —con su nombre y su
+monto— y nadie lo notaría hasta un reclamo.
+
 ## 3. Cuándo y cómo se emite
 
 ```
@@ -46,7 +72,7 @@ flow-confirm (cobro MATCHED, adelanto o saldo, nunca un extra)
         └─ fallo                         boleta_estado = ERROR (el número se queda) · nota al equipo
 ```
 
-**Una boleta por pedido, dos candados.** El primero es la base: la reserva `PENDIENTE` con
+**Una boleta por pedido, dos candados** (más el salto de número de §2.b). El primero es la base: la reserva `PENDIENTE` con
 `boleta_numero IS NULL` la gana una sola llamada. El segundo es Nubefact: el `ORD` del pedido va
 como `codigo_unico`, así que un duplicado que se le escapara al primero vuelve con **código 23** y
 se consulta, no se reemite.

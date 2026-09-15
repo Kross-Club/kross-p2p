@@ -173,8 +173,11 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
   }
 
   // ── El número: reservar o reusar ──
+  // `reciénNuestro` decide qué significa un «ya existe» de Nubefact más abajo,
+  // y es la diferencia entre adoptar la boleta de otro y saltar el número.
   let serie = session.boleta_serie
   let numero = session.boleta_numero
+  const recienNuestro = !numero
   if (!numero) {
     // Gana quien marca PENDIENTE primero. `.is('boleta_numero', null)` es la
     // condición de carrera resuelta en la base, no en memoria.
@@ -204,6 +207,7 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
     ? await supabase.from('buyers').select('document_number').eq('id', session.buyer_id).maybeSingle()
     : { data: null }
   const cliente = clienteDeBoleta({ dni: buyer?.document_number ?? null, nombre: session.buyer_name, direccion: session.address })
+  // El cuerpo base; la serie y el número se ponen en cada intento (ver abajo).
   const body = armarBoleta({
     serie, numero, cliente, fecha: new Date(),
     items: lineasDelPedido(session),
@@ -217,29 +221,62 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
   const inicio = Date.now()
   const ruta = String(secretos!.nubefact_ruta).trim()
   const token = String(secretos!.nubefact_token).trim()
-  const r = await llamarANubefact(ruta, token, body)
-  if (!r) {
-    await anotarSinRespuesta({ ...ctx, op: 'boleta.emitir' }, 'sin respuesta en 30 s', Date.now() - inicio)
-    return await fallo(session, `${serie}-${numero}`, 'Nubefact no respondió. Reintenta desde el pedido.')
-  }
-  let leida: RespuestaNubefact = leerRespuesta(r.json, r.status)
 
-  // Código 23: ya la tiene (un reintento después de un timeout, por ejemplo).
-  // Se consulta y se guarda lo que diga; no se emite otra.
+  // El bucle existe por UNA razón (15-set-2026): la cuenta de Nubefact de la
+  // marca puede tener boletas de ANTES —emitidas a mano, o por otro sistema— y
+  // nuestro correlativo arranca donde el panel diga. Si el número que
+  // reservamos ya está tomado, Nubefact contesta 23 y hay que SALTARLO, nunca
+  // adoptarlo: consultar y guardar esa boleta le pegaría al pedido el
+  // comprobante de otra persona, con su nombre y su monto.
+  //
+  // El 23 solo se adopta cuando el número NO es recién nuestro, o sea cuando
+  // este pedido ya lo tenía guardado de un intento anterior: ahí «ya existe»
+  // significa «la emitimos nosotros y no nos enteramos» (un timeout), y la
+  // boleta que vuelve sí es la suya.
+  let leida: RespuestaNubefact | null = null
   let reconciliada = false
-  if (!leida.ok && leida.yaExiste) {
-    const c = await llamarANubefact(ruta, token, consultaDeBoleta(serie, numero))
-    if (c) { leida = leerRespuesta(c.json, c.status); reconciliada = leida.ok }
+  let ultimo: { status: number } | null = null
+  for (let intento = 0; intento < 4; intento++) {
+    const cuerpo = { ...body, serie, numero }
+    const r = await llamarANubefact(ruta, token, cuerpo)
+    if (!r) {
+      await anotarSinRespuesta({ ...ctx, op: 'boleta.emitir' }, 'sin respuesta en 30 s', Date.now() - inicio)
+      return await fallo(session, `${serie}-${numero}`, 'Nubefact no respondió. Reintenta desde el pedido.')
+    }
+    ultimo = r
+    leida = leerRespuesta(r.json, r.status)
+    if (leida.ok || !leida.yaExiste) break
+
+    if (!recienNuestro) {
+      // Nuestra de un intento anterior: se consulta y se adopta.
+      const c = await llamarANubefact(ruta, token, consultaDeBoleta(serie, numero))
+      if (c) { leida = leerRespuesta(c.json, c.status); reconciliada = leida.ok }
+      break
+    }
+
+    // De otro: saltar al siguiente y volver a intentar.
+    const { data: n2, error: errN2 } = await supabase.rpc('siguiente_numero_de_boleta', { p_store_id: storeId })
+    if (errN2 || !Number.isFinite(Number(n2)) || Number(n2) <= numero) break
+    console.log('[boleta] el número ya estaba tomado en Nubefact, saltando', JSON.stringify({ sessionId, de: `${serie}-${numero}`, a: `${serie}-${Number(n2)}` }))
+    numero = Number(n2)
+    await supabase.from('order_sessions').update({ boleta_numero: numero }).eq('id', session.id)
   }
 
-  if (!leida.ok) {
+  if (!leida || !leida.ok) {
+    const mensaje = leida?.mensaje ?? 'Nubefact no devolvió una respuesta usable.'
+    // El 23 que sobrevive al bucle es la numeración mal puesta, y decirlo así
+    // ahorra abrir la cuenta de Nubefact a adivinar.
+    const detalle = leida && !leida.ok && leida.yaExiste
+      ? `${mensaje} Ajusta la numeración en Marca → Boleta electrónica: pon el número de la última boleta emitida en tu cuenta de Nubefact.`
+      : mensaje
     await anotar({
-      ...ctx, op: 'boleta.emitir', outcome: r.status >= 500 ? 'FALLO' : 'RECHAZO', httpStatus: r.status,
-      errorCode: leida.codigo != null ? String(leida.codigo) : null, detail: leida.mensaje,
+      ...ctx, op: 'boleta.emitir', outcome: (ultimo?.status ?? 0) >= 500 ? 'FALLO' : 'RECHAZO', httpStatus: ultimo?.status ?? null,
+      errorCode: leida && !leida.ok && leida.codigo != null ? String(leida.codigo) : null, detail: detalle,
       providerRef: `${serie}-${numero}`, duracionMs: Date.now() - inicio,
     })
-    return await fallo(session, `${serie}-${numero}`, leida.mensaje)
+    return await fallo(session, `${serie}-${numero}`, detalle)
   }
+  const r = ultimo!
 
   await anotar({
     ...ctx, op: reconciliada ? 'boleta.consultar' : 'boleta.emitir', outcome: 'OK', httpStatus: r.status,

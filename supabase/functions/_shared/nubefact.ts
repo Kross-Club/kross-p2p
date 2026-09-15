@@ -184,7 +184,7 @@ export const ERRORES_NUBEFACT: Record<number, string> = {
   11: 'La ruta de Nubefact no es correcta. Cópiala de tu cuenta, en API (Integración).',
   12: 'Nubefact no aceptó la cabecera de la petición.',
   20: 'Nubefact rechazó el formato de la boleta.',
-  21: 'Nubefact no pudo completar la operación.',
+  21: 'Nubefact no pudo completar la operación. La causa más común: esa SERIE no está habilitada en la cuenta — usa la que ya emite (la ves en Nubefact → Ver Facturas, Boletas y Notas).',
   22: 'La boleta se mandó fuera del plazo que SUNAT permite.',
   23: 'Esa boleta ya existe en Nubefact.',
   24: 'Esa boleta no existe en Nubefact.',
