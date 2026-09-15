@@ -28,7 +28,7 @@ export default function TarjetaDeBoleta({ texto, pdfUrl, hora }: {
           <a href={pdfUrl} target="_blank" rel="noopener noreferrer"
             className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-black"
             style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}>
-            Ver mi boleta <ExternalLink size={13} />
+            Ver mi boleta electrónica <ExternalLink size={13} />
           </a>
         )}
         {hora && <p className="text-[10px] text-gray-400 mt-1.5 text-center">{hora}</p>}

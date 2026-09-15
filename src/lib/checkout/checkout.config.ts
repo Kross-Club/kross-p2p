@@ -445,7 +445,7 @@ export const COPY = {
   // botón de la tarjeta verde del chat (`TarjetaDeComprobante`): es la misma
   // página y el comprador la va a encontrar por los dos caminos — dos nombres
   // para lo mismo le harían pensar que son dos documentos.
-  doneSeeReceipt: 'Ver mi comprobante',
+  doneSeeReceipt: 'Ver mi comprobante de pago',
   // El canal es el CHAT del pedido, no WhatsApp. WhatsApp es solo el fallback
   // cuando el comprador no entra al chat, así que prometerlo aquí manda a
   // esperar por donde no vamos a escribir primero — y deja el chat, que es lo

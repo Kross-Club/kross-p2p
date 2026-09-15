@@ -259,7 +259,7 @@ export function buildTicket(i: TicketInput): Ticket {
           tipo: 'pago',
           label: advance > 0 ? 'Pago recibido' : 'Pedido registrado',
           detail: advance > 0 ? `${soles(advance)} por Yape.` : undefined,
-          enlace: comprobante ? { label: 'Ver mi comprobante', href: enlaceDeComprobante(comprobante) } : undefined,
+          enlace: comprobante ? { label: 'Ver mi comprobante de pago', href: enlaceDeComprobante(comprobante) } : undefined,
         },
   ]
 
@@ -330,8 +330,8 @@ export function buildTicket(i: TicketInput): Ticket {
   const pagoTodo = advance > 0 && cobrado && rest === 0
   if (pagoTodo) {
     pasos.splice(1, 0, i.boletaUrl
-      ? { tipo: 'boleta', label: 'Boleta electrónica', detail: 'Lista para descargar.', enlace: { label: 'Ver mi boleta', href: i.boletaUrl }, estado: 'hecho' }
-      : { tipo: 'boleta', label: 'Boleta electrónica', detail: 'Te la enviamos por aquí apenas se emita.', accion: 'Ver mi boleta', accionIcono: 'documento', estado: 'pendiente' })
+      ? { tipo: 'boleta', label: 'Boleta electrónica', detail: 'Lista para descargar.', enlace: { label: 'Ver mi boleta electrónica', href: i.boletaUrl }, estado: 'hecho' }
+      : { tipo: 'boleta', label: 'Boleta electrónica', detail: 'Te la enviamos por aquí apenas se emita.', accion: 'Ver mi boleta electrónica', accionIcono: 'documento', estado: 'pendiente' })
   }
 
   // La constancia solo se ofrece si hay plata cruzada. Con el adelanto sin

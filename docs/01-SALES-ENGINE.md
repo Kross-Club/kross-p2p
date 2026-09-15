@@ -665,8 +665,8 @@ Flow). Lo que cambió:
   hoja «Ver pedido» del chat, que sí es una captura para reenviar.
 - **La cabecera es la foto del pack** (en vez del check), «¡Pedido confirmado!» y el número
   del pedido debajo. La frase del dinero ya no va ahí.
-- **El pago vive en su paso**: «Pago recibido · S/ X por Yape» con el botón *Ver mi comprobante*
-  al lado (`TicketStep.enlace`). El comprobante mismo cambió: fondo morado de Yape, la marca
+- **El pago vive en su paso**: «Pago recibido · S/ X por Yape» con el botón *Ver mi comprobante de
+  pago* al lado (`TicketStep.enlace`). El comprobante mismo cambió: fondo morado de Yape, la marca
   arriba a la derecha, y **sin** «total del pedido / pagado hasta hoy / saldo» — eso lo dice el
   recorrido, la hoja dice cuánto se pagó y con qué operación.
 - **Boleta electrónica** ✅ (15-set-2026, `16-NUBEFACT.md`): paso nuevo, solo para quien pagó el

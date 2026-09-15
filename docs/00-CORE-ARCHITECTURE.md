@@ -151,7 +151,7 @@ reclamo a la puerta equivocada. Ahora la línea dice *Pasarela: Flow Pagos* o *P
 - **Sin saber por dónde entró, no se nombra ninguna.** Un cobro viejo sin marcas deja la línea
   fuera: inventarla es mandar al que reclama a tocar la puerta de quien nunca recibió su plata.
 
-**El botón «Ver mi comprobante» también está en la pantalla del pedido** (09-set-2026), debajo de
+**El botón «Ver mi comprobante de pago» también está en la pantalla del pedido** (09-set-2026), debajo de
 la frase que anuncia el pago y no perdido al final. Abre la misma página, en otra pestaña, con la
 misma copy que la tarjeta del chat — dos nombres para lo mismo harían pensar que son dos
 documentos. Es la constancia del **adelanto**, que es el pago que esa pantalla anuncia; las del
@@ -640,6 +640,22 @@ Y una que sí es de seguridad y **no cambia con esto**: la guía es un PDF en un
 nombre, el DNI y la dirección del comprador. Lo que la protege es que su ruta es un UUID imposible de
 adivinar — la misma regla de capacidad que `/p/<token>`, y la misma que hay que respetar: **quien
 tiene el enlace tiene el documento**, así que no se pone en ningún sitio listable.
+
+#### Y los enlaces de la app, también desde el panel (15-set-2026)
+
+Lo de arriba arregla los **archivos**. Faltaban las páginas nuestras que el chat ofrece con un
+botón —la hoja de guía (`/guia/<token>`) y la constancia de pago (`/comprobante/<id>`)—, porque son
+rutas **relativas**: en el pedido del comprador resuelven por el dominio de la marca solas, pero el
+panel del vendedor puede estar en `krossclub.app` (quien administra la plataforma entra a una marca
+desde la raíz) y ahí el mismo botón salía como `krossclub.app/comprobante/…`. Ese enlace se copia y
+se le reenvía al cliente.
+
+`enlaceDeTienda(tienda, ruta)` lo vuelve absoluto por el dominio de la marca, y
+`useDominioDeTienda(storeId)` le pregunta a la base por la marca **del pedido** cuando el contexto
+no la sabe (`TarjetaDeGuia` y `TarjetaDeComprobante` reciben la marca como prop desde el panel; en
+el hilo del comprador usan la del contexto). Sin marca resuelta se queda relativo, que es lo
+correcto del lado del comprador. **La raíz de la plataforma nunca sale en un enlace**: además de
+romper la marca blanca, delata el subdominio del comerciante.
 
 ### Las dos direcciones de una landing
 
