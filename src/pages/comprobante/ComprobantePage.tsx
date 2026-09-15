@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Check, Printer } from 'lucide-react'
 import { soles } from '../../lib/order-money'
+import { MORADO_YAPE } from '../../lib/cobro-por-chat'
 import { useStore } from '../../lib/store-context'
 import { esCobroDemo, comprobanteDemo } from '../../lib/demo/comprobante-demo'
 import { lineasDelComprobante, nombreDelCobro, fechaDelComprobante } from '../../lib/comprobante'
@@ -23,8 +24,15 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 // se recibió, y lo dice al pie: llamarla boleta sería prometer un documento
 // tributario que nadie emitió.
 //
-// Va en blanco a propósito, sin los tokens de tema: un comprobante se imprime, y
-// lo que se imprime es papel blanco con tinta oscura.
+// La hoja va en blanco a propósito, sin los tokens de tema: un comprobante se
+// imprime, y lo que se imprime es papel blanco con tinta oscura. El FONDO de
+// la página es el morado de Yape (14-set-2026) —el mismo del botón con el que
+// pagó— y la marca de Yape va arriba a la derecha: el comprador reconoce con
+// qué pagó antes de leer nada. Al imprimir, el fondo desaparece.
+//
+// Y ya no dice «total del pedido / pagado hasta hoy / saldo» (14-set-2026):
+// eso lo cuenta el recorrido del pedido, paso por paso. Esta hoja dice cuánto
+// se pagó, cuándo y con qué operación. Nada más.
 
 export default function ComprobantePage() {
   const { cobroId } = useParams()
@@ -98,7 +106,7 @@ export default function ComprobantePage() {
   const titulo = nombreDelCobro({ tipo: datos.tipo, concepto: datos.concepto, monto: datos.monto, total: datos.total })
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4 print:bg-white print:p-0">
+    <div className="min-h-screen py-8 px-4 print:bg-white print:p-0" style={{ background: MORADO_YAPE }}>
       {/* Lo que NO se imprime: el botón. Un papel con un botón dibujado encima
           se lee como un error de impresión. */}
       <style>{`@media print { .no-imprimir { display: none !important } }`}</style>
@@ -113,12 +121,20 @@ export default function ComprobantePage() {
               {datos.logo && (
                 <img src={datos.logo} alt="" className="w-10 h-10 rounded-lg object-cover" />
               )}
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="font-black text-gray-900 leading-tight">{datos.tienda ?? 'Kross'}</p>
                 <p className="text-[11px] uppercase tracking-wide font-bold text-gray-400">
                   Constancia de pago
                 </p>
               </div>
+              {/* La marca de Yape, arriba a la derecha: con eso pagó. Dibujada
+                  como palabra —no hay un logo oficial en el repo— con su
+                  morado, que es lo que se reconoce. */}
+              <span aria-label="Pagado con Yape"
+                className="flex-shrink-0 px-2.5 py-1 rounded-lg text-[14px] font-black tracking-tight text-white lowercase"
+                style={{ background: MORADO_YAPE }}>
+                yape
+              </span>
             </div>
           </div>
 
@@ -150,26 +166,6 @@ export default function ComprobantePage() {
                 </div>
               ))}
             </dl>
-          </div>
-
-          {/* Cómo queda el pedido después de este pago. Sin esto, quien adelantó
-              la mitad se queda con un papel que dice S/75 y sin saber si ya no
-              debe nada. */}
-          <div className="px-6 py-4" style={{ background: '#FAFAFA' }}>
-            <div className="flex justify-between text-[13px] py-0.5">
-              <span className="text-gray-500">Total del pedido</span>
-              <span className="font-bold text-gray-900">{soles(datos.total)}</span>
-            </div>
-            <div className="flex justify-between text-[13px] py-0.5">
-              <span className="text-gray-500">Pagado hasta hoy</span>
-              <span className="font-bold text-gray-900">{soles(datos.pagado)}</span>
-            </div>
-            <div className="flex justify-between text-[13px] py-0.5 mt-1 pt-2 border-t" style={{ borderColor: '#EAEAEA' }}>
-              <span className="font-bold text-gray-900">{datos.saldo > 0 ? 'Saldo pendiente' : 'Saldo'}</span>
-              <span className="font-black" style={{ color: datos.saldo > 0 ? '#B45309' : '#0B7A45' }}>
-                {datos.saldo > 0 ? soles(datos.saldo) : 'Sin saldo pendiente'}
-              </span>
-            </div>
           </div>
 
           {/* Lo que esta hoja NO es. Va en el documento y no solo en el código:

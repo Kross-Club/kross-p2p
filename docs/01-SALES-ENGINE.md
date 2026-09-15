@@ -655,6 +655,39 @@ desde la página. La misma pantalla sirve a los dos sin que ninguno sepa del otr
 está, y quien no vive en apps abandona ahí. `AndroidSteps` enseña el ⋮ y la opción tal cual, igual
 que los dos toques del iPhone.
 
+#### Cada paso lleva lo suyo ✅ (14-set-2026)
+
+Cuarta vuelta, después de mirar la pantalla con el primer pedido del ICP nuevo (pago completo,
+Flow). Lo que cambió:
+
+- **Se fue la tarjeta blanca del ticket** de la cabecera. Repetía lo que el recorrido ya cuenta
+  paso por paso, y en dos sitios se leía dos veces. `TicketDelPedido` sigue existiendo para la
+  hoja «Ver pedido» del chat, que sí es una captura para reenviar.
+- **La cabecera es la foto del pack** (en vez del check), «¡Pedido confirmado!» y el número
+  del pedido debajo. La frase del dinero ya no va ahí.
+- **El pago vive en su paso**: «Pago recibido · S/ X por Yape» con el botón *Ver mi comprobante*
+  al lado (`TicketStep.enlace`). El comprobante mismo cambió: fondo morado de Yape, la marca
+  arriba a la derecha, y **sin** «total del pedido / pagado hasta hoy / saldo» — eso lo dice el
+  recorrido, la hoja dice cuánto se pagó y con qué operación.
+- **Boleta electrónica** 🔮: paso nuevo, solo para quien pagó el pedido completo, justo después
+  del pago. Pendiente con su botón apagado hasta que Nubefact exista (`TicketInput.boletaUrl`).
+  Su estado es suyo, no el del envío: un paso «hecho» sin documento sería mentir.
+- **La guía lleva su botón** (*Ver mi guía de Shalom*) y, cuando el servidor ya soltó la clave
+  (`shalom_pickup_code`, o sea pagó todo o pagó el saldo), el detalle dice número, código **y
+  clave**.
+- **El saldo con el botón de verdad**: «Llegó a la agencia» declara `saldo`, y en `/pedido/:token`
+  —que sí tiene la fila— se pinta `BotonPagarSaldo` cuando `puedePagarSaldo`; si no, el apagado
+  de siempre. Pagar suelta la clave.
+- **El recojo nombra el DNI**, no a la persona: «con el DNI 12345678». El nombre pudo cambiar;
+  lo que importa es que recoge el titular de ese documento.
+- **Barra fija arriba**: «Actualiza la página para ver dónde está tu pedido» con su botón. El
+  sondeo dura dos minutos y después manda la recarga; decirlo es más honesto que un recorrido
+  que parece vivo.
+
+Los pasos ganaron un **`tipo` estable** (`pago`, `boleta`, `guia`, `camino`, `llegada`, `recojo`,
+`preparando`, `entrega`) y `pasosDelEnvio()` deja fuera la boleta: la tarjeta del chat y las
+preguntas rápidas cuentan posiciones, y el paso nuevo las corría.
+
 #### El recorrido y la app ✅ (07-set-2026)
 
 Segunda vuelta sobre el ticket, después de mirarlo con un pedido real. Tres cambios

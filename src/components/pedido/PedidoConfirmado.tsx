@@ -16,17 +16,17 @@
 //
 // Tres bloques, en orden:
 //
-//   1. EL TICKET: qué pidió, dónde lo recoge y con qué dirección, a nombre de
-//      quién, y su guía con número apenas exista. Diseñado para capturarse.
-//      SIN el teléfono de la tienda (09-set-2026): la atención va por el chat
-//      del pedido y nada más. Una llamada no deja rastro en el hilo, no la ve
-//      el equipo que sigue el pedido, y abre un canal que nadie mide ni puede
-//      atender a la hora en que el comprador llame. El número sigue guardado en
-//      `stores.wa_display_phone` para lo que el vendedor configure, pero al
-//      comprador no se le ofrece.
+//   1. LA CABECERA: la foto de lo que compró, «¡Pedido confirmado!» y el
+//      número del pedido. Nada más (14-set-2026): la tarjeta blanca del ticket
+//      que vivía acá —producto, sede, quién recoge, guía— repetía lo que el
+//      recorrido ya cuenta paso por paso, y en dos sitios se leía dos veces.
+//      La tarjeta sigue existiendo (`TicketDelPedido`) para la hoja «Ver
+//      pedido» del chat, que sí es una captura para reenviar.
 //   2. EL RECORRIDO: en qué va el pedido y qué viene, como una línea vertical
-//      de puntos. El saldo y el DNI no son cajas sueltas que gritan: son el
-//      detalle del paso donde tocan.
+//      de puntos. Cada paso lleva lo suyo: el pago con su comprobante, la
+//      boleta (para quien pagó todo), la guía con su número, código y clave,
+//      el saldo con su botón de pagar, el recojo con el DNI. Nada es una caja
+//      suelta que grita: es el detalle del paso donde toca.
 //   3. LA APP: "¿te avisamos cuando llegue?" con un solo botón. En Android sale
 //      el aviso del sistema y, al aceptar, se activan los avisos y se abre el
 //      pedido. En iPhone Apple no deja instalar con un clic: se enseñan los dos
@@ -36,13 +36,15 @@
 
 import { useEffect, useState } from 'react'
 import { Bell, Check, Download, ExternalLink, FileText, Smartphone, Wallet } from 'lucide-react'
+import { BotonPagarSaldo } from '../PagarSaldo'
+import type { PedidoConSaldo } from '../PagarSaldo'
+import { puedePagarSaldo } from '../../lib/order-money'
 import { COPY } from '../../lib/checkout/checkout.config'
 import type { Ticket, TicketStep } from '../../lib/checkout/ticket'
 import { useStore } from '../../lib/store-context'
 import BajoLaMarca from './BajoLaMarca'
 import Flotante from '../Flotante'
 import { cajaDeLaMarca, ESQUINAS_DEL_PEDIDO, estiloValido, fondoDeMarca, tintaSobreDegradado } from '../../lib/degradado'
-import { enlaceDeComprobante } from '../../lib/comprobante'
 import { notifPermission, pushSupported, subscribePush } from '../../lib/push'
 import { useIsDesktop } from '../../lib/use-desktop'
 import { AndroidSteps, IOSInstallVideo, isInstalled } from '../InstallBanner'
@@ -54,9 +56,13 @@ interface Props {
   orderCode: string
   /** Id del pedido: a él se suscribe el push cuando el comprador instala. */
   sessionId?: string | null
+  /** La fila del pedido, cuando la pantalla la tiene (`/pedido/:token`). Con
+   *  ella el paso del saldo pinta el botón de VERDAD —el que abre Yape— en
+   *  vez del apagado. Sin ella, el apagado, como en la hoja del chat. */
+  pedido?: PedidoConSaldo | null
 }
 
-export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props) {
+export default function PedidoConfirmado({ ticket, orderCode, sessionId, pedido }: Props) {
   const { store } = useStore()
 
   // La cabecera lleva el FONDO DE LA MARCA, que no es un color plano: es el
@@ -76,6 +82,9 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
   const { tinta, suave: tintaSuave, velo, borde } = tintaSobreDegradado(marca, secundario)
   // La caja de la marca, si la subió: enmarca las dos esquinas de arriba.
   const caja = cajaDeLaMarca(store.login_images)
+  // La foto del pack que compró (o el logo), la misma que `buildTicket` pone
+  // en la línea «Tu pedido».
+  const imagen = ticket.lines[0]?.image ?? null
 
   return (
     <div>
@@ -104,48 +113,28 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
           <FirmaDeMarca nombre={store.nombre} ancho={store.logo_wide_url} cuadrado={store.logo_url} tinta={tinta} />
         </div>
 
-        <div className="relative text-center mb-4" style={{ zIndex: 1 }}>
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3"
-            style={{ background: '#DCFCE7' }}
-          >
-            <Check size={28} strokeWidth={3} style={{ color: '#16A34A' }} />
-          </div>
-          <h2 className="text-xl font-black mb-1" style={{ color: tinta }}>{COPY.doneTitle}</h2>
-          {/* La primera frase es el dinero: es lo que acaba de soltar. */}
-          <p className="text-sm font-bold px-4" style={{ color: tintaSuave }}>
-            {ticket.payment}
-          </p>
-
-          {/* Y su constancia, pegada a esa frase (09-set-2026): el comprobante
-              es de ESE pago, así que va debajo de la línea que lo anuncia y no
-              perdido al final de la página.
-
-              Se abre en otra pestaña —igual que desde el chat— porque es una
-              página para enseñar, reenviar y guardar como PDF, no una pantalla
-              de la que haya que salir para volver al pedido. `rel="noopener"`:
-              sin eso la página nueva recibe una referencia a esta y puede
-              navegarla.
-
-              Sin pago cruzado no hay botón (`ticket.receiptCobroId`), y tampoco
-              una explicación de por qué no lo hay: al comprador nunca se le dice
-              que su pago no existe. */}
-          {ticket.receiptCobroId && (
-            <a
-              href={enlaceDeComprobante(ticket.receiptCobroId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-black
-                focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-              style={{ background: velo, color: tinta, border: borde }}
-            >
-              <FileText size={14} strokeWidth={2.5} /> {COPY.doneSeeReceipt}
-            </a>
+        <div className="relative text-center" style={{ zIndex: 1 }}>
+          {/* Lo que compró, en vez del check (14-set-2026): la foto del pack
+              es la confirmación que se reconoce de un vistazo. Sin foto de
+              pack, el logo de la marca; sin nada, el check de siempre.
+              `object-contain`: que se vean las tres unidades del pack. */}
+          {imagen ? (
+            <div className="w-24 h-24 rounded-2xl mx-auto mb-3 overflow-hidden flex items-center justify-center"
+              style={{ background: velo, border: borde }}>
+              <img src={imagen} alt="" aria-hidden
+                onError={e => { e.currentTarget.parentElement!.hidden = true }}
+                className="w-full h-full object-contain p-1.5" />
+            </div>
+          ) : (
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: '#DCFCE7' }}>
+              <Check size={28} strokeWidth={3} style={{ color: '#16A34A' }} />
+            </div>
           )}
-        </div>
-
-        <div className="relative" style={{ zIndex: 1 }}>
-          <TicketDelPedido ticket={ticket} orderCode={orderCode} />
+          <h2 className="text-xl font-black mb-1" style={{ color: tinta }}>{COPY.doneTitle}</h2>
+          {/* El número del pedido, debajo del título: es lo que va a nombrar
+              si escribe. El dinero ya no va acá — vive en el primer paso del
+              recorrido, con su comprobante al lado. */}
+          <p className="text-sm font-bold tabular-nums px-4" style={{ color: tintaSuave }}>{orderCode}</p>
         </div>
       </div>
 
@@ -154,7 +143,7 @@ export default function PedidoConfirmado({ ticket, orderCode, sessionId }: Props
       <BajoLaMarca fondo="#fff" className="-mx-5 px-5">
         {/* ── El recorrido ── */}
         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 pt-5 mb-2 px-1">{COPY.doneTimelineTitle}</p>
-        <Recorrido pasos={ticket.pasos} />
+        <Recorrido pasos={ticket.pasos} pedido={pedido} />
 
         {/* ── La app ── */}
         <InstalarApp sessionId={sessionId} nombre={store.nombre} logo={store.logo_url} />
@@ -268,8 +257,10 @@ export function FirmaDeMarca({ nombre, ancho, cuadrado, tinta, compacta }: {
 }
 
 /** La línea vertical de puntos: lo hecho en verde, lo actual con el color de
- *  la marca y latiendo, lo que viene en gris. */
-export function Recorrido({ pasos }: { pasos: TicketStep[] }) {
+ *  la marca y latiendo, lo que viene en gris. Con `pedido`, el paso del saldo
+ *  pinta el botón que cobra de verdad cuando el pedido ya lo permite
+ *  (`puedePagarSaldo`: adelanto cruzado, saldo sin cruzar, riel en línea). */
+export function Recorrido({ pasos, pedido }: { pasos: TicketStep[]; pedido?: PedidoConSaldo | null }) {
   return (
     <ol className="relative mb-6 pl-1">
       {pasos.map((p, i) => {
@@ -295,15 +286,32 @@ export function Recorrido({ pasos }: { pasos: TicketStep[] }) {
                   {p.detail}
                 </p>
               )}
-              {/* El botón que traerá ese paso, apagado. Se enseña para que lo
-                  reconozca cuando de verdad se encienda; `disabled` de verdad,
-                  no un dibujo, para que ni el teclado ni el lector de pantalla
-                  lo ofrezcan. */}
-              {p.accion && (
+              {/* El botón VIVO del paso: el comprobante, la guía, la boleta.
+                  Otra pestaña —es una página para enseñar y guardar, no una de
+                  la que haya que salir para volver al pedido—; `noopener` para
+                  que la nueva no pueda navegar esta. */}
+              {p.enlace && (
+                <a href={p.enlace.href} target="_blank" rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-black
+                    bg-gray-900 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500">
+                  <FileText size={14} strokeWidth={2.5} /> {p.enlace.label} <ExternalLink size={13} />
+                </a>
+              )}
+              {/* El saldo, con el botón de verdad cuando el pedido ya lo
+                  permite; si no, el apagado de abajo. */}
+              {p.saldo != null && pedido && puedePagarSaldo(pedido) ? (
+                <div className="mt-2 max-w-[260px]"><BotonPagarSaldo pedido={pedido} /></div>
+              ) : p.accion && (
+                /* El botón que traerá ese paso, apagado. Se enseña para que lo
+                   reconozca cuando de verdad se encienda; `disabled` de verdad,
+                   no un dibujo, para que ni el teclado ni el lector de pantalla
+                   lo ofrezcan. */
                 <button type="button" disabled
                   className="mt-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-black
                     bg-gray-100 text-gray-400 cursor-not-allowed">
-                  <Wallet size={14} strokeWidth={2.5} /> {p.accion}
+                  {p.accionIcono === 'documento'
+                    ? <FileText size={14} strokeWidth={2.5} />
+                    : <Wallet size={14} strokeWidth={2.5} />} {p.accion}
                 </button>
               )}
             </div>

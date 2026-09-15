@@ -16,7 +16,8 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { COPY } from '../../lib/checkout/checkout.config'
 import { getSession } from '../../lib/order-api'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
 import { pagadoDelPedido } from '../../lib/checkout/ticket-desde-pedido'
@@ -103,11 +104,25 @@ export default function MiPedidoPage() {
 
   return (
     <div className="min-h-dvh" style={{ background: '#fff' }}>
+      {/* La barra fija (14-set-2026): esta página se recarga para ver el
+          avance —el sondeo dura dos minutos y después manda la recarga—, y
+          decirlo arriba, con el botón, es más honesto que un recorrido que
+          parece vivo y no lo está. Oscura y fina: informa, no celebra. */}
+      <div className="sticky top-0 z-20 px-4 py-2 flex items-center justify-between gap-3 text-[12px] font-bold text-white"
+        style={{ background: '#111' }}>
+        <span className="leading-snug">{COPY.doneRefreshHint}</span>
+        <button type="button" onClick={() => window.location.reload()}
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 text-white
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+          <RefreshCw size={13} strokeWidth={2.5} /> {COPY.doneRefresh}
+        </button>
+      </div>
       <div className="max-w-[480px] mx-auto px-5">
         <PedidoConfirmado
           ticket={ticket}
           orderCode={pedido.order_id}
           sessionId={pedido.id}
+          pedido={pedido}
         />
         {/* Sin pie de página (08-set-2026). Llevaba el logo y el nombre de la
             marca, y los dos sobran: el bloque de instalar que tiene justo

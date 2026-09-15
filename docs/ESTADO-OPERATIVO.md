@@ -34,6 +34,14 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La pantalla del pedido: cada paso lleva lo suyo · solo frontend (14-set-2026)
+
+Sin la tarjeta blanca del ticket; foto del pack y número del pedido en la cabecera; el pago
+con su comprobante, la boleta (🔮 Nubefact, pendiente) para quien pagó todo, la guía con
+número, código y clave, el saldo con el botón que cobra, el recojo con el DNI; y una barra fija
+que pide recargar. El comprobante en morado Yape y sin los totales. Diseño en
+`01-SALES-ENGINE.md` § *Cada paso lleva lo suyo*. **Nada que desplegar** fuera de Vercel.
+
 ### La «guía» que era el rótulo: el voucher se repone solo · 3 funciones (14-set-2026)
 
 **Qué pasó.** En un pedido de prueba el botón *Ver mi guía de Shalom* abrió la **etiqueta del
