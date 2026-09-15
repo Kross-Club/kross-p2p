@@ -34,6 +34,36 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La guía: el voucher se vuelve a pedir, «Reenviar» lo fuerza, y la manual también trae PDF · 4 funciones (15-set-2026)
+
+**Qué pasó.** Tras el arreglo del rótulo (#214), el pedido de prueba **siguió** enseñando la
+etiqueta: su PDF se había guardado con el nombre de antes (`<numero>.pdf`, sin sufijo) y la
+reposición solo reconocía el sufijo nuevo. Y aunque lo reconociera, solo actúa en la siguiente
+novedad del rastreo, que para un pedido quieto puede no llegar en días.
+
+**El arreglo.** (1) Cada PDF dice qué es: el voucher se guarda como `<numero>-guia.pdf` y el
+rótulo como `<numero>-rotulo.pdf`; lo de antes, sin sufijo, cuenta como **mejorable**
+(`pdfMejorable`). (2) `reponerPdfDeGuia` repone todo lo mejorable, pidiendo **solo el voucher**
+cuando ya hay un PDF (otro rótulo no mejora nada). (3) **«Reenviar» en la barra de envío del
+panel** es la palanca a mano: si el PDF es mejorable, vuelve a pedir el voucher y, si baja, lo
+manda; si no, repite el de antes. (4) **La guía registrada a mano también trae PDF**: `set_tracking`
+busca la orden por su número en las últimas 50 de la cuenta Shalom Pro de la marca
+(`buscarOseIdPorNumero`, op `guia.buscar` en Conexiones), aprende el `ose_id` —con lo que el
+rastreo también funciona— y baja el voucher. Sin cuenta, sin coincidencia o sin PDF, la guía se
+registra igual y el botón cae a la hoja de la app.
+
+```
+supabase functions deploy order-manage         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-order         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy shalom-webhook       --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
+Sin SQL. **Para el pedido de prueba:** Panel → pedido → barra del envío → *Reenviar*. Si Shalom ya
+tiene el voucher, el comprador recibe el mensaje nuevo con la guía con QR y la página del pedido
+la enseña al recargar. Si sigue saliendo el rótulo, la causa está en *Conexiones → Shalom PE*, op
+`guia.voucher` (status y content-type de lo que Shalom devolvió).
+
 ### La pantalla del pedido: cada paso lleva lo suyo · solo frontend (14-set-2026)
 
 Sin la tarjeta blanca del ticket; foto del pack y número del pedido en la cabecera; el pago
