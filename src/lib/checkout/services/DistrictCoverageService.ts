@@ -76,6 +76,39 @@ export function districtKey(department: string, province: string, district: stri
   return `${norm(department)}|${norm(province)}|${norm(district)}`
 }
 
+/**
+ * Cómo la gente llama a su distrito cuando NO es como lo llama el INEI.
+ *
+ * El padrón trae el nombre oficial, y a veces nadie lo usa: quien vive en
+ * Chosica escribe «Chosica», no «Lurigancho». El selector buscaba solo por
+ * nombre oficial, así que esa persona no encontraba su distrito — y el
+ * comprador que no encuentra su distrito NO COMPRA, que es exactamente el
+ * agujero que se cerró al pasar de 483 distritos al padrón completo.
+ *
+ * Reglas para agregar uno (15-set-2026):
+ *   · Solo nombres POPULARES de un distrito que existe, nunca un distrito que
+ *     falta. Un alias que apunta al distrito equivocado manda el paquete a otro
+ *     sitio, y eso es peor que no encontrarlo.
+ *   · Con provincia, porque el nombre oficial puede repetirse en el país.
+ *   · La clave va normalizada (sin tildes, en mayúsculas): `norm()` la compara.
+ */
+const ALIAS_DE_DISTRITO: Record<string, { district: string; province: string }> = {
+  CHOSICA: { district: 'Lurigancho', province: 'Lima' },
+  'LURIGANCHO CHOSICA': { district: 'Lurigancho', province: 'Lima' },
+  'LURIGANCHO-CHOSICA': { district: 'Lurigancho', province: 'Lima' },
+}
+
+/** El distrito oficial detrás de un nombre popular, si lo que se tecleó es el
+ *  principio de uno. Se compara por prefijo para que «chosi» ya lo encuentre. */
+export function aliasDeDistrito(consultaNormalizada: string): { district: string; province: string } | null {
+  const q = consultaNormalizada.trim()
+  if (!q) return null
+  for (const [nombre, destino] of Object.entries(ALIAS_DE_DISTRITO)) {
+    if (nombre.startsWith(q)) return destino
+  }
+  return null
+}
+
 export const DistrictCoverageService = {
   /**
    * Todos los distritos seleccionables del país — cubiertos y no cubiertos. El
@@ -109,8 +142,12 @@ export const DistrictCoverageService = {
     const all = await loadIndex()
     const q = norm(query)
     if (!q) return all.slice(0, limit)
+    const alias = aliasDeDistrito(q)
     return all
-      .filter(d => norm(`${d.district} ${d.province} ${d.department}`).includes(q))
+      .filter(d => {
+        if (alias && d.district === alias.district && d.province === alias.province) return true
+        return norm(`${d.district} ${d.province} ${d.department}`).includes(q)
+      })
       .slice(0, limit)
   },
 
