@@ -2910,7 +2910,14 @@ ALTER TABLE stores ADD COLUMN IF NOT EXISTS wa_fallback_enabled boolean NOT NULL
 -- Cobertura de push por plataforma del PEDIDO, para leerla de un vistazo:
 -- de los pedidos de cada plataforma (por el user-agent del checkout,
 -- `order_sessions.ad_client_ua`), cuántos tienen al menos una suscripción.
-CREATE OR REPLACE VIEW push_cobertura AS
+--
+-- `security_invoker = on` y los REVOKE de abajo NO son decoración (§61): una
+-- vista de `public` la expone PostgREST, y sin esa opción corre con los
+-- permisos de QUIEN LA CREÓ —salta RLS—. Esta cuenta pedidos por tienda, así
+-- que sin eso un comerciante podía leer el volumen de otro con la llave
+-- pública. Es de diagnóstico: se consulta desde el SQL Editor, nadie la lee
+-- desde el código.
+CREATE OR REPLACE VIEW push_cobertura WITH (security_invoker = on) AS
 SELECT
   o.origin_store_id AS store_id,
   CASE
@@ -2928,6 +2935,8 @@ SELECT
 FROM order_sessions o
 WHERE o.created_at > now() - interval '90 days'
 GROUP BY 1, 2;
+
+REVOKE ALL ON push_cobertura FROM anon, authenticated;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- §58 · LA BOLETA ELECTRÓNICA, CON NUBEFACT  (15-set-2026)
@@ -3028,3 +3037,42 @@ DO $$ BEGIN
   ALTER TABLE order_sessions ADD CONSTRAINT order_sessions_reparto_lima_chk
     CHECK (reparto_lima IS NULL OR reparto_lima IN ('PROPIO', 'COURIER'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §61 · LA VISTA DE DIAGNÓSTICO NO ES UNA API  (15-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El linter de Supabase marcó `public.push_cobertura` como SECURITY DEFINER, y
+-- tiene razón. La creó el §57 sin `security_invoker`, y en Postgres una vista
+-- sin esa opción corre con los permisos de QUIEN LA CREÓ: las políticas RLS que
+-- se evalúan son las del creador, no las de quien consulta.
+--
+-- Por qué importa acá y no es un aviso de manual: la vista vive en `public`, o
+-- sea que PostgREST la publica, y agrupa `order_sessions` POR TIENDA. Sin este
+-- arreglo, cualquiera con la llave anónima —que es pública por diseño; lo que
+-- protege los datos es RLS— podía pedir `/rest/v1/push_cobertura` y leer cuántos
+-- pedidos hace cada marca. No hay datos personales ahí (ni nombres, ni DNI, ni
+-- teléfonos), pero el volumen de ventas de un comerciante es SUYO, y en un
+-- multi-tenant enseñárselo a otro es exactamente lo que no puede pasar.
+--
+-- Son dos candados, y hacen falta los dos:
+--   · `security_invoker = on` → la vista pasa a evaluar el RLS del que consulta.
+--   · `REVOKE` → ni siquiera se puede nombrar desde la API pública.
+--
+-- El uso real no se toca: es de diagnóstico y se corre desde el SQL Editor
+-- (`ESTADO-OPERATIVO.md` § *Cómo leer la cobertura*), donde la sesión es
+-- `postgres` y pasa por encima de RLS. NINGÚN código la lee — se verificó con
+-- grep sobre `src/` y `supabase/functions/` antes de tocarla.
+--
+-- Idempotente y repetible. Va aparte del §57 porque las bases que ya lo
+-- corrieron tienen la vista creada mal y necesitan el ALTER; el §57 quedó
+-- corregido para quien parta de cero.
+DO $$ BEGIN
+  -- `security_invoker` existe desde Postgres 15. Si algún día esto corre contra
+  -- una base más vieja, el REVOKE de abajo sigue siendo la protección real.
+  EXECUTE 'ALTER VIEW push_cobertura SET (security_invoker = on)';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'push_cobertura: no se pudo poner security_invoker (%). El REVOKE queda igual.', SQLERRM;
+END $$;
+
+REVOKE ALL ON push_cobertura FROM anon, authenticated;
