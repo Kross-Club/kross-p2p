@@ -53,6 +53,8 @@ import {
 import { useIsDesktop } from '../../lib/use-desktop'
 import { usePanelTheme } from '../../lib/theme'
 import type { OrderSession, OrderMessage } from '../../lib/order-api'
+import { useDominioDeTienda } from '../../lib/use-dominio-de-tienda'
+import type { TiendaConDominio } from '../../lib/dominio'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
@@ -410,11 +412,14 @@ function roleColor(role?: string | null) {
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
-function MessageBubble({ msg, audio, equipo = [], pedido }: {
+function MessageBubble({ msg, audio, equipo = [], pedido, tienda }: {
   msg: OrderMessage; audio?: string | null; equipo?: Etiquetable[]
   /** El pedido, para la tarjeta de pago: el monto y el "¿ya pagó?" salen del
    *  estado de HOY, no de lo que decía el mensaje cuando se mandó. */
   pedido?: OrderSession | null
+  /** La marca del pedido, para que el enlace de la guía salga por SU dominio
+   *  aunque el vendedor esté en la raíz. */
+  tienda?: TiendaConDominio | null
 }) {
   const isSeller = msg.sender_role === 'seller'
   const time = new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
@@ -478,7 +483,7 @@ function MessageBubble({ msg, audio, equipo = [], pedido }: {
   // La guía, igual que la ve el comprador — pre-guía y botón del PDF incluidos.
   if (msg.type === 'guia') {
     return (
-      <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url}
+      <TarjetaDeGuia texto={msg.body} pdfUrl={msg.media_url} tienda={tienda}
         token={pedido?.token} courier={pedido?.tracking_courier ?? pedido?.agency_name}
         hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
     )
@@ -643,6 +648,9 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
   const [marcando, setMarcando] = useState(false)
   // El puntito verde, de la misma fuente que Lista y Tablero.
   const enLinea = useCompradoresEnLinea(effective?.store_id)
+  // La marca del PEDIDO, para los enlaces que se copian (la guía): desde la
+  // raíz el contexto de tienda no la conoce.
+  const tiendaDelPedido = useDominioDeTienda(session?.store_id ?? effective?.store_id)
   const favoritos = useFavoritos(effective?.store_id)
   const buyerOnline = !!session?.buyer_id && enLinea.has(session.buyer_id)
   // "Está en la app" = hoy puede recibir una push. Haber entrado alguna vez no
@@ -1634,7 +1642,7 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
           </div>
         )}
         {messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} equipo={equipoEtiquetable} pedido={session}
+          <MessageBubble key={msg.id} msg={msg} equipo={equipoEtiquetable} pedido={session} tienda={tiendaDelPedido}
             audio={msg.call_recording_id ? audios[msg.call_recording_id] : undefined} />
         ))}
 

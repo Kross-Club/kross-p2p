@@ -2,6 +2,7 @@ import { Package, ExternalLink } from 'lucide-react'
 import { enlaceDeArchivoDeTienda, enlaceDeTienda } from '../lib/archivos'
 import { enlaceDeGuia } from '../lib/hoja-de-guia'
 import { useStore } from '../lib/store-context'
+import type { TiendaConDominio } from '../lib/dominio'
 
 // ─── La guía del envío, en el hilo ───────────────────────────────────────────
 //
@@ -19,7 +20,7 @@ import { useStore } from '../lib/store-context'
 // La copy viene del servidor (`_shared/mensaje-de-guia.ts`) con saltos de
 // línea entre sus partes — de ahí el `whitespace-pre-line`.
 
-export default function TarjetaDeGuia({ texto, pdfUrl, token, courier, hora }: {
+export default function TarjetaDeGuia({ texto, pdfUrl, token, courier, hora, tienda }: {
   texto: string | null
   /** El PDF del courier, cuando la guía la emitió la API. */
   pdfUrl?: string | null
@@ -27,6 +28,9 @@ export default function TarjetaDeGuia({ texto, pdfUrl, token, courier, hora }: {
   token?: string | null
   courier?: string | null
   hora?: string
+  /** La marca del pedido, cuando quien pinta no está en su dominio (el panel
+   *  del vendedor desde la raíz). Sin ella, la del contexto. */
+  tienda?: TiendaConDominio | null
 }) {
   // El PDF sale por el dominio de LA TIENDA y no por el del storage ni por el
   // host desde el que se mira: es el enlace que el comprador abre en una
@@ -34,7 +38,8 @@ export default function TarjetaDeGuia({ texto, pdfUrl, token, courier, hora }: {
   // estar en otro host. `enlaceDeArchivoDeTienda` deja intacto el PDF de un
   // courier —Olva sirve su rótulo desde su dominio—.
   const { store } = useStore()
-  const href = enlaceDeArchivoDeTienda(store, pdfUrl) ?? (token ? enlaceDeTienda(store, enlaceDeGuia(token)) : null)
+  const marca = tienda ?? store
+  const href = enlaceDeArchivoDeTienda(marca, pdfUrl) ?? (token ? enlaceDeTienda(marca, enlaceDeGuia(token)) : null)
   const nombre = String(courier ?? '').toUpperCase() === 'OLVA' ? 'Olva' : 'Shalom'
 
   return (
