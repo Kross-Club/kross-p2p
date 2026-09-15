@@ -6,8 +6,10 @@
 // A diferencia de provincia, aquí NO hay veredicto de cobertura que consultar:
 // el motorizado propio llega a todo Lima metropolitana. Por eso la elección es
 // del comprador desde el primer instante, sin esperar a nada — mientras la marca
-// ofrezca domicilio. Si `homeDeliveryEnabled` está apagado no hay dos opciones
-// que comparar y el reducer ya fijó AGENCIA al elegir el distrito.
+// ofrezca domicilio — con su motorizado propio o con el courier de Lima y
+// Callao (§60), que para el comprador son lo mismo: le llega a la puerta. Si no
+// tiene ninguna de las dos no hay opciones que comparar y el reducer ya fijó
+// AGENCIA al elegir el distrito.
 //
 // El distrito ya viene elegido del paso 2 — es lo que determinó que esta rama se
 // montara.
@@ -60,7 +62,7 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
       {/* Sin domicilio no hay dos opciones que ofrecer: el reducer ya fijó
           AGENCIA al elegir el distrito, y mostrar un selector de una sola
           tarjeta cobra un tap para llegar al mismo sitio. */}
-      {state.homeDeliveryEnabled && (
+      {(state.homeDeliveryEnabled || state.courierLimaEnabled) && (
         <MethodPicker
           value={method}
           onPick={m => {

@@ -180,6 +180,49 @@ describe('recojo en agencia · las dos regiones', () => {
 // `stores.home_delivery_enabled` apagado = la marca solo ofrece recojo en
 // agencia. El recojo NUNCA se apaga: es la salida que siempre está abierta.
 
+// §60 · La marca sin motorizado propio PERO con el courier de Lima y Callao.
+// Para el comprador es lo mismo —le llega a la puerta—; la diferencia es que el
+// courier cubre solo Lima, así que en provincia esa marca sigue siendo
+// solo-agencia.
+describe('tienda con courier en Lima y sin motorizado propio', () => {
+  //                                        variante, domicilio, mitad, dcto, courier
+  const soloCourier = () => initialCheckoutState('pack-2', 'A', false, false, 0, true)
+
+  it('en Lima SÍ ofrece domicilio: el courier llega a la puerta', () => {
+    expect(run(soloCourier(), LIMA_D).deliveryMethod).not.toBe('AGENCIA')
+  })
+
+  it('en el Callao también, que es lo que ese courier cubre', () => {
+    const s = run(soloCourier(), { type: 'SET_DISTRICT', department: 'Callao', province: 'Callao', district: 'Bellavista' })
+    expect(s.deliveryMethod).not.toBe('AGENCIA')
+  })
+
+  it('en provincia NO: prometer ahí es prometer lo que nadie va a hacer', () => {
+    expect(run(soloCourier(), PROV_D).deliveryMethod).toBe('AGENCIA')
+  })
+
+  it('y la cobertura del tarifario tampoco lo abre en provincia', () => {
+    const s = run(soloCourier(), PROV_D, { type: 'SET_COVERAGE', check: {
+      result: 'IN_ZONE', city: 'TRUJILLO', eta: '48h', tariff: 15.5,
+      weekly: false, weekdaysOnly: false, zoned: false, reason: '',
+    } })
+    expect(s.deliveryMethod).toBe('AGENCIA')
+  })
+
+  it('pedir domicilio a mano en provincia no lo cambia', () => {
+    const s = run(soloCourier(), PROV_D, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' })
+    expect(s.deliveryMethod).toBe('AGENCIA')
+  })
+
+  it('mudarse de Lima a provincia devuelve el pedido a AGENCIA', () => {
+    // El caso feo: eligió Miraflores, quedó en domicilio, y después corrigió el
+    // distrito a Trujillo. Si el método no se renormaliza, ese pedido cierra
+    // prometiendo una entrega a la puerta en provincia.
+    const s = run(soloCourier(), LIMA_D, { type: 'SET_DELIVERY_METHOD', method: 'DOMICILIO' }, PROV_D)
+    expect(s.deliveryMethod).toBe('AGENCIA')
+  })
+})
+
 describe('tienda solo con recojo en agencia', () => {
   const soloAgencia = () => initialCheckoutState('pack-2', 'A', false)
 

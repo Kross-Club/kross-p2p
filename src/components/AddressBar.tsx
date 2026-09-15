@@ -4,12 +4,15 @@ import { isPickupDispatch } from '../lib/session'
 import { AgencyService } from '../lib/checkout/services/AgencyService'
 import type { AgencyBranch, AgencyName } from '../lib/checkout/types'
 import { mensajeDeGps, verificarDireccionPorGps } from '../lib/gps'
+import { useFormasDeReparto } from '../lib/use-formas-de-reparto'
+import { NOMBRE_DE_REPARTO, repartosPosibles, type Reparto } from '../../supabase/functions/_shared/reparto'
+import { supabase } from '../lib/supabase'
 
 // Delivery address in the chat.
 //  · Buyer: the ONLY one who sets/changes it — one tap captures GPS, reverse-
 //    geocodes and saves. When verified, "Verificar GPS" becomes "Cambiar".
 //  · Seller: read-only. Can open Google Maps / Waze and copy the coordinates.
-export default function AddressBar({ sessionId, address, verified, lat, lng, role, dispatchType, agencyName, agencyBranchId, onUpdated }: {
+export default function AddressBar({ sessionId, address, verified, lat, lng, role, dispatchType, agencyName, agencyBranchId, storeId, repartoLima, onReparto, onUpdated }: {
   sessionId: string
   address: string | null
   verified: boolean
@@ -24,6 +27,11 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
    *  paquete; sin ella cae al texto del pedido, que es el distrito del
    *  comprador — otra cosa, y ya visible en su ficha. */
   agencyBranchId?: string | null
+  /** La marca del pedido y quién lo lleva hoy (§60). Solo las manda el panel:
+   *  el comprador no elige la empresa que reparte ni la ve. */
+  storeId?: string | null
+  repartoLima?: string | null
+  onReparto?: (reparto: Reparto | null) => void
   onUpdated: (address: string, verified: boolean, lat: number | null, lng: number | null) => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -76,6 +84,31 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
     return () => { vivo = false }
   }, [isPickup, agencyBranchId, agencyName])
 
+  // §60 · Quién lleva ESTE pedido. Solo en un domicilio de Lima —el courier
+  // cubre Lima y Callao— y solo del lado del vendedor: el comprador no elige la
+  // empresa que reparte, no la ve y no cambia lo que paga.
+  const formas = useFormasDeReparto(role === 'seller' && dispatchType === 'MOTORIZADO_LIMA' ? storeId : null)
+  const posibles = repartosPosibles(formas)
+  const [guardandoReparto, setGuardandoReparto] = useState(false)
+  const elegirReparto = async (r: Reparto) => {
+    if (guardandoReparto || r === repartoLima) return
+    setGuardandoReparto(true)
+    // Optimista: el vendedor toca y ve. Si el servidor lo rechaza se revierte
+    // y se dice por qué — callarlo dejaría al panel mostrando una decisión que
+    // la base no tiene.
+    const antes = (repartoLima ?? null) as Reparto | null
+    onReparto?.(r)
+    try {
+      const { data, error } = await supabase.functions.invoke('order-manage', {
+        body: { action: 'set_reparto', session_id: sessionId, reparto: r },
+      })
+      const err = error ? 'No se pudo guardar' : (data as { error?: string } | null)?.error
+      if (err) { onReparto?.(antes); alert(err) }
+    } finally {
+      setGuardandoReparto(false)
+    }
+  }
+
   return (
     <div className="mx-4 mt-2 rounded-2xl bg-white px-3 py-2.5" style={{ border: '0.5px solid var(--border)' }}>
       {/* Row 1: icon + title + badge + button, all in one line */}
@@ -121,6 +154,36 @@ export default function AddressBar({ sessionId, address, verified, lat, lng, rol
               : role === 'buyer' ? 'Toca “Verificar GPS”' : 'El comprador aún no la verifica')
           )}
         </p>
+      )}
+
+      {/* §60 · Quién lo lleva. Con DOS formas contratadas es una pregunta —son
+          costos y plazos distintos, y la decide el comercio, pedido por pedido—;
+          con una sola es solo un dato, porque no hay nada que elegir. */}
+      {posibles.length > 0 && (
+        <div className="mt-2 pt-2" style={{ borderTop: '1px dashed #eee' }}>
+          <p className="text-[9px] font-black uppercase tracking-wide text-gray-400 mb-1.5">Quién lo lleva</p>
+          {posibles.length === 1 ? (
+            <p className="text-[11px] font-black text-gray-600">{NOMBRE_DE_REPARTO[posibles[0]]}</p>
+          ) : (
+            <div className="flex gap-1.5">
+              {posibles.map(r => {
+                const activo = repartoLima === r
+                return (
+                  <button key={r} onClick={() => elegirReparto(r)} disabled={guardandoReparto}
+                    className="flex-1 text-[10px] font-black px-2 py-1.5 rounded-lg disabled:opacity-50"
+                    style={activo
+                      ? { background: 'var(--info-bg)', color: 'var(--info-fg)', border: '0.5px solid var(--info-border)' }
+                      : { background: 'var(--surface-3)', color: 'var(--text-muted)', border: '0.5px solid transparent' }}>
+                    {NOMBRE_DE_REPARTO[r]}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {posibles.length > 1 && !repartoLima && (
+            <p className="text-[10px] text-gray-400 mt-1">Sin decidir. Elige antes de despachar.</p>
+          )}
+        </div>
       )}
 
       {/* Map links + coords (once GPS-located). Seller also gets Waze. */}

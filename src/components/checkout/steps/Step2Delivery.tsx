@@ -21,6 +21,7 @@ import type { ReactNode } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { COPY, DNI_LENGTH } from '../../../lib/checkout/checkout.config'
 import { DistrictCoverageService, isLimaMetro } from '../../../lib/checkout/services/DistrictCoverageService'
+import { ofreceDomicilio } from '../../../../supabase/functions/_shared/reparto'
 import { getGeoHint } from '../../../lib/checkout/services/GeoHintService'
 import { trackEvent } from '../../../lib/checkout/analytics'
 import type { CheckoutState, DistrictOption } from '../../../lib/checkout/types'
@@ -223,10 +224,16 @@ function DistrictSelect({ state, dispatch, error, touch }: {
     // motorizado que mandar, y prometerlo en la lista donde el comprador ELIGE
     // es la peor sorpresa posible: la descubre dos campos después, cuando solo
     // le ofrecemos puntos de recojo.
-    badge: state.homeDeliveryEnabled && d.covered && !d.weekly
+    // Se pregunta POR FILA y con su región (§60): el courier reparte solo en
+    // Lima y Callao, así que una marca que solo lo tiene no puede prometer la
+    // casa en un distrito de provincia.
+    badge: ofreceDomicilio(
+      { home_delivery_enabled: state.homeDeliveryEnabled, courier_lima_enabled: state.courierLimaEnabled },
+      isLimaMetro(d) ? 'LIMA' : 'PROVINCIA',
+    ) && d.covered && !d.weekly
       ? 'Podemos ir a tu casa'
       : undefined,
-  })), [all, state.homeDeliveryEnabled])
+  })), [all, state.homeDeliveryEnabled, state.courierLimaEnabled])
 
   const p = state.provinciaConfig
   const l = state.limaAddress

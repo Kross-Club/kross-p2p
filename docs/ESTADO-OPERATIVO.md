@@ -34,6 +34,38 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Reparto en Lima y Callao con courier · **SQL §60** + 4 funciones + frontend (15-set-2026)
+
+**Qué entra.** Una segunda forma de llegar a la puerta, **independiente** del motorizado propio:
+un courier tercero que reparte en Lima y Callao (`stores.courier_lima_enabled`, toggle en *Marca
+→ Entrega a domicilio*, super admin). Una marca puede tener las dos, una o ninguna.
+
+**El comprador ve lo mismo**: «a la puerta» o «en agencia». Quién reparte no es una opción suya.
+Lo que cambia es que una marca **sin** motorizado pero **con** courier ya ofrece domicilio en
+Lima y Callao — y sigue siendo solo-agencia en provincia, porque el courier no llega ahí. Por eso
+son dos banderas y no un OR: `ofreceDomicilio(tienda, region)` en `_shared/reparto.ts`.
+
+**Quién lleva cada pedido** vive en `order_sessions.reparto_lima`. Con una sola forma se fija
+sola al registrarse; con las dos nace en `null` y el vendedor elige en la barra de dirección
+(`order-manage` · `set_reparto`, que valida contra lo que la marca tiene contratado).
+
+⚠️ **No hay integración de courier** (🔮): ni guía, ni rastreo, ni tarifa. El servicio se está
+validando y `reparto_lima` es solo lo que el vendedor necesita para despachar. Construirle una
+API a un proveedor sin cerrar sería construir sobre una decisión que no está tomada.
+
+```sql
+-- §60 · stores.courier_lima_enabled + order_sessions.reparto_lima
+```
+```
+supabase functions deploy register-buyer --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy order-manage   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session    --project-ref ofdjghntvmrdfjhazfvz
+```
+⚠️ El SQL va **antes** que las funciones: `manage-store` mete la columna nueva en el mismo
+reintento que las del §49, así que en la ventana sin SQL se degradarían también el dominio propio
+y el degradado.
+
 ### Olva se duerme y Chosica se encuentra · 1 función + frontend (15-set-2026)
 
 **Solo Shalom, por ahora.** Ninguno de los dos proveedores de Olva entrega su API como

@@ -1588,6 +1588,9 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         dispatchType={session.dispatch_type}
         agencyName={session.agency_name}
         agencyBranchId={pickupBranchIdOf(session)}
+        storeId={session.origin_store_id ?? session.store_id}
+        repartoLima={session.reparto_lima}
+        onReparto={r => setSession(s => s ? { ...s, reparto_lima: r } : s)}
         onUpdated={(address, address_verified, address_lat, address_lng) => setSession(s => s ? { ...s, address, address_verified, address_lat, address_lng } : s)}
       />
 

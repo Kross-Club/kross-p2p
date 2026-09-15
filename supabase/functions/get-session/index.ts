@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       seller_name, seller_role, seller_avatar,
       involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by,
       address, address_verified, address_lat, address_lng, nota,
-      dispatch_type, agency_name, agency_branch_id, delivery_reference,
+      dispatch_type, origin_store_id, reparto_lima, agency_name, agency_branch_id, delivery_reference,
       tracking_courier, tracking_numero, tracking_codigo, tracking_ose_id,
       tracking_year, tracking_phase, tracking_phase_at, tracking_demora_at,
       shalom_pickup_code,

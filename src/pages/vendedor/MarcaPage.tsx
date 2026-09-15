@@ -45,6 +45,7 @@ interface StoreRow {
    *  marca, porque lo paga la marca. */
   wa_fallback_enabled?: boolean
   home_delivery_enabled?: boolean
+  courier_lima_enabled?: boolean
   wa_phone_number_id?: string | null
   wa_display_phone?: string | null
   wa_business_account_id?: string | null
@@ -449,6 +450,10 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   // llega con el campo ausente, y un `false` accidental le apagaría el
   // domicilio al guardar cualquier otro cambio.
   const [homeDelivery, setHomeDelivery] = useState(store.home_delivery_enabled ?? true)
+  // §60 · El courier de Lima y Callao. `!!` y no `?? true`: al revés que el
+  // motorizado, una marca sin la columna NO tiene courier — encenderlo por
+  // defecto prometería entregas que nadie contrató.
+  const [courierLima, setCourierLima] = useState(!!store.courier_lima_enabled)
   const [waPhoneId, setWaPhoneId] = useState(store.wa_phone_number_id ?? '')
   const [waDisplay, setWaDisplay] = useState(store.wa_display_phone ?? '')
   const [waBiz, setWaBiz] = useState(store.wa_business_account_id ?? '')
@@ -678,6 +683,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
       payload.custom_domain = dominio.trim()
       payload.wa_enabled = waEnabled
       payload.home_delivery_enabled = homeDelivery
+      payload.courier_lima_enabled = courierLima
       payload.wa_phone_number_id = waPhoneId.trim()
       payload.wa_display_phone = waDisplay.trim()
       payload.wa_business_account_id = waBiz.trim()
@@ -1139,9 +1145,40 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
             </button>
             <p className="text-[10px] text-gray-500">
               {homeDelivery
-                ? 'El comprador elige entre recibirlo en su casa o recoger en agencia.'
-                : 'Solo recojo en agencia. Apágala si la marca no tiene motorizado ni courier a domicilio: prometer entrega a la puerta y no cumplirla cuesta más que no ofrecerla.'}
+                ? 'Con el motorizado de la marca, en todo el país donde llegue.'
+                : 'Apagada. Enciéndela solo si la marca tiene motorizado propio: prometer entrega a la puerta y no cumplirla cuesta más que no ofrecerla.'}
             </p>
+
+            {/* §60 · La segunda forma de llegar a la puerta, INDEPENDIENTE de la
+                primera. Una marca puede tener las dos, una o ninguna. */}
+            <div className="mt-3 pt-3" style={{ borderTop: '0.5px solid var(--info-border)' }}>
+              <button onClick={() => setCourierLima(v => !v)}
+                className="w-full flex items-center justify-between mb-2">
+                <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--info-fg)' }}>
+                  <Truck size={14} /> Courier en Lima y Callao
+                </span>
+                <span className="text-[10px] font-black px-2 py-1 rounded-full"
+                  style={{ background: courierLima ? '#2563EB' : '#E5E7EB', color: courierLima ? '#fff' : '#6B7280' }}>
+                  {courierLima ? 'ACTIVO' : 'APAGADO'}
+                </span>
+              </button>
+              <p className="text-[10px] text-gray-500">
+                {courierLima
+                  ? 'Lima y Callao tienen entrega a la puerta aunque la marca no tenga motorizado. En provincia no cambia nada: ahí solo reparte el motorizado propio.'
+                  : 'Un courier tercero que reparte solo en Lima y Callao. Enciéndelo cuando el servicio esté contratado.'}
+              </p>
+              {homeDelivery && courierLima && (
+                <p className="text-[10px] mt-1.5" style={{ color: 'var(--info-fg)' }}>
+                  Con las dos activas, el comprador ve lo mismo —«a la puerta»— y el vendedor
+                  elige quién lleva cada pedido desde el panel.
+                </p>
+              )}
+              {!homeDelivery && !courierLima && (
+                <p className="text-[10px] mt-1.5 text-gray-500">
+                  Sin ninguna de las dos, la marca solo ofrece recojo en agencia.
+                </p>
+              )}
+            </div>
           </div>
         )}
         {/* ── Cobros — del admin de la tienda, sin gate isSuper: es SU cuenta
