@@ -34,6 +34,28 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### ⚠️ La vista `push_cobertura` saltaba RLS · **SQL §61**, sin código (15-set-2026)
+
+**Qué marcó el linter.** *Security Definer View · CRITICAL* sobre `public.push_cobertura`. Es
+mía, del §57, y el aviso tiene razón: en Postgres una vista sin `security_invoker` corre con los
+permisos de **quien la creó**, así que evalúa el RLS del creador y no el de quien consulta.
+
+**Por qué importaba de verdad.** La vista vive en `public` —o sea que PostgREST la publica— y
+agrupa `order_sessions` **por tienda**. Cualquiera con la llave anónima (que es pública por
+diseño; lo que protege los datos es RLS) podía pedir `/rest/v1/push_cobertura` y leer **cuántos
+pedidos hace cada marca**. No hay datos personales ahí, pero el volumen de ventas de un
+comerciante es suyo, y enseñárselo a otro es justo lo que un multi-tenant no puede hacer.
+
+**El arreglo, dos candados.** `security_invoker = on` (la vista evalúa el RLS del que consulta)
+y `REVOKE` de `anon` y `authenticated` (ni se puede nombrar desde la API pública). El uso real no
+cambia: se consulta desde el SQL Editor, donde la sesión es `postgres`. **Ningún código la lee**
+—verificado con grep sobre `src/` y `supabase/functions/`— así que no hay nada que se rompa.
+
+Sin funciones ni frontend: solo SQL.
+```sql
+-- §61 · push_cobertura con security_invoker y sin permisos públicos
+```
+
 ### Reparto en Lima y Callao con courier · **SQL §60** + 4 funciones + frontend (15-set-2026)
 
 **Qué entra.** Una segunda forma de llegar a la puerta, **independiente** del motorizado propio:
@@ -306,8 +328,10 @@ sin `platform` y anota la bitácora sin las columnas nuevas, y el respaldo por W
 apagado (la tienda no tiene la columna → no cae). Sin las funciones, el botón nuevo suscribe
 igual: es el mismo `subscribePush` de siempre con un campo más que el servidor viejo ignora.
 
-**Cómo leer la cobertura.** `select * from push_cobertura where store_id = '<id>'`: de los
-pedidos de cada plataforma en 90 días, cuántos tienen al menos una suscripción. Y en
+**Cómo leer la cobertura.** `select * from push_cobertura where store_id = '<id>'`, **desde el
+SQL Editor**: de los pedidos de cada plataforma en 90 días, cuántos tienen al menos una
+suscripción. Es una vista de diagnóstico, no una API — desde el 15-set corre con
+`security_invoker` y sin permisos para `anon`/`authenticated` (§61). Y en
 `notifications_log`, `push_subs` vs `push_count` y `push_por_plataforma` por aviso: un
 `push_count = 0` con `push_subs = 0` es «no tiene push»; con `push_subs > 0` es «tiene y falló».
 

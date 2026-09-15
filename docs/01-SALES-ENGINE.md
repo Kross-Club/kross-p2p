@@ -727,7 +727,8 @@ la pantalla. Cómo se comporta:
   abrir: se dice, y la app es el camino (tiene su propio permiso). Cada suscripción queda
   etiquetada con plataforma, servicio y si vino de la app instalada (§57,
   `_shared/push-plataforma.ts`), para poder leer la cobertura por plataforma
-  (`push_cobertura`).
+  (`push_cobertura`, vista de diagnóstico: `security_invoker` y sin permisos para la API
+  pública desde el §61).
 - **Android/Chrome — instalar**: usa el `beforeinstallprompt` que `main.tsx` guarda en
   `window.__deferredInstallPrompt`. Si acepta, se activa el push del pedido
   (`subscribePush({ sessionId, role: 'buyer' })`): la app nace con el pedido adentro, no
