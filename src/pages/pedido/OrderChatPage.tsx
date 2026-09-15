@@ -5,6 +5,7 @@ import QuickReplies from '../../components/chat/QuickReplies'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
 import TarjetaDeGuia from '../../components/TarjetaDeGuia'
+import TarjetaDeBoleta from '../../components/TarjetaDeBoleta'
 import { TIPO_COBRO, montoDeLaTarjeta, cobroDeLaTarjeta } from '../../lib/cobro-por-chat'
 import { cobroDelAviso } from '../../lib/comprobante'
 import { puedePagarSaldo, saldoDelPedido, cobrosDelPedido } from '../../lib/order-money'
@@ -103,6 +104,11 @@ function MessageBubble({ msg, onAcceptOffer, pedido }: {
         </div>
       </div>
     )
+  }
+
+  // La boleta electrónica (§58): tarjeta con el PDF de Nubefact.
+  if (msg.type === 'boleta') {
+    return <TarjetaDeBoleta texto={msg.body} pdfUrl={msg.media_url} hora={time} />
   }
 
   // La guía del envío, con su explicación de pre-guía y —cuando la emitió la

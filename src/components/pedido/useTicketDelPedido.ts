@@ -105,6 +105,8 @@ export function useTicketDelPedido(
       fase: pedido.tracking_phase,
       // Solo llega cuando el servidor ya se la soltó (no debe nada).
       pickupCode: pedido.shalom_pickup_code ?? null,
+      // La boleta (§58), cuando Nubefact ya la emitió.
+      boletaUrl: (pedido.boleta_estado === 'EMITIDA' || pedido.boleta_estado === 'ACEPTADA') ? (pedido.boleta_url ?? null) : null,
     })
   }, [pedido, pdf, sede, token, store])
 }

@@ -15,7 +15,7 @@
 /** Cada API de terceros de la que Kross depende. El id es el que se guarda. */
 export const PROVEEDORES = [
   'SHALOM_PE', 'SHALOM_LAT', 'OLVA', 'OLVA_LAT',
-  'PAY360', 'FLOW', 'STRIPE',
+  'PAY360', 'FLOW', 'STRIPE', 'NUBEFACT',
   'WHATSAPP', 'META_CAPI', 'TIKTOK_CAPI',
   'LIVEKIT', 'ELEVENLABS', 'DECOLECTA', 'RESEND', 'WEB_PUSH', 'NOMINATIM',
   'TWILIO',
@@ -84,6 +84,10 @@ export const INTEGRACIONES: Integracion[] = [
   {
     id: 'PAY360', nombre: '360pay', que: 'Cobraba por Yape hasta set-2026. Dormida: no se elige para ningún pedido nuevo',
     dueno: '360pay', host: 'api.360pay.pe', alcance: 'marca', secreto: null, critico: false, dormida: true,
+  },
+  {
+    id: 'NUBEFACT', nombre: 'Nubefact', que: 'Emite la boleta electrónica del pedido pagado completo, con el RUC y la cuenta de la marca (§58)',
+    dueno: 'Nubefact', host: 'api.nubefact.com', alcance: 'marca', secreto: null, critico: false,
   },
   {
     id: 'STRIPE', nombre: 'Stripe', que: 'Cobra el plan mensual del comercio ($67/mes). Es la LLAVE de la comisión del afiliado: sin mes pagado, ese mes no comisiona',

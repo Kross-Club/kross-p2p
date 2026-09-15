@@ -8,6 +8,7 @@ import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts
 import { normalizarDominio, variantesDeDominio } from '../_shared/tienda-url.ts'
 import { crearTienda } from '../_shared/crear-tienda.ts'
 import { SLUGS_RESERVADOS } from '../_shared/alta-de-tienda.ts'
+import { esRuc, esSerieDeBoleta, puedeFacturar } from '../_shared/nubefact.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -140,6 +141,17 @@ Deno.serve(async (req) => {
     confirmar?: string
     wa_enabled?: boolean
     wa_fallback_enabled?: boolean
+    // Facturación electrónica (§58): la marca factura con su RUC y su cuenta
+    // de Nubefact. Los datos fiscales son públicos (salen en la boleta); la
+    // ruta y el token van a `store_secrets` y no vuelven nunca.
+    nubefact_enabled?: boolean
+    ruc?: string | null
+    razon_social?: string | null
+    direccion_fiscal?: string | null
+    boleta_serie?: string | null
+    /** `{ ruta, token }` para guardarlos; `null` para quitarlos (apaga la
+     *  facturación). Los dos o nada. */
+    nubefact_keys?: { ruta?: unknown; token?: unknown } | null
     wa_phone_number_id?: string
     wa_display_phone?: string
     wa_codigo_template?: string
@@ -226,7 +238,7 @@ Deno.serve(async (req) => {
   // ─── LIST STORES ───────────────────────────────────────────────────────────
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
-    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_fallback_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone'
+    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_fallback_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone, nubefact_enabled, ruc, razon_social, direccion_fiscal, boleta_serie, boleta_correlativo'
     type Respuesta = { data: Record<string, unknown>[] | null; error: { code?: string; message?: string } | null }
     const pedir = async (campos: string): Promise<Respuesta> => {
       const q = supabase.from('stores').select(campos).order('created_at', { ascending: true })
@@ -245,7 +257,7 @@ Deno.serve(async (req) => {
     const stores = data ?? []
     if (stores.length > 0) {
       const { data: secs } = await supabase.from('store_secrets')
-        .select('store_id, shalom_pro_email, shalom_pro_status, shalom_pro_checked_at, meta_capi_token, tiktok_capi_token, flow_api_key, flow_secret_key, flow_secrets_updated_at')
+        .select('store_id, shalom_pro_email, shalom_pro_status, shalom_pro_checked_at, meta_capi_token, tiktok_capi_token, flow_api_key, flow_secret_key, flow_secrets_updated_at, nubefact_ruta, nubefact_token, nubefact_secrets_updated_at')
         .in('store_id', stores.map((s: { id: string }) => s.id))
       const byId = new Map((secs ?? []).map((s: Record<string, unknown>) => [s.store_id, s]))
       for (const s of stores as Record<string, unknown>[]) {
@@ -261,6 +273,9 @@ Deno.serve(async (req) => {
         // vuelven nunca; el panel solo necesita saber SI están y de cuándo.
         s.flow_keys_configured = !!sec?.flow_api_key && !!sec?.flow_secret_key
         s.flow_secrets_updated_at = sec?.flow_secrets_updated_at ?? null
+        // Nubefact (§58): solo la PRESENCIA de la ruta y el token.
+        s.nubefact_configured = !!sec?.nubefact_ruta && !!sec?.nubefact_token
+        s.nubefact_secrets_updated_at = sec?.nubefact_secrets_updated_at ?? null
       }
     }
 
@@ -916,6 +931,60 @@ Deno.serve(async (req) => {
     }
 
     let wroteSecretsFlow = false
+    let wroteSecretsNubefact = false
+
+    // ─── Facturación electrónica (§58) ─────────────────────────────────────
+    // Los datos fiscales los escribe el admin de la marca: son suyos y salen
+    // impresos en cada boleta. Se validan acá aunque el panel valide: un RUC
+    // mal escrito es una boleta que SUNAT rechaza con la venta ya cobrada.
+    if (body.ruc !== undefined) {
+      const ruc = String(body.ruc ?? '').replace(/\D/g, '')
+      if (ruc && !esRuc(ruc)) return json({ error: 'ruc_invalido' }, 400)
+      patch.ruc = ruc || null
+    }
+    if (body.razon_social !== undefined) patch.razon_social = String(body.razon_social ?? '').trim().slice(0, 100) || null
+    if (body.direccion_fiscal !== undefined) patch.direccion_fiscal = String(body.direccion_fiscal ?? '').trim().slice(0, 100) || null
+    if (body.boleta_serie !== undefined) {
+      const serie = String(body.boleta_serie ?? '').trim().toUpperCase()
+      if (serie && !esSerieDeBoleta(serie)) return json({ error: 'serie_invalida' }, 400)
+      if (serie) patch.boleta_serie = serie
+    }
+    if (body.nubefact_keys !== undefined) {
+      const nk = (body.nubefact_keys ?? {}) as { ruta?: unknown; token?: unknown }
+      const ruta = typeof nk.ruta === 'string' ? nk.ruta.trim() : ''
+      const token = typeof nk.token === 'string' ? nk.token.trim() : ''
+      if (body.nubefact_keys === null) {
+        const { error: clrErr } = await supabase.from('store_secrets').upsert({
+          store_id: targetId, nubefact_ruta: null, nubefact_token: null, nubefact_secrets_updated_at: null,
+        }, { onConflict: 'store_id' })
+        if (clrErr) return json({ error: clrErr.message }, 400)
+        patch.nubefact_enabled = false
+        wroteSecretsNubefact = true
+      } else {
+        if (!/^https?:\/\//.test(ruta) || !token) return json({ error: 'nubefact_llaves_incompletas' }, 400)
+        const { error: upErr } = await supabase.from('store_secrets').upsert({
+          store_id: targetId, nubefact_ruta: ruta, nubefact_token: token,
+          nubefact_secrets_updated_at: new Date().toISOString(),
+        }, { onConflict: 'store_id' })
+        if (upErr) return json({ error: upErr.message }, 400)
+        wroteSecretsNubefact = true
+      }
+    }
+    if (typeof body.nubefact_enabled === 'boolean') patch.nubefact_enabled = body.nubefact_enabled
+    // Encender sin con qué facturar es prometer una boleta que nunca sale:
+    // hace falta RUC, razón social, serie, ruta y token — los de este request
+    // o los ya guardados.
+    if (patch.nubefact_enabled === true) {
+      const { data: t } = await supabase.from('stores').select('ruc, razon_social, boleta_serie').eq('id', targetId).maybeSingle()
+      const { data: sec } = await supabase.from('store_secrets').select('nubefact_ruta, nubefact_token').eq('store_id', targetId).maybeSingle()
+      const listo = puedeFacturar({
+        nubefact_enabled: true,
+        ruc: (patch.ruc as string | null | undefined) ?? t?.ruc,
+        razon_social: (patch.razon_social as string | null | undefined) ?? t?.razon_social,
+        boleta_serie: (patch.boleta_serie as string | undefined) ?? t?.boleta_serie,
+      }, sec)
+      if (!listo) return json({ error: 'nubefact_sin_configurar' }, 400)
+    }
     // Las llaves de Flow de la marca (bloque §41). Reemplazan al alta como
     // comercio asociado: Flow respondió `Commerce is not integrator` — ser
     // integrador es un permiso sobre la cuenta y la de Kross no lo tiene—, así
@@ -958,7 +1027,7 @@ Deno.serve(async (req) => {
       if (!sec?.flow_api_key || !sec?.flow_secret_key) return json({ error: 'flow_sin_llaves_tienda' }, 400)
     }
 
-    if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom && !wroteAdsCapi && !wroteSecretsFlow) return json({ error: 'nada_que_guardar' }, 400)
+    if (Object.keys(patch).length === 0 && !wroteSecretsPay360 && !wroteShalom && !wroteAdsCapi && !wroteSecretsFlow && !wroteSecretsNubefact) return json({ error: 'nada_que_guardar' }, 400)
     if (Object.keys(patch).length > 0) {
       const guardar = async (p: Record<string, unknown>): Promise<{ code?: string; message?: string } | null> => {
         const { error } = await supabase.from('stores').update(p).eq('id', targetId)

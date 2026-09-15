@@ -58,6 +58,13 @@ export interface OrderSession {
    *  viaja `undefined`; al pagarlo le llega por el chat y la tarjeta de su
    *  pedido la enseña. */
   shalom_pickup_code?: string | null
+  /** La boleta electrónica (§58, Nubefact): serie-número, estado (PENDIENTE ·
+   *  EMITIDA · ACEPTADA · RECHAZADA · ERROR) y el PDF cuando existe. */
+  boleta_serie?: string | null
+  boleta_numero?: number | null
+  boleta_estado?: string | null
+  boleta_url?: string | null
+  boleta_error?: string | null
   /** Estado del cobro del adelanto. */
   payment_verification?: string | null
   /** Motivo escrito por el cobro. Solo llega al vendedor. */
@@ -166,7 +173,7 @@ export interface OrderMessage {
   /** `cobro` = el vendedor volvió a pedir el saldo: el chat del comprador lo
    *  pinta con el botón de Yape debajo (ver lib/cobro-por-chat.ts). La columna
    *  es texto libre, así que no hizo falta tocar el esquema. */
-  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer' | 'cobro' | 'guia'
+  type: 'text' | 'audio' | 'image' | 'call_log' | 'status_update' | 'offer' | 'cobro' | 'guia' | 'boleta'
   body: string | null
   media_url: string | null
   offer?: { product_id?: string; nombre: string; precio: number; image?: string | null; accepted?: boolean } | null

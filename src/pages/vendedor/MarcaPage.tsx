@@ -63,6 +63,16 @@ interface StoreRow {
   flow_payment_method?: number | null
   flow_keys_configured?: boolean
   flow_secrets_updated_at?: string | null
+  // Facturación electrónica (§58). Los datos fiscales son públicos; de la
+  // ruta y el token de Nubefact vuelve solo la presencia y la fecha.
+  nubefact_enabled?: boolean
+  ruc?: string | null
+  razon_social?: string | null
+  direccion_fiscal?: string | null
+  boleta_serie?: string | null
+  boleta_correlativo?: number | null
+  nubefact_configured?: boolean
+  nubefact_secrets_updated_at?: string | null
   // Envíos — cuenta Shalom Pro del cliente. El backend mezcla email y veredicto
   // desde `store_secrets`; el password jamás viaja al panel.
   shalom_pro_email?: string | null
@@ -98,6 +108,10 @@ const ERR: Record<string, string> = {
   pay360_nombre_invalido: 'Escribe el nombre del comercio para 360pay.',
   flow_llaves_incompletas: 'Pega las DOS llaves de Flow: la API Key y la Secret Key.',
   flow_sin_llaves_tienda: 'Carga las llaves de Flow de esta marca antes de encender el cobro.',
+  ruc_invalido: 'El RUC son 11 dígitos y empieza en 10 o 20.',
+  serie_invalida: 'La serie de boletas es B más tres letras o números, como B001.',
+  nubefact_llaves_incompletas: 'Pega la ruta (empieza con https://) y el token de Nubefact.',
+  nubefact_sin_configurar: 'Para encender la facturación hacen falta RUC, razón social, serie, y la ruta y el token de Nubefact.',
   shalom_credenciales_invalidas: 'Revisa el correo y la contraseña de Shalom Pro.',
   // Borrar. Cada uno nombra el seguro que saltó, no un "no se pudo": el que
   // borra tiene que saber cuál de las cinco condiciones no cumplió.
@@ -459,6 +473,20 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [flowKeysEditing, setFlowKeysEditing] = useState(false)
   const flowConnected = !!store.flow_keys_configured
 
+  // Facturación electrónica (§58). Los datos fiscales viajan con el guardado
+  // general; la ruta y el token de Nubefact van aparte, como las llaves de
+  // Flow: son credenciales de un tercero y no vuelven nunca.
+  const [nubefactOn, setNubefactOn] = useState(!!store.nubefact_enabled)
+  const [ruc, setRuc] = useState(store.ruc ?? '')
+  const [razonSocial, setRazonSocial] = useState(store.razon_social ?? '')
+  const [direccionFiscal, setDireccionFiscal] = useState(store.direccion_fiscal ?? '')
+  const [boletaSerie, setBoletaSerie] = useState(store.boleta_serie ?? 'B001')
+  const [nfRuta, setNfRuta] = useState('')
+  const [nfToken, setNfToken] = useState('')
+  const [nfBusy, setNfBusy] = useState(false)
+  const [nfEditing, setNfEditing] = useState(false)
+  const nubefactConnected = !!store.nubefact_configured
+
   // Envíos — la cuenta Shalom Pro del cliente (para crear guías y cotizar 🔮;
   // el rastreo de fases no la necesita). El password nunca vuelve del server.
   const [shalomEmail, setShalomEmail] = useState('')
@@ -631,6 +659,10 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
       // rechaza de todas formas (ver MOSTRAR_360PAY).
       flow_enabled: flowOn, flow_env: flowEnv,
       flow_payment_method: flowMethod.trim() ? Number(flowMethod.trim()) : null,
+      // Facturación (§58): lo fiscal viaja con todo lo demás.
+      nubefact_enabled: nubefactOn,
+      ruc: ruc.trim(), razon_social: razonSocial.trim(), direccion_fiscal: direccionFiscal.trim(),
+      boleta_serie: boletaSerie.trim().toUpperCase() || 'B001',
       // Pixel IDs (públicos): son la cuenta publicitaria de la marca. Vacío
       // pausa el pixel. Los tokens de CAPI van aparte (connectAdsCapi).
       meta_pixel_id: metaPixel.trim(), tiktok_pixel_id: tiktokPixel.trim(),
@@ -719,6 +751,36 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     // Se limpian de la pantalla apenas se guardan: un secreto que sigue en un
     // input es un secreto en la memoria del navegador y en el autocompletado.
     setFlowApiKey(''); setFlowSecretKey(''); setFlowKeysEditing(false)
+    onSaved?.()
+  }
+
+  // Nubefact (§58): la ruta y el token de la cuenta de la marca. Mismo trato
+  // que Flow: aparte del guardado general y sin volver nunca a la pantalla.
+  const guardarLlavesNubefact = async () => {
+    if (nfBusy) return
+    setNfBusy(true); setErr('')
+    const { ok, data } = await call({
+      action: 'update', admin_auth_id: adminId, store_id: store.id,
+      nubefact_keys: { ruta: nfRuta.trim(), token: nfToken.trim() },
+    })
+    setNfBusy(false)
+    if (!ok) {
+      const cod = (data as { error?: string }).error ?? ''
+      setErr(cod === 'nada_que_guardar'
+        ? 'La función manage-store desplegada es anterior a Nubefact y está ignorando las llaves. Hay que desplegarla: supabase functions deploy manage-store'
+        : ERR[cod] ?? 'No pudimos guardar las llaves de Nubefact.')
+      return
+    }
+    setNfRuta(''); setNfToken(''); setNfEditing(false)
+    onSaved?.()
+  }
+  const borrarLlavesNubefact = async () => {
+    if (nfBusy) return
+    setNfBusy(true); setErr('')
+    const { ok, data } = await call({ action: 'update', admin_auth_id: adminId, store_id: store.id, nubefact_keys: null })
+    setNfBusy(false)
+    if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? 'No pudimos quitar las llaves.'); return }
+    setNubefactOn(false)
     onSaved?.()
   }
 
@@ -1254,6 +1316,92 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
           </div>
 
+        </div>
+
+        {/* ── Facturación electrónica (§58). Sin gate isSuper: la marca factura
+              con SU RUC y SU cuenta de Nubefact. La boleta sale sola cuando el
+              pedido queda pagado completo, y el comprador la recibe en su chat
+              y en su pedido. ── */}
+        <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--surface-2)', border: '0.5px solid var(--border)' }}>
+          <button onClick={() => nubefactConnected && setNubefactOn(v => !v)}
+            className="w-full flex items-center justify-between mb-1"
+            style={{ opacity: nubefactConnected || nubefactOn ? 1 : 0.5 }}>
+            <span className="text-xs font-black" style={{ color: 'var(--text)' }}>
+              Boleta electrónica con Nubefact
+            </span>
+            <span className="text-[10px] font-black px-2 py-1 rounded-full"
+              style={{ background: nubefactOn ? '#16A34A' : '#E5E7EB', color: nubefactOn ? '#fff' : '#6B7280' }}>
+              {nubefactOn ? 'ACTIVA' : 'APAGADA'}
+            </span>
+          </button>
+          <p className="text-[10px] text-gray-500 mb-2 leading-snug">
+            Quien paga el pedido completo recibe su boleta de venta electrónica, emitida con tu RUC
+            desde tu cuenta de Nubefact y aceptada por SUNAT. Sale sola al confirmarse el pago.
+            {store.boleta_correlativo ? ` Última emitida: ${(store.boleta_serie ?? 'B001')}-${store.boleta_correlativo}.` : ''}
+          </p>
+
+          <label className="text-[10px] font-bold text-gray-500 mb-1 block">RUC</label>
+          <input value={ruc} onChange={e => setRuc(e.target.value.replace(/\D/g, '').slice(0, 11))} inputMode="numeric" placeholder="20600695771"
+            className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
+          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Razón social (como está en SUNAT)</label>
+          <input value={razonSocial} onChange={e => setRazonSocial(e.target.value)} placeholder="MONO SHOP S.A.C."
+            className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
+          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Dirección fiscal</label>
+          <input value={direccionFiscal} onChange={e => setDireccionFiscal(e.target.value)} placeholder="Av. Ejemplo 123, Lima"
+            className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
+          <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+            Serie de boletas <span className="font-bold text-gray-400">(la de tu cuenta de Nubefact)</span>
+          </label>
+          <input value={boletaSerie} onChange={e => setBoletaSerie(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))} placeholder="B001"
+            className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-3" />
+
+          {nubefactConnected && !nfEditing ? (
+            <div className="rounded-xl px-3 py-2 mb-1" style={{ background: 'var(--ok-bg-soft)' }}>
+              <p className="text-[10px] font-black" style={{ color: 'var(--ok-fg)' }}>
+                ✓ Ruta y token de Nubefact cargados
+                {store.nubefact_secrets_updated_at ? ` · ${new Date(store.nubefact_secrets_updated_at).toLocaleDateString('es-PE')}` : ''}
+              </p>
+              <div className="flex gap-2 mt-1.5">
+                <button onClick={() => { setNfEditing(true); setNfRuta(''); setNfToken('') }}
+                  className="text-[10px] font-black underline" style={{ color: 'var(--ok-fg)' }}>
+                  Cambiar
+                </button>
+                <button onClick={borrarLlavesNubefact} disabled={nfBusy}
+                  className="text-[10px] font-black underline text-gray-500 disabled:opacity-40">
+                  {nfBusy ? 'Quitando…' : 'Quitar'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl px-3 py-2.5 mb-1" style={{ background: 'var(--warn-bg-soft)' }}>
+              <label className="text-[10px] font-bold text-gray-600 mb-1 block">Ruta (Nubefact → API Integración)</label>
+              <input value={nfRuta} onChange={e => setNfRuta(e.target.value)} autoComplete="off" spellCheck={false}
+                placeholder="https://api.nubefact.com/api/v1/…"
+                className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
+              <label className="text-[10px] font-bold text-gray-600 mb-1 block">Token</label>
+              <input value={nfToken} onChange={e => setNfToken(e.target.value)} autoComplete="off" spellCheck={false} type="password"
+                placeholder="El token de la misma pantalla"
+                className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
+              <div className="flex gap-2">
+                <button onClick={guardarLlavesNubefact}
+                  disabled={nfBusy || !nfRuta.trim() || !nfToken.trim()}
+                  className="rounded-xl px-3 py-2 text-xs font-black text-white disabled:opacity-40"
+                  style={{ background: '#16A34A' }}>
+                  {nfBusy ? 'Guardando…' : 'Guardar llaves'}
+                </button>
+                {nfEditing && (
+                  <button onClick={() => { setNfEditing(false); setNfRuta(''); setNfToken('') }}
+                    className="rounded-xl px-3 py-2 text-xs font-black text-gray-500">
+                    Cancelar
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1.5">
+                Cada marca usa <strong>su propia cuenta</strong> de Nubefact. Kross no ve la ruta ni el
+                token después de guardarlos y no vuelven a esta pantalla.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ── Envíos — la cuenta Shalom Pro del cliente. Sin gate isSuper, como

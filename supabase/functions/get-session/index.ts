@@ -78,6 +78,7 @@ Deno.serve(async (req) => {
       pay360_saldo_consumer_code, pay360_saldo_coupon_id, pay360_saldo_coupon_expires_at,
       pay360_coupon_id, pay360_consumer_code, pay360_coupon_expires_at,
       advance_amount, payment_provider,
+      boleta_serie, boleta_numero, boleta_estado, boleta_url,
       answered_at,
       expires_at, created_at
     `)

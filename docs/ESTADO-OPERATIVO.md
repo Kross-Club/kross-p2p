@@ -34,6 +34,45 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### La boleta electrónica con Nubefact · **SQL §58** + 5 funciones + frontend (15-set-2026)
+
+**Qué entra.** Quien paga el pedido completo recibe su boleta de venta electrónica, emitida por
+la marca (su RUC, su cuenta de Nubefact) y aceptada por SUNAT: sale sola desde `flow-confirm`,
+el comprador la ve como tarjeta en el chat y como paso «Boleta electrónica» del pedido, y el
+vendedor la ve debajo de la plata con *Emitir boleta* para cuando no salió. Diseño completo en
+[`16-NUBEFACT.md`](./16-NUBEFACT.md). **Sin probar contra una cuenta real todavía**: el primer
+paso después del deploy es la cuenta DEMO de Nubefact de Mono Shop.
+
+```sql
+-- SQL Editor de ofdjghntvmrdfjhazfvz: correr setup-kross.sql (idempotente)
+--   §58 · stores (nubefact_enabled, ruc, razon_social, direccion_fiscal, boleta_serie,
+--        boleta_correlativo), store_secrets (nubefact_ruta, nubefact_token),
+--        order_sessions.boleta_*, función siguiente_numero_de_boleta
+```
+```
+supabase functions deploy flow-confirm  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy order-manage  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store  --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy integraciones --project-ref ofdjghntvmrdfjhazfvz
+```
+(`flow-confirm` va con `--no-verify-jwt` si así se desplegó antes: es el webhook de Flow.)
+
+**Qué se ve si no entra:** nada cambia para nadie. Sin el SQL, `flow-confirm` no encuentra las
+columnas y la emisión falla en silencio en segundo plano (el 2xx a Flow no depende de esto); sin
+la función nueva, el paso del pedido queda pendiente como hasta hoy.
+
+**Para encenderlo en una marca.** Marca → *Boleta electrónica con Nubefact*: RUC, razón social,
+dirección fiscal, serie (`B001`), y la ruta y el token de su cuenta de Nubefact (API →
+Integración). El interruptor no se enciende sin las cinco piezas.
+
+**Verificación manual.** Con la cuenta DEMO de Nubefact: un pedido pagado completo → en
+`order_sessions` `boleta_estado = ACEPTADA` (o `EMITIDA` si SUNAT demora), `boleta_url` con el
+PDF; en el chat la tarjeta «Boleta electrónica B001-1»; en Nubefact, *Ver Facturas, Boletas y
+Notas*. Tocar *Emitir boleta* otra vez devuelve la misma. Si falla, *Conexiones → Nubefact* dice
+el código (10 token, 11 ruta, 20/21 formato) y el pedido queda en `ERROR` con el número reservado
+para reintentar.
+
 ### La guía: el voucher se vuelve a pedir, «Reenviar» lo fuerza, y la manual también trae PDF · 4 funciones (15-set-2026)
 
 **Qué pasó.** Tras el arreglo del rótulo (#214), el pedido de prueba **siguió** enseñando la
