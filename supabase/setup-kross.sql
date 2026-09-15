@@ -3188,6 +3188,7 @@ CREATE POLICY "sellers_self_update" ON sellers
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
+<<<<<<< HEAD
 -- §64 · EVA COURIER: EL REPARTO A DOMICILIO EN LIMA Y CALLAO  (15-set-2026)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- El §60 puso la bandera (`courier_lima_enabled`) y la decisión por pedido
@@ -3231,3 +3232,37 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_entrega_foto text;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('eva-rotulos', 'eva-rotulos', true)
 ON CONFLICT (id) DO NOTHING;
+=======
+-- §65 · EL RLS DE `order_sessions` Y `chat_messages`, AL FIN EN EL REPO  (15-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El §63 dejó la deuda escrita: estas dos tablas tenían políticas en producción
+-- que este archivo no describía —se crearon a mano en el panel—. Leídas de
+-- `pg_policies` el 15-set-2026, las dos son la misma y dicen lo que el diseño
+-- siempre dijo: **nadie lee estas tablas directo**, solo las Edge Functions con
+-- la service role.
+--
+--   chat_messages   "service role only"  ALL  (auth.role() = 'service_role')
+--   order_sessions  "service role only"  ALL  (auth.role() = 'service_role')
+--
+-- Dos cosas al traerlas:
+--   · `(select auth.role())` en vez de `auth.role()` suelto: el mismo arreglo
+--     del §63 (una vez por consulta, no una por fila). Es lo que el linter
+--     marcaba en estas dos.
+--   · Son redundantes A PROPÓSITO y se quedan: la service role tiene BYPASSRLS
+--     y no las necesita, y ningún otro rol tiene política, así que ya estaba
+--     todo negado. Pero una tabla con RLS y CERO políticas se lee como «alguien
+--     olvidó ponerlas»; con esta, se lee lo que es: negado para todos menos el
+--     servidor, a propósito.
+--
+-- Idempotente. El DROP+CREATE deja un instante sin política, y en ese instante
+-- no cambia nada: la service role no pasa por RLS y el resto ya estaba negado.
+ALTER TABLE order_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "service role only" ON order_sessions;
+CREATE POLICY "service role only" ON order_sessions
+  FOR ALL USING ((select auth.role()) = 'service_role');
+
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "service role only" ON chat_messages;
+CREATE POLICY "service role only" ON chat_messages
+  FOR ALL USING ((select auth.role()) = 'service_role');
+>>>>>>> fix/rls-al-repo

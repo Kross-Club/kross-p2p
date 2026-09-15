@@ -34,6 +34,29 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El RLS de `order_sessions` y `chat_messages`, al fin en el repo · **SQL §65** (15-set-2026)
+
+**Se cerró la deuda del §63.** Las dos políticas se leyeron de `pg_policies` y son la misma:
+`"service role only" · ALL · auth.role() = 'service_role'`. Dicen lo que el diseño siempre dijo
+—nadie lee estas tablas directo, solo las Edge Functions— y ahora el archivo versionado también
+lo dice, con el `(select auth.role())` que el linter pedía.
+
+**Lo que sigue sin verse:** el linter marcó `public.notification_log` en **singular**. En el repo
+la tabla es `notifications_log` (plural, RLS sin políticas: correcto, solo service role), y la
+consulta del §63 preguntó por el plural. O sea que en producción puede haber una tabla
+`notification_log` que **no existe en `setup-kross.sql`**. Para verla:
+
+```sql
+select tablename, policyname, cmd, qual
+from pg_policies where schemaname = 'public' and tablename = 'notification_log';
+select count(*) from information_schema.tables where table_name = 'notification_log';
+```
+
+Sin funciones ni frontend: solo SQL.
+```sql
+-- §65 · las dos políticas, con (select auth.role())
+```
+
 ### Eva Courier: el reparto a domicilio en Lima y Callao · **SQL §64** + 2 funciones nuevas + 4 desplegadas + frontend (15-set-2026)
 
 **Qué entra.** El courier detrás de la bandera del §60 ya tiene nombre y API: **Eva 3.0** (Fly
