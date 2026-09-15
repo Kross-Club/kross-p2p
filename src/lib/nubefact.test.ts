@@ -112,20 +112,30 @@ describe('leerRespuesta', () => {
   })
 })
 
-describe('lo que la marca necesita para facturar', () => {
-  const tienda = { nubefact_enabled: true, ruc: '20600695771', razon_social: 'Mono Shop SAC', boleta_serie: 'B001' }
+describe('lo que la marca necesita para facturar: tres cosas y ninguna más', () => {
+  const tienda = { nubefact_enabled: true, boleta_serie: 'BBB1' }
   const secretos = { nubefact_ruta: 'https://api.nubefact.com/api/v1/48239908', nubefact_token: 'tok' }
-  it('con todo, puede', () => { expect(puedeFacturar(tienda, secretos)).toBe(true) })
-  it('sin cualquiera de las piezas, no', () => {
+  it('con la serie, la ruta y el token, puede', () => { expect(puedeFacturar(tienda, secretos)).toBe(true) })
+  it('sin cualquiera de las tres, no', () => {
     expect(puedeFacturar({ ...tienda, nubefact_enabled: false }, secretos)).toBe(false)
-    expect(puedeFacturar({ ...tienda, ruc: '123' }, secretos)).toBe(false)
-    expect(puedeFacturar({ ...tienda, razon_social: ' ' }, secretos)).toBe(false)
     expect(puedeFacturar({ ...tienda, boleta_serie: 'F001' }, secretos)).toBe(false)
+    expect(puedeFacturar({ ...tienda, boleta_serie: null }, secretos)).toBe(false)
     expect(puedeFacturar(tienda, { ...secretos, nubefact_ruta: 'api.nubefact.com' })).toBe(false)
     expect(puedeFacturar(tienda, { ...secretos, nubefact_token: '' })).toBe(false)
     expect(puedeFacturar(tienda, null)).toBe(false)
   })
-  it('RUC y serie', () => {
+  it('el RUC y la razón social de la MARCA no participan: el emisor lo identifica la ruta', () => {
+    // Si estuvieran en la regla, bloquearían a quien ya puede facturar. Y no
+    // viajan en el JSON: `armarBoleta` solo escribe campos `cliente_*`.
+    expect(puedeFacturar({ ...tienda, ruc: null, razon_social: null } as typeof tienda, secretos)).toBe(true)
+    const b = armarBoleta({
+      serie: 'BBB1', numero: 7, fecha: new Date('2026-09-15T12:00:00Z'), codigoUnico: 'ORD-1',
+      cliente: clienteDeBoleta({ dni: '12345678', nombre: 'Rosa' }),
+      items: [{ descripcion: 'x', cantidad: 1, precioConIgv: 10 }],
+    })
+    expect(Object.keys(b).filter(k => /ruc|razon|emisor/i.test(k))).toEqual([])
+  })
+  it('la serie: B más tres, que es lo único que el formato obliga', () => {
     expect(esRuc('20600695771')).toBe(true)
     expect(esRuc('10482968622')).toBe(true)
     expect(esRuc('30600695771')).toBe(false)

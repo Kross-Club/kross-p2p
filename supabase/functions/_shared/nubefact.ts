@@ -184,7 +184,7 @@ export const ERRORES_NUBEFACT: Record<number, string> = {
   11: 'La ruta de Nubefact no es correcta. Cópiala de tu cuenta, en API (Integración).',
   12: 'Nubefact no aceptó la cabecera de la petición.',
   20: 'Nubefact rechazó el formato de la boleta.',
-  21: 'Nubefact no pudo completar la operación.',
+  21: 'Nubefact no pudo completar la operación. La causa más común: esa SERIE no está habilitada en la cuenta — usa la que ya emite (la ves en Nubefact → Ver Facturas, Boletas y Notas).',
   22: 'La boleta se mandó fuera del plazo que SUNAT permite.',
   23: 'Esa boleta ya existe en Nubefact.',
   24: 'Esa boleta no existe en Nubefact.',
@@ -249,17 +249,22 @@ export function leerRespuesta(json: unknown, httpStatus: number): RespuestaNubef
   return { ok: false, codigo: null, mensaje: `Respuesta de Nubefact sin forma conocida (HTTP ${httpStatus}).`, yaExiste: false, reintentable: httpStatus >= 500 }
 }
 
-/** ¿La marca tiene lo mínimo para facturar? Lo mismo pregunta el panel al
- *  encender el interruptor y el servidor antes de emitir. */
+/**
+ * ¿La marca tiene lo mínimo para facturar? Lo mismo pregunta el panel al
+ * encender el interruptor y el servidor antes de emitir.
+ *
+ * Son TRES cosas, y ninguna más (15-set-2026): la **ruta** y el **token** de la
+ * cuenta, y la **serie**. Acá pedíamos además el RUC y la razón social de la
+ * marca, y era pedir por pedir: el emisor no viaja en el JSON —lo identifica la
+ * ruta, que es única por cuenta— así que esos datos no participaban de la
+ * emisión y solo servían para bloquear a quien ya podía facturar. Las columnas
+ * se quedan en la base (nada se borra), sin usarse.
+ */
 export function puedeFacturar(t: {
   nubefact_enabled?: boolean | null
-  ruc?: string | null
-  razon_social?: string | null
   boleta_serie?: string | null
 }, secretos: { nubefact_ruta?: string | null; nubefact_token?: string | null } | null | undefined): boolean {
   return t.nubefact_enabled === true
-    && esRuc(t.ruc)
-    && !!String(t.razon_social ?? '').trim()
     && esSerieDeBoleta(t.boleta_serie)
     && /^https?:\/\//.test(String(secretos?.nubefact_ruta ?? '').trim())
     && String(secretos?.nubefact_token ?? '').trim().length > 0
@@ -268,5 +273,13 @@ export function puedeFacturar(t: {
 /** Un RUC peruano: 11 dígitos, y empieza en 10 (persona) o 20 (empresa). */
 export const esRuc = (v: unknown): boolean => /^(10|20)\d{9}$/.test(String(v ?? '').trim())
 
-/** La serie de boletas: B + tres letras o números (B001, BE01…). */
+/**
+ * La serie de boletas: **B** + tres letras o números (`B001`, `BBB1`, `BE01`).
+ * La `B` la exige SUNAT —las facturas empiezan con `F`— pero el resto NO lo
+ * elegimos: cada cuenta de Nubefact tiene sus series habilitadas y el API **no
+ * ofrece forma de listarlas** (sus cuatro operaciones son generar, consultar,
+ * anular y consultar anulación). Una serie que la cuenta no emite se rechaza
+ * con «[21] No puedes emitir comprobantes con esta serie». Por eso el panel no
+ * inventa ninguna: se copia de Nubefact y se comprueba con «Probar».
+ */
 export const esSerieDeBoleta = (v: unknown): boolean => /^B[A-Z0-9]{3}$/.test(String(v ?? '').trim().toUpperCase())

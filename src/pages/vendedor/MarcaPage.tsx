@@ -111,7 +111,8 @@ const ERR: Record<string, string> = {
   ruc_invalido: 'El RUC son 11 dígitos y empieza en 10 o 20.',
   serie_invalida: 'La serie de boletas es B más tres letras o números, como B001.',
   nubefact_llaves_incompletas: 'Pega la ruta (empieza con https://) y el token de Nubefact.',
-  nubefact_sin_configurar: 'Para encender la facturación hacen falta RUC, razón social, serie, y la ruta y el token de Nubefact.',
+  nubefact_sin_configurar: 'Para encender la facturación hacen falta la serie, y la ruta y el token de Nubefact.',
+  correlativo_invalido: 'El número de la última boleta es un entero, de 0 en adelante.',
   shalom_credenciales_invalidas: 'Revisa el correo y la contraseña de Shalom Pro.',
   // Borrar. Cada uno nombra el seguro que saltó, no un "no se pudo": el que
   // borra tiene que saber cuál de las cinco condiciones no cumplió.
@@ -477,10 +478,12 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   // general; la ruta y el token de Nubefact van aparte, como las llaves de
   // Flow: son credenciales de un tercero y no vuelven nunca.
   const [nubefactOn, setNubefactOn] = useState(!!store.nubefact_enabled)
-  const [ruc, setRuc] = useState(store.ruc ?? '')
-  const [razonSocial, setRazonSocial] = useState(store.razon_social ?? '')
-  const [direccionFiscal, setDireccionFiscal] = useState(store.direccion_fiscal ?? '')
-  const [boletaSerie, setBoletaSerie] = useState(store.boleta_serie ?? 'B001')
+  // Sin default inventado (§59): `B001` era nuestro, no de la cuenta, y es
+  // justo el que Nubefact rechaza con «no puedes emitir con esta serie».
+  const [boletaSerie, setBoletaSerie] = useState(store.boleta_serie ?? '')
+  const [nfPrueba, setNfPrueba] = useState<{ ok: boolean; detalle: string } | null>(null)
+  const [nfProbando, setNfProbando] = useState(false)
+  const [boletaCorrelativo, setBoletaCorrelativo] = useState(String(store.boleta_correlativo ?? 0))
   const [nfRuta, setNfRuta] = useState('')
   const [nfToken, setNfToken] = useState('')
   const [nfBusy, setNfBusy] = useState(false)
@@ -661,8 +664,8 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
       flow_payment_method: flowMethod.trim() ? Number(flowMethod.trim()) : null,
       // Facturación (§58): lo fiscal viaja con todo lo demás.
       nubefact_enabled: nubefactOn,
-      ruc: ruc.trim(), razon_social: razonSocial.trim(), direccion_fiscal: direccionFiscal.trim(),
-      boleta_serie: boletaSerie.trim().toUpperCase() || 'B001',
+      boleta_serie: boletaSerie.trim().toUpperCase(),
+      boleta_correlativo: boletaCorrelativo.trim() ? Number(boletaCorrelativo.trim()) : 0,
       // Pixel IDs (públicos): son la cuenta publicitaria de la marca. Vacío
       // pausa el pixel. Los tokens de CAPI van aparte (connectAdsCapi).
       meta_pixel_id: metaPixel.trim(), tiktok_pixel_id: tiktokPixel.trim(),
@@ -774,6 +777,21 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     setNfRuta(''); setNfToken(''); setNfEditing(false)
     onSaved?.()
   }
+  // «Probar»: la única comprobación que el API de Nubefact permite sin emitir
+  // nada. Consulta la última boleta declarada y con eso confirma la ruta, el
+  // token, que la serie existe en esa cuenta y que la numeración está donde la
+  // marca cree. Guarda primero, porque consulta lo GUARDADO.
+  const probarNubefact = async () => {
+    if (nfProbando) return
+    setNfProbando(true); setNfPrueba(null)
+    const { ok, data } = await call({ action: 'nubefact_status', admin_auth_id: adminId, store_id: store.id })
+    setNfProbando(false)
+    const d = data as { ok?: boolean; detalle?: string; error?: string }
+    setNfPrueba(ok && typeof d.detalle === 'string'
+      ? { ok: d.ok === true, detalle: d.detalle }
+      : { ok: false, detalle: ERR[d.error ?? ''] ?? 'No pudimos probar la cuenta. Guarda los cambios e intenta de nuevo.' })
+  }
+
   const borrarLlavesNubefact = async () => {
     if (nfBusy) return
     setNfBusy(true); setErr('')
@@ -1335,25 +1353,64 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
             </span>
           </button>
           <p className="text-[10px] text-gray-500 mb-2 leading-snug">
-            Quien paga el pedido completo recibe su boleta de venta electrónica, emitida con tu RUC
-            desde tu cuenta de Nubefact y aceptada por SUNAT. Sale sola al confirmarse el pago.
+            Quien paga el pedido completo recibe su boleta de venta electrónica, emitida desde tu
+            cuenta de Nubefact y aceptada por SUNAT. Sale sola al confirmarse el pago.
             {store.boleta_correlativo ? ` Última emitida: ${(store.boleta_serie ?? 'B001')}-${store.boleta_correlativo}.` : ''}
           </p>
 
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">RUC</label>
-          <input value={ruc} onChange={e => setRuc(e.target.value.replace(/\D/g, '').slice(0, 11))} inputMode="numeric" placeholder="20600695771"
-            className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-2" />
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Razón social (como está en SUNAT)</label>
-          <input value={razonSocial} onChange={e => setRazonSocial(e.target.value)} placeholder="MONO SHOP S.A.C."
-            className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
-          <label className="text-[10px] font-bold text-gray-500 mb-1 block">Dirección fiscal</label>
-          <input value={direccionFiscal} onChange={e => setDireccionFiscal(e.target.value)} placeholder="Av. Ejemplo 123, Lima"
-            className="w-full bg-white border rounded-xl px-3 py-2 text-sm outline-none mb-2" />
+          {/* Ni RUC ni razón social (§59): el emisor lo identifica la ruta de tu
+              cuenta, y esos datos no viajan en la boleta. Pedirlos solo servía
+              para bloquear a quien ya podía facturar. */}
           <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-            Serie de boletas <span className="font-bold text-gray-400">(la de tu cuenta de Nubefact)</span>
+            Serie de boletas <span className="font-bold text-gray-400">(cópiala de tu cuenta)</span>
           </label>
-          <input value={boletaSerie} onChange={e => setBoletaSerie(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))} placeholder="B001"
-            className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-3" />
+          <input value={boletaSerie} onChange={e => setBoletaSerie(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))} placeholder="BBB1"
+            className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-1" />
+          {/* La serie tiene que ser UNA QUE LA CUENTA YA EMITA. Nubefact
+              rechaza cualquier otra con «[21] No puedes emitir comprobantes con
+              esta serie», y ese mensaje no dice que el problema es la serie.
+              Costó una prueba entera (15-set-2026). */}
+          <p className="text-[10px] text-gray-500 mb-3 leading-snug">
+            No la elegimos nosotros: tiene que ser una <strong>que tu cuenta ya emita</strong>, y
+            Nubefact no tiene forma de listarlas. Cópiala tal cual de <i>Ver Facturas, Boletas y
+            Notas</i>. Con otra responde «no puedes emitir comprobantes con esta serie».
+          </p>
+
+          <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+            Última boleta emitida <span className="font-bold text-gray-400">(el número, no la serie)</span>
+          </label>
+          <input value={boletaCorrelativo}
+            onChange={e => setBoletaCorrelativo(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            inputMode="numeric" placeholder="0"
+            className="w-full bg-white border rounded-xl px-3 py-2 text-sm font-mono outline-none mb-1" />
+          {/* Una cuenta que ya facturaba tiene números usados: arrancar en 1
+              los choca uno por uno. Con el último puesto, la próxima sale
+              limpia. Y si igual choca, el servidor salta el número — jamás
+              adopta la boleta de otro. */}
+          <p className="text-[10px] text-gray-500 mb-3 leading-snug">
+            Si tu cuenta ya facturaba, pon aquí el número de la <strong>última</strong> boleta de esa
+            serie: la próxima de Kross sale con el siguiente. Déjalo en 0 si la serie está sin usar.
+          </p>
+
+          {/* Probar: guarda primero, porque consulta lo GUARDADO. Es la única
+              comprobación sin emitir que el API permite, y confirma las tres
+              cosas de un golpe. */}
+          <div className="flex items-center gap-2 mb-3">
+            <button type="button" onClick={probarNubefact} disabled={nfProbando || !nubefactConnected}
+              className="rounded-xl px-3 py-2 text-xs font-black disabled:opacity-40"
+              style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
+              {nfProbando ? 'Probando…' : 'Probar'}
+            </button>
+            <span className="text-[10px] text-gray-500 leading-snug flex-1">
+              Consulta esa boleta en tu cuenta. No emite nada. Guarda antes de probar.
+            </span>
+          </div>
+          {nfPrueba && (
+            <p className="text-[10px] font-bold mb-3 leading-snug"
+              style={{ color: nfPrueba.ok ? 'var(--ok-fg)' : 'var(--warn-fg)' }}>
+              {nfPrueba.ok ? '✓ ' : '⚠️ '}{nfPrueba.detalle}
+            </p>
+          )}
 
           {nubefactConnected && !nfEditing ? (
             <div className="rounded-xl px-3 py-2 mb-1" style={{ background: 'var(--ok-bg-soft)' }}>

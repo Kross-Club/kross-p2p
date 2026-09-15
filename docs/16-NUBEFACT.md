@@ -17,18 +17,64 @@ Es del ICP nuevo (14-set-2026): marcas **formales**, que cobran el 100 % antes d
 un adelanto no hay venta cerrada que facturar: la boleta es solo del pedido pagado del todo, que
 es también lo único que el paso del pedido enseña.
 
-## 2. Quién factura: la marca
+## 2. Quién factura: la marca, con TRES datos
 
-Nubefact autentica con una **ruta** (única por cuenta) y un **token**. Kross **no** es reseller
-ni emite en nombre de nadie: cada marca abre su cuenta en `nubefact.com`, activa *API
-(Integración)*, y pega ruta y token en **Marca → Boleta electrónica con Nubefact**, junto con su
-RUC, razón social, dirección fiscal y la serie de boletas de esa cuenta (`B001`). La ruta y el
-token van a `store_secrets` y **no vuelven nunca** al panel (mismo trato que las llaves de Flow);
-lo fiscal es público porque sale impreso en cada boleta.
+Nubefact autentica con una **ruta** (única por cuenta) y un **token**. Kross **no** es reseller ni
+emite en nombre de nadie: cada marca abre su cuenta en `nubefact.com`, activa *API (Integración)*,
+y pega en **Marca → Boleta electrónica con Nubefact** exactamente tres cosas:
 
-El interruptor solo se enciende con las cinco piezas (`puedeFacturar` en `_shared/nubefact.ts`):
-lo valida el panel y lo vuelve a validar `manage-store`. Sin ellas no se emite nada y el paso del
-pedido queda pendiente, con su botón apagado.
+| Dato | Para qué |
+|---|---|
+| **Ruta** | Identifica la cuenta. Con ella queda identificado el emisor |
+| **Token** | Autentica (header `Authorization`) |
+| **Serie** | Cuál de las series de esa cuenta usa Kross (§2.b) |
+
+La ruta y el token van a `store_secrets` y **no vuelven nunca** al panel (mismo trato que las
+llaves de Flow). El interruptor solo se enciende con las tres (`puedeFacturar`): lo valida el
+panel y lo vuelve a validar `manage-store`.
+
+> **Lo que NO se pide, y por qué** (15-set-2026). El panel pedía además RUC, razón social y
+> dirección fiscal de la marca. No participan de nada: **el emisor no viaja en el JSON** —lo
+> identifica la ruta— así que esos datos solo servían para bloquear a quien ya podía facturar. Lo
+> único que el JSON lleva son los campos `cliente_*`, y hay un test que lo vigila. Las columnas se
+> quedan en la base con lo que cada marca escribió (§59): nada se borra.
+>
+> Y la **dirección del cliente** es opcional en una boleta —lo dice el manual: *«Dirección
+> completa (OPCIONAL en caso de ser una BOLETA DE VENTA o NOTA ASOCIADA)»*—, así que se manda si
+> el pedido la tiene y si no, no.
+
+## 2.b La serie y la numeración: lo que cuesta una prueba entera
+
+Dos cosas se aprenden caras (15-set-2026, con la cuenta de Mono Shop):
+
+**La serie tiene que ser una que la cuenta YA EMITA, y no hay forma de preguntárselo.** Nubefact
+no las crea al vuelo, y su API **no tiene operación que las liste**: son cuatro —generar,
+consultar, anular, consultar anulación— y ninguna devuelve las series. Una serie no habilitada se
+rechaza con **`[21] No puedes emitir comprobantes con esta serie`**, un mensaje que no menciona la
+serie por ningún lado. `B001` y `BB01` fallaron; `BBB1`, la de la cuenta, funcionó.
+
+Por eso el panel **ya no propone ninguna** (antes nacía en `B001`, invención nuestra y justo la
+que falla): el campo nace vacío, pide copiarla de Nubefact → *Ver Facturas, Boletas y Notas*, y
+tiene un botón **Probar** que hace `consultar_comprobante` sobre la última boleta declarada. Es la
+única comprobación que el API permite **sin emitir nada**, y confirma tres cosas de un golpe: que
+la ruta y el token sirven, que esa serie existe en la cuenta, y que la numeración está donde la
+marca cree.
+
+**La numeración arranca donde la cuenta va, no en 1.** Una cuenta que ya facturaba —a mano, o
+desde otro sistema— tiene números usados; empezar en 1 los choca uno por uno. Por eso *Marca →
+Boleta electrónica* tiene **Última boleta emitida**: se pone el número de la última de esa serie y
+la próxima sale con el siguiente.
+
+Y si igual choca, el servidor **salta el número, nunca adopta la boleta ajena**. Un `23` («ya
+existe») significa dos cosas distintas según de quién sea el número:
+
+| El número… | Qué significa el 23 | Qué hace |
+|---|---|---|
+| lo acabamos de reservar | está tomado por otro documento de la cuenta | pide el siguiente y reintenta (hasta 4 veces) |
+| ya estaba en el pedido, de un intento anterior | la emitimos nosotros y no nos enteramos (un timeout) | la consulta y la adopta: es la suya |
+
+Sin esa distinción, un pedido se quedaría con el comprobante de otra persona —con su nombre y su
+monto— y nadie lo notaría hasta un reclamo.
 
 ## 3. Cuándo y cómo se emite
 
@@ -46,7 +92,7 @@ flow-confirm (cobro MATCHED, adelanto o saldo, nunca un extra)
         └─ fallo                         boleta_estado = ERROR (el número se queda) · nota al equipo
 ```
 
-**Una boleta por pedido, dos candados.** El primero es la base: la reserva `PENDIENTE` con
+**Una boleta por pedido, dos candados** (más el salto de número de §2.b). El primero es la base: la reserva `PENDIENTE` con
 `boleta_numero IS NULL` la gana una sola llamada. El segundo es Nubefact: el `ORD` del pedido va
 como `codigo_unico`, así que un duplicado que se le escapara al primero vuelve con **código 23** y
 se consulta, no se reemite.
@@ -136,8 +182,12 @@ y no tiene por qué llenarse la pantalla.
 
 ## 8. Lo que no hace (🔮)
 
-- **Facturas** (RUC del cliente): el checkout no pide RUC. Sería un campo más en el paso 2 y
-  `tipo_de_comprobante = 1` con serie `F…`.
+- **Facturas.** El API sí las emite (`tipo_de_comprobante: 1`), y su serie **empieza con `F`** —
+  igual que las boletas empiezan con `B`—, pero cuál `F…` la decide la cuenta, como con las
+  boletas. Lo que falta no es eso: una factura obliga a `cliente_tipo_de_documento: 6` con el
+  **RUC del cliente**, su razón social y su **dirección, que ahí sí es obligatoria**. El checkout
+  no pide nada de eso. Serían un campo más en el paso 2 (¿factura?, RUC) y una serie `F…` en
+  Marca.
 - **Nota de crédito / anulación** ante un pedido cancelado después de pagado.
 - **Boleta del saldo** cuando el pedido se pagó en dos tiempos: hoy se emite UNA, por el total,
   cuando el saldo cruza.

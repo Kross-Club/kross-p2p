@@ -2977,3 +2977,34 @@ RETURNS integer LANGUAGE sql SECURITY DEFINER AS $$
   RETURNING boleta_correlativo;
 $$;
 REVOKE ALL ON FUNCTION siguiente_numero_de_boleta(text) FROM PUBLIC, anon, authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §59 · LA SERIE NO SE INVENTA, Y LO FISCAL NO HACÍA FALTA  (15-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Dos lecciones de la primera emisión real, las dos del mismo sitio: pedir
+-- datos que el API no usa, e inventar los que sí usa.
+--
+-- 1 · LA SERIE. `boleta_serie` nacía en 'B001' por default, y ese valor es una
+--     invención nuestra: cada cuenta de Nubefact tiene SUS series habilitadas y
+--     el API no ofrece forma de listarlas. Una que la cuenta no emite se
+--     rechaza con «[21] No puedes emitir comprobantes con esta serie» — un
+--     mensaje que no nombra la serie. Ahora la columna nace VACÍA: sin serie no
+--     se factura, que es la verdad, y el panel pide copiarla de Nubefact y
+--     comprobarla con «Probar» (consulta la última boleta declarada; es la
+--     única verificación que el API permite sin emitir).
+--
+--     Solo se limpia el 'B001' que NADIE eligió: una tienda que ya emitió con
+--     esa serie (correlativo > 0) se queda como está.
+ALTER TABLE stores ALTER COLUMN boleta_serie DROP DEFAULT;
+ALTER TABLE stores ALTER COLUMN boleta_serie DROP NOT NULL;
+UPDATE stores SET boleta_serie = NULL WHERE boleta_serie = 'B001' AND COALESCE(boleta_correlativo, 0) = 0;
+
+-- 2 · LO FISCAL. `ruc`, `razon_social` y `direccion_fiscal` se pedían para
+--     poder facturar y no participan de nada: el EMISOR no viaja en el JSON de
+--     la boleta —lo identifica la ruta, que es única por cuenta— así que esos
+--     datos solo servían para bloquear a quien ya podía facturar. El panel ya
+--     no los pide y `puedeFacturar` ya no los mira.
+--
+--     Las columnas SE QUEDAN, con lo que cada marca haya escrito: borrar datos
+--     que alguien tecleó para ahorrar tres columnas no se paga. Si algún día
+--     hacen falta —una representación impresa propia, por ejemplo— están.

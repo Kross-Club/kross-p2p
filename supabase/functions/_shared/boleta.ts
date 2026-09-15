@@ -24,7 +24,7 @@
 import { supabase, chatMessage, saldoOf } from './tracking.ts'
 import { anotar, anotarSinRespuesta } from './api-eventos.ts'
 import {
-  armarBoleta, clienteDeBoleta, consultaDeBoleta, esRuc, esSerieDeBoleta, leerRespuesta,
+  armarBoleta, clienteDeBoleta, consultaDeBoleta, esSerieDeBoleta, leerRespuesta,
   puedeFacturar, redondear2,
   type ItemDeBoleta, type RespuestaNubefact,
 } from './nubefact.ts'
@@ -80,16 +80,49 @@ export function lineasDelPedido(s: Pick<SesionParaBoleta, 'items' | 'product_pri
 /** Qué le falta a la marca para poder facturar. Para decirlo con nombre y
  *  apellido en vez de «no está configurada». */
 function faltantes(
-  t: { ruc?: string | null; razon_social?: string | null; boleta_serie?: string | null },
+  t: { boleta_serie?: string | null },
   sec: { nubefact_ruta?: string | null; nubefact_token?: string | null } | null | undefined,
 ): string[] {
   const falta: string[] = []
-  if (!esRuc(t.ruc)) falta.push('RUC')
-  if (!String(t.razon_social ?? '').trim()) falta.push('razón social')
   if (!esSerieDeBoleta(t.boleta_serie)) falta.push('serie de boletas')
   if (!/^https?:\/\//.test(String(sec?.nubefact_ruta ?? '').trim())) falta.push('ruta de Nubefact')
   if (!String(sec?.nubefact_token ?? '').trim()) falta.push('token de Nubefact')
   return falta
+}
+
+/**
+ * «Probar»: le pregunta a la cuenta por la ÚLTIMA boleta declarada
+ * (serie + `boleta_correlativo`). Es la única comprobación que el API permite
+ * sin emitir nada —sus cuatro operaciones son generar, consultar, anular y
+ * consultar anulación, y no hay ninguna que liste las series—, y de un golpe
+ * dice tres cosas: que la ruta y el token sirven, que esa serie existe en la
+ * cuenta, y que la numeración está donde la marca cree.
+ */
+export async function probarNubefact(storeId: string): Promise<{ ok: boolean; detalle: string }> {
+  const { data: tienda } = await supabase.from('stores')
+    .select('boleta_serie, boleta_correlativo').eq('id', storeId).maybeSingle()
+  const { data: secretos } = await supabase.from('store_secrets')
+    .select('nubefact_ruta, nubefact_token').eq('store_id', storeId).maybeSingle()
+  const serie = String(tienda?.boleta_serie ?? '').toUpperCase()
+  const ruta = String(secretos?.nubefact_ruta ?? '').trim()
+  const token = String(secretos?.nubefact_token ?? '').trim()
+  if (!/^https?:\/\//.test(ruta) || !token) return { ok: false, detalle: 'Faltan la ruta y el token de Nubefact.' }
+  if (!esSerieDeBoleta(serie)) return { ok: false, detalle: 'Falta la serie de boletas (la que ya emite tu cuenta).' }
+  const numero = Number(tienda?.boleta_correlativo ?? 0)
+  if (!(numero > 0)) {
+    return { ok: false, detalle: 'Pon el número de la última boleta que emitió tu cuenta en esa serie y vuelve a probar.' }
+  }
+
+  const r = await llamarANubefact(ruta, token, consultaDeBoleta(serie, numero))
+  if (!r) return { ok: false, detalle: 'Nubefact no respondió. Revisa la ruta e intenta de nuevo.' }
+  const leida = leerRespuesta(r.json, r.status)
+  if (leida.ok) {
+    return { ok: true, detalle: `Todo listo: tu cuenta responde y la boleta ${serie}-${numero} está ahí. La próxima de Kross será ${serie}-${numero + 1}.` }
+  }
+  if (leida.codigo === 24) {
+    return { ok: false, detalle: `Tu cuenta responde, pero no encuentra la boleta ${serie}-${numero}. Revisa la serie y el número: los dos se copian de Nubefact → Ver Facturas, Boletas y Notas.` }
+  }
+  return { ok: false, detalle: leida.mensaje }
 }
 
 async function llamarANubefact(ruta: string, token: string, body: unknown): Promise<{ status: number; json: unknown } | null> {
@@ -141,7 +174,7 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
 
   const storeId = String(session.origin_store_id ?? session.store_id ?? '')
   const { data: tienda, error: errTienda } = await supabase.from('stores')
-    .select('nubefact_enabled, ruc, razon_social, direccion_fiscal, boleta_serie, nombre').eq('id', storeId).maybeSingle()
+    .select('nubefact_enabled, boleta_serie, nombre').eq('id', storeId).maybeSingle()
   const { data: secretos } = await supabase.from('store_secrets')
     .select('nubefact_ruta, nubefact_token').eq('store_id', storeId).maybeSingle()
   if (errTienda) {
@@ -153,7 +186,7 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
     // que nunca la encendió no factura y punto: no se le llena la pantalla de
     // eventos por una función que no usa.
     const detalle = tienda?.nubefact_enabled === true
-      ? `la marca encendió la facturación pero le falta una pieza (RUC, razón social, serie, ruta o token): ${faltantes(tienda, secretos).join(', ')}`
+      ? `la marca encendió la facturación pero le falta una pieza: ${faltantes(tienda, secretos).join(', ')}`
       : 'la marca no tiene la facturación configurada (Marca → Boleta electrónica con Nubefact)'
     if (tienda?.nubefact_enabled === true) {
       await anotar({
@@ -173,8 +206,11 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
   }
 
   // ── El número: reservar o reusar ──
+  // `reciénNuestro` decide qué significa un «ya existe» de Nubefact más abajo,
+  // y es la diferencia entre adoptar la boleta de otro y saltar el número.
   let serie = session.boleta_serie
   let numero = session.boleta_numero
+  const recienNuestro = !numero
   if (!numero) {
     // Gana quien marca PENDIENTE primero. `.is('boleta_numero', null)` es la
     // condición de carrera resuelta en la base, no en memoria.
@@ -191,19 +227,20 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
       await supabase.from('order_sessions').update({ boleta_estado: null }).eq('id', session.id)
       return salir({ ok: false, motivo: 'nubefact', detalle: `no se pudo reservar el número: ${errN?.message ?? 'sin respuesta'}` })
     }
-    serie = String(tienda.boleta_serie ?? 'B001').toUpperCase()
+    serie = String(tienda.boleta_serie ?? '').toUpperCase()
     numero = Number(n)
     await supabase.from('order_sessions').update({ boleta_serie: serie, boleta_numero: numero }).eq('id', session.id)
   } else {
     await supabase.from('order_sessions').update({ boleta_estado: 'PENDIENTE' }).eq('id', session.id)
   }
-  serie = String(serie ?? tienda.boleta_serie ?? 'B001').toUpperCase()
+  serie = String(serie ?? tienda.boleta_serie ?? '').toUpperCase()
 
   // ── El cliente y las líneas ──
   const { data: buyer } = session.buyer_id
     ? await supabase.from('buyers').select('document_number').eq('id', session.buyer_id).maybeSingle()
     : { data: null }
   const cliente = clienteDeBoleta({ dni: buyer?.document_number ?? null, nombre: session.buyer_name, direccion: session.address })
+  // El cuerpo base; la serie y el número se ponen en cada intento (ver abajo).
   const body = armarBoleta({
     serie, numero, cliente, fecha: new Date(),
     items: lineasDelPedido(session),
@@ -217,29 +254,62 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
   const inicio = Date.now()
   const ruta = String(secretos!.nubefact_ruta).trim()
   const token = String(secretos!.nubefact_token).trim()
-  const r = await llamarANubefact(ruta, token, body)
-  if (!r) {
-    await anotarSinRespuesta({ ...ctx, op: 'boleta.emitir' }, 'sin respuesta en 30 s', Date.now() - inicio)
-    return await fallo(session, `${serie}-${numero}`, 'Nubefact no respondió. Reintenta desde el pedido.')
-  }
-  let leida: RespuestaNubefact = leerRespuesta(r.json, r.status)
 
-  // Código 23: ya la tiene (un reintento después de un timeout, por ejemplo).
-  // Se consulta y se guarda lo que diga; no se emite otra.
+  // El bucle existe por UNA razón (15-set-2026): la cuenta de Nubefact de la
+  // marca puede tener boletas de ANTES —emitidas a mano, o por otro sistema— y
+  // nuestro correlativo arranca donde el panel diga. Si el número que
+  // reservamos ya está tomado, Nubefact contesta 23 y hay que SALTARLO, nunca
+  // adoptarlo: consultar y guardar esa boleta le pegaría al pedido el
+  // comprobante de otra persona, con su nombre y su monto.
+  //
+  // El 23 solo se adopta cuando el número NO es recién nuestro, o sea cuando
+  // este pedido ya lo tenía guardado de un intento anterior: ahí «ya existe»
+  // significa «la emitimos nosotros y no nos enteramos» (un timeout), y la
+  // boleta que vuelve sí es la suya.
+  let leida: RespuestaNubefact | null = null
   let reconciliada = false
-  if (!leida.ok && leida.yaExiste) {
-    const c = await llamarANubefact(ruta, token, consultaDeBoleta(serie, numero))
-    if (c) { leida = leerRespuesta(c.json, c.status); reconciliada = leida.ok }
+  let ultimo: { status: number } | null = null
+  for (let intento = 0; intento < 4; intento++) {
+    const cuerpo = { ...body, serie, numero }
+    const r = await llamarANubefact(ruta, token, cuerpo)
+    if (!r) {
+      await anotarSinRespuesta({ ...ctx, op: 'boleta.emitir' }, 'sin respuesta en 30 s', Date.now() - inicio)
+      return await fallo(session, `${serie}-${numero}`, 'Nubefact no respondió. Reintenta desde el pedido.')
+    }
+    ultimo = r
+    leida = leerRespuesta(r.json, r.status)
+    if (leida.ok || !leida.yaExiste) break
+
+    if (!recienNuestro) {
+      // Nuestra de un intento anterior: se consulta y se adopta.
+      const c = await llamarANubefact(ruta, token, consultaDeBoleta(serie, numero))
+      if (c) { leida = leerRespuesta(c.json, c.status); reconciliada = leida.ok }
+      break
+    }
+
+    // De otro: saltar al siguiente y volver a intentar.
+    const { data: n2, error: errN2 } = await supabase.rpc('siguiente_numero_de_boleta', { p_store_id: storeId })
+    if (errN2 || !Number.isFinite(Number(n2)) || Number(n2) <= numero) break
+    console.log('[boleta] el número ya estaba tomado en Nubefact, saltando', JSON.stringify({ sessionId, de: `${serie}-${numero}`, a: `${serie}-${Number(n2)}` }))
+    numero = Number(n2)
+    await supabase.from('order_sessions').update({ boleta_numero: numero }).eq('id', session.id)
   }
 
-  if (!leida.ok) {
+  if (!leida || !leida.ok) {
+    const mensaje = leida?.mensaje ?? 'Nubefact no devolvió una respuesta usable.'
+    // El 23 que sobrevive al bucle es la numeración mal puesta, y decirlo así
+    // ahorra abrir la cuenta de Nubefact a adivinar.
+    const detalle = leida && !leida.ok && leida.yaExiste
+      ? `${mensaje} Ajusta la numeración en Marca → Boleta electrónica: pon el número de la última boleta emitida en tu cuenta de Nubefact.`
+      : mensaje
     await anotar({
-      ...ctx, op: 'boleta.emitir', outcome: r.status >= 500 ? 'FALLO' : 'RECHAZO', httpStatus: r.status,
-      errorCode: leida.codigo != null ? String(leida.codigo) : null, detail: leida.mensaje,
+      ...ctx, op: 'boleta.emitir', outcome: (ultimo?.status ?? 0) >= 500 ? 'FALLO' : 'RECHAZO', httpStatus: ultimo?.status ?? null,
+      errorCode: leida && !leida.ok && leida.codigo != null ? String(leida.codigo) : null, detail: detalle,
       providerRef: `${serie}-${numero}`, duracionMs: Date.now() - inicio,
     })
-    return await fallo(session, `${serie}-${numero}`, leida.mensaje)
+    return await fallo(session, `${serie}-${numero}`, detalle)
   }
+  const r = ultimo!
 
   await anotar({
     ...ctx, op: reconciliada ? 'boleta.consultar' : 'boleta.emitir', outcome: 'OK', httpStatus: r.status,

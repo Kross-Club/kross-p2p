@@ -8,7 +8,8 @@ import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts
 import { normalizarDominio, variantesDeDominio } from '../_shared/tienda-url.ts'
 import { crearTienda } from '../_shared/crear-tienda.ts'
 import { SLUGS_RESERVADOS } from '../_shared/alta-de-tienda.ts'
-import { esRuc, esSerieDeBoleta, puedeFacturar } from '../_shared/nubefact.ts'
+import { esSerieDeBoleta, puedeFacturar } from '../_shared/nubefact.ts'
+import { probarNubefact } from '../_shared/boleta.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -112,7 +113,7 @@ Deno.serve(async (req) => {
 
   const body = await req.json() as {
     affiliate_code?: string
-    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'olva_status' | 'olva_lat_status' | 'verify_domain'
+    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'nubefact_status' | 'olva_status' | 'olva_lat_status' | 'verify_domain'
     home_delivery_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
@@ -141,14 +142,17 @@ Deno.serve(async (req) => {
     confirmar?: string
     wa_enabled?: boolean
     wa_fallback_enabled?: boolean
-    // Facturación electrónica (§58): la marca factura con su RUC y su cuenta
-    // de Nubefact. Los datos fiscales son públicos (salen en la boleta); la
-    // ruta y el token van a `store_secrets` y no vuelven nunca.
+    // Facturación electrónica (§58). Lo esencial son TRES cosas: la serie, y
+    // la ruta y el token de la cuenta —que van a `store_secrets` y no vuelven
+    // nunca—. El RUC y la razón social de la marca no se piden: el emisor lo
+    // identifica la ruta, y no viajan en el JSON de la boleta (§59).
     nubefact_enabled?: boolean
-    ruc?: string | null
-    razon_social?: string | null
-    direccion_fiscal?: string | null
     boleta_serie?: string | null
+    /** El número de la ÚLTIMA boleta emitida en la cuenta de Nubefact de la
+     *  marca. La siguiente sale de ahí +1. Se pone a mano porque una cuenta
+     *  que ya facturaba (a mano, o desde otro sistema) tiene números usados y
+     *  arrancar en 1 los choca uno por uno. */
+    boleta_correlativo?: number | null
     /** `{ ruta, token }` para guardarlos; `null` para quitarlos (apaga la
      *  facturación). Los dos o nada. */
     nubefact_keys?: { ruta?: unknown; token?: unknown } | null
@@ -280,6 +284,19 @@ Deno.serve(async (req) => {
     }
 
     return json({ stores, is_super: isSuper })
+  }
+
+  // ─── NUBEFACT: PROBAR LA CUENTA (§59) ──────────────────────────────────────
+  // Solo LEE: consulta la última boleta que la marca declaró. Es lo único que
+  // el API permite sin emitir —sus cuatro operaciones son generar, consultar,
+  // anular y consultar anulación; no hay ninguna que liste las series— y
+  // confirma de un golpe la ruta, el token, que esa serie existe en la cuenta
+  // y que la numeración está donde la marca cree.
+  if (body.action === 'nubefact_status') {
+    const suya = isSuper ? (body.store_id || me?.store_id) : me?.store_id
+    if (!suya) return json({ error: 'no_store' }, 400)
+    const r = await probarNubefact(String(suya))
+    return json({ ...r, checked_at: new Date().toISOString() })
   }
 
   // ─── SHALOM STATUS (semáforo de los DOS proveedores de envíos) ─────────────
@@ -937,17 +954,15 @@ Deno.serve(async (req) => {
     // Los datos fiscales los escribe el admin de la marca: son suyos y salen
     // impresos en cada boleta. Se validan acá aunque el panel valide: un RUC
     // mal escrito es una boleta que SUNAT rechaza con la venta ya cobrada.
-    if (body.ruc !== undefined) {
-      const ruc = String(body.ruc ?? '').replace(/\D/g, '')
-      if (ruc && !esRuc(ruc)) return json({ error: 'ruc_invalido' }, 400)
-      patch.ruc = ruc || null
-    }
-    if (body.razon_social !== undefined) patch.razon_social = String(body.razon_social ?? '').trim().slice(0, 100) || null
-    if (body.direccion_fiscal !== undefined) patch.direccion_fiscal = String(body.direccion_fiscal ?? '').trim().slice(0, 100) || null
     if (body.boleta_serie !== undefined) {
       const serie = String(body.boleta_serie ?? '').trim().toUpperCase()
       if (serie && !esSerieDeBoleta(serie)) return json({ error: 'serie_invalida' }, 400)
-      if (serie) patch.boleta_serie = serie
+      patch.boleta_serie = serie || null
+    }
+    if (body.boleta_correlativo !== undefined && body.boleta_correlativo !== null) {
+      const n = Math.trunc(Number(body.boleta_correlativo))
+      if (!Number.isFinite(n) || n < 0 || n > 99_999_999) return json({ error: 'correlativo_invalido' }, 400)
+      patch.boleta_correlativo = n
     }
     if (body.nubefact_keys !== undefined) {
       const nk = (body.nubefact_keys ?? {}) as { ruta?: unknown; token?: unknown }
@@ -975,13 +990,11 @@ Deno.serve(async (req) => {
     // hace falta RUC, razón social, serie, ruta y token — los de este request
     // o los ya guardados.
     if (patch.nubefact_enabled === true) {
-      const { data: t } = await supabase.from('stores').select('ruc, razon_social, boleta_serie').eq('id', targetId).maybeSingle()
+      const { data: t } = await supabase.from('stores').select('boleta_serie').eq('id', targetId).maybeSingle()
       const { data: sec } = await supabase.from('store_secrets').select('nubefact_ruta, nubefact_token').eq('store_id', targetId).maybeSingle()
       const listo = puedeFacturar({
         nubefact_enabled: true,
-        ruc: (patch.ruc as string | null | undefined) ?? t?.ruc,
-        razon_social: (patch.razon_social as string | null | undefined) ?? t?.razon_social,
-        boleta_serie: (patch.boleta_serie as string | undefined) ?? t?.boleta_serie,
+        boleta_serie: (patch.boleta_serie as string | null | undefined) ?? t?.boleta_serie,
       }, sec)
       if (!listo) return json({ error: 'nubefact_sin_configurar' }, 400)
     }
