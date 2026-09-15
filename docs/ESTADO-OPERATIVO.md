@@ -1,6 +1,6 @@
 # Estado operativo
 
-> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 14-set-2026.**
+> **Última verificación contra la base: 29-ago-2026** · **texto actualizado: 15-set-2026.**
 > Son dos fechas distintas a propósito: la primera es la última vez que alguien corrió la
 > consulta de abajo contra producción, la segunda cuándo se escribió esto. Un cambio de código
 > mueve la segunda; solo mirar la base mueve la primera.
@@ -33,6 +33,34 @@ fecha de arriba.
 
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
+
+### ✅ La primera boleta real, el reintento que cambia de serie, y el comprobante por el dominio de la marca · 2 funciones + frontend (15-set-2026)
+
+**La integración de Nubefact quedó verificada de punta a punta.** `BBB1-2` salió, la SUNAT la
+tomó, el paso *Boleta electrónica* aparece en el recorrido del comprador y el PDF abre. Era la
+única pieza de §58 que seguía sin probarse contra la cuenta de verdad.
+
+**Lo que faltaba para llegar ahí: el reintento se quedaba pegado a la serie vieja.** El pedido
+se reservó con `B001-1`, Nubefact lo rechazó con el `21`, y el número **se queda guardado** a
+propósito —SUNAT exige correlatividad, así que el reintento va con el mismo—. Pero la marca no
+arregló el número: arregló **la serie**, y `B001-1` es de otra numeración. «Reintentar» repetía
+el mismo error para siempre. `reservaSigueValiendo` compara la serie guardada con la que la
+tienda tiene hoy: si no coinciden, la reserva se descarta y se pide un número de la serie
+vigente. El hueco queda en una serie que nunca emitió nada, así que no hay hueco
+(`16-NUBEFACT.md` §3).
+
+**Y dos cosas de la misma pantalla.** Los botones se nombran completos —*Ver mi comprobante de
+pago* y *Ver mi boleta electrónica*—: con los dos pasos uno encima del otro se leían como el
+mismo documento, y son dos. Y la constancia de pago sale por el **dominio de la marca**, igual
+que la guía: desde el panel el vendedor puede estar en `krossclub.app` y ese enlace se copia y
+se le reenvía al cliente (`00-CORE-ARCHITECTURE.md` § *Y los enlaces de la app, también desde el
+panel*).
+
+Sin SQL.
+```
+supabase functions deploy flow-confirm  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy order-manage  --project-ref ofdjghntvmrdfjhazfvz
+```
 
 ### La serie de la boleta, la numeración y lo que no hacía falta · **SQL §59** + 3 funciones + frontend (15-set-2026)
 

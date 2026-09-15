@@ -86,7 +86,7 @@ export const INTEGRACIONES: Integracion[] = [
     dueno: '360pay', host: 'api.360pay.pe', alcance: 'marca', secreto: null, critico: false, dormida: true,
   },
   {
-    id: 'NUBEFACT', nombre: 'Nubefact', que: 'Emite la boleta electrónica del pedido pagado completo, con el RUC y la cuenta de la marca (§58)',
+    id: 'NUBEFACT', nombre: 'Nubefact', que: 'Emite la boleta electrónica del pedido pagado completo, desde la cuenta de la marca (§58)',
     dueno: 'Nubefact', host: 'api.nubefact.com', alcance: 'marca', secreto: null, critico: false,
   },
   {

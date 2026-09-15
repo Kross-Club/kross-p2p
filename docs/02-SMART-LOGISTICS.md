@@ -1187,6 +1187,46 @@ apenas el rastreo del titular lo aprende.
 `GET /v1/tracking/{ose_id}/events`, el GRT (exige credenciales Shalom Pro +
 `cap_id` del carguero) y la cotización de tarifas.
 
+### Qué documento enseña el botón de la guía ✅ (15-set-2026)
+
+Tres documentos distintos pueden terminar detrás de *«Ver mi guía de Shalom»*, y **no valen lo
+mismo**. El comprador va al mostrador con lo que ese botón le dio:
+
+| Documento | Qué es | Sirve para recoger |
+|---|---|---|
+| **Voucher** (`/orders/{ose_id}/voucher`) | La guía formal, con su **QR** | ✅ Sí |
+| **Rótulo** (`/orders/{ose_id}/label`) | La etiqueta que se pega al paquete: número de orden, código, destinatario | ⚠️ Solo como respaldo |
+| **Hoja de guía de la app** (`/guia/<token>`) | La armamos nosotros con los mismos datos que enseña el panel | ✅ Sí, y existe siempre |
+
+**La regla: se enseña el MEJOR disponible, no el primero que llegó** (`_shared/guia-pdf.ts`,
+`pdfDeGuiaAEnsenar`). Costó tres arreglos seguidos porque cada uno tapaba al siguiente:
+
+1. **El rótulo pisaba al voucher.** Los dos se subían con el **mismo nombre** de archivo, así que
+   la caída al rótulo —correcta cuando Shalom todavía no tiene el voucher listo— borraba la guía
+   buena si después llegaba. Ahora el rótulo se guarda como `<numero>-rotulo.pdf`
+   (`esRotuloDeGuia`), y así se distingue de la guía para siempre.
+2. **`reponerPdfDeGuia` solo actuaba sobre mensajes SIN PDF.** Un mensaje que ya tenía el rótulo
+   se daba por resuelto y nunca pedía el voucher. Ahora un rótulo cuenta como **mejorable**
+   (`pdfMejorable`): en la siguiente novedad del rastreo se pide el voucher y, si baja, reemplaza.
+   Si no baja, el rótulo se queda — un respaldo es mejor que nada.
+3. **La página tomaba el primer PDF del hilo.** Con el voucher ya repuesto, el pedido seguía
+   enseñando el rótulo viejo porque leía el mensaje más antiguo. `pdfDeGuiaAEnsenar` prefiere el
+   voucher confirmado y, si no hay, el más reciente.
+
+Y dos cosas que el circuito respeta:
+
+- **«Reenviar»** en la barra de envío del panel **fuerza** la mejora en el momento, sin esperar una
+  novedad del rastreo. Es lo que el vendedor toca cuando el cliente dice «me sale la etiqueta».
+- **La guía registrada a mano también tiene su documento.** Cuando la API falla y ni la
+  contingencia responde, el vendedor la registra desde su panel (`order-manage` · `set_tracking`) y
+  con eso queda armada la hoja de guía de la app, con su número de orden, su código y su clave. Un
+  botón que a veces existe y a veces no enseña un producto que se comporta distinto según por dónde
+  entró la guía.
+
+⚠️ **El enlace sale por el dominio de la marca**, nunca por la raíz de la plataforma — desde el
+pedido del comprador y desde el panel del vendedor por igual. La regla y su mecánica están en
+`00-CORE-ARCHITECTURE.md` § *Los archivos también salen por el dominio de la marca*.
+
 ### Cuenta Shalom Pro por marca + semáforo de la API ✅
 
 Panel → Mi marca → **Envíos de la marca (Shalom Pro)**. Dos cosas viven ahí:
