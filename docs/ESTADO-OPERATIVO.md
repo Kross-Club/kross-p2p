@@ -34,7 +34,7 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-### La serie de la boleta y su numeración · 2 funciones + frontend (15-set-2026)
+### La serie de la boleta, la numeración y lo que no hacía falta · **SQL §59** + 3 funciones + frontend (15-set-2026)
 
 **Qué enseñó la primera prueba.** La boleta no salía y no había pista: la emisión corre en
 segundo plano y los caminos que no emiten se devolvían mudos. Ya no — todos dejan rastro en el
@@ -48,13 +48,21 @@ BBB1-6): por eso hay un campo **Última boleta emitida** para que la numeración
 donde la cuenta va, y por eso el servidor **salta** un número tomado en vez de adoptar la boleta
 de otro (`16-NUBEFACT.md` §2.b).
 
+**Y se fue lo que no hacía falta.** El panel pedía RUC, razón social y dirección fiscal de la
+marca: ninguno viaja a Nubefact —el emisor lo identifica la ruta— así que solo bloqueaban a quien
+ya podía facturar. Quedan **tres** datos: ruta, token y serie. Las columnas se quedan con lo que
+cada marca escribió. Y el campo de la serie ya no propone `B001`: nace vacío, con un botón
+**Probar** que consulta la última boleta declarada (la única comprobación que el API permite sin
+emitir).
+
+```sql
+-- §59 · boleta_serie sin default inventado; lo fiscal deja de pedirse
+```
 ```
 supabase functions deploy flow-confirm  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
 supabase functions deploy order-manage  --project-ref ofdjghntvmrdfjhazfvz
 supabase functions deploy manage-store  --project-ref ofdjghntvmrdfjhazfvz
 ```
-
-Sin SQL: `boleta_correlativo` ya existe desde §58.
 
 ### La boleta electrónica con Nubefact · **SQL §58** + 5 funciones + frontend (15-set-2026)
 
