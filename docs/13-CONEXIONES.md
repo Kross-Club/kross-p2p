@@ -11,7 +11,8 @@
 
 Kross se apoya en **dieciocho APIs que no controla**: el riel de cobro (más 360pay,
 dormida desde set-2026), los **cuatro** proveedores de tracking (Shalom y Olva tienen
-dos cada uno, ninguno oficial), WhatsApp, RENIEC, LiveKit, los CAPI de Meta y TikTok,
+dos cada uno, ninguno oficial; los de Olva dormidos desde el 15-set porque el proveedor
+no entrega la API), WhatsApp, RENIEC, LiveKit, los CAPI de Meta y TikTok,
 la voz de IA, el correo de reclamaciones, el push, el geocoding, **Stripe**, que cobra
 el plan mensual del comercio, y **Nubefact**, que emite la boleta.
 
@@ -117,9 +118,9 @@ proveedor y su respuesta. Es el caso de uso de soporte y por eso está primero.
 Al lado del nombre puede haber una de dos, y ninguna es un diagnóstico — son el
 **papel** que cumple esa API, no su estado:
 
-- **crítica** — si se cae, se frena vender o despachar. Son seis de dieciocho: el
-  riel de cobro, los cuatro couriers y RENIEC. (360pay era la séptima; dormida ya no
-  cuenta, porque no se elige para ningún pedido nuevo.) Una integración crítica
+- **crítica** — si se cae, se frena vender o despachar. Son **cuatro** de dieciocho: el
+  riel de cobro, los dos rieles de Shalom y RENIEC. (360pay y los dos de Olva están
+  dormidos, y lo dormido no cuenta: no se elige para ningún pedido nuevo.) Una integración crítica
   puede estar perfectamente sana; lo que dice la etiqueta es cuánto duele que no
   lo esté.
 - **suplente de X** — es la contingencia de otra. Entra a trabajar sola cuando

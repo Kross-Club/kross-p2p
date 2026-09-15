@@ -657,14 +657,20 @@ describe('CoverageService · data real del courier', () => {
 // depende de la ZONA (y por eso murió `RECOMMENDED_AGENCY`), y que los ids se
 // repiten entre couriers.
 
+// Con Olva dormido (15-set-2026) el checkout ofrece un solo courier, así que la
+// regla del mezclado se prueba pasando las dos agencias EXPLÍCITAS. No es un
+// test de mentira: es la misma función que corre en producción, y el día que
+// Olva vuelva a `COURIERS_ACTIVOS` estos tests describen otra vez lo que el
+// comprador ve — sin haber perdido por qué el ranking mezcla.
 describe('AgencyService · puntos de recojo de todas las agencias', () => {
+  const LAS_DOS = ['SHALOM', 'OLVA'] as const
   const HUANCAVELICA = { lat: -12.7869, lng: -74.9731 }
   const TRUJILLO = { lat: -8.1116, lng: -79.0288 }
   const CUSCO = { lat: -13.5319, lng: -71.9675 }
   const CHICLAYO = { lat: -6.7714, lng: -79.8409 }
 
   it('mezcla las agencias y ordena por distancia real', async () => {
-    const pts = await AgencyService.getNearestPoints(TRUJILLO, 6)
+    const pts = await AgencyService.getNearestPoints(TRUJILLO, 6, LAS_DOS)
     expect(pts).toHaveLength(6)
     for (let i = 1; i < pts.length; i++) {
       expect(pts[i - 1].distanceKm).toBeLessThanOrEqual(pts[i].distanceKm)
@@ -674,7 +680,7 @@ describe('AgencyService · puntos de recojo de todas las agencias', () => {
   })
 
   it('cada punto sabe de qué courier es', async () => {
-    const pts = await AgencyService.getNearestPoints(TRUJILLO, 10)
+    const pts = await AgencyService.getNearestPoints(TRUJILLO, 10, LAS_DOS)
     expect(pts.every(p => p.agency === 'SHALOM' || p.agency === 'OLVA')).toBe(true)
   })
 
@@ -685,7 +691,7 @@ describe('AgencyService · puntos de recojo de todas las agencias', () => {
     const soloShalom = await AgencyService.getNearest('SHALOM', HUANCAVELICA, 4)
     expect(soloShalom![1].distanceKm).toBeGreaterThan(70)
 
-    const unificada = await AgencyService.getNearestPoints(HUANCAVELICA, 4)
+    const unificada = await AgencyService.getNearestPoints(HUANCAVELICA, 4, LAS_DOS)
     expect(unificada[0].agency).toBe('OLVA')
     expect(unificada.every(p => p.distanceKm < 40)).toBe(true)
   })
@@ -693,14 +699,14 @@ describe('AgencyService · puntos de recojo de todas las agencias', () => {
   it('quién queda primero depende de la zona, no de una constante', async () => {
     // La prueba de que ordenar por distancia SÍ regionaliza: la misma función
     // devuelve couriers distintos en ciudades distintas.
-    const cusco = await AgencyService.getNearestPoints(CUSCO, 1)
-    const chiclayo = await AgencyService.getNearestPoints(CHICLAYO, 1)
+    const cusco = await AgencyService.getNearestPoints(CUSCO, 1, LAS_DOS)
+    const chiclayo = await AgencyService.getNearestPoints(CHICLAYO, 1, LAS_DOS)
     expect(cusco[0].agency).toBe('SHALOM')
     expect(chiclayo[0].agency).toBe('OLVA')
   })
 
   it('los ids se repiten entre couriers, así que la llave lleva la agencia', async () => {
-    const todos = await AgencyService.searchPoints('', 2000)
+    const todos = await AgencyService.searchPoints('', 2000, LAS_DOS)
     // Sin la agencia, cientos de puntos colisionan y seleccionar uno marcaría
     // dos tarjetas a la vez en la lista mezclada.
     expect(new Set(todos.map(b => b.id)).size).toBeLessThan(todos.length)
@@ -708,16 +714,24 @@ describe('AgencyService · puntos de recojo de todas las agencias', () => {
   })
 
   it('la búsqueda cruza las dos agencias y acepta el nombre del courier', async () => {
-    const todos = await AgencyService.searchPoints('', 2000)
+    const todos = await AgencyService.searchPoints('', 2000, LAS_DOS)
     expect(todos.length).toBe(487 + 424)
 
-    const olva = await AgencyService.searchPoints('olva', 2000)
+    const olva = await AgencyService.searchPoints('olva', 2000, LAS_DOS)
     expect(olva.length).toBeGreaterThan(400)
     expect(olva.every(b => b.agency === 'OLVA')).toBe(true)
   })
 
-  it('OTRO queda fuera de los listados: es la salida a texto libre', () => {
-    expect(LISTED_AGENCIES).toEqual(['SHALOM', 'OLVA'])
+  it('solo se ofrecen los couriers activos: Olva está dormido y OTRO no tiene listado', () => {
+    // Olva sale porque su API no se entrega (15-set-2026): ofrecer un mostrador
+    // al que no le podemos sacar guía es vender un despacho que no existe.
+    expect(LISTED_AGENCIES).toEqual(['SHALOM'])
+  })
+
+  it('pero el listado de Olva NO se borra: un pedido viejo sigue resolviendo su sede', async () => {
+    const b = await AgencyService.getBranch('OLVA', '579')
+    expect(b?.agency).toBe('OLVA')
+    expect(b?.district).toBe('CHACHAPOYAS')
   })
 
   it('no afirma una distancia que el centroide no puede sostener', () => {
@@ -736,7 +750,7 @@ describe('AgencyService · puntos de recojo de todas las agencias', () => {
     // Ordenar por distancia desde el centroide sí es correcto: es lo que hace
     // emerger la agencia que conviene en cada zona. Lo que no se sostiene es
     // presentar el número como "qué tan lejos te queda a ti".
-    const pts = await AgencyService.getNearestPoints(HUANCAVELICA, 4)
+    const pts = await AgencyService.getNearestPoints(HUANCAVELICA, 4, LAS_DOS)
     for (let i = 1; i < pts.length; i++) {
       expect(pts[i - 1].distanceKm).toBeLessThanOrEqual(pts[i].distanceKm)
     }
@@ -814,6 +828,37 @@ describe('AgencyService · data real de Shalom', () => {
   it('sugiere texto ya escrito por otros compradores, sin duplicar', () => {
     const s = suggestFreeText(['Olva Av. España', 'olva av. españa', 'Olva Centro'], 'olva')
     expect(s).toEqual(['Olva Av. España', 'Olva Centro'])
+  })
+})
+
+describe('DistrictCoverageService · el nombre con el que la gente busca su distrito', () => {
+  it('Chosica encuentra Lurigancho, que es como lo llama el INEI', async () => {
+    // Reportado el 15-set-2026: nadie en Chosica escribe «Lurigancho», así que
+    // el selector no le devolvía nada y esa persona no podía comprar.
+    const r = await DistrictCoverageService.search('Chosica')
+    const lurigancho = r.find(d => d.district === 'Lurigancho' && d.province === 'Lima')
+    expect(lurigancho).toBeDefined()
+    expect(lurigancho!.department).toBe('Lima')
+  })
+
+  it('lo encuentra a medio teclear y sin tildes ni mayúsculas', async () => {
+    for (const q of ['chosi', 'CHOSICA', 'lurigancho-chosica']) {
+      const r = await DistrictCoverageService.search(q)
+      expect(r.some(d => d.district === 'Lurigancho' && d.province === 'Lima')).toBe(true)
+    }
+  })
+
+  it('el alias NO se lleva puesto al San Juan de Lurigancho, que es otro distrito', async () => {
+    // Los dos llevan «Lurigancho» en el nombre: un alias mal resuelto mandaría
+    // el paquete a la otra punta de Lima.
+    const r = await DistrictCoverageService.search('Chosica')
+    expect(r.every(d => d.district !== 'San Juan de Lurigancho')).toBe(true)
+  })
+
+  it('una búsqueda normal sigue funcionando igual', async () => {
+    const r = await DistrictCoverageService.search('Miraflores')
+    expect(r.length).toBeGreaterThan(1) // hay uno en Lima y otro en Arequipa
+    expect(r.every(d => d.district.includes('Miraflores'))).toBe(true)
   })
 })
 

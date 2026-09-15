@@ -34,6 +34,28 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Olva se duerme y Chosica se encuentra · 1 función + frontend (15-set-2026)
+
+**Solo Shalom, por ahora.** Ninguno de los dos proveedores de Olva entrega su API como
+corresponde, y un mostrador que el comprador elige es una guía que el vendedor después tiene que
+emitir. `COURIERS_ACTIVOS = ['SHALOM']` lo saca del checkout y `dormida: true` lo saca de
+*Conexiones* —mismo patrón que 360pay: una lista, no un borrado—. Las 424 sedes se quedan en el
+repo: un pedido que ya eligió una Olva sigue resolviendo su sede. Para revivirlo, una línea
+(`02-SMART-LOGISTICS.md` § *Olva se duerme*).
+
+**Y «Chosica» ya encuentra su distrito.** El padrón del INEI lo llama **Lurigancho**, y nadie en
+Chosica escribe eso: el selector no devolvía nada y esa persona no podía comprar — el mismo
+agujero que se cerró al pasar de 483 distritos al padrón completo, ahora por el nombre. Hay un
+mapa de alias (`ALIAS_DE_DISTRITO`) para los nombres populares, con una regla estricta: solo
+apodos de un distrito que **existe**, nunca un distrito que falta, y siempre con provincia. Un
+alias mal apuntado manda el paquete a otro sitio, que es peor que no encontrarlo. Si aparecen
+más casos, se agregan ahí.
+
+Sin SQL.
+```
+supabase functions deploy integraciones --project-ref ofdjghntvmrdfjhazfvz
+```
+
 ### ✅ La primera boleta real, el reintento que cambia de serie, y el comprobante por el dominio de la marca · 2 funciones + frontend (15-set-2026)
 
 **La integración de Nubefact quedó verificada de punta a punta.** `BBB1-2` salió, la SUNAT la
