@@ -127,14 +127,10 @@ export default function ComprobantePage() {
                   Constancia de pago
                 </p>
               </div>
-              {/* La marca de Yape, arriba a la derecha: con eso pagó. Dibujada
-                  como palabra —no hay un logo oficial en el repo— con su
-                  morado, que es lo que se reconoce. */}
-              <span aria-label="Pagado con Yape"
-                className="flex-shrink-0 px-2.5 py-1 rounded-lg text-[14px] font-black tracking-tight text-white lowercase"
-                style={{ background: MORADO_YAPE }}>
-                yape
-              </span>
+              {/* La marca de Yape, arriba a la derecha: con eso pagó. El logo
+                  vive en `public/yape.png` (15-set-2026); si no carga, la
+                  palabra en su morado, que también se reconoce. */}
+              <MarcaYape />
             </div>
           </div>
 
@@ -189,5 +185,23 @@ export default function ComprobantePage() {
         </button>
       </div>
     </div>
+  )
+}
+
+/** El logo de Yape, con la palabra de respaldo si el PNG no carga. */
+function MarcaYape() {
+  const [sinLogo, setSinLogo] = useState(false)
+  if (sinLogo) {
+    return (
+      <span aria-label="Pagado con Yape"
+        className="flex-shrink-0 px-2.5 py-1 rounded-lg text-[14px] font-black tracking-tight text-white lowercase"
+        style={{ background: MORADO_YAPE }}>
+        yape
+      </span>
+    )
+  }
+  return (
+    <img src="/yape.png" alt="Pagado con Yape" onError={() => setSinLogo(true)}
+      className="flex-shrink-0 h-10 w-auto object-contain" />
   )
 }
