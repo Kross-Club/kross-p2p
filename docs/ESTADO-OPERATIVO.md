@@ -34,6 +34,30 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El `search_path` de tres funciones · **SQL §62**, sin código (15-set-2026)
+
+**Qué marcó el linter.** Tres *Function Search Path Mutable*: `siguiente_numero_de_boleta`,
+`set_codigo_correlativo` y `asignar_public_id`. Una función sin `search_path` fijo resuelve los
+nombres que usa —`stores`, `affiliates`, `now()`— según el search_path de **quien la llama**.
+
+**Cuál importa de verdad: la primera.** `siguiente_numero_de_boleta` es **SECURITY DEFINER**, o
+sea que corre con los privilegios de su dueño. Es mía (§58) y nació sin la cláusula, cuando las
+otras **diez** SECURITY DEFINER del archivo la llevan desde siempre: fue un descuido, no una
+decisión. Lo que evitó que fuera explotable es que ya estaba revocada de
+`PUBLIC`/`anon`/`authenticated`; el `search_path` es el candado que faltaba.
+
+**Las otras dos son triggers y NO son SECURITY DEFINER**: corren con los privilegios de quien
+inserta, así que el riesgo real es mucho menor. Se arreglan igual porque cuesta una línea.
+
+Las tres se redefinen enteras en el §62 y **una sola vez** — un `ALTER FUNCTION ... SET
+search_path` no basta, porque con el search_path vacío los nombres sin calificar dejan de
+resolver y hay que reescribir el cuerpo igual. Los bloques originales llevan un puntero.
+
+Sin funciones ni frontend: solo SQL.
+```sql
+-- §62 · search_path fijo y nombres calificados en las tres
+```
+
 ### ⚠️ La vista `push_cobertura` saltaba RLS · **SQL §61**, sin código (15-set-2026)
 
 **Qué marcó el linter.** *Security Definer View · CRITICAL* sobre `public.push_cobertura`. Es

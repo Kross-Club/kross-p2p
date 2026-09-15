@@ -640,6 +640,8 @@ CREATE INDEX IF NOT EXISTS idx_complaints_pendientes
 -- El número correlativo es obligatorio en la Hoja de Reclamación y es lo que
 -- cita el consumidor. Se arma con la hora de Lima: en UTC, un reclamo del 31 de
 -- diciembre por la noche caería en el año siguiente.
+-- ⚠️ La REDEFINE el §62 con `search_path` fijo. Si tocas este cuerpo, tócalo
+-- allá: es el que queda vivo al correr el archivo entero.
 CREATE OR REPLACE FUNCTION set_codigo_correlativo() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -2664,6 +2666,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_affiliates_public_id
 -- un afiliado sin enlace —o sea inservible— y hay tres caminos que crean filas
 -- (`manage-store`, la acción `crear` y el traspaso de §52.a). Un trigger es el
 -- único sitio donde no hay que acordarse.
+-- ⚠️ La REDEFINE el §62 con `search_path` fijo (ver la nota de allá).
 CREATE OR REPLACE FUNCTION public.asignar_public_id() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE cand text; intentos int := 0;
@@ -2979,6 +2982,7 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS boleta_error      text;
 
 -- El siguiente número de la serie, atómico: dos pedidos que se pagan en el
 -- mismo segundo reciben números distintos. Solo service role la llama.
+-- ⚠️ La REDEFINE el §62 con `search_path` fijo (ver la nota de allá).
 CREATE OR REPLACE FUNCTION siguiente_numero_de_boleta(p_store_id text)
 RETURNS integer LANGUAGE sql SECURITY DEFINER AS $$
   UPDATE stores SET boleta_correlativo = boleta_correlativo + 1
@@ -3076,3 +3080,73 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 REVOKE ALL ON push_cobertura FROM anon, authenticated;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §62 · EL `search_path` DE LAS FUNCIONES, FIJO  (15-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El linter marcó tres *Function Search Path Mutable*. Una función sin
+-- `search_path` fijo resuelve los nombres que usa —`stores`, `affiliates`,
+-- `now()`— según el search_path de QUIEN LA LLAMA. Quien pueda crear un esquema
+-- que ese search_path mire antes que `public` puede poner ahí una tabla o una
+-- función con el mismo nombre y hacer que el cuerpo trabaje sobre la suya.
+--
+-- En `siguiente_numero_de_boleta` eso importa de verdad: es **SECURITY
+-- DEFINER**, o sea que corre con los privilegios de su dueño. Es mía (§58) y
+-- nació sin la cláusula — las otras DIEZ SECURITY DEFINER de este archivo la
+-- llevan desde siempre, así que fue un descuido y no una decisión. Ya estaba
+-- revocada de PUBLIC/anon/authenticated, que es lo que evitó que esto fuera
+-- explotable; el `search_path` es el candado que faltaba.
+--
+-- Las otras dos son triggers y NO son SECURITY DEFINER: corren con los
+-- privilegios de quien inserta, así que el riesgo real es mucho menor. Se
+-- arreglan igual porque cuesta una línea y deja el linter en cero.
+--
+-- Las tres se REDEFINEN acá, enteras y una sola vez. Es a propósito: un
+-- `ALTER FUNCTION ... SET search_path` no sirve solo, porque con el search_path
+-- vacío los nombres sin calificar dejan de resolver y el cuerpo hay que
+-- reescribirlo igual. Y tener el mismo cuerpo en dos sitios del archivo es
+-- pedir que alguien edite uno y olvide el otro. Los bloques de arriba llevan un
+-- puntero a este.
+-- Idempotente: el archivo corre de arriba a abajo y esta es la última palabra.
+
+CREATE OR REPLACE FUNCTION public.set_codigo_correlativo() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+  IF NEW.codigo IS NULL THEN
+    NEW.codigo := TG_ARGV[0] || '-'
+      || pg_catalog.to_char(pg_catalog.now() AT TIME ZONE 'America/Lima', 'YYYY') || '-'
+      || pg_catalog.lpad(NEW.numero::text, 6, '0');
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.asignar_public_id() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+DECLARE cand text; intentos int := 0;
+BEGIN
+  IF NEW.public_id IS NOT NULL THEN RETURN NEW; END IF;
+  LOOP
+    -- 10000000..99999999: ocho dígitos siempre, sin ceros a la izquierda que
+    -- alguien pueda comerse al dictarlo por teléfono.
+    cand := (pg_catalog.floor(pg_catalog.random() * 90000000) + 10000000)::bigint::text;
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.affiliates WHERE public_id = cand);
+    intentos := intentos + 1;
+    IF intentos > 50 THEN
+      RAISE EXCEPTION 'no se pudo generar un public_id libre en 50 intentos';
+    END IF;
+  END LOOP;
+  NEW.public_id := cand;
+  RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.siguiente_numero_de_boleta(p_store_id text)
+RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $$
+  UPDATE public.stores SET boleta_correlativo = boleta_correlativo + 1
+  WHERE id = p_store_id
+  RETURNING boleta_correlativo;
+$$;
+-- El REVOKE se repite porque `CREATE OR REPLACE` no toca los permisos, pero si
+-- esta sección se corre sobre una base donde la función se creó de otra forma,
+-- más vale dejarlo dicho que suponerlo.
+REVOKE ALL ON FUNCTION public.siguiente_numero_de_boleta(text) FROM PUBLIC, anon, authenticated;
