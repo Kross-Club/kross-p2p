@@ -17,7 +17,7 @@ import { olvaLatApiKey, subscribeAtLat } from './olva-lat-api.ts'
 import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
 import { normalizeYear } from './olva.ts'
 import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from './mensaje-de-guia.ts'
-import { esPdf } from './shalom-orders.ts'
+import { esPdf, parseOrderResponse } from './shalom-orders.ts'
 import type { TrackedRow } from './tracking.ts'
 import { enviarSms, tiendaParaSms } from './sms.ts'
 import { enlaceDelPedido, smsGuia } from './sms-texto.ts'
@@ -227,13 +227,28 @@ export async function authShalomPro(storeId: string): Promise<AuthShalomPro | nu
   return { 'X-API-Key': key, 'X-Shalom-Email': email, 'X-Shalom-Password': password }
 }
 
-/** El rótulo se guarda con este sufijo para poder reconocerlo después: es lo
- *  que deja a `reponerPdfDeGuia` cambiarlo por el voucher cuando por fin baja. */
+/** Cada PDF se guarda diciendo QUÉ es: el voucher (la guía con QR) con un
+ *  sufijo y el rótulo (la etiqueta del paquete) con otro. Es lo que deja a
+ *  `reponerPdfDeGuia` y a «Reenviar» cambiar un rótulo por la guía cuando por
+ *  fin baja. Los PDF de antes del 14-set-2026 no tienen sufijo: no se sabe
+ *  cuál de los dos son, así que se tratan como mejorables. */
+const SUFIJO_GUIA = '-guia.pdf'
 const SUFIJO_ROTULO = '-rotulo.pdf'
 
 /** ¿Esta URL es el rótulo (la etiqueta del paquete) y no la guía con QR? */
 export function esRotuloDeGuia(url: string | null | undefined): boolean {
   return typeof url === 'string' && url.endsWith(SUFIJO_ROTULO)
+}
+
+/** ¿Esta URL es, seguro, el voucher de Shalom (la guía con QR)? */
+export function esGuiaConfirmada(url: string | null | undefined): boolean {
+  return typeof url === 'string' && url.endsWith(SUFIJO_GUIA)
+}
+
+/** ¿Vale la pena volver a pedir el voucher para este mensaje? Sin PDF, con el
+ *  rótulo, o con un PDF de antes que no dice qué es. */
+export function pdfMejorable(url: string | null | undefined): boolean {
+  return !url || !esGuiaConfirmada(url)
 }
 
 /**
@@ -254,11 +269,15 @@ export async function descargarPdfDeGuia(p: {
   oseId: string | null
   numero: string | null
   auth: AuthShalomPro
+  /** Solo el voucher, sin caer al rótulo: para REPONER. Quien ya tiene un
+   *  rótulo no gana nada con otro, y quien tiene un PDF viejo sin sufijo
+   *  podría estar cambiando la guía por la etiqueta. */
+  soloVoucher?: boolean
 }): Promise<string | null> {
   if (!p.oseId) return null
   const ctx = { proveedor: 'SHALOM_PE' as const, sessionId: p.sessionId, storeId: p.storeId }
   try {
-    for (const doc of ['voucher', 'label']) {
+    for (const doc of p.soloVoucher ? ['voucher'] : ['voucher', 'label']) {
       const ctrl = new AbortController()
       const t = setTimeout(() => ctrl.abort(), PDF_TIMEOUT_MS)
       const inicio = Date.now()
@@ -280,7 +299,7 @@ export async function descargarPdfDeGuia(p: {
         })
         continue
       }
-      const path = `${p.sessionId}/${p.numero ?? p.oseId}${doc === 'label' ? SUFIJO_ROTULO : '.pdf'}`
+      const path = `${p.sessionId}/${p.numero ?? p.oseId}${doc === 'label' ? SUFIJO_ROTULO : SUFIJO_GUIA}`
       const up = await supabase.storage.from('shalom-guias')
         .upload(path, bytes, { contentType: 'application/pdf', upsert: true })
       if (up.error) {
@@ -298,9 +317,57 @@ export async function descargarPdfDeGuia(p: {
 }
 
 /**
+ * Busca en la cuenta Shalom Pro de la marca la orden con ESTE número, para
+ * conocer su `ose_id` —lo único con lo que se puede pedir el voucher—. Es para
+ * la guía registrada A MANO (14-set-2026): el vendedor copia el número y el
+ * código del comprobante físico, y con eso solo no hay PDF que bajar; con el
+ * `ose_id` de la cuenta, sí. Mira las últimas órdenes de la cuenta (la manual
+ * es de hoy o de ayer): si no está entre ellas, se queda sin PDF y la hoja de
+ * guía de la app sigue siendo el respaldo. Nunca emite nada.
+ */
+export async function buscarOseIdPorNumero(p: {
+  auth: AuthShalomPro
+  numero: string
+  sessionId: string
+  storeId: string | null
+}): Promise<string | null> {
+  const ctx = { proveedor: 'SHALOM_PE' as const, sessionId: p.sessionId, storeId: p.storeId }
+  const inicio = Date.now()
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), PDF_TIMEOUT_MS)
+    const r = await fetch(`${SHALOM_PE_BASE}/v1/orders?page=1&per_page=50`, { headers: p.auth, signal: ctrl.signal })
+      .catch(() => null)
+    clearTimeout(t)
+    if (!r?.ok) {
+      await anotar({ ...ctx, op: 'guia.buscar', outcome: r ? (r.status >= 500 ? 'FALLO' : 'RECHAZO') : 'SIN_RESPUESTA',
+        httpStatus: r?.status ?? null, detail: `buscando la orden ${p.numero}`, duracionMs: Date.now() - inicio })
+      return null
+    }
+    const json = await r.json().catch(() => null)
+    const lista = (json as { orders?: unknown })?.orders
+    if (!Array.isArray(lista)) return null
+    const buscado = p.numero.replace(/\D/g, '')
+    for (const o of lista) {
+      const orden = o as Record<string, unknown>
+      const g = parseOrderResponse(orden)
+      if (g.numero && g.numero.replace(/\D/g, '') === buscado) {
+        const id = orden?.id
+        return id == null ? null : String(id)
+      }
+    }
+    return null
+  } catch (e) {
+    await anotarSinRespuesta({ ...ctx, op: 'guia.buscar' }, e, Date.now() - inicio)
+    return null
+  }
+}
+
+/**
  * Si el mensaje de guía del pedido quedó SIN PDF —o con el RÓTULO en vez de
- * la guía— y ya se conoce el `ose_id`, baja el voucher ahora y se lo pone al
- * mensaje. Lo llaman el webhook y el barrido de
+ * la guía, o con un PDF de antes que no dice cuál es— y ya se conoce el
+ * `ose_id`, baja el voucher ahora y se lo pone al mensaje. Lo llaman el
+ * webhook y el barrido de
  * Shalom en cada novedad del rastreo —no en cada chequeo—, así que cuesta un
  * puñado de requests por pedido, no una por cada media hora durante 21 días.
  * El chat lo enseña con el botón en su siguiente apertura; la pantalla de
@@ -317,15 +384,16 @@ export async function reponerPdfDeGuia(
     .eq('session_id', row.id).eq('type', 'guia')
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (!msg) return false
-  const teniaRotulo = esRotuloDeGuia(msg.media_url)
   // Con la guía de verdad ya puesta no hay nada que reponer.
-  if (msg.media_url && !teniaRotulo) return false
+  if (!pdfMejorable(msg.media_url)) return false
   const auth = await authShalomPro(row.store_id)
   if (!auth) return false
-  const url = await descargarPdfDeGuia({ sessionId: row.id, storeId: row.store_id, oseId, numero: row.tracking_numero, auth })
+  // Con un PDF ya puesto (rótulo o viejo) solo vale el voucher: cambiarlo por
+  // otro rótulo no mejora nada. Sin PDF, lo que baje.
+  const url = await descargarPdfDeGuia({
+    sessionId: row.id, storeId: row.store_id, oseId, numero: row.tracking_numero, auth, soloVoucher: !!msg.media_url,
+  })
   if (!url) return false
-  // Sigue sin voucher: el rótulo que ya tiene vale lo mismo que el nuevo.
-  if (teniaRotulo && esRotuloDeGuia(url)) return false
   const { error } = await supabase.from('chat_messages').update({ media_url: url }).eq('id', msg.id)
   if (error) { console.error('[guia] no se pudo poner el PDF al mensaje', row.id, error.message); return false }
   return true
@@ -363,19 +431,23 @@ export async function reenviarGuia(
   }, row.agency_name)
   if (!g.ok) return { ok: false, error: 'el pedido no tiene una guía registrada' }
 
-  // El PDF que ya se le mandó alguna vez manda: bajarlo otra vez gastaría una
-  // request del cupo para subir el mismo documento.
+  // El PDF que ya se le mandó alguna vez manda —bajarlo otra vez gastaría una
+  // request del cupo para subir el mismo documento—, SALVO que sea el rótulo
+  // o uno viejo sin sufijo: ahí «Reenviar» es la palanca a mano para pedir el
+  // voucher otra vez (14-set-2026). Si baja, va el voucher; si no, lo de antes.
   const { data: previo } = await supabase.from('chat_messages')
     .select('media_url').eq('session_id', sessionId).eq('type', 'guia')
     .not('media_url', 'is', null)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
   let pdfUrl: string | null = previo?.media_url ?? null
-  if (!pdfUrl && g.courier === 'SHALOM' && row.tracking_ose_id && row.store_id) {
+  if (pdfMejorable(pdfUrl) && g.courier === 'SHALOM' && row.tracking_ose_id && row.store_id) {
     const auth = await authShalomPro(row.store_id)
     if (auth) {
-      pdfUrl = await descargarPdfDeGuia({
+      const mejor = await descargarPdfDeGuia({
         sessionId, storeId: row.store_id, oseId: row.tracking_ose_id, numero: row.tracking_numero, auth,
+        soloVoucher: !!pdfUrl,
       })
+      if (mejor) pdfUrl = mejor
     }
   }
 

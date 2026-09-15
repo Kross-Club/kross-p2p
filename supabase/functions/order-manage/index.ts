@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { reenviarGuia, normalizarGuia, registrarGuia } from '../_shared/guia.ts'
+import { authShalomPro, buscarOseIdPorNumero, descargarPdfDeGuia, reenviarGuia, normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { cabeEnElMismoPaquete } from '../_shared/upsell.ts'
 import { puedeEscribir, puedeInvitar, puedeQuitar, puedeReasignar } from '../_shared/equipo-pedido.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
@@ -287,12 +287,30 @@ Deno.serve(async (req) => {
       }
     }
 
-    const r = await registrarGuia(clave ? { ...session, shalom_pickup_code: clave } : session, g)
+    // La guía MANUAL también tiene PDF (14-set-2026): el vendedor copia número y
+    // código del comprobante físico, y con eso solo no hay voucher que pedir.
+    // Se busca la orden en la cuenta Shalom Pro de la marca por su número; con
+    // su `ose_id` se baja el voucher y el rastreo también lo aprende. Todo
+    // best-effort: sin cuenta, sin coincidencia o sin PDF, la guía se registra
+    // igual y el botón cae a la hoja de guía de la app, como siempre.
+    let pdfUrl: string | null = null
+    if (g.courier === 'SHALOM' && g.tracking.tracking_numero && !g.tracking.tracking_ose_id && session.store_id) {
+      const auth = await authShalomPro(session.store_id)
+      if (auth) {
+        const oseId = await buscarOseIdPorNumero({ auth, numero: g.tracking.tracking_numero, sessionId: session.id, storeId: session.store_id })
+        if (oseId) {
+          g.tracking.tracking_ose_id = oseId
+          pdfUrl = await descargarPdfDeGuia({ sessionId: session.id, storeId: session.store_id, oseId, numero: g.tracking.tracking_numero, auth })
+        }
+      }
+    }
+
+    const r = await registrarGuia(clave ? { ...session, shalom_pickup_code: clave } : session, g, { pdfUrl })
     if (!r.ok) {
       return new Response(JSON.stringify({ error: r.error }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    return new Response(JSON.stringify({ ok: true, tracking: g.tracking }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    return new Response(JSON.stringify({ ok: true, tracking: g.tracking, conPdf: !!pdfUrl }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   // ─── REENVIAR LA GUÍA AL COMPRADOR ─────────────────────────────────────────
