@@ -96,6 +96,8 @@ export function useTicketDelPedido(
       branch: sede,
       guide,
       fase: pedido.tracking_phase,
+      // Solo llega cuando el servidor ya se la soltó (no debe nada).
+      pickupCode: pedido.shalom_pickup_code ?? null,
     })
   }, [pedido, pdf, sede, token, store.logo_url])
 }

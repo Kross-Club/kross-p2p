@@ -20,6 +20,7 @@
 // vendedor vea qué preguntó y qué se le contestó. Sin React, para probarse.
 
 import type { Ticket } from './checkout/ticket'
+import { pasosDelEnvio } from './checkout/ticket'
 import { nombreAgencia } from './checkout/ticket'
 import { stageVigente } from './order-stages'
 import { isPickupDispatch } from './session'
@@ -95,7 +96,8 @@ export function preguntasRapidas(p: PedidoConPreguntas, ticket: Ticket | null, c
 
   const enApp = ctx.enApp === true
   const esRecojo = isPickupDispatch(p.dispatch_type)
-  const pasos = ticket?.pasos ?? []
+  // Solo los pasos del ENVÍO: la boleta no es un tramo y correría `PASO`.
+  const pasos = pasosDelEnvio(ticket?.pasos ?? [])
   const i = pasos.findIndex(s => s.estado === 'actual')
   const entregado = etapa === 'entregado' || (pasos.length > 0 && i < 0)
   if (entregado) return ENTREGADO

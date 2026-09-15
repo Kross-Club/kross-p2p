@@ -460,6 +460,10 @@ export const COPY = {
   // comprador de vuelta sin depender de WhatsApp. La pantalla pide instalarla
   // con el MOTIVO —que le avisemos cuando llegue—, no con la mecánica.
   doneTimelineTitle: 'Así va tu pedido',
+  // La barra fija de arriba (14-set-2026): la página se recarga para ver el
+  // avance, y decirlo es más barato que un sondeo eterno.
+  doneRefreshHint: 'Actualiza la página para ver dónde está tu pedido.',
+  doneRefresh: 'Actualizar',
   doneInstallQuestion: '¿Te gustaría que te avisemos cuando llegue tu pedido?',
   doneInstallBody: (tienda: string) =>
     `Dale seguimiento y haz tus consultas desde la app de ${tienda}. Se instala con un clic.`,

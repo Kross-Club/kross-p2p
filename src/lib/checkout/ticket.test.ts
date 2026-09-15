@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { initialCheckoutState } from './machine'
-import { buildTicket, etaEnPalabras } from './ticket'
+import { pasosDelEnvio, buildTicket, etaEnPalabras } from './ticket'
 import type { AgencyBranch, CheckoutState } from './types'
 
 const SEDE: AgencyBranch = {
@@ -129,7 +129,7 @@ describe('ticket · agencia con adelanto pagado', () => {
     expect(sinSaldo.pasos.find(p => p.label === 'Llegó a la agencia')?.accion).toBeUndefined()
   })
   it('el DNI y la clave viven en el paso del recojo, con la sede', () => {
-    expect(t.pasos.at(-1)?.detail).toBe('En Shalom · Juliaca Centro, con tu DNI y tu clave de recojo.')
+    expect(t.pasos.at(-1)?.detail).toBe('En Shalom · Juliaca Centro, con el DNI 12345678 y tu clave de recojo.')
   })
   it('el plazo del courier va en "en camino", sin nombrar canal de aviso', () => {
     expect(t.pasos.find(p => p.label === 'En camino a Shalom')?.detail).toBe('Suele tardar 2 días.')
@@ -214,7 +214,7 @@ describe('ticket · la sede aún no cargó', () => {
     const t = buildTicket({ state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: null })
     expect(t.lines.find(l => l.label === 'Lo recoges en')?.value).toBe('Shalom · Juliaca')
     expect(t.lines[0].value).toBe('Tu pack')
-    expect(t.pasos.at(-1)?.detail).toBe('En Shalom · Juliaca, con tu DNI y tu clave de recojo.')
+    expect(t.pasos.at(-1)?.detail).toBe('En Shalom · Juliaca, con el DNI 12345678 y tu clave de recojo.')
   })
   it('agencia sin listado usa el texto libre', () => {
     const s = agencia({ pickup: { agency: 'OTRO', branchId: null, freeText: 'Marvisur, terminal' } })
@@ -280,5 +280,58 @@ describe('etaEnPalabras', () => {
     expect(etaEnPalabras('24h (dia anterior hasta las 11:59pm)')).toBe('24 horas')
     expect(etaEnPalabras('depende')).toBeNull()
     expect(etaEnPalabras(null)).toBeNull()
+  })
+})
+
+
+// ─── 14-set-2026: la constancia, la guía y la boleta viven en sus pasos ──────
+describe('cada paso lleva lo suyo', () => {
+  const GUIA = { courier: 'SHALOM', numero: '80574902', codigo: 'CJTW', oseId: null, href: '/guia/tok' }
+  const base = () => ({ state: agencia(), price: 189, packName: null, paid: true, unpaid: false, branch: SEDE })
+
+  it('el comprobante va en el paso del pago, solo con plata cruzada', () => {
+    const t = buildTicket({ ...base(), receiptCobroId: 'cob-1' })
+    expect(t.pasos[0].tipo).toBe('pago')
+    expect(t.pasos[0].enlace).toEqual({ label: 'Ver mi comprobante', href: '/comprobante/cob-1' })
+    expect(buildTicket({ ...base(), paid: false, receiptCobroId: 'cob-1' }).pasos[0].enlace).toBeUndefined()
+  })
+
+  it('la guía lleva su botón y, con la clave ya suelta, la clave', () => {
+    const sin = buildTicket({ ...base(), guide: GUIA })
+    expect(sin.pasos[1].enlace).toEqual({ label: 'Ver mi guía de Shalom', href: '/guia/tok' })
+    expect(sin.pasos[1].detail).toBe('Guía Shalom: Nro. de orden 80574902 · Código CJTW')
+    const con = buildTicket({ ...base(), guide: GUIA, pickupCode: '4821' })
+    expect(con.pasos[1].detail).toBe('Guía Shalom: Nro. de orden 80574902 · Código CJTW · Clave 4821')
+  })
+
+  it('el saldo se declara en «Llegó a la agencia» para que se pinte el botón de verdad', () => {
+    const t = buildTicket(base())
+    expect(t.pasos.find(p => p.tipo === 'llegada')?.saldo).toBe(94)
+    const todo = buildTicket({ ...base(), state: { ...agencia(), advanceAmount: 189 } })
+    expect(todo.pasos.find(p => p.tipo === 'llegada')?.saldo).toBeUndefined()
+  })
+
+  it('la boleta solo existe para quien pagó todo, pendiente hasta que Nubefact la emita', () => {
+    const mitad = buildTicket(base())
+    expect(mitad.pasos.some(p => p.tipo === 'boleta')).toBe(false)
+    const todo = buildTicket({ ...base(), state: { ...agencia(), advanceAmount: 189 } })
+    expect(etiquetas(todo).slice(0, 3)).toEqual(['hecho:Pago recibido', 'pendiente:Boleta electrónica', 'actual:Guía de envío emitida'])
+    expect(todo.pasos[1].accion).toBe('Ver mi boleta')
+    const emitida = buildTicket({ ...base(), state: { ...agencia(), advanceAmount: 189 }, boletaUrl: 'https://nubefact/b.pdf' })
+    expect(emitida.pasos[1]).toMatchObject({ tipo: 'boleta', estado: 'hecho', enlace: { label: 'Ver mi boleta', href: 'https://nubefact/b.pdf' } })
+    // Sin pago cruzado no hay venta que facturar.
+    expect(buildTicket({ ...base(), paid: false, state: { ...agencia(), advanceAmount: 189 } }).pasos.some(p => p.tipo === 'boleta')).toBe(false)
+  })
+
+  it('pasosDelEnvio deja fuera la boleta: el chat y las preguntas cuentan solo el camino', () => {
+    const todo = buildTicket({ ...base(), state: { ...agencia(), advanceAmount: 189 }, guide: GUIA, fase: 'ENTREGADO' })
+    expect(todo.pasos.some(p => p.tipo === 'boleta')).toBe(true)
+    const envio = pasosDelEnvio(todo.pasos)
+    expect(envio.map(p => p.tipo)).toEqual(['pago', 'guia', 'camino', 'llegada', 'recojo'])
+    expect(envio.every(p => p.estado === 'hecho')).toBe(true)
+  })
+
+  it('el recojo nombra el número del DNI, no a la persona', () => {
+    expect(buildTicket(base()).pasos.at(-1)?.detail).toBe('En Shalom · Juliaca Centro, con el DNI 12345678 y tu clave de recojo.')
   })
 })

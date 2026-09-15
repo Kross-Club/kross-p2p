@@ -18,6 +18,7 @@
 // —al comprador nunca se le dice que su pago no existe— vive en un solo lugar.
 
 import type { AgencyBranch, CheckoutState } from './types'
+import { enlaceDeComprobante } from '../comprobante'
 
 export interface TicketInput {
   state: CheckoutState
@@ -53,6 +54,15 @@ export interface TicketInput {
    *  que RECARGAR sirva de algo: sin ella el recorrido solo sabe si la guía
    *  existe, y el comprador que vuelve a mirar ve siempre lo mismo. */
   fase?: string | null
+  /** La clave de recojo de Shalom, SOLO cuando el servidor ya se la soltó al
+   *  comprador (`get-session` la manda cuando no debe nada). Con ella el paso
+   *  de la guía la enseña junto al número y el código: es lo que va a
+   *  necesitar en el mostrador, y lo que se le prometió al pagar todo. */
+  pickupCode?: string | null
+  /** 🔮 La boleta electrónica (Nubefact), cuando exista. Solo aplica a quien
+   *  pagó el pedido completo; mientras no haya URL el paso se enseña
+   *  pendiente, con su botón apagado. */
+  boletaUrl?: string | null
 }
 
 export interface TicketGuide {
@@ -78,8 +88,14 @@ export interface TicketLine {
   aside?: string
 }
 
+/** Qué paso es, con un nombre que no cambia aunque la etiqueta sí (la
+ *  agencia va en el label). Es lo que usan el chat y las preguntas rápidas
+ *  para razonar sin contar posiciones. */
+export type TipoDePaso = 'pago' | 'boleta' | 'guia' | 'camino' | 'llegada' | 'recojo' | 'preparando' | 'entrega'
+
 /** Un paso del recorrido del pedido, como lo ve el comprador. */
 export interface TicketStep {
+  tipo: TipoDePaso
   label: string
   /** Lo que ese paso implica para él: cuánto, dónde, con qué. */
   detail?: string
@@ -87,6 +103,16 @@ export interface TicketStep {
    *  decoración: el saldo se paga desde el pedido y nunca en el mostrador, y
    *  enseñarlo apagado ahora es lo que hace que se reconozca después. */
   accion?: string
+  /** Con qué dibujo va `accion`: la billetera (pagar) o el documento (boleta). */
+  accionIcono?: 'pago' | 'documento'
+  /** El botón VIVO de ese paso: la constancia del pago, la guía del courier,
+   *  la boleta. Abre en otra pestaña; una captura del recorrido sigue diciendo
+   *  lo mismo sin él. */
+  enlace?: { label: string; href: string }
+  /** Lo que falta pagar en ESE paso (el saldo en «Llegó a la agencia»). Con
+   *  esto quien pinta puede poner el botón de verdad —el que abre Yape— en
+   *  vez del apagado, cuando el pedido ya lo permite. */
+  saldo?: number
   estado: 'hecho' | 'actual' | 'pendiente'
 }
 
@@ -223,20 +249,38 @@ export function buildTicket(i: TicketInput): Ticket {
   const plazo = etaEnPalabras(s.provinciaConfig?.eta)
   const cobrado = advance > 0 ? (paid && !unpaid) : true
 
+  // La constancia va EN el paso del pago (14-set-2026): antes colgaba de la
+  // cabecera, lejos de la línea que la explica. Solo con plata cruzada.
+  const comprobante = (paid && i.receiptCobroId) || null
   const crudos: Omit<TicketStep, 'estado'>[] = [
     advance > 0 && !cobrado
-      ? { label: 'Pedido registrado', detail: `Un asesor te escribe para coordinar tu adelanto de ${soles(advance)}.` }
-      : { label: advance > 0 ? 'Pago recibido' : 'Pedido registrado', detail: advance > 0 ? `${soles(advance)} por Yape.` : undefined },
+      ? { tipo: 'pago', label: 'Pedido registrado', detail: `Un asesor te escribe para coordinar tu adelanto de ${soles(advance)}.` }
+      : {
+          tipo: 'pago',
+          label: advance > 0 ? 'Pago recibido' : 'Pedido registrado',
+          detail: advance > 0 ? `${soles(advance)} por Yape.` : undefined,
+          enlace: comprobante ? { label: 'Ver mi comprobante', href: enlaceDeComprobante(comprobante) } : undefined,
+        },
   ]
 
+  // Solo el NÚMERO del documento (14-set-2026): el nombre pudo cambiar en el
+  // camino, y lo que importa en el mostrador es que recoge el titular de ese
+  // DNI, con la dirección de la agencia.
+  const conDni = dni ? `con el DNI ${dni}` : 'con tu DNI'
   if (isAgency) {
+    // La clave, pegada al número y al código de la guía cuando el servidor ya
+    // la soltó (pagó todo, o pagó el saldo): es lo que lleva al mostrador.
+    const clave = i.pickupCode ? ` · Clave ${i.pickupCode}` : ''
     crudos.push(
       {
+        tipo: 'guia',
         label: 'Guía de envío emitida',
-        detail: guide ? `${guide.line.label}: ${guide.line.value}` : 'Te avisaremos a tu celular apenas salga.',
+        detail: guide ? `${guide.line.label}: ${guide.line.value}${clave}` : 'Te avisaremos a tu celular apenas salga.',
+        enlace: guide ? { label: `Ver mi guía de ${guide.button}`, href: guide.href } : undefined,
       },
-      { label: `En camino a ${agencia}`, detail: plazo ? `Suele tardar ${plazo}.` : undefined },
+      { tipo: 'camino', label: `En camino a ${agencia}`, detail: plazo ? `Suele tardar ${plazo}.` : undefined },
       {
+        tipo: 'llegada',
         // Corto a propósito (07-set-2026): el párrafo largo explicaba la
         // mecánica del pago en un momento en el que todavía no toca. Lo que
         // hace falta es que reconozca el BOTÓN cuando llegue, y por eso se
@@ -249,17 +293,20 @@ export function buildTicket(i: TicketInput): Ticket {
           ? `Paga tu saldo de ${soles(rest)} desde aquí y te damos tu clave de recojo.`
           : 'Te avisaremos a tu celular, con tu clave de recojo.',
         accion: rest > 0 ? `Pagar ${soles(rest)} con Yape` : undefined,
+        saldo: rest > 0 ? rest : undefined,
       },
-      { label: 'Recojo', detail: `En ${destino}, con tu DNI y tu clave de recojo.` },
+      { tipo: 'recojo', label: 'Recojo', detail: `En ${destino}, ${conDni} y tu clave de recojo.` },
     )
   } else {
     crudos.push(
-      { label: 'Preparando tu pedido' },
+      { tipo: 'preparando', label: 'Preparando tu pedido' },
       {
+        tipo: 'camino',
         label: `En camino a ${destino}`,
         detail: [plazo ? `Suele tardar ${plazo}.` : null, 'Te avisaremos a tu celular cuando salga.'].filter(Boolean).join(' '),
       },
       {
+        tipo: 'entrega',
         label: 'Entrega',
         detail: rest > 0 ? `Pagas ${soles(advance > 0 ? rest : price)} al recibir.` : 'No te queda nada por pagar.',
       },
@@ -274,11 +321,34 @@ export function buildTicket(i: TicketInput): Ticket {
     estado: idx < actual ? 'hecho' : idx === actual ? (completado ? 'hecho' : 'actual') : 'pendiente',
   }))
 
+  // ── La boleta electrónica (14-set-2026) ──
+  // Solo para quien pagó el pedido COMPLETO: es el documento tributario de esa
+  // venta, y con un adelanto no hay venta cerrada que facturar. Va justo
+  // después del pago y su estado es SUYO, no el del envío: mientras Nubefact
+  // no exista (🔮) se enseña pendiente, con su botón apagado, aunque el
+  // paquete ya esté en camino. Un paso «hecho» sin documento sería mentir.
+  const pagoTodo = advance > 0 && cobrado && rest === 0
+  if (pagoTodo) {
+    pasos.splice(1, 0, i.boletaUrl
+      ? { tipo: 'boleta', label: 'Boleta electrónica', detail: 'Lista para descargar.', enlace: { label: 'Ver mi boleta', href: i.boletaUrl }, estado: 'hecho' }
+      : { tipo: 'boleta', label: 'Boleta electrónica', detail: 'Te la enviamos por aquí apenas se emita.', accion: 'Ver mi boleta', accionIcono: 'documento', estado: 'pendiente' })
+  }
+
   // La constancia solo se ofrece si hay plata cruzada. Con el adelanto sin
   // cobrar no hay página que abrir, y la regla dura del módulo —al comprador
   // nunca se le dice que su pago no existe— se cumple callándose: no hay botón,
   // y tampoco una explicación de por qué no lo hay.
   return { payment, lines, guide, pasos, receiptCobroId: (paid && i.receiptCobroId) || null }
+}
+
+/**
+ * Los pasos del ENVÍO: todos menos la boleta. Es lo que usan el chat y las
+ * preguntas rápidas para saber en qué va el paquete —cuánto avanzó, si ya
+ * llegó— sin que un documento pendiente cuente como un tramo del camino ni
+ * impida dar por entregado un pedido que el courier ya entregó.
+ */
+export function pasosDelEnvio(pasos: TicketStep[]): TicketStep[] {
+  return pasos.filter(p => p.tipo !== 'boleta')
 }
 
 /**

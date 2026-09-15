@@ -12,6 +12,7 @@
 // hermana nunca dicen cosas distintas del mismo envío. Sin React, para poder
 // probarlo.
 
+import { pasosDelEnvio } from './checkout/ticket'
 import type { TicketStep } from './checkout/ticket'
 import { stageVigente } from './order-stages'
 import { isPickupDispatch } from './session'
@@ -49,8 +50,11 @@ export interface EstadoDeLaTarjeta {
 const RECOJO = { EN_CAMINO: 2, LLEGO: 3 } as const
 const DOMICILIO = { PREPARANDO: 1 } as const
 
-export function estadoDeLaTarjeta(p: PedidoDeLaTarjeta, pasos: TicketStep[]): EstadoDeLaTarjeta {
+export function estadoDeLaTarjeta(p: PedidoDeLaTarjeta, todos: TicketStep[]): EstadoDeLaTarjeta {
   const esRecojo = isPickupDispatch(p.dispatch_type)
+  // Solo el envío: la boleta (pendiente hasta que Nubefact exista) no es un
+  // tramo del camino y no puede correr los índices de abajo.
+  const pasos = pasosDelEnvio(todos)
 
   // Cierres. Sin barra: un recorrido que ya no va a ninguna parte no
   // tranquiliza a nadie. El chat sigue abierto para retomar la venta.
