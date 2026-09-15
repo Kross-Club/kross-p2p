@@ -350,3 +350,24 @@ describe('cobrado y esperando guía a mano', () => {
     expect(esperaGuiaManual({ shalom_order_status: 'FAILED', tracking_ose_id: '990011' })).toBe(false)
   })
 })
+
+// ─── §64 · el courier a domicilio (Eva) ──────────────────────────────────────
+import { courierDelPedido as _courier } from './order-tracking'
+describe('el domicilio con courier (Eva, §64)', () => {
+  it('EN_TRANSITO en un domicilio es «en camino», no una fase de agencia que la línea no tiene', () => {
+    // Antes el mapeo solo conocía `transito` (agencia): un domicilio con el
+    // motorizado en ruta se quedaba clavado en «confirmado».
+    expect(pasoActual({ stage: 'confirmado', dispatch_type: 'MOTORIZADO_LIMA', tracking_courier: 'EVA', tracking_phase: 'EN_TRANSITO' })?.key)
+      .toBe('en_camino')
+    expect(pasoActual({ stage: 'confirmado', dispatch_type: 'MOTORIZADO_LIMA', tracking_courier: 'EVA', tracking_phase: 'ENTREGADO' })?.key)
+      .toBe('entregado')
+  })
+  it('sin fase de Eva, un domicilio pagado sigue en «confirmado» (preparando)', () => {
+    expect(pasoActual({ stage: 'confirmado', dispatch_type: 'MOTORIZADO_LIMA', tracking_courier: 'EVA', tracking_numero: 'K8X9' })?.key)
+      .toBe('confirmado')
+  })
+  it('Eva es un courier que el tablero reconoce', () => {
+    expect(_courier({ tracking_courier: 'EVA' })).toBe('EVA')
+    expect(_courier({ tracking_courier: 'eva' })).toBe('EVA')
+  })
+})

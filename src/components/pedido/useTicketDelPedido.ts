@@ -15,6 +15,7 @@ import type { AgencyBranch } from '../../lib/checkout/types'
 import { pickupBranchIdOf } from '../../lib/session'
 import { enlaceDeGuia } from '../../lib/hoja-de-guia'
 import { pdfDeGuiaAEnsenar } from '../../../supabase/functions/_shared/guia-pdf.ts'
+import { NOMBRE_EVA } from '../../../supabase/functions/_shared/eva.ts'
 import { enlaceDeArchivoDeTienda, enlaceDeTienda } from '../../lib/archivos'
 import { useStore } from '../../lib/store-context'
 import { cobrosDelPedido } from '../../lib/order-money'
@@ -107,6 +108,8 @@ export function useTicketDelPedido(
       pickupCode: pedido.shalom_pickup_code ?? null,
       // La boleta (§58), cuando Nubefact ya la emitió.
       boletaUrl: (pedido.boleta_estado === 'EMITIDA' || pedido.boleta_estado === 'ACEPTADA') ? (pedido.boleta_url ?? null) : null,
+      // El courier del domicilio (§64), cuando ya está registrado en él.
+      courierDomicilio: pedido.tracking_courier === 'EVA' ? NOMBRE_EVA : null,
     })
   }, [pedido, pdf, sede, token, store])
 }

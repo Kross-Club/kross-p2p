@@ -63,6 +63,11 @@ export interface TicketInput {
    *  pagó el pedido completo; mientras no haya URL el paso se enseña
    *  pendiente, con su botón apagado. */
   boletaUrl?: string | null
+  /** Quién lleva un DOMICILIO cuando es un courier tercero (Eva, §64): se
+   *  nombra en el paso «en camino» porque el motorizado que toca la puerta va
+   *  con ese uniforme, y decirlo evita el «¿y esto quién es?». `null` = el
+   *  motorizado propio o todavía no se sabe: no se nombra a nadie. */
+  courierDomicilio?: string | null
 }
 
 export interface TicketGuide {
@@ -303,7 +308,11 @@ export function buildTicket(i: TicketInput): Ticket {
       {
         tipo: 'camino',
         label: `En camino a ${destino}`,
-        detail: [plazo ? `Suele tardar ${plazo}.` : null, 'Te avisaremos a tu celular cuando salga.'].filter(Boolean).join(' '),
+        detail: [
+          i.courierDomicilio ? `Con motorizado de ${i.courierDomicilio}.` : null,
+          plazo ? `Suele tardar ${plazo}.` : null,
+          'Te avisaremos a tu celular cuando salga.',
+        ].filter(Boolean).join(' '),
       },
       {
         tipo: 'entrega',

@@ -3185,3 +3185,49 @@ REVOKE ALL ON FUNCTION public.siguiente_numero_de_boleta(text) FROM PUBLIC, anon
 DROP POLICY IF EXISTS "sellers_self_update" ON sellers;
 CREATE POLICY "sellers_self_update" ON sellers
   FOR UPDATE TO authenticated USING (auth_user_id = (select auth.uid()));
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §64 · EVA COURIER: EL REPARTO A DOMICILIO EN LIMA Y CALLAO  (15-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El §60 puso la bandera (`courier_lima_enabled`) y la decisión por pedido
+-- (`reparto_lima`); esto es el courier de verdad detrás: Eva 3.0, de Fly
+-- Express. Un pedido a domicilio en Lima o Callao, pagado y con
+-- `reparto_lima = 'COURIER'`, se registra en Eva por API (`eva-order`), Eva
+-- pasa por el local a recogerlo y avisa cada cambio por webhook
+-- (`eva-webhook`). Diseño en `docs/17-EVA.md`.
+--
+-- El EXPEDIENTE, calcado del de Shalom (§27.c) y Olva (§45): `eva_order_status`
+-- es el candado —se reclama con un UPDATE condicional (… WHERE eva_order_status
+-- IS NULL) antes de llamar a nadie— y el estado final:
+--   PENDING   reclamado, llamando
+--   CREATED   registrado en Eva (el tracking va en `tracking_numero`, con
+--             `tracking_courier = 'EVA'`)
+--   FAILED    no se registró, o NO SE SABE (timeout): el motivo en
+--             `eva_order_reason`, y una persona mira en app.evacourier.pe antes
+--             de reintentar — Eva no permite buscar por nuestro código
+--   SKIPPED   no aplica (courier apagado en la marca)
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_order_status text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_order_reason text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_order_at     timestamptz;
+
+-- El último estado CRUDO de Eva y su hora (REGISTRADO · EN ALMACEN · ASIGNADO
+-- MOTORIZADO · EN RUTA · PUNTO VISITADO · … · ENTREGADO). `tracking_phase`
+-- solo se mueve con dos de ellos (EN RUTA → EN_TRANSITO, ENTREGADO); el resto
+-- se le enseña al vendedor tal cual. Los dos juntos son también la
+-- idempotencia del webhook: mismo estado + misma hora = mismo evento.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_estado       text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_estado_at    timestamptz;
+
+-- El rótulo (PDF) que se pega al paquete, y la foto de la entrega si Eva la
+-- mandó. El rótulo es del VENDEDOR: Eva recoge en su local. El comprador no
+-- necesita documento: le llega el paquete.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_rotulo_url   text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_entrega_foto text;
+
+-- El bucket del rótulo. PÚBLICO con la misma regla que `shalom-guias` (§38):
+-- la ruta lleva el uuid del pedido y el tracking —no se adivinan— y el
+-- documento lo imprime la marca desde su panel, por su dominio.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('eva-rotulos', 'eva-rotulos', true)
+ON CONFLICT (id) DO NOTHING;

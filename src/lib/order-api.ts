@@ -43,6 +43,16 @@ export interface OrderSession {
   /** Quién lleva este pedido a la puerta (§60): 'PROPIO' | 'COURIER'. `null` =
    *  sin decidir (la marca tiene las dos formas) o no va a domicilio. */
   reparto_lima?: string | null
+  /** El reparto con Eva Courier (§64): el expediente del registro (PENDING ·
+   *  CREATED · FAILED · SKIPPED, con su motivo), el último estado crudo de
+   *  Eva, el rótulo para imprimir y la foto de la entrega. El tracking va en
+   *  `tracking_numero` con `tracking_courier = 'EVA'`. */
+  eva_order_status?: string | null
+  eva_order_reason?: string | null
+  eva_estado?: string | null
+  eva_estado_at?: string | null
+  eva_rotulo_url?: string | null
+  eva_entrega_foto?: string | null
   agency_name?: string | null
   /** Sede de recojo elegida (§27.b). Ver `pickupBranchIdOf`. */
   agency_branch_id?: string | null

@@ -1247,10 +1247,27 @@ El toggle vive en *Marca → Entrega a domicilio*, con la misma gate de super ad
 motorizado y por la misma razón: es un contrato de la plataforma con un tercero, no algo que la
 marca enciende sola.
 
-**Lo que NO trae** (🔮): ninguna API de courier. No hay emisión de guía, ni rastreo, ni tarifa.
-Hoy `reparto_lima` es lo que el vendedor necesita saber para despachar, y nada más — el servicio
-todavía se está validando, y construirle una integración a un proveedor sin cerrar sería
-construir sobre una decisión que no está tomada.
+**El courier detrás es Eva** (§64, `17-EVA.md`, el mismo 15-set más tarde): con
+`reparto_lima = 'COURIER'` y el pago cruzado, `eva-order` registra el reparto por API, baja el
+rótulo para que la marca lo pegue al paquete y `eva-webhook` refleja cada estado. Lo de arriba
+—la bandera, la decisión por pedido, por qué son dos y no un OR— no cambió: es la puerta; Eva es
+quien pasa por ella.
+
+### El reparto con Eva Courier ✅ (15-set-2026, §64)
+
+El courier tercero de Lima y Callao ya tiene nombre y API. **Diseño entero en `17-EVA.md`**; acá
+lo que un vendedor necesita saber del pedido:
+
+- Un domicilio en Lima o Callao, **pagado** y con `reparto_lima = 'COURIER'`, se registra solo en
+  Eva. El vendedor ve en el pedido la barra *Envío Eva*: tracking, estado, **Imprimir rótulo** y,
+  si falló, el motivo y «Reintentar».
+- **Eva recoge en el local.** El rótulo va pegado al paquete; el comprador no necesita
+  documento: le llega el paquete y, por el chat, «va en camino» y «entregado».
+- **Si Eva no respondió, se mira antes de reintentar.** Eva no permite buscar por nuestro código;
+  reintentar sin mirar son dos motorizados. El mensaje del chat lo dice cada vez.
+- El **distrito** tiene que estar en la lista de Eva (65): de Lima provincia solo faltan Pucusana,
+  San Bartolo y Punta Hermosa; el Callao entero está. Un pedido de un distrito sin cobertura no se
+  registra y el motivo queda en el pedido.
 
 ### Qué documento enseña el botón de la guía ✅ (15-set-2026)
 

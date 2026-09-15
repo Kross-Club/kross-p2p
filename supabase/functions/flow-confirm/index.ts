@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
   // Despachar: el adelanto verificado autoriza la guía. Uno por courier — cada
   // generador descarta solo los pedidos que no le tocan y trae su propio
   // candado, así que acá no se filtra (mismo bloque que en `pay360-webhook`).
-  for (const fn of ['shalom-order', 'olva-order']) {
+  for (const fn of ['shalom-order', 'olva-order', 'eva-order']) {
     runInBackground(fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/${fn}`, {
       method: 'POST',
       headers: {

@@ -34,6 +34,42 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Eva Courier: el reparto a domicilio en Lima y Callao · **SQL §64** + 2 funciones nuevas + 4 desplegadas + frontend (15-set-2026)
+
+**Qué entra.** El courier detrás de la bandera del §60 ya tiene nombre y API: **Eva 3.0** (Fly
+Express). Un domicilio en Lima o Callao, pagado y con `reparto_lima = 'COURIER'`, se registra
+solo en Eva (`eva-order`), Eva pasa por el local a recogerlo, y cada estado vuelve por webhook
+(`eva-webhook`). La marca imprime el rótulo desde el pedido; el comprador ve «en camino» y
+«entregado». Diseño en `17-EVA.md`.
+
+**Lo que hay que saber para operar.** Eva **no permite buscar un pedido por nuestro código**:
+si la llamada murió sin respuesta, no se sabe si se creó. Por eso un timeout cierra en FAILED y
+el chat dice «mira en app.evacourier.pe antes de reintentar». El distrito tiene que estar en su
+lista (65): de Lima provincia faltan Pucusana, San Bartolo y Punta Hermosa. El cobro en la puerta
+es `EFECTIVO` por el saldo cuando lo hay; Eva lo liquida al cliente de su cuenta.
+
+**Estado: ✅ construido, sin probar contra la cuenta real.** Primero el sandbox
+(`EVA_API_BASE=https://api-test.evacourier.pe`), después producción. Los 41 tests del módulo puro
+cubren distritos, dirección en sus dos formas, cobro, respuesta, estados y firma.
+
+⚠️ **Brecha de paridad anterior a Eva, anotada:** el demo no tiene pedidos a domicilio (todos son
+`AGENCIA_*`), así que ni el reparto propio ni Eva se enseñan ahí. No se parcha tocando el azar del
+generador.
+
+```sql
+-- §64 · eva_order_* + eva_estado + eva_rotulo_url + eva_entrega_foto, bucket eva-rotulos
+```
+Secrets de las funciones: `EVA_API_KEY`, `EVA_WEBHOOK_SECRET` (y `EVA_API_BASE` para el sandbox).
+```
+supabase functions deploy eva-order      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy eva-webhook    --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy flow-confirm   --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+supabase functions deploy order-manage   --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session    --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy integraciones  --project-ref ofdjghntvmrdfjhazfvz
+```
+Webhook en el portal de Eva: `https://ofdjghntvmrdfjhazfvz.supabase.co/functions/v1/eva-webhook`.
+
 ### `auth.uid()` por fila, y tres tablas cuyo RLS no está en el repo · **SQL §63** (15-set-2026)
 
 **El aviso.** *Auth RLS Initialization Plan* en `order_sessions`, `chat_messages`,
@@ -125,9 +161,8 @@ son dos banderas y no un OR: `ofreceDomicilio(tienda, region)` en `_shared/repar
 sola al registrarse; con las dos nace en `null` y el vendedor elige en la barra de dirección
 (`order-manage` · `set_reparto`, que valida contra lo que la marca tiene contratado).
 
-⚠️ **No hay integración de courier** (🔮): ni guía, ni rastreo, ni tarifa. El servicio se está
-validando y `reparto_lima` es solo lo que el vendedor necesita para despachar. Construirle una
-API a un proveedor sin cerrar sería construir sobre una decisión que no está tomada.
+~~⚠️ No hay integración de courier (🔮)~~ — **la hubo el mismo día**: el courier es Eva y su
+integración está en la entrada de arriba (§64, `17-EVA.md`).
 
 ```sql
 -- §60 · stores.courier_lima_enabled + order_sessions.reparto_lima
