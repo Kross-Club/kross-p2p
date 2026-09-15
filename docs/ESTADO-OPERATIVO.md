@@ -34,6 +34,36 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### `auth.uid()` por fila, y tres tablas cuyo RLS no está en el repo · **SQL §63** (15-set-2026)
+
+**El aviso.** *Auth RLS Initialization Plan* en `order_sessions`, `chat_messages`,
+`notifications_log` y `sellers`. Es de **rendimiento**, no de seguridad: una política que llama
+`auth.uid()` suelto lo reevalúa **por cada fila** que examina. Envuelto en un subselect —
+`(select auth.uid())`— Postgres lo resuelve una vez por consulta, y el resultado lógico es
+idéntico. En `order_sessions`, que crece con cada pedido, es la diferencia entre un índice que se
+usa y uno que no.
+
+**Lo que se arregló:** `sellers_self_update`, que es la **única** política de `setup-kross.sql`
+que llama a `auth.uid()`.
+
+⚠️ **Deuda abierta, y es la parte que importa.** Las otras tres tablas tienen políticas en
+producción que **no están en `setup-kross.sql`** — se crearon a mano en el panel en algún
+momento. O sea que el esquema versionado **no describe el RLS real** de las tablas que aíslan los
+pedidos de una marca de los de otra. No se tocaron a ciegas: adivinar ahí se paga caro. Para
+cerrarlo hay que leerlas y traerlas al archivo:
+
+```sql
+select tablename, policyname, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public'
+  and tablename in ('order_sessions','chat_messages','notifications_log');
+```
+
+Sin funciones ni frontend: solo SQL.
+```sql
+-- §63 · sellers_self_update con (select auth.uid())
+```
+
 ### El `search_path` de tres funciones · **SQL §62**, sin código (15-set-2026)
 
 **Qué marcó el linter.** Tres *Function Search Path Mutable*: `siguiente_numero_de_boleta`,

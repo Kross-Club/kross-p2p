@@ -316,6 +316,7 @@ DROP POLICY IF EXISTS "sellers_read" ON sellers;
 CREATE POLICY "sellers_read" ON sellers
   FOR SELECT TO public USING (true);
 
+-- ⚠️ La REDEFINE el §63 con `(select auth.uid())` (ver la nota de allá).
 DROP POLICY IF EXISTS "sellers_self_update" ON sellers;
 CREATE POLICY "sellers_self_update" ON sellers
   FOR UPDATE TO authenticated USING (auth_user_id = auth.uid());
@@ -3150,3 +3151,37 @@ $$;
 -- esta sección se corre sobre una base donde la función se creó de otra forma,
 -- más vale dejarlo dicho que suponerlo.
 REVOKE ALL ON FUNCTION public.siguiente_numero_de_boleta(text) FROM PUBLIC, anon, authenticated;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §63 · `auth.uid()` UNA VEZ POR CONSULTA, NO UNA POR FILA  (15-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El linter marcó *Auth RLS Initialization Plan*. Es de RENDIMIENTO, no de
+-- seguridad: una política que llama `auth.uid()` suelto lo reevalúa **por cada
+-- fila** que examina. Envolverlo en un subselect —`(select auth.uid())`— hace
+-- que Postgres lo resuelva como InitPlan, UNA vez por consulta, y el resultado
+-- lógico es idéntico: la función es STABLE y no depende de la fila.
+--
+-- En una tabla de cientos de filas no se nota. En `order_sessions`, que crece
+-- con cada pedido, la diferencia es la que hay entre un índice que se usa y uno
+-- que no.
+--
+-- ⚠️ ACÁ SOLO ESTÁ `sellers_self_update`, que es la ÚNICA política de este
+-- archivo que llama a `auth.uid()`. El linter marca además `order_sessions`,
+-- `chat_messages` y `notifications_log`: esas políticas existen en producción
+-- pero **no están en este archivo**, así que se crearon a mano en el panel de
+-- Supabase en algún momento. No se tocan a ciegas —son las que aíslan los
+-- pedidos de una marca de los de otra, y adivinar ahí se paga caro—; hay que
+-- leerlas primero con:
+--
+--   select tablename, policyname, cmd, qual, with_check
+--   from pg_policies
+--   where schemaname = 'public'
+--     and tablename in ('order_sessions','chat_messages','notifications_log');
+--
+-- y traerlas a este archivo con el mismo arreglo. Mientras eso no pase, el
+-- esquema versionado NO describe el RLS real de esas tres tablas, que es deuda
+-- abierta (`ESTADO-OPERATIVO.md`).
+DROP POLICY IF EXISTS "sellers_self_update" ON sellers;
+CREATE POLICY "sellers_self_update" ON sellers
+  FOR UPDATE TO authenticated USING (auth_user_id = (select auth.uid()));
