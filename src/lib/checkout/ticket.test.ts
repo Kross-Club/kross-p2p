@@ -292,7 +292,7 @@ describe('cada paso lleva lo suyo', () => {
   it('el comprobante va en el paso del pago, solo con plata cruzada', () => {
     const t = buildTicket({ ...base(), receiptCobroId: 'cob-1' })
     expect(t.pasos[0].tipo).toBe('pago')
-    expect(t.pasos[0].enlace).toEqual({ label: 'Ver mi comprobante', href: '/comprobante/cob-1' })
+    expect(t.pasos[0].enlace).toEqual({ label: 'Ver mi comprobante de pago', href: '/comprobante/cob-1' })
     expect(buildTicket({ ...base(), paid: false, receiptCobroId: 'cob-1' }).pasos[0].enlace).toBeUndefined()
   })
 
@@ -316,9 +316,9 @@ describe('cada paso lleva lo suyo', () => {
     expect(mitad.pasos.some(p => p.tipo === 'boleta')).toBe(false)
     const todo = buildTicket({ ...base(), state: { ...agencia(), advanceAmount: 189 } })
     expect(etiquetas(todo).slice(0, 3)).toEqual(['hecho:Pago recibido', 'pendiente:Boleta electrónica', 'actual:Guía de envío emitida'])
-    expect(todo.pasos[1].accion).toBe('Ver mi boleta')
+    expect(todo.pasos[1].accion).toBe('Ver mi boleta electrónica')
     const emitida = buildTicket({ ...base(), state: { ...agencia(), advanceAmount: 189 }, boletaUrl: 'https://nubefact/b.pdf' })
-    expect(emitida.pasos[1]).toMatchObject({ tipo: 'boleta', estado: 'hecho', enlace: { label: 'Ver mi boleta', href: 'https://nubefact/b.pdf' } })
+    expect(emitida.pasos[1]).toMatchObject({ tipo: 'boleta', estado: 'hecho', enlace: { label: 'Ver mi boleta electrónica', href: 'https://nubefact/b.pdf' } })
     // Sin pago cruzado no hay venta que facturar.
     expect(buildTicket({ ...base(), paid: false, state: { ...agencia(), advanceAmount: 189 } }).pasos.some(p => p.tipo === 'boleta')).toBe(false)
   })

@@ -66,4 +66,15 @@ describe('enlaceDeArchivoDeTienda · absoluto, por el dominio de la tienda', () 
       .toBe('https://monoshop.fit/guia/tok')
     expect(enlaceDeTienda(null, '/guia/tok')).toBe('/guia/tok')
   })
+
+  // El comprobante del pago viaja igual que la guía (15-set-2026): se copia del
+  // chat y se reenvía, y desde el panel el vendedor puede estar en la raíz.
+  it('el comprobante también sale por el dominio de la marca, nunca por la raíz', () => {
+    const conDominio = { slug: 'monoshop', custom_domain: 'monoshop.fit', custom_domain_verified: true }
+    const soloSlug = { slug: 'monoshop', custom_domain: null, custom_domain_verified: false }
+    expect(enlaceDeTienda(conDominio, '/comprobante/cob-1')).toBe('https://monoshop.fit/comprobante/cob-1')
+    expect(enlaceDeTienda(soloSlug, '/comprobante/cob-1')).toBe('https://monoshop.krossclub.app/comprobante/cob-1')
+    // Sin marca resuelta, relativo: en el pedido del comprador ya es su dominio.
+    expect(enlaceDeTienda(null, '/comprobante/cob-1')).toBe('/comprobante/cob-1')
+  })
 })

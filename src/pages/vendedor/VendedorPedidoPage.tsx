@@ -506,7 +506,7 @@ function MessageBubble({ msg, audio, equipo = [], pedido, tienda }: {
     const cobroId = msg.cobro_id ?? cobroDelAviso(msg, cobrosDelPedido(pedido))?.id
     if (cobroId) {
       return (
-        <TarjetaDeComprobante texto={msg.body} cobroId={cobroId}
+        <TarjetaDeComprobante texto={msg.body} cobroId={cobroId} tienda={tienda}
           hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
       )
     }

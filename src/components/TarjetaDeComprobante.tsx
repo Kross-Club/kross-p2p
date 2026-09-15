@@ -1,5 +1,8 @@
 import { Check, ExternalLink } from 'lucide-react'
 import { enlaceDeComprobante } from '../lib/comprobante'
+import { enlaceDeTienda } from '../lib/archivos'
+import { useStore } from '../lib/store-context'
+import type { TiendaConDominio } from '../lib/dominio'
 
 // ─── "Gracias por tu pago" + su constancia ───────────────────────────────────
 //
@@ -17,12 +20,22 @@ import { enlaceDeComprobante } from '../lib/comprobante'
 // cuando el otro escribe "el comprobante dice otra cosa", la respuesta tiene que
 // estar en la misma pantalla donde se lo pregunta.
 
-export default function TarjetaDeComprobante({ texto, cobroId, hora }: {
+export default function TarjetaDeComprobante({ texto, cobroId, hora, tienda }: {
   /** El cuerpo del mensaje: el mismo que llegó por push y por WhatsApp. */
   texto: string | null
   cobroId: string
   hora?: string
+  /** La marca del pedido, cuando quien pinta no está en su dominio (el panel
+   *  del vendedor desde la raíz). Sin ella, la del contexto. */
+  tienda?: TiendaConDominio | null
 }) {
+  // Absoluto y por el dominio de LA TIENDA, igual que la guía (15-set-2026):
+  // esta constancia se copia y se reenvía, y desde el panel el vendedor puede
+  // estar en `krossclub.app` —la raíz de la plataforma, la dirección que nunca
+  // debe salir en un enlace, porque delata el subdominio del comerciante—.
+  const { store } = useStore()
+  const href = enlaceDeTienda(tienda ?? store, enlaceDeComprobante(cobroId))
+
   return (
     <div className="flex justify-center mb-3">
       {/* Ancho FIJO hasta 420px, no el del contenido: con un texto corto
@@ -39,7 +52,7 @@ export default function TarjetaDeComprobante({ texto, cobroId, hora }: {
         {/* `rel="noopener"` porque abre en otra pestaña: sin eso la página nueva
             recibe una referencia a esta y puede navegarla. */}
         <a
-          href={enlaceDeComprobante(cobroId)}
+          href={href}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-black"
@@ -49,7 +62,7 @@ export default function TarjetaDeComprobante({ texto, cobroId, hora }: {
           // el texto invisible — lima sobre lima.
           style={{ background: 'var(--ok-bg)', color: 'var(--ok-on)' }}
         >
-          Ver mi comprobante <ExternalLink size={13} />
+          Ver mi comprobante de pago <ExternalLink size={13} />
         </a>
 
         {hora && <p className="text-[10px] text-gray-400 mt-1.5 text-center">{hora}</p>}
