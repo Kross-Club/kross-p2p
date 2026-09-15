@@ -283,3 +283,23 @@ export const esRuc = (v: unknown): boolean => /^(10|20)\d{9}$/.test(String(v ?? 
  * inventa ninguna: se copia de Nubefact y se comprueba con «Probar».
  */
 export const esSerieDeBoleta = (v: unknown): boolean => /^B[A-Z0-9]{3}$/.test(String(v ?? '').trim().toUpperCase())
+
+/**
+ * ¿La reserva que el pedido tiene guardada todavía sirve? (15-set-2026)
+ *
+ * Cuando una emisión falla, la serie y el número se QUEDAN en el pedido para
+ * reintentar con ellos y no dejar huecos en el correlativo. Pero si la marca
+ * corrigió la serie —el caso más común, porque la que tenía no estaba
+ * habilitada en su cuenta y Nubefact la rechaza con el `21`—, ese número es de
+ * OTRA numeración: reintentar con él repite el mismo error para siempre. Ahí la
+ * reserva se descarta y se pide un número de la serie vigente. El hueco que
+ * queda es en una serie que nunca emitió nada, así que no hay hueco.
+ *
+ * Solo se aplica a boletas que NUNCA salieron: la emitida se responde antes,
+ * desde el `boleta_url` guardado en el pedido.
+ */
+export function reservaSigueValiendo(guardada: unknown, laDeLaTienda: unknown): boolean {
+  const a = String(guardada ?? '').trim().toUpperCase()
+  const b = String(laDeLaTienda ?? '').trim().toUpperCase()
+  return a !== '' && a === b
+}
