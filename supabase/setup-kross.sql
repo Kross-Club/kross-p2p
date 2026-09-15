@@ -3188,7 +3188,6 @@ CREATE POLICY "sellers_self_update" ON sellers
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
-<<<<<<< HEAD
 -- §64 · EVA COURIER: EL REPARTO A DOMICILIO EN LIMA Y CALLAO  (15-set-2026)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- El §60 puso la bandera (`courier_lima_enabled`) y la decisión por pedido
@@ -3232,7 +3231,7 @@ ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS eva_entrega_foto text;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('eva-rotulos', 'eva-rotulos', true)
 ON CONFLICT (id) DO NOTHING;
-=======
+
 -- §65 · EL RLS DE `order_sessions` Y `chat_messages`, AL FIN EN EL REPO  (15-set-2026)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- El §63 dejó la deuda escrita: estas dos tablas tenían políticas en producción
@@ -3265,4 +3264,3 @@ ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "service role only" ON chat_messages;
 CREATE POLICY "service role only" ON chat_messages
   FOR ALL USING ((select auth.role()) = 'service_role');
->>>>>>> fix/rls-al-repo
