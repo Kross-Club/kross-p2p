@@ -18,6 +18,7 @@ import { anotar, anotarRespuesta, anotarSinRespuesta } from './api-eventos.ts'
 import { normalizeYear } from './olva.ts'
 import { idsDeGuia, mensajeDeClave, mensajeDeGuia } from './mensaje-de-guia.ts'
 import { esPdf, parseOrderResponse } from './shalom-orders.ts'
+import { SUFIJO_GUIA, SUFIJO_ROTULO, pdfMejorable } from './guia-pdf.ts'
 import type { TrackedRow } from './tracking.ts'
 import { enviarSms, tiendaParaSms } from './sms.ts'
 import { enlaceDelPedido, smsGuia } from './sms-texto.ts'
@@ -232,24 +233,8 @@ export async function authShalomPro(storeId: string): Promise<AuthShalomPro | nu
  *  `reponerPdfDeGuia` y a «Reenviar» cambiar un rótulo por la guía cuando por
  *  fin baja. Los PDF de antes del 14-set-2026 no tienen sufijo: no se sabe
  *  cuál de los dos son, así que se tratan como mejorables. */
-const SUFIJO_GUIA = '-guia.pdf'
-const SUFIJO_ROTULO = '-rotulo.pdf'
-
-/** ¿Esta URL es el rótulo (la etiqueta del paquete) y no la guía con QR? */
-export function esRotuloDeGuia(url: string | null | undefined): boolean {
-  return typeof url === 'string' && url.endsWith(SUFIJO_ROTULO)
-}
-
-/** ¿Esta URL es, seguro, el voucher de Shalom (la guía con QR)? */
-export function esGuiaConfirmada(url: string | null | undefined): boolean {
-  return typeof url === 'string' && url.endsWith(SUFIJO_GUIA)
-}
-
-/** ¿Vale la pena volver a pedir el voucher para este mensaje? Sin PDF, con el
- *  rótulo, o con un PDF de antes que no dice qué es. */
-export function pdfMejorable(url: string | null | undefined): boolean {
-  return !url || !esGuiaConfirmada(url)
-}
+// Las reglas viven en `guia-pdf.ts` (puro): también las lee la app.
+export { esRotuloDeGuia, esGuiaConfirmada, pdfMejorable } from './guia-pdf.ts'
 
 /**
  * Baja el voucher (y si no, el rótulo) y lo sube al bucket. Devuelve la URL

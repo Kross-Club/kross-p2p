@@ -14,6 +14,7 @@ import { AgencyService } from '../../lib/checkout/services/AgencyService'
 import type { AgencyBranch } from '../../lib/checkout/types'
 import { pickupBranchIdOf } from '../../lib/session'
 import { enlaceDeGuia } from '../../lib/hoja-de-guia'
+import { pdfDeGuiaAEnsenar } from '../../../supabase/functions/_shared/guia-pdf.ts'
 import { useStore } from '../../lib/store-context'
 import { cobrosDelPedido } from '../../lib/order-money'
 import type { OrderMessage, OrderSession } from '../../lib/order-api'
@@ -66,8 +67,10 @@ export function useTicketDelPedido(
   }, [agencia, branchId])
 
   // La guía, como la ve el ticket: el PDF del courier si el chat ya lo trae, y
-  // si no la hoja de guía de la app. Misma regla que la tarjeta del chat.
-  const pdf = mensajes.find(m => m.type === 'guia' && m.media_url)?.media_url ?? null
+  // si no la hoja de guía de la app. Con varios mensajes de guía (un
+  // «Reenviar» que consiguió el voucher), el confirmado o el más reciente —
+  // no el primero, que era el del rótulo (15-set-2026).
+  const pdf = pdfDeGuiaAEnsenar(mensajes)
 
   return useMemo(() => {
     if (!pedido) return null
