@@ -1,8 +1,10 @@
 # 16 · LA BOLETA ELECTRÓNICA, CON NUBEFACT
 
-> Estado: **✅ construido, sin probar contra una cuenta real** (15-set-2026). Falta la primera
-> emisión en la cuenta DEMO de Nubefact de una marca y después la de producción (§ *Puesta en
-> marcha*). Leer junto con `01-SALES-ENGINE.md` § *Cada paso lleva lo suyo* (el paso «Boleta
+> Estado: **✅ construido y probado contra una cuenta real** (15-set-2026). La primera boleta de
+> Kross —`BBB1-2`, en la cuenta de Mono Shop— salió, la SUNAT la tomó y el comprador la ve en su
+> pedido. Lo que esa prueba enseñó está en §2.b (la serie) y §3 (la numeración): léelos antes de
+> dar de alta a la siguiente marca, porque los dos tropiezos se repiten con cada cuenta nueva.
+> Leer junto con `01-SALES-ENGINE.md` § *Cada paso lleva lo suyo* (el paso «Boleta
 > electrónica» del pedido) y `13-CONEXIONES.md` (los eventos `boleta.*`).
 > Manual del proveedor: *NUBEFACT_DOC_API_JSON_V1* (3.0, 07/09/2026).
 
@@ -179,11 +181,16 @@ y no tiene por qué llenarse la pantalla.
 
 1. Correr `setup-kross.sql` (§58: columnas, `siguiente_numero_de_boleta`).
 2. Desplegar `flow-confirm`, `order-manage`, `manage-store`, `get-session`, `integraciones`.
-3. En la marca: cuenta **DEMO** de Nubefact (`nubefact.com/register` → *API (Integración)*),
-   pegar ruta y token en *Marca*, RUC, razón social, serie, encender.
-4. Un pedido de prueba pagado completo → en `order_sessions` `boleta_estado`, `boleta_url`; en
+3. En la marca: cuenta **DEMO** de Nubefact (`nubefact.com/register` → *API (Integración)*) y
+   pegar en *Marca* los **tres** datos: ruta, token y serie. El RUC y la razón social **no se
+   piden** (§2): el emisor lo identifica la ruta.
+4. Copiar la **serie** y la **última boleta emitida** de Nubefact → *Ver Facturas, Boletas y
+   Notas*, y tocar **Probar**. Los dos se sacan de la misma pantalla, y este paso es el que
+   evita los dos tropiezos de §2.b y §3 — una serie que la cuenta no emite y una numeración que
+   arranca sobre boletas que ya existen. Si *Probar* dice cuál será la próxima, está listo.
+5. Un pedido de prueba pagado completo → en `order_sessions` `boleta_estado`, `boleta_url`; en
    el chat la tarjeta; en Nubefact *Ver Facturas, Boletas y Notas*.
-5. **Para producción** Nubefact pide, antes, generar por API desde la cuenta demo: 1 boleta en
+6. **Para producción** Nubefact pide, antes, generar por API desde la cuenta demo: 1 boleta en
    soles, 1 consulta de estado, 1 comunicación de baja (lista completa en el manual, § *Pasar a
    producción*). La baja y la nota de crédito **no están construidas** (🔮): hoy una boleta
    equivocada se anula desde el portal de Nubefact.
