@@ -33,12 +33,25 @@ const LOADERS: Record<AgencyName, Loader | null> = {
 }
 
 /**
- * Las agencias con listado. Se DERIVA de `LOADERS`, así que sumar un courier
- * nuevo (Marvisur, Cruz del Sur) es agregar su loader y nada más: entra solo a
- * los rankings, a la búsqueda y a la UI.
+ * Los couriers que HOY se le ofrecen al comprador. (15-set-2026)
+ *
+ * Olva sale: su API no se entrega —ni la del titular ni la de LAT—, y una sede
+ * que el comprador elige es una guía que el vendedor después tiene que emitir.
+ * Ofrecer un mostrador al que no le podemos sacar guía es vender un despacho
+ * que no existe. Su listado de sedes **no se borra**: los pedidos que ya
+ * eligieron una Olva siguen resolviéndola por `getBranch`, y el día que la API
+ * llegue esto vuelve a ser una línea.
+ */
+export const COURIERS_ACTIVOS: readonly AgencyName[] = ['SHALOM']
+
+/**
+ * Las agencias con listado que además están activas. Se DERIVA de `LOADERS`,
+ * así que sumar un courier nuevo (Marvisur, Cruz del Sur) es agregar su loader
+ * y su id acá: entra solo a los rankings, a la búsqueda y a la UI.
  */
 export const LISTED_AGENCIES: AgencyName[] =
-  (Object.keys(LOADERS) as AgencyName[]).filter(a => LOADERS[a] !== null)
+  (Object.keys(LOADERS) as AgencyName[])
+    .filter(a => LOADERS[a] !== null && COURIERS_ACTIVOS.includes(a))
 
 function load(agency: AgencyName): Promise<AgencyBranch[]> | null {
   const loader = LOADERS[agency]
@@ -54,8 +67,8 @@ function load(agency: AgencyName): Promise<AgencyBranch[]> | null {
  * sigue con los que sí. Quedarse sin ninguna sede porque falló uno de dos
  * archivos convierte un problema de red en una venta perdida.
  */
-async function loadAll(): Promise<AgencyBranch[]> {
-  const settled = await Promise.allSettled(LISTED_AGENCIES.map(a => load(a)!))
+async function loadAll(agencias: readonly AgencyName[] = LISTED_AGENCIES): Promise<AgencyBranch[]> {
+  const settled = await Promise.allSettled(agencias.map(a => load(a)).filter(Boolean) as Promise<AgencyBranch[]>[])
   return settled.flatMap(r => (r.status === 'fulfilled' ? r.value : []))
 }
 
@@ -128,8 +141,12 @@ export const AgencyService = {
    * Ordenar por distancia real hace emerger esa regionalización sola, sin tabla
    * por departamento que mantener cada vez que un courier abre un local.
    */
-  async getNearestPoints(point: LatLng, n = 3): Promise<NearbyBranch[]> {
-    return (await loadAll())
+  // El tercer parámetro NO es para el checkout —ahí manda `COURIERS_ACTIVOS`—:
+  // sirve para comparar cobertura entre couriers, que es la pregunta que decide
+  // si un courier dormido vuelve. Con Olva fuera, es también lo que mantiene
+  // probada la regla del mezclado para el día que vuelva a haber dos.
+  async getNearestPoints(point: LatLng, n = 3, agencias: readonly AgencyName[] = LISTED_AGENCIES): Promise<NearbyBranch[]> {
+    return (await loadAll(agencias))
       .filter(hasCoords)
       .map(byDistance(point))
       .sort((a, b) => a.distanceKm - b.distanceKm)
@@ -138,8 +155,8 @@ export const AgencyService = {
 
   /** Búsqueda por texto sobre TODAS las agencias, para cuando su punto no está
    *  entre los más cercanos. */
-  async searchPoints(query: string, limit = 30): Promise<AgencyBranch[]> {
-    const list = await loadAll()
+  async searchPoints(query: string, limit = 30, agencias: readonly AgencyName[] = LISTED_AGENCIES): Promise<AgencyBranch[]> {
+    const list = await loadAll(agencias)
     const q = norm(query)
     if (!q) return list.slice(0, limit)
     return list

@@ -106,13 +106,13 @@ export const INTEGRACIONES: Integracion[] = [
   {
     id: 'OLVA', nombre: 'Olva PE', que: 'Rastreo de guías Olva — el primer riel (sin webhook: solo barrido)',
     dueno: 'Olva API Perú (tercero, no es Olva)', host: 'api.olva-api-peru.com',
-    alcance: 'plataforma', secreto: 'OLVA_API_KEY', critico: true, suplente: 'OLVA_LAT',
+    alcance: 'plataforma', secreto: 'OLVA_API_KEY', critico: false, suplente: 'OLVA_LAT', dormida: true,
   },
   {
     id: 'OLVA_LAT', nombre: 'Olva LAT',
     que: 'El segundo riel de Olva: rastreo con webhook, 404 de verdad y emisión de guías',
     dueno: 'Olva API LAT (tercero, no es Olva)', host: 'api.olva-api.lat',
-    alcance: 'plataforma', secreto: 'OLVA_LAT_API_KEY', critico: true,
+    alcance: 'plataforma', secreto: 'OLVA_LAT_API_KEY', critico: false, dormida: true,
   },
   {
     id: 'WHATSAPP', nombre: 'WhatsApp Cloud API', que: 'Plantillas de recojo, campañas e invitaciones',

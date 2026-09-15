@@ -1187,6 +1187,30 @@ apenas el rastreo del titular lo aprende.
 `GET /v1/tracking/{ose_id}/events`, el GRT (exige credenciales Shalom Pro +
 `cap_id` del carguero) y la cotización de tarifas.
 
+### Olva se duerme: solo Shalom ✅ (15-set-2026)
+
+**Ninguno de los dos rieles de Olva es de Olva** —son dos terceros que revenden su rastreo— y
+ninguno entrega la API como corresponde. Un mostrador que el comprador elige es una guía que el
+vendedor después tiene que emitir: ofrecer una sede Olva sin poder sacarle guía es **vender un
+despacho que no existe**.
+
+Así que Olva sale de donde el comprador decide:
+
+- `COURIERS_ACTIVOS = ['SHALOM']` en `AgencyService`, y `LISTED_AGENCIES` lo respeta. Es el mismo
+  patrón que `RIELES_ACTIVOS` con 360pay: una lista, no un borrado.
+- En *Conexiones*, `OLVA` y `OLVA_LAT` quedan `dormida: true` — el panel no las pinta y sus
+  `api_events` viejos siguen teniendo nombre. Las críticas pasan de seis a **cuatro**.
+
+**Lo que NO se toca, a propósito:** el listado de las 424 sedes de Olva se queda en el repo, y
+`getBranch` lo sigue leyendo — un pedido que ya eligió una sede Olva sigue resolviéndola, con su
+distrito y su dirección. Tampoco se toca el rotulado (`ticket.ts` sigue diciendo «Olva» donde
+corresponde) ni el barrido de rastreo de las guías Olva que ya existen.
+
+**Para revivirlo:** agregar `'OLVA'` a `COURIERS_ACTIVOS` y quitar las dos `dormida`. La regla del
+ranking mezclado sigue probada mientras tanto — los tests le pasan las dos agencias explícitas
+(`checkout.test.ts` § *puntos de recojo de todas las agencias*), así que el día que vuelva no hay
+que redescubrir por qué el orden es por distancia real y no por una constante.
+
 ### Dos formas de llegar a la puerta ✅ (15-set-2026, §60)
 
 Hasta hoy el domicilio era uno solo: el **motorizado propio** de la marca
