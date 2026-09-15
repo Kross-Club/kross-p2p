@@ -1,6 +1,7 @@
 import { Package, ExternalLink } from 'lucide-react'
-import { rutaDeArchivo } from '../lib/archivos'
+import { enlaceDeArchivoDeTienda, enlaceDeTienda } from '../lib/archivos'
 import { enlaceDeGuia } from '../lib/hoja-de-guia'
+import { useStore } from '../lib/store-context'
 
 // ─── La guía del envío, en el hilo ───────────────────────────────────────────
 //
@@ -27,11 +28,13 @@ export default function TarjetaDeGuia({ texto, pdfUrl, token, courier, hora }: {
   courier?: string | null
   hora?: string
 }) {
-  // El PDF sale por NUESTRO dominio y no por el del storage: es el enlace que
-  // el comprador abre en una pestaña y el que viaja por WhatsApp, así que la
-  // dirección que ve tiene que ser la de su tienda. `rutaDeArchivo` deja
-  // intacto el PDF de un courier —Olva sirve su rótulo desde su dominio—.
-  const href = rutaDeArchivo(pdfUrl) ?? (token ? enlaceDeGuia(token) : null)
+  // El PDF sale por el dominio de LA TIENDA y no por el del storage ni por el
+  // host desde el que se mira: es el enlace que el comprador abre en una
+  // pestaña y el que viaja por WhatsApp, y desde el panel el vendedor puede
+  // estar en otro host. `enlaceDeArchivoDeTienda` deja intacto el PDF de un
+  // courier —Olva sirve su rótulo desde su dominio—.
+  const { store } = useStore()
+  const href = enlaceDeArchivoDeTienda(store, pdfUrl) ?? (token ? enlaceDeTienda(store, enlaceDeGuia(token)) : null)
   const nombre = String(courier ?? '').toUpperCase() === 'OLVA' ? 'Olva' : 'Shalom'
 
   return (
