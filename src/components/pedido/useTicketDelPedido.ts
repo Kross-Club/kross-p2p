@@ -15,6 +15,7 @@ import type { AgencyBranch } from '../../lib/checkout/types'
 import { pickupBranchIdOf } from '../../lib/session'
 import { enlaceDeGuia } from '../../lib/hoja-de-guia'
 import { pdfDeGuiaAEnsenar } from '../../../supabase/functions/_shared/guia-pdf.ts'
+import { enlaceDeArchivoDeTienda, enlaceDeTienda } from '../../lib/archivos'
 import { useStore } from '../../lib/store-context'
 import { cobrosDelPedido } from '../../lib/order-money'
 import type { OrderMessage, OrderSession } from '../../lib/order-api'
@@ -80,7 +81,10 @@ export function useTicketDelPedido(
           numero: pedido.tracking_numero ?? null,
           codigo: pedido.tracking_codigo ?? null,
           oseId: pedido.tracking_ose_id ?? null,
-          href: pdf ?? enlaceDeGuia(token),
+          // Por el dominio de la TIENDA, absoluto: es el enlace que se abre
+          // en otra pestaña y se reenvía, y desde el panel el vendedor puede
+          // no estar en el host de la marca. Nunca el storage ni la raíz.
+          href: enlaceDeArchivoDeTienda(store, pdf) ?? enlaceDeTienda(store, enlaceDeGuia(token)),
         }
       : null
     return buildTicket({
@@ -102,5 +106,5 @@ export function useTicketDelPedido(
       // Solo llega cuando el servidor ya se la soltó (no debe nada).
       pickupCode: pedido.shalom_pickup_code ?? null,
     })
-  }, [pedido, pdf, sede, token, store.logo_url])
+  }, [pedido, pdf, sede, token, store])
 }

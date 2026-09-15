@@ -17,6 +17,9 @@
 //
 // Sin React ni DOM, para poder probarse.
 
+import { baseDeLaTienda } from './dominio'
+import type { TiendaConDominio } from './dominio'
+
 /** El prefijo que atiende la reescritura del hosting. */
 export const RUTA_ARCHIVOS = '/archivos'
 
@@ -42,4 +45,32 @@ export function rutaDeArchivo(url: string | null | undefined): string | null {
   const i = u.pathname.indexOf(PUBLICO)
   if (i < 0) return crudo
   return `${RUTA_ARCHIVOS}/${u.pathname.slice(i + PUBLICO.length)}${u.search}`
+}
+
+/** ¿La tienda ya sabe dónde vive? Sin slug ni dominio (el contexto aún no
+ *  cargó) no hay base que armar, y `https://krossclub.app/...` —la raíz de la
+ *  plataforma— es justo la dirección que NUNCA debe salir en un enlace. */
+const conDireccion = (t: TiendaConDominio | null | undefined): boolean =>
+  !!(String(t?.slug ?? '').trim() || String(t?.custom_domain ?? '').trim())
+
+/**
+ * El enlace de un archivo nuestro, ABSOLUTO y por el dominio de la tienda:
+ * su dominio propio si está verificado, si no su subdominio. Es lo que se
+ * copia, se reenvía y se abre en otra pestaña —desde el pedido del comprador
+ * y desde el panel del vendedor por igual—, y en el panel el vendedor puede
+ * estar en un host que no es el de la marca (15-set-2026): un enlace relativo
+ * saldría por ese host. Un archivo de un tercero (el rótulo de Olva) se
+ * devuelve intacto; sin tienda resuelta, la ruta relativa de siempre.
+ */
+export function enlaceDeArchivoDeTienda(tienda: TiendaConDominio | null | undefined, url: string | null | undefined): string | null {
+  const ruta = rutaDeArchivo(url)
+  if (!ruta) return null
+  if (!ruta.startsWith(`${RUTA_ARCHIVOS}/`)) return ruta
+  return conDireccion(tienda) ? `${baseDeLaTienda(tienda)}${ruta}` : ruta
+}
+
+/** Un enlace relativo de la app (`/guia/<token>`, `/comprobante/<id>`),
+ *  absoluto por el dominio de la tienda. Misma regla que el archivo. */
+export function enlaceDeTienda(tienda: TiendaConDominio | null | undefined, ruta: string): string {
+  return conDireccion(tienda) && ruta.startsWith('/') ? `${baseDeLaTienda(tienda)}${ruta}` : ruta
 }
