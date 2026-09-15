@@ -669,9 +669,10 @@ Flow). Lo que cambió:
   al lado (`TicketStep.enlace`). El comprobante mismo cambió: fondo morado de Yape, la marca
   arriba a la derecha, y **sin** «total del pedido / pagado hasta hoy / saldo» — eso lo dice el
   recorrido, la hoja dice cuánto se pagó y con qué operación.
-- **Boleta electrónica** 🔮: paso nuevo, solo para quien pagó el pedido completo, justo después
-  del pago. Pendiente con su botón apagado hasta que Nubefact exista (`TicketInput.boletaUrl`).
-  Su estado es suyo, no el del envío: un paso «hecho» sin documento sería mentir.
+- **Boleta electrónica** ✅ (15-set-2026, `16-NUBEFACT.md`): paso nuevo, solo para quien pagó el
+  pedido completo, justo después del pago. La emite Nubefact con el RUC de la marca al cruzar el
+  pago; hasta que exista, pendiente con su botón apagado (`TicketInput.boletaUrl`). Su estado es
+  suyo, no el del envío: un paso «hecho» sin documento sería mentir.
 - **La guía lleva su botón** (*Ver mi guía de Shalom*) y, cuando el servidor ya soltó la clave
   (`shalom_pickup_code`, o sea pagó todo o pagó el saldo), el detalle dice número, código **y
   clave**.

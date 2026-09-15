@@ -29,6 +29,7 @@ import { acuseDePago } from '../_shared/acuse-de-pago.ts'
 import { isPickupDispatch } from '../_shared/despacho.ts'
 import { desgloseDeFlow, esPagada, esFinalSinPago, estadoPorToken, flowBaseUrl, llavesDeTienda, tokenDelWebhook, type FlowEnv } from '../_shared/flow.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
+import { emitirBoleta } from '../_shared/boleta.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -233,6 +234,13 @@ Deno.serve(async (req) => {
     }),
   }).select().single()
   await avisar(session.id, acuse)
+
+  // La boleta electrónica (§58): cuando ESTE cobro deja el pedido pagado del
+  // todo —el adelanto que cubre el total, o el saldo que lo completa—.
+  // `emitirBoleta` comprueba por su cuenta que ya no debe nada y que la marca
+  // factura; un extra no es una venta y no la dispara. En segundo plano y
+  // best-effort: el 2xx a Flow jamás depende de Nubefact.
+  if (!esExtra) runInBackground(emitirBoleta(String(session.id)))
 
   // Un extra no es otra compra, y el saldo es la segunda mitad de la misma:
   // CAPI y la guía solo en el PRIMER cobro. Ver `pay360-webhook`.

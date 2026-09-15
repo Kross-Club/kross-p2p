@@ -35,6 +35,8 @@ import PagoTrace from '../../components/PagoTrace'
 import TarjetaDePago from '../../components/TarjetaDePago'
 import TarjetaDeComprobante from '../../components/TarjetaDeComprobante'
 import TarjetaDeGuia from '../../components/TarjetaDeGuia'
+import TarjetaDeBoleta from '../../components/TarjetaDeBoleta'
+import BoletaDelPedido from '../../components/BoletaDelPedido'
 import { cobroDelAviso } from '../../lib/comprobante'
 import { TIPO_COBRO, textoDeCobro, textoDeCobroExtra, montoDeLaTarjeta, cobroDeLaTarjeta, MORADO_YAPE } from '../../lib/cobro-por-chat'
 import { puedePagarSaldo, saldoDelPedido, soles, cobrosDelPedido } from '../../lib/order-money'
@@ -478,6 +480,12 @@ function MessageBubble({ msg, audio, equipo = [], pedido, tienda }: {
         </div>
       </div>
     )
+  }
+
+  // La boleta (§58), igual que la ve el comprador.
+  if (msg.type === 'boleta') {
+    return <TarjetaDeBoleta texto={msg.body} pdfUrl={msg.media_url}
+      hora={new Date(msg.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })} />
   }
 
   // La guía, igual que la ve el comprador — pre-guía y botón del PDF incluidos.
@@ -1557,6 +1565,9 @@ export function PedidoVista({ token, montaje = 'pagina', onCerrar }: {
         // los pedidos viejos de ese riel conservan el botón.
         onReemitir={session.payment_provider === '360PAY' ? reemitirCupon : undefined}
         onQuitar={quitarCobro} />
+      {/* La boleta (§58): sale sola al quedar pagado; el botón es para cuando
+          no salió. Debajo de la plata, porque es de la plata. */}
+      <BoletaDelPedido session={session} demo={esTokenDemo(token)} onUpdated={() => reloadSession()} />
       {/* El motivo del fallo, que no es del cobro sino de la EMISIÓN: por qué
           un pedido con adelanto ni siquiera tiene cupón. */}
       {session.payment_reason && session.payment_verification !== 'MATCHED' && (

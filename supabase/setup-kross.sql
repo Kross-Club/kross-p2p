@@ -2928,3 +2928,52 @@ SELECT
 FROM order_sessions o
 WHERE o.created_at > now() - interval '90 days'
 GROUP BY 1, 2;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §58 · LA BOLETA ELECTRÓNICA, CON NUBEFACT  (15-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Quien paga el pedido COMPLETO recibe su boleta de venta electrónica, emitida
+-- por la MARCA (su RUC, su cuenta de Nubefact) y aceptada por SUNAT. Kross la
+-- pide en el momento en que el pedido queda pagado —`flow-confirm`, o el
+-- botón «Emitir boleta» del panel si algo falló— y se la deja al comprador en
+-- su chat y en el paso «Boleta electrónica» de su pedido. Diseño en
+-- `docs/16-NUBEFACT.md`.
+--
+-- La MARCA es la que factura: cada tienda tiene su RUC, su razón social y su
+-- cuenta en Nubefact (ruta + token, en `store_secrets`: nunca vuelven al
+-- panel). Sin eso el paso de la boleta sigue pendiente y no se emite nada.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS nubefact_enabled  boolean NOT NULL DEFAULT false;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS ruc               text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS razon_social      text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS direccion_fiscal  text;
+-- La serie de boletas de la marca en Nubefact (empieza con B) y su correlativo.
+-- SUNAT exige correlatividad por serie: el número lo da la base, de a uno, con
+-- `siguiente_numero_de_boleta` — nunca se calcula contando filas.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS boleta_serie       text    NOT NULL DEFAULT 'B001';
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS boleta_correlativo integer NOT NULL DEFAULT 0;
+
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS nubefact_ruta               text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS nubefact_token              text;
+ALTER TABLE store_secrets ADD COLUMN IF NOT EXISTS nubefact_secrets_updated_at timestamptz;
+
+-- La boleta de cada pedido. `boleta_estado`: PENDIENTE (se está emitiendo) ·
+-- EMITIDA (Nubefact la tiene, SUNAT aún no contestó) · ACEPTADA · RECHAZADA
+-- (SUNAT la rechazó) · ERROR (Nubefact no la aceptó; el número queda reservado
+-- para reintentar con EL MISMO, sin dejar huecos en el correlativo).
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS boleta_serie      text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS boleta_numero     integer;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS boleta_estado     text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS boleta_url        text;  -- el PDF (Nubefact)
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS boleta_enlace     text;  -- la página del CPE en Nubefact
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS boleta_emitida_at timestamptz;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS boleta_error      text;
+
+-- El siguiente número de la serie, atómico: dos pedidos que se pagan en el
+-- mismo segundo reciben números distintos. Solo service role la llama.
+CREATE OR REPLACE FUNCTION siguiente_numero_de_boleta(p_store_id text)
+RETURNS integer LANGUAGE sql SECURITY DEFINER AS $$
+  UPDATE stores SET boleta_correlativo = boleta_correlativo + 1
+  WHERE id = p_store_id
+  RETURNING boleta_correlativo;
+$$;
+REVOKE ALL ON FUNCTION siguiente_numero_de_boleta(text) FROM PUBLIC, anon, authenticated;

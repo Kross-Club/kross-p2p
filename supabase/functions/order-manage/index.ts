@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { authShalomPro, buscarOseIdPorNumero, descargarPdfDeGuia, reenviarGuia, normalizarGuia, registrarGuia } from '../_shared/guia.ts'
+import { emitirBoleta } from '../_shared/boleta.ts'
 import { cabeEnElMismoPaquete } from '../_shared/upsell.ts'
 import { puedeEscribir, puedeInvitar, puedeQuitar, puedeReasignar } from '../_shared/equipo-pedido.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
@@ -122,7 +123,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const body = await req.json() as {
-    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'retry_shalom' | 'retry_olva' | 'mark_answered' | 'add_cobro' | 'remove_cobro'
+    action: 'advance' | 'invite' | 'expel' | 'reassign' | 'cancel' | 'anular' | 'restore' | 'recreate' | 'set_nota' | 'accept_offer' | 'set_qty' | 'remove_item' | 'set_tracking' | 'retry_shalom' | 'retry_olva' | 'mark_answered' | 'add_cobro' | 'remove_cobro' | 'emitir_boleta'
     /** add_cobro: cuánto y por qué. remove_cobro: cuál. */
     monto?: number
     concepto?: string
@@ -330,6 +331,19 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: r.error }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
     return new Response(JSON.stringify({ ok: true, conPdf: r.conPdf }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── EMITIR LA BOLETA A MANO (§58) ─────────────────────────────────────────
+  // La automática sale desde `flow-confirm` al quedar pagado el pedido. Este
+  // botón es para cuando no salió —Nubefact caído, la marca configuró la
+  // facturación después de vender— y es idempotente: con la boleta ya
+  // emitida devuelve la misma; con el número ya reservado, reintenta con él.
+  if (body.action === 'emitir_boleta') {
+    const r = await emitirBoleta(session.id, { manual: true })
+    if (!r.ok) {
+      return new Response(JSON.stringify({ error: r.motivo, detalle: r.detalle }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    return new Response(JSON.stringify({ ok: true, serie: r.serie, numero: r.numero, url: r.url, aceptada: r.aceptada, yaEstaba: r.yaEstaba }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   // ─── RETRY SHALOM (reintentar a mano la emisión automática que falló) ───────
