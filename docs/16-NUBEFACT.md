@@ -100,10 +100,26 @@ tarjeta `TarjetaDeBoleta`, en los dos lados).
 
 ## 6. Dónde mirar cuando no sale
 
-*Panel → Conexiones → Nubefact*: ops `boleta.emitir` y `boleta.consultar`, con el HTTP, el código
+**Lo primero: el propio pedido.** Panel → el pedido → la línea de la boleta, debajo de la plata.
+Si dice «Sin emitir», toca *Emitir boleta*: el motivo sale ahí escrito (marca sin configurar,
+pedido sin pagar completo, falta el SQL §58). Es el diagnóstico más rápido y no necesita logs.
+
+**Después, el log de la función.** La emisión automática corre en segundo plano
+(`runInBackground` desde `flow-confirm`), así que un camino que no emite **no tumba nada y no se
+ve**. Desde el 15-set-2026 todos dejan rastro: `[flow-confirm] disparando la boleta` primero, y
+después `[boleta] emitida` o `[boleta] no se emitió` con el motivo y el detalle. En el dashboard
+de Supabase, *Edge Functions → flow-confirm → Logs*.
+
+
+**Y `api_events`**, para lo que es de la marca. *Panel → Conexiones → Nubefact*: ops
+`boleta.emitir` y `boleta.consultar`, con el HTTP, el código
 de Nubefact (`error_code`) y su mensaje en palabras (`ERRORES_NUBEFACT`: 10 token, 11 ruta, 20/21
 formato, 22 fuera de plazo, 23 ya existe, 50/51 cuenta suspendida). Y en el pedido, la línea de
 la boleta dice el estado y el error; el chat del equipo tiene la nota.
+
+Una marca que **encendió** la facturación y le falta una pieza también sale acá, con el nombre de
+lo que falta («RUC, token de Nubefact»). La que nunca la encendió no escribe eventos: no factura
+y no tiene por qué llenarse la pantalla.
 
 ## 7. Puesta en marcha
 

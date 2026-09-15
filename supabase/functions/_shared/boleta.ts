@@ -24,7 +24,8 @@
 import { supabase, chatMessage, saldoOf } from './tracking.ts'
 import { anotar, anotarSinRespuesta } from './api-eventos.ts'
 import {
-  armarBoleta, clienteDeBoleta, consultaDeBoleta, leerRespuesta, puedeFacturar, redondear2,
+  armarBoleta, clienteDeBoleta, consultaDeBoleta, esRuc, esSerieDeBoleta, leerRespuesta,
+  puedeFacturar, redondear2,
   type ItemDeBoleta, type RespuestaNubefact,
 } from './nubefact.ts'
 
@@ -32,7 +33,7 @@ const TIMEOUT_MS = 30_000
 
 export type ResultadoDeBoleta =
   | { ok: true; serie: string; numero: number; url: string | null; aceptada: boolean; yaEstaba: boolean }
-  | { ok: false; motivo: 'sin_configurar' | 'sin_pagar' | 'en_curso' | 'no_encontrado' | 'nubefact'; detalle: string }
+  | { ok: false; motivo: 'sin_configurar' | 'sin_pagar' | 'en_curso' | 'no_encontrado' | 'sin_sql' | 'nubefact'; detalle: string }
 
 interface SesionParaBoleta {
   id: string
@@ -76,6 +77,21 @@ export function lineasDelPedido(s: Pick<SesionParaBoleta, 'items' | 'product_pri
   return [{ descripcion: nombre, cantidad: 1, precioConIgv: total, codigo: null }]
 }
 
+/** Qué le falta a la marca para poder facturar. Para decirlo con nombre y
+ *  apellido en vez de «no está configurada». */
+function faltantes(
+  t: { ruc?: string | null; razon_social?: string | null; boleta_serie?: string | null },
+  sec: { nubefact_ruta?: string | null; nubefact_token?: string | null } | null | undefined,
+): string[] {
+  const falta: string[] = []
+  if (!esRuc(t.ruc)) falta.push('RUC')
+  if (!String(t.razon_social ?? '').trim()) falta.push('razón social')
+  if (!esSerieDeBoleta(t.boleta_serie)) falta.push('serie de boletas')
+  if (!/^https?:\/\//.test(String(sec?.nubefact_ruta ?? '').trim())) falta.push('ruta de Nubefact')
+  if (!String(sec?.nubefact_token ?? '').trim()) falta.push('token de Nubefact')
+  return falta
+}
+
 async function llamarANubefact(ruta: string, token: string, body: unknown): Promise<{ status: number; json: unknown } | null> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
@@ -99,9 +115,24 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
   // A mano (el botón del panel) se deja pasar un PENDIENTE colgado: una
   // emisión que murió a medias no puede bloquear el reintento para siempre.
   const manual = opts.manual === true
-  const { data: s } = await supabase.from('order_sessions').select(COLS).eq('id', sessionId).maybeSingle()
+  // TODO camino que no emite deja rastro en el log de la función (15-set-2026):
+  // la emisión automática corre en segundo plano, así que un `return` mudo era
+  // un «no me salió la boleta» sin una sola pista dónde mirar. Costó una tarde.
+  const salir = (r: ResultadoDeBoleta): ResultadoDeBoleta => {
+    if (!r.ok) console.log('[boleta] no se emitió', JSON.stringify({ sessionId, motivo: r.motivo, detalle: r.detalle, manual }))
+    return r
+  }
+
+  const { data: s, error: errSesion } = await supabase.from('order_sessions').select(COLS).eq('id', sessionId).maybeSingle()
   const session = s as SesionParaBoleta | null
-  if (!session) return { ok: false, motivo: 'no_encontrado', detalle: 'pedido no encontrado' }
+  if (!session) {
+    // Sin las columnas del §58 el select ENTERO falla, y eso no es «no existe
+    // el pedido»: es que el SQL no se corrió. Se dicen distinto o se busca el
+    // problema donde no está.
+    return salir(errSesion
+      ? { ok: false, motivo: 'sin_sql', detalle: `faltan las columnas de la boleta (§58 de setup-kross.sql): ${errSesion.message}` }
+      : { ok: false, motivo: 'no_encontrado', detalle: 'pedido no encontrado' })
+  }
 
   // Ya la tiene: la misma respuesta, sin tocar nada.
   if (session.boleta_url && session.boleta_serie && session.boleta_numero) {
@@ -109,17 +140,36 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
   }
 
   const storeId = String(session.origin_store_id ?? session.store_id ?? '')
-  const { data: tienda } = await supabase.from('stores')
+  const { data: tienda, error: errTienda } = await supabase.from('stores')
     .select('nubefact_enabled, ruc, razon_social, direccion_fiscal, boleta_serie, nombre').eq('id', storeId).maybeSingle()
   const { data: secretos } = await supabase.from('store_secrets')
     .select('nubefact_ruta, nubefact_token').eq('store_id', storeId).maybeSingle()
+  if (errTienda) {
+    return salir({ ok: false, motivo: 'sin_sql', detalle: `faltan las columnas de facturación en \`stores\` (§58): ${errTienda.message}` })
+  }
   if (!tienda || !puedeFacturar(tienda, secretos)) {
-    return { ok: false, motivo: 'sin_configurar', detalle: 'la marca no tiene la facturación configurada (Marca → Facturación electrónica)' }
+    // La marca que ENCENDIÓ la facturación y le falta una pieza sí es un
+    // problema suyo, y va a `api_events` para que lo vea en *Conexiones*. La
+    // que nunca la encendió no factura y punto: no se le llena la pantalla de
+    // eventos por una función que no usa.
+    const detalle = tienda?.nubefact_enabled === true
+      ? `la marca encendió la facturación pero le falta una pieza (RUC, razón social, serie, ruta o token): ${faltantes(tienda, secretos).join(', ')}`
+      : 'la marca no tiene la facturación configurada (Marca → Boleta electrónica con Nubefact)'
+    if (tienda?.nubefact_enabled === true) {
+      await anotar({
+        proveedor: 'NUBEFACT', op: 'boleta.emitir', outcome: 'RECHAZO',
+        storeId, sessionId: session.id, detail: detalle,
+      })
+    }
+    return salir({ ok: false, motivo: 'sin_configurar', detalle })
   }
 
   // Solo el pedido pagado del TODO: la boleta es de la venta cerrada.
   if (session.payment_verification !== 'MATCHED' || saldoOf(session) > 0) {
-    return { ok: false, motivo: 'sin_pagar', detalle: 'el pedido todavía no está pagado completo' }
+    return salir({
+      ok: false, motivo: 'sin_pagar',
+      detalle: `el pedido todavía no está pagado completo (adelanto ${session.payment_verification ?? 'sin cruzar'}, falta S/${saldoOf(session)})`,
+    })
   }
 
   // ── El número: reservar o reusar ──
@@ -134,12 +184,12 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
       .or(manual ? 'boleta_estado.is.null,boleta_estado.eq.ERROR,boleta_estado.eq.PENDIENTE' : 'boleta_estado.is.null,boleta_estado.eq.ERROR')
       .select('id')
     if (!reservado || reservado.length === 0) {
-      return { ok: false, motivo: 'en_curso', detalle: 'la boleta de este pedido ya se está emitiendo' }
+      return salir({ ok: false, motivo: 'en_curso', detalle: 'la boleta de este pedido ya se está emitiendo' })
     }
     const { data: n, error: errN } = await supabase.rpc('siguiente_numero_de_boleta', { p_store_id: storeId })
     if (errN || !Number.isFinite(Number(n))) {
       await supabase.from('order_sessions').update({ boleta_estado: null }).eq('id', session.id)
-      return { ok: false, motivo: 'nubefact', detalle: `no se pudo reservar el número: ${errN?.message ?? 'sin respuesta'}` }
+      return salir({ ok: false, motivo: 'nubefact', detalle: `no se pudo reservar el número: ${errN?.message ?? 'sin respuesta'}` })
     }
     serie = String(tienda.boleta_serie ?? 'B001').toUpperCase()
     numero = Number(n)
@@ -211,6 +261,7 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
       `🧾 Boleta ${serie}-${numero} emitida en Nubefact; SUNAT todavía no la acepta${leida.sunat ? `: ${leida.sunat}` : ''}.`,
       'sellers')
   }
+  console.log('[boleta] emitida', JSON.stringify({ sessionId, ref: `${serie}-${numero}`, aceptada: leida.aceptada }))
   return { ok: true, serie, numero, url: leida.pdf, aceptada: leida.aceptada, yaEstaba: false }
 }
 
