@@ -25,10 +25,13 @@ const ESTADO: Record<string, { texto: string; color: string }> = {
 }
 
 const MOTIVO: Record<string, string> = {
-  sin_configurar: 'Esta marca no tiene la facturación configurada. Ve a Marca → Facturación electrónica.',
+  sin_configurar: 'Esta marca no tiene la facturación configurada. Ve a Marca → Boleta electrónica con Nubefact.',
   sin_pagar: 'La boleta sale cuando el pedido está pagado completo.',
   en_curso: 'La boleta ya se está emitiendo. Recarga en unos segundos.',
   no_encontrado: 'No se encontró el pedido.',
+  // Falta correr el §58 en la base. Es de quien despliega, no del vendedor,
+  // pero decirlo acá ahorra buscar el problema en la cuenta de Nubefact.
+  sin_sql: 'Falta correr el bloque §58 de setup-kross.sql en la base.',
 }
 
 export default function BoletaDelPedido({ session, demo, onUpdated }: {

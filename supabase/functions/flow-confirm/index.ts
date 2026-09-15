@@ -240,7 +240,10 @@ Deno.serve(async (req) => {
   // `emitirBoleta` comprueba por su cuenta que ya no debe nada y que la marca
   // factura; un extra no es una venta y no la dispara. En segundo plano y
   // best-effort: el 2xx a Flow jamás depende de Nubefact.
-  if (!esExtra) runInBackground(emitirBoleta(String(session.id)))
+  if (!esExtra) {
+    console.log('[flow-confirm] disparando la boleta', JSON.stringify({ sessionId: session.id, tipo }))
+    runInBackground(emitirBoleta(String(session.id)))
+  }
 
   // Un extra no es otra compra, y el saldo es la segunda mitad de la misma:
   // CAPI y la guía solo en el PRIMER cobro. Ver `pay360-webhook`.
