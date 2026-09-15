@@ -10,6 +10,7 @@ import { advanceFor } from './checkout.config'
 import { ofertaDelProducto } from '../../../supabase/functions/_shared/advance.ts'
 import { effectivePrice } from './product-packs'
 import { isLimaMetro, methodForCoverage } from './services/DistrictCoverageService'
+import { ofreceDomicilio } from '../../../supabase/functions/_shared/reparto'
 import { resolveVariant } from './variant'
 import type { CheckoutAbMode } from './variant'
 import type {
@@ -36,6 +37,7 @@ export function initialCheckoutState(
   homeDeliveryEnabled = true,
   permiteMitad = false,
   productDiscountPen = 0,
+  courierLimaEnabled = false,
 ): CheckoutState {
   return {
     orderId: newOrderId(),
@@ -45,6 +47,7 @@ export function initialCheckoutState(
     advanceChoice: 'FULL',
     variant,
     homeDeliveryEnabled,
+    courierLimaEnabled,
     permiteMitad,
     productDiscountPen,
     customerInfo: { dni: '', whatsapp: '', receiverName: '' },
@@ -126,13 +129,26 @@ const EMPTY_PICKUP: PickupPoint = { agency: null, branchId: null, freeText: null
  * Recalcula todo lo derivado. Se llama después de CADA acción, así que el estado
  * nunca puede quedar internamente inconsistente.
  */
+/**
+ * ¿La marca reparte a la puerta EN LA REGIÓN de este pedido? (§60)
+ *
+ * No alcanza con `homeDeliveryEnabled`: el courier de Lima es una segunda forma
+ * de llegar, y cubre solo Lima y Callao. Sin la región, una marca que solo tiene
+ * courier ofrecería domicilio en Arequipa.
+ */
+const reparteAqui = (s: CheckoutState): boolean =>
+  ofreceDomicilio(
+    { home_delivery_enabled: s.homeDeliveryEnabled, courier_lima_enabled: s.courierLimaEnabled },
+    s.locationType,
+  )
+
 function derive(state: CheckoutState): CheckoutState {
   // Una marca sin entrega a domicilio no puede quedar con `DOMICILIO`, venga de
   // donde venga. Se normaliza AQUÍ y no solo en las acciones porque `RESTORE`
   // entra por la puerta de atrás: un borrador guardado cuando la marca sí
   // repartía conservaba el método y cerraba el pedido prometiendo una entrega a
   // la puerta que el admin ya había apagado.
-  const s0: CheckoutState = !state.homeDeliveryEnabled && state.deliveryMethod === 'DOMICILIO'
+  const s0: CheckoutState = !reparteAqui(state) && state.deliveryMethod === 'DOMICILIO'
     ? { ...state, deliveryMethod: 'AGENCIA' }
     : state
   // Misma idea con la mitad: un producto que no la permite no puede quedar en
@@ -204,7 +220,12 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       // distrito de Lima a un pedido de provincia.
       // Sin domicilio no hay nada que elegir: el método queda fijado en AGENCIA
       // desde que se sabe la región, y la UI ni siquiera muestra las tarjetas.
-      const forced = state.homeDeliveryEnabled ? null : 'AGENCIA' as const
+      // Con la región NUEVA, no la vieja: el courier entra recién cuando el
+      // distrito elegido dice que este pedido es de Lima.
+      const forced = ofreceDomicilio(
+        { home_delivery_enabled: state.homeDeliveryEnabled, courier_lima_enabled: state.courierLimaEnabled },
+        next,
+      ) ? null : 'AGENCIA' as const
 
       if (!sameRegion) {
         return derive({
@@ -310,7 +331,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
         // Sin domicilio da igual lo que diga la cobertura del courier: la marca
         // no tiene con quién repartir, y proponerlo cerraría pedidos con una
         // entrega a la puerta que nadie va a hacer.
-        deliveryMethod: !state.homeDeliveryEnabled
+        deliveryMethod: !reparteAqui(state)
           ? 'AGENCIA'
           : state.variant === 'B' && check.result === 'IN_ZONE'
             ? null
@@ -327,7 +348,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       return derive({ ...state, deliveryMethod: 'AGENCIA' })
 
     case 'RETRY_DOMICILIO':
-      if (!state.homeDeliveryEnabled) return state
+      if (!reparteAqui(state)) return state
       return derive({
         ...state,
         deliveryMethod: null,
@@ -372,7 +393,7 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       // Red de seguridad: si la marca no reparte a domicilio, la acción se
       // ignora. La UI no ofrece la opción, pero el reducer es el contrato y no
       // debe poder quedar en un estado que la tienda no puede cumplir.
-      if (action.method === 'DOMICILIO' && !state.homeDeliveryEnabled) return state
+      if (action.method === 'DOMICILIO' && !reparteAqui(state)) return state
       // Cambiar de método invalida el punto ya elegido: si vuelve a "en casa"
       // después de haber marcado Shalom, el pedido saldría con agencia Y
       // domicilio, y el adelanto cobrado no calzaría con ninguno de los dos.

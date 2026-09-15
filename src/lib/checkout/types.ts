@@ -165,6 +165,20 @@ export interface CheckoutState {
    */
   homeDeliveryEnabled: boolean
   /**
+   * ¿Y reparte en Lima y Callao con el courier tercero?
+   * (`stores.courier_lima_enabled`, §60).
+   *
+   * Independiente de la anterior: una marca puede tener las dos, una o ninguna.
+   * Va aparte y no OR-eada en `homeDeliveryEnabled` porque el courier cubre
+   * SOLO Lima y Callao — mezclarlas ofrecería entrega a la puerta en Arequipa a
+   * una marca que no llega ahí. Quién decide con cuál es `ofreceDomicilio()`,
+   * que necesita la región.
+   *
+   * Mismo trato que la otra: se resuelve de la tienda al montar y no se
+   * restaura de un borrador.
+   */
+  courierLimaEnabled: boolean
+  /**
    * ¿Este producto deja pagar la mitad ahora? (`products.permite_mitad`, §56).
    * El default es pagar el total; sin esto el paso 3 no ofrece el reparto y
    * `derive()` fuerza FULL — también sobre un borrador viejo que trajera HALF.

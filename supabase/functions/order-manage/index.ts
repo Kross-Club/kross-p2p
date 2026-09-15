@@ -6,6 +6,7 @@ import { puedeEscribir, puedeInvitar, puedeQuitar, puedeReasignar } from '../_sh
 import { administraLaPlataforma } from '../_shared/alcance.ts'
 import { resumenDelPedido, montoTexto } from '../_shared/resumen-pedido.ts'
 import { sePuedeBorrar } from '../_shared/cobros.ts'
+import { NOMBRE_DE_REPARTO, esReparto, repartosPosibles } from '../_shared/reparto.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -135,6 +136,8 @@ Deno.serve(async (req) => {
     // reemplaza `quienLlama()`, que lo saca del JWT.
     by?: 'buyer' | 'seller'
     nota?: string
+    /** Quién lleva este pedido a la puerta (§60): 'PROPIO' | 'COURIER'. */
+    reparto?: string
     /** El porqué de una invitación. Va como comentario interno etiquetando al
      *  invitado — no se mezcla con `nota`, que es la etiqueta CRM del pedido. */
     invite_nota?: string
@@ -154,7 +157,7 @@ Deno.serve(async (req) => {
 
   const { data: session } = await supabase
     .from('order_sessions')
-    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, shalom_order_status, olva_order_status, tracking_phase')
+    .select('id, token, store_id, stage, status, buyer_id, buyer_name, buyer_phone, product_price, product_name, items, address, address_lat, address_lng, address_verified, assigned_seller_id, seller_name, seller_role, seller_avatar, involved_seller_ids, writer_seller_ids, invited_seller_ids, invited_by, dispatch_type, origin_store_id, reparto_lima, agency_name, advance_amount, payment_verification, saldo_amount, saldo_verification, shalom_pickup_code, shalom_order_status, olva_order_status, tracking_phase')
     .eq('id', body.session_id)
     .single()
 
@@ -208,6 +211,37 @@ Deno.serve(async (req) => {
     await supabase.from('order_sessions').update({ nota: body.nota ?? null }).eq('id', session.id)
     await broadcast(session.id, 'nota_update', { nota: body.nota ?? null })
     return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+  }
+
+  // ─── QUIÉN LLEVA EL PEDIDO (§60) ───────────────────────────────────────────
+  //
+  // Solo tiene sentido en un pedido a domicilio de Lima: el courier cubre Lima
+  // y Callao, y en provincia solo reparte el motorizado propio. Y solo cuando
+  // la marca tiene LAS DOS formas — con una sola no hay nada que elegir y el
+  // pedido ya nació con ella puesta (`repartoInicial`).
+  //
+  // Es una decisión operativa del comercio, así que se valida contra lo que la
+  // marca tiene contratado y no contra lo que llegue en el body: encender un
+  // courier que nadie contrató mandaría al vendedor a esperar una recogida que
+  // no va a ocurrir.
+  if (body.action === 'set_reparto') {
+    if (session.dispatch_type !== 'MOTORIZADO_LIMA') {
+      return json({ error: 'este pedido no va a domicilio en Lima' }, 400)
+    }
+    const elegido = body.reparto ?? null
+    if (elegido !== null && !esReparto(elegido)) return json({ error: 'reparto inválido' }, 400)
+
+    const storeId = session.origin_store_id ?? session.store_id
+    const { data: formas, error: errFormas } = await supabase.from('stores')
+      .select('home_delivery_enabled, courier_lima_enabled').eq('id', storeId).maybeSingle()
+    if (errFormas) return json({ error: 'faltan las columnas de reparto (§60 de setup-kross.sql)' }, 400)
+    if (elegido !== null && !repartosPosibles(formas ?? {}).includes(elegido)) {
+      return json({ error: `la marca no tiene ${NOMBRE_DE_REPARTO[elegido].toLowerCase()}` }, 400)
+    }
+
+    await supabase.from('order_sessions').update({ reparto_lima: elegido }).eq('id', session.id)
+    await broadcast(session.id, 'reparto_update', { reparto_lima: elegido })
+    return json({ ok: true, reparto_lima: elegido })
   }
 
   // ─── ANULAR ────────────────────────────────────────────────────────────────

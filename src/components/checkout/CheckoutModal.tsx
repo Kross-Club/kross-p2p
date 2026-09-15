@@ -49,6 +49,9 @@ interface CheckoutModalProps {
   /** `stores.home_delivery_enabled`. Si es false la marca solo ofrece recojo en
    *  agencia y el checkout no muestra nunca la opción de entrega a domicilio. */
   homeDeliveryEnabled?: boolean
+  /** `stores.courier_lima_enabled` (§60). Con ella, Lima y Callao tienen
+   *  domicilio aunque la marca no tenga motorizado propio. */
+  courierLimaEnabled?: boolean
   /** `products.permite_mitad`: si el paso 3 ofrece pagar la mitad. El default
    *  es el total (§56). */
   permiteMitad?: boolean
@@ -66,10 +69,10 @@ interface CheckoutModalProps {
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
-  submitContext, homeDeliveryEnabled = true, permiteMitad = false, descuentoPen = 0,
+  submitContext, homeDeliveryEnabled = true, permiteMitad = false, descuentoPen = 0, courierLimaEnabled = false,
   pay360 = null, flow = null, abMode = 'SPLIT',
 }: CheckoutModalProps) {
-  const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled, permiteMitad, productDiscountPen: descuentoPen })
+  const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled, courierLimaEnabled, permiteMitad, productDiscountPen: descuentoPen })
   const { state, dispatch, errors, touch } = co
   const [confirmingClose, setConfirmingClose] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)

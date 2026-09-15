@@ -37,6 +37,12 @@ export interface OrderSession {
    *  puerta, distinto courier) o `AGENCIA_PROVINCIA` (mostrador). Decide si
    *  tiene sentido pedir GPS — en agencia no lo tiene. */
   dispatch_type?: string | null
+  /** La marca DUEÑA del pedido. En el panel de la plataforma no siempre es la
+   *  del contexto, así que las reglas de la marca salen de acá. */
+  origin_store_id?: string | null
+  /** Quién lleva este pedido a la puerta (§60): 'PROPIO' | 'COURIER'. `null` =
+   *  sin decidir (la marca tiene las dos formas) o no va a domicilio. */
+  reparto_lima?: string | null
   agency_name?: string | null
   /** Sede de recojo elegida (§27.b). Ver `pickupBranchIdOf`. */
   agency_branch_id?: string | null

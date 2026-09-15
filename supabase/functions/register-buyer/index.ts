@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push'
 import { esRielEnLinea, rielPara, type Proveedor } from '../_shared/comision.ts'
 import { advanceForServer, eleccionDeAdelanto, ofertaDelProducto, priceFromPacks } from '../_shared/advance.ts'
+import { repartoInicial, type Reparto } from '../_shared/reparto.ts'
 import { imagenDelPack } from '../_shared/packs.ts'
 import { dispatchConversion, hasAnyCapi, runInBackground, type AdsConfig } from '../_shared/capi.ts'
 import { anotarConversion } from '../_shared/api-eventos.ts'
@@ -187,6 +188,22 @@ Deno.serve(async (req) => {
     ? body.dispatch_type!
     : 'MOTORIZADO_LIMA'
   const agencyName = ['SHALOM', 'OLVA', 'OTRO'].includes(body.agency_name ?? '') ? body.agency_name! : null
+
+  // ─── Quién lleva el paquete (§60) ──────────────────────────────────────────
+  // Solo aplica a un pedido a domicilio EN LIMA: el courier cubre Lima y
+  // Callao, y en provincia solo reparte el motorizado propio. Con una sola
+  // forma contratada queda fijado desde acá —el vendedor abre el pedido y ya
+  // sabe por dónde va—; con las dos queda en null y el panel se lo pregunta.
+  // Nunca lo manda el cliente: es una decisión operativa del comercio.
+  let repartoLima: Reparto | null = null
+  if (dispatchType === 'MOTORIZADO_LIMA' && body.store_id) {
+    const { data: formas, error: errFormas } = await supabase.from('stores')
+      .select('home_delivery_enabled, courier_lima_enabled').eq('id', body.store_id).maybeSingle()
+    // Sin la columna del §60 el select falla entero y esto queda en null, que
+    // es lo correcto: «sin decidir». Nunca bloquea el registro del pedido.
+    if (errFormas) console.warn('[register-buyer] sin columnas de reparto (§60)', errFormas.message)
+    else if (formas) repartoLima = repartoInicial(formas)
+  }
   // La sede de recojo, ESTRUCTURADA (sección 27.b). Venía viajando solo dentro
   // de `delivery_reference`, que es texto libre para que lo lea una persona; el
   // generador de guías necesita el id, no una frase. Se sigue guardando en los
@@ -466,6 +483,7 @@ Deno.serve(async (req) => {
       payment_provider: paymentProvider,
       closed_by: closedBy,
       dispatch_type: dispatchType,
+      reparto_lima: repartoLima,
       agency_name: agencyName,
       agency_branch_id: agencyBranchId,
       agency_branch_label: agencyBranchLabel,

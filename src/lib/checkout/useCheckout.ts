@@ -21,6 +21,8 @@ export interface UseCheckoutOptions {
   /** `stores.home_delivery_enabled`. Por defecto `true` para que la demo y
    *  cualquier montaje sin tienda se comporten como antes de existir el switch. */
   homeDeliveryEnabled?: boolean
+  /** `stores.courier_lima_enabled` (§60): el courier tercero de Lima y Callao. */
+  courierLimaEnabled?: boolean
   /** `products.permite_mitad`. Por defecto `false`: el total es el default. */
   permiteMitad?: boolean
   /** `products.descuento_pen`. Por defecto 0: sin oferta de salida. */
@@ -55,9 +57,10 @@ export function hasProgress(state: CheckoutState): boolean {
 
 export function useCheckout({
   initialPack, onPartialLead, homeDeliveryEnabled = true, permiteMitad = false, productDiscountPen = 0,
+  courierLimaEnabled = false,
 }: UseCheckoutOptions): UseCheckout {
   const [state, dispatch] = useReducer(checkoutReducer, null,
-    () => initialCheckoutState(initialPack, resolveVariant(), homeDeliveryEnabled, permiteMitad, productDiscountPen))
+    () => initialCheckoutState(initialPack, resolveVariant(), homeDeliveryEnabled, permiteMitad, productDiscountPen, courierLimaEnabled))
   const [touched, setTouched] = useState<Set<FieldName>>(new Set())
   const timer = useRef(createStepTimer())
 
@@ -71,7 +74,7 @@ export function useCheckout({
     // ofreciéndolo. Se pisa aquí porque `persistence` no conoce la tienda.
     // Las reglas del PRODUCTO igual: la mitad y la oferta salen de él hoy, no
     // de lo que el producto permitía cuando se guardó el borrador.
-    if (draft) dispatch({ type: 'RESTORE', state: { ...draft, homeDeliveryEnabled, permiteMitad, productDiscountPen } })
+    if (draft) dispatch({ type: 'RESTORE', state: { ...draft, homeDeliveryEnabled, courierLimaEnabled, permiteMitad, productDiscountPen } })
     trackEvent({ name: 'checkout_opened' })
     // Solo al montar: retomar un borrador después sería pisar lo que escribe.
     // `homeDeliveryEnabled` (y las reglas del producto) quedan fuera de las

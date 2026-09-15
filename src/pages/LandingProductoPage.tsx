@@ -49,6 +49,10 @@ export default function LandingProductoPage() {
   // perder la opción por un instante de carga. Si no reparte, el switch llega
   // en el mismo fetch que el Yape y la opción desaparece antes del paso 2.
   const [homeDelivery, setHomeDelivery] = useState(true)
+  // §60: el courier de Lima y Callao. Nace apagado —lo contrario encendería
+  // domicilio a una marca que no lo tiene— y solo se enciende si la columna
+  // existe y dice que sí.
+  const [courierLima, setCourierLima] = useState(false)
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
   const [flow, setFlow] = useState<StoreFlow | null>(null)
   // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
@@ -98,10 +102,23 @@ export default function LandingProductoPage() {
       .then(({ data }) => {
         setFlow((data as { flow_enabled?: boolean | null } | null)?.flow_enabled ? { enabled: true } : null)
       })
-    supabase.from('stores')
-      .select('home_delivery_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id')
-      .eq('id', storeId).maybeSingle()
-      .then(({ data }) => {
+    // Se pide con la columna del §60 y, si la base todavía no la tiene, se
+    // repite sin ella: un select que falla entero por una columna nueva se
+    // llevaría también el pixel y el modo A/B. Mismo respaldo que
+    // `use-dominio-de-tienda`.
+    const CAMPOS = 'home_delivery_enabled, checkout_ab_mode, meta_pixel_id, tiktok_pixel_id'
+    const pedirTienda = (campos: string) =>
+      supabase.from('stores').select(campos).eq('id', storeId).maybeSingle()
+    pedirTienda(`${CAMPOS}, courier_lima_enabled`)
+      .then(async r => (r.error ? await pedirTienda(CAMPOS) : r))
+      .then(({ data: fila }) => {
+        const data = fila as {
+          home_delivery_enabled?: boolean | null
+          courier_lima_enabled?: boolean | null
+          checkout_ab_mode?: string | null
+          meta_pixel_id?: string | null
+          tiktok_pixel_id?: string | null
+        } | null
         // Degradación POR CAMPO: si el select entero falla (p. ej. una columna
         // aún sin migrar), el checkout cierra el pedido igual y el adelanto lo
         // coordina un asesor — jamás se pierde la venta por una columna nueva.
@@ -109,6 +126,9 @@ export default function LandingProductoPage() {
         // `?? true` y no `!!`: una tienda de antes de la columna llega con el
         // campo ausente, y apagarle el domicilio por eso rompería su operación.
         setHomeDelivery(data.home_delivery_enabled ?? true)
+        // `=== true` y no `??`: sin la columna, apagado. Prometer entrega a la
+        // puerta que nadie va a hacer cuesta más que no ofrecerla.
+        setCourierLima(data.courier_lima_enabled === true)
         // 360pay está dormido (14-set-2026): ya no se lee `pay360_enabled`; el
         // único riel en línea es Flow, resuelto arriba con `flow_enabled`.
         // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
@@ -205,6 +225,7 @@ export default function LandingProductoPage() {
           onClose={() => { setShowQuiz(false); setLastOrder(loadLastOrder()) }}
           onPartialLead={state => saveCheckoutDraft(state, product)}
           homeDeliveryEnabled={homeDelivery}
+          courierLimaEnabled={courierLima}
           permiteMitad={product.permite_mitad === true}
           descuentoPen={Math.max(0, Number(product.descuento_pen) || 0)}
           flow={flow}

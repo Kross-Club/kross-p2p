@@ -3008,3 +3008,23 @@ UPDATE stores SET boleta_serie = NULL WHERE boleta_serie = 'B001' AND COALESCE(b
 --     Las columnas SE QUEDAN, con lo que cada marca haya escrito: borrar datos
 --     que alguien tecleó para ahorrar tres columnas no se paga. Si algún día
 --     hacen falta —una representación impresa propia, por ejemplo— están.
+
+-- §60 · REPARTO A DOMICILIO: EL MOTORIZADO PROPIO Y EL COURIER DE LIMA  (15-set-2026)
+-- Dos formas INDEPENDIENTES de llegar a la puerta. `home_delivery_enabled` (el
+-- motorizado de la marca) ya existía y vale en todo el país; esta agrega el
+-- courier tercero, que solo cubre Lima y Callao. Una marca puede tener las dos,
+-- una o ninguna.
+-- El comprador ve lo mismo de siempre («a la puerta» o «en agencia»): quién
+-- reparte no es una opción suya. Con las dos contratadas, el vendedor lo decide
+-- pedido por pedido y `order_sessions.reparto_lima` guarda esa decisión —con una
+-- sola forma se fija sola (`_shared/reparto.ts`, `repartoInicial`)—.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS courier_lima_enabled boolean NOT NULL DEFAULT false;
+
+-- Nace NULL a propósito: null es «sin decidir» y también «este pedido no va a
+-- domicilio». Los pedidos de antes del §60 se quedan en null, que es la verdad
+-- —nadie eligió nada— y no una decisión inventada hacia atrás.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS reparto_lima text;
+DO $$ BEGIN
+  ALTER TABLE order_sessions ADD CONSTRAINT order_sessions_reparto_lima_chk
+    CHECK (reparto_lima IS NULL OR reparto_lima IN ('PROPIO', 'COURIER'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

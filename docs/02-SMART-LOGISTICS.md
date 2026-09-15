@@ -1187,6 +1187,47 @@ apenas el rastreo del titular lo aprende.
 `GET /v1/tracking/{ose_id}/events`, el GRT (exige credenciales Shalom Pro +
 `cap_id` del carguero) y la cotización de tarifas.
 
+### Dos formas de llegar a la puerta ✅ (15-set-2026, §60)
+
+Hasta hoy el domicilio era uno solo: el **motorizado propio** de la marca
+(`home_delivery_enabled`), que vale en todo el país donde ella diga que llega. Ahora hay una
+segunda, **independiente**: un **courier tercero que reparte en Lima y Callao**
+(`courier_lima_enabled`). Una marca puede tener las dos, una o ninguna.
+
+**El comprador ve lo mismo de siempre**: «a la puerta» o «en agencia». La empresa que reparte no
+es una opción suya —no la puede evaluar, no la eligió y no cambia lo que paga—, así que ponerla
+en el checkout solo agregaría un tap.
+
+**Por qué son dos banderas y no un OR.** El courier cubre **solo Lima y Callao**. Una marca que
+solo lo tiene NO ofrece domicilio en Arequipa, y ofrecerlo sería prometer una entrega que nadie
+va a hacer — el mismo error que el flag del motorizado ya evitaba. Por eso la pregunta lleva la
+región: `ofreceDomicilio(tienda, region)` en `_shared/reparto.ts`, puro y compartido entre el
+reducer del checkout, el panel y `register-buyer`.
+
+| La marca tiene | En Lima y Callao | En provincia |
+|---|---|---|
+| Motorizado propio | a la puerta o agencia | a la puerta o agencia |
+| Solo courier | a la puerta o agencia | **solo agencia** |
+| Las dos | a la puerta o agencia | a la puerta o agencia |
+| Ninguna | solo agencia | solo agencia |
+
+**Quién lleva CADA pedido** queda en `order_sessions.reparto_lima` (`PROPIO` \| `COURIER` \|
+`null`). Con una sola forma contratada se fija sola al registrarse (`repartoInicial`) y el
+vendedor abre el pedido sabiendo por dónde va. Con las dos nace en `null` —son costos y plazos
+distintos, y es una decisión del comercio— y el panel se la pregunta en la barra de dirección,
+con `order-manage` · `set_reparto`. Esa acción **valida contra lo que la marca tiene
+contratado**, no contra lo que llegue en el body: marcar un courier que nadie contrató mandaría
+al vendedor a esperar una recogida que no va a ocurrir.
+
+El toggle vive en *Marca → Entrega a domicilio*, con la misma gate de super admin que el
+motorizado y por la misma razón: es un contrato de la plataforma con un tercero, no algo que la
+marca enciende sola.
+
+**Lo que NO trae** (🔮): ninguna API de courier. No hay emisión de guía, ni rastreo, ni tarifa.
+Hoy `reparto_lima` es lo que el vendedor necesita saber para despachar, y nada más — el servicio
+todavía se está validando, y construirle una integración a un proveedor sin cerrar sería
+construir sobre una decisión que no está tomada.
+
 ### Qué documento enseña el botón de la guía ✅ (15-set-2026)
 
 Tres documentos distintos pueden terminar detrás de *«Ver mi guía de Shalom»*, y **no valen lo

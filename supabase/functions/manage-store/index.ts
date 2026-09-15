@@ -56,7 +56,16 @@ const RESERVED = SLUGS_RESERVADOS
  * (09-set-2026). De ahí `faltaColumna` y los dos reintentos de abajo: mientras
  * el SQL no esté, el panel funciona como antes y estos dos campos no existen.
  */
-const CAMPOS_49 = ['gradient_style', 'login_images', 'custom_domain', 'custom_domain_verified'] as const
+const CAMPOS_49 = [
+  'gradient_style', 'login_images', 'custom_domain', 'custom_domain_verified',
+  // §60 (15-set-2026): el courier de Lima y Callao. Entra a la MISMA lista en
+  // vez de estrenar la suya porque el reintento es uno solo: con las columnas
+  // nuevas o sin ninguna. Un árbol de reintentos por sección crece sin fin, y
+  // el precio de agrupar —que en la ventana sin SQL se degraden también las
+  // del §49, que ya llevan días en producción— se paga corriendo el SQL ANTES
+  // de desplegar, que es lo que dice la nota de deploy.
+  'courier_lima_enabled',
+] as const
 
 /** ¿El error es «esa columna no existe»? (Postgres 42703.) */
 function faltaColumna(error: { code?: string; message?: string } | null): boolean {
@@ -115,6 +124,7 @@ Deno.serve(async (req) => {
     affiliate_code?: string
     action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'nubefact_status' | 'olva_status' | 'olva_lat_status' | 'verify_domain'
     home_delivery_enabled?: boolean
+    courier_lima_enabled?: boolean
     admin_auth_id: string
     welcome_points?: number
     welcome_msg?: string
@@ -625,6 +635,11 @@ Deno.serve(async (req) => {
     // puerta que después no ocurren.
     if (isSuper && typeof body.home_delivery_enabled === 'boolean') {
       patch.home_delivery_enabled = body.home_delivery_enabled
+    }
+    // El courier de Lima y Callao (§60), misma gate y por la misma razón: es un
+    // contrato de la plataforma con un tercero, no algo que la marca enciende.
+    if (isSuper && typeof body.courier_lima_enabled === 'boolean') {
+      patch.courier_lima_enabled = body.courier_lima_enabled
     }
     // WhatsApp fallback config (infra) — super admin only
     if (isSuper && typeof body.wa_enabled === 'boolean') patch.wa_enabled = body.wa_enabled
