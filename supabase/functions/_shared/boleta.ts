@@ -14,7 +14,9 @@
 //     escapara a la base vuelve con código 23 y se consulta, no se reemite.
 //   · El número lo da la base, atómico (`siguiente_numero_de_boleta`), y si la
 //     emisión falla se QUEDA en el pedido: el reintento va con el mismo, para
-//     no dejar huecos en el correlativo que SUNAT exige.
+//     no dejar huecos en el correlativo que SUNAT exige. Salvo que la marca haya
+//     corregido la SERIE: entonces ese número es de otra numeración y el
+//     reintento pide uno nuevo (`reservaSigueValiendo`).
 //   · El total facturado es el del pedido (`product_price`), que es lo que el
 //     comprador pagó: si las líneas no lo suman (un descuento, un upsell viejo),
 //     se factura una sola línea con el pedido entero antes que una boleta que
@@ -25,7 +27,7 @@ import { supabase, chatMessage, saldoOf } from './tracking.ts'
 import { anotar, anotarSinRespuesta } from './api-eventos.ts'
 import {
   armarBoleta, clienteDeBoleta, consultaDeBoleta, esSerieDeBoleta, leerRespuesta,
-  puedeFacturar, redondear2,
+  puedeFacturar, redondear2, reservaSigueValiendo,
   type ItemDeBoleta, type RespuestaNubefact,
 } from './nubefact.ts'
 
@@ -208,15 +210,25 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
   // ── El número: reservar o reusar ──
   // `reciénNuestro` decide qué significa un «ya existe» de Nubefact más abajo,
   // y es la diferencia entre adoptar la boleta de otro y saltar el número.
-  let serie = session.boleta_serie
-  let numero = session.boleta_numero
+  //
+  // La reserva guardada solo vale si es de la serie que la marca tiene HOY: si
+  // la corrigió porque la anterior no estaba habilitada en su cuenta, ese
+  // número es de otra numeración y reintentar con él repite el `21` para
+  // siempre (`reservaSigueValiendo`).
+  const serieDeLaTienda = String(tienda.boleta_serie ?? '').toUpperCase()
+  const sirveLaReserva = reservaSigueValiendo(session.boleta_serie, serieDeLaTienda)
+  let serie = sirveLaReserva ? session.boleta_serie : null
+  let numero = sirveLaReserva ? session.boleta_numero : null
   const recienNuestro = !numero
   if (!numero) {
-    // Gana quien marca PENDIENTE primero. `.is('boleta_numero', null)` es la
-    // condición de carrera resuelta en la base, no en memoria.
+    // Gana quien marca PENDIENTE primero: el `boleta_estado` es la condición de
+    // carrera, resuelta en la base y no en memoria. El primer `.or()` deja
+    // pasar el pedido sin número, y también el que quedó con una reserva de una
+    // serie vieja —los dos `.or()` se combinan con AND en PostgREST—.
     const { data: reservado } = await supabase.from('order_sessions')
       .update({ boleta_estado: 'PENDIENTE' })
-      .eq('id', session.id).is('boleta_numero', null)
+      .eq('id', session.id)
+      .or(`boleta_numero.is.null,boleta_serie.is.null,boleta_serie.neq.${serieDeLaTienda}`)
       .or(manual ? 'boleta_estado.is.null,boleta_estado.eq.ERROR,boleta_estado.eq.PENDIENTE' : 'boleta_estado.is.null,boleta_estado.eq.ERROR')
       .select('id')
     if (!reservado || reservado.length === 0) {
@@ -227,13 +239,13 @@ export async function emitirBoleta(sessionId: string, opts: { manual?: boolean }
       await supabase.from('order_sessions').update({ boleta_estado: null }).eq('id', session.id)
       return salir({ ok: false, motivo: 'nubefact', detalle: `no se pudo reservar el número: ${errN?.message ?? 'sin respuesta'}` })
     }
-    serie = String(tienda.boleta_serie ?? '').toUpperCase()
+    serie = serieDeLaTienda
     numero = Number(n)
     await supabase.from('order_sessions').update({ boleta_serie: serie, boleta_numero: numero }).eq('id', session.id)
   } else {
     await supabase.from('order_sessions').update({ boleta_estado: 'PENDIENTE' }).eq('id', session.id)
   }
-  serie = String(serie ?? tienda.boleta_serie ?? '').toUpperCase()
+  serie = String(serie ?? serieDeLaTienda).toUpperCase()
 
   // ── El cliente y las líneas ──
   const { data: buyer } = session.buyer_id

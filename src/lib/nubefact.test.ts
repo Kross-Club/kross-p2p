@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   armarBoleta, clienteDeBoleta, consultaDeBoleta, esRuc, esSerieDeBoleta, fechaDeEmision,
-  leerRespuesta, limpiarTexto, lineaDeBoleta, puedeFacturar, redondear2,
+  leerRespuesta, limpiarTexto, lineaDeBoleta, puedeFacturar, redondear2, reservaSigueValiendo,
 } from '../../supabase/functions/_shared/nubefact.ts'
 
 describe('la aritmética del IGV, hacia atrás desde el precio que ya lo incluye', () => {
@@ -149,5 +149,28 @@ describe('lo que la marca necesita para facturar: tres cosas y ninguna más', ()
     expect(consultaDeBoleta('B001', 3)).toEqual({ operacion: 'consultar_comprobante', tipo_de_comprobante: 2, serie: 'B001', numero: 3 })
     expect(limpiarTexto('  clavos 3" de\n acero  ', 250)).toBe('clavos 3 de acero')
     expect(limpiarTexto('x'.repeat(300), 250)).toHaveLength(250)
+  })
+})
+
+describe('la reserva guardada en el pedido, cuando la marca corrige la serie', () => {
+  it('sirve mientras sea la serie que la marca tiene hoy', () => {
+    expect(reservaSigueValiendo('BBB1', 'BBB1')).toBe(true)
+    expect(reservaSigueValiendo('bbb1', 'BBB1')).toBe(true)
+    expect(reservaSigueValiendo(' BBB1 ', 'BBB1')).toBe(true)
+  })
+  it('no sirve si la serie cambió: ese número es de otra numeración', () => {
+    // El caso real (15-set-2026): el pedido se reservó en `B001`, Nubefact lo
+    // rechazó con el 21 porque esa serie no estaba habilitada, la marca la
+    // corrigió a `BBB1` y el reintento seguía yendo con `B001-1` para siempre.
+    expect(reservaSigueValiendo('B001', 'BBB1')).toBe(false)
+  })
+  it('un pedido sin reserva no tiene nada que reusar', () => {
+    expect(reservaSigueValiendo(null, 'BBB1')).toBe(false)
+    expect(reservaSigueValiendo('', 'BBB1')).toBe(false)
+    expect(reservaSigueValiendo(undefined, 'BBB1')).toBe(false)
+  })
+  it('sin serie en la tienda tampoco vale una reserva vieja', () => {
+    expect(reservaSigueValiendo('B001', '')).toBe(false)
+    expect(reservaSigueValiendo(null, null)).toBe(false)
   })
 })

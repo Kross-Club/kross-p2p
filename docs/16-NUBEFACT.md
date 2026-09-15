@@ -102,6 +102,14 @@ lo entrega de a uno, y si la emisión falla el número **se queda en el pedido**
 ERROR`): el reintento —el botón *Emitir boleta* del panel, `order-manage` → `emitir_boleta`— va
 con el mismo, sin dejar huecos.
 
+**Salvo que la marca corrija la serie.** Ahí el número guardado es de **otra numeración** y
+reintentar con él repite el mismo `21` para siempre. `reservaSigueValiendo` compara la serie del
+pedido con la que la tienda tiene hoy: si no coinciden, la reserva se descarta y el reintento pide
+un número de la serie vigente. El hueco queda en una serie que nunca emitió nada, así que no hay
+hueco. Solo aplica a boletas que **nunca salieron** —la emitida se responde antes, desde el
+`boleta_url` del pedido—. Pasó de verdad el 15-set-2026: los pedidos reservados con la `B001`
+inventada quedaban clavados aunque la marca ya hubiera puesto su `BBB1`.
+
 **Lo que se factura es lo que entró.** El total de la boleta es `product_price`, que es lo que el
 comprador pagó. Las líneas salen de `items` (nombre · pack, cantidad, precio); si no suman el
 total (un descuento de salida, un upsell viejo), se factura **una sola línea** con el pedido
