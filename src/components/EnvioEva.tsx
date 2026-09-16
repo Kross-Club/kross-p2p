@@ -96,10 +96,15 @@ export default function EnvioEva({ sessionId, pedido, tienda, onUpdated }: {
       const r = await res.json().catch(() => ({})) as
         { ok?: boolean; aplicado?: boolean; tracking?: CamposEva; etiqueta?: string; error?: string }
       if (!res.ok || !r.ok) { setError(r.error ?? `No se pudo consultar a ${NOMBRE_EVA}.`); return }
-      if (r.aplicado && r.tracking) onUpdated(r.tracking)
-      // Decir «sin novedad» es parte de la respuesta: un botón que no hace nada
-      // visible se lee como que falló.
-      else setNota(`Sin novedad: ${NOMBRE_EVA} sigue en «${r.etiqueta ?? 'el mismo estado'}».`)
+      // El botón SIEMPRE dice algo: uno que no hace nada visible se lee como
+      // que falló. Si el reflejo aplicó, se dice qué contestó Eva; si no, que
+      // no hay novedad.
+      if (r.aplicado && r.tracking) {
+        onUpdated(r.tracking)
+        setNota(`Actualizado: ${NOMBRE_EVA} dice «${r.etiqueta ?? 'nuevo estado'}».`)
+      } else {
+        setNota(`Sin novedad: ${NOMBRE_EVA} sigue en «${r.etiqueta ?? 'el mismo estado'}».`)
+      }
     } catch {
       setError('No se pudo consultar. Revisa tu conexión e intenta de nuevo.')
     } finally {

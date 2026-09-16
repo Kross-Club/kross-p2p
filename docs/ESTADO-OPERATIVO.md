@@ -34,6 +34,20 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Eva: «Actualizar» siempre dice algo · 1 función + frontend (16-set-2026)
+
+Con el estado ya leído, el botón dejó de dar error y también dejó de decir nada: el reflejo
+tomaba «REGISTRADO sin hora» como un hecho nuevo cada vez (reescribía `eva_estado_at` y anotaba
+un evento por clic) y la UI solo hablaba cuando NO aplicaba. Ahora un estado sin hora igual al
+que ya tenemos no es novedad, y el botón dice «Actualizado: Eva dice «X»» o «Sin novedad…» —
+siempre una de las dos.
+
+Sin SQL.
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
+Y el front.
+
 ### Eva: un pedido recién registrado no trae `status` · 1 función (16-set-2026)
 
 Con el cuerpo ya anotado (`KX-4KGQNC`) se vio la forma real: el `GET` de un pedido nuevo devuelve
