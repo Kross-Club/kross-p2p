@@ -1647,32 +1647,47 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
         <div className="rounded-2xl p-3 mb-4" style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)' }}>
           <div className="w-full flex items-center justify-between mb-1">
             <span className="text-xs font-black flex items-center gap-1.5" style={{ color: 'var(--warn-fg)' }}>
-              <Truck size={14} /> Rastreo de guías (Olva)
+              <Truck size={14} /> Envíos y rastreo (Olva)
             </span>
+            {/* Cada chip con el NOMBRE del proveedor y lo que hace: «Riel 1 / 2»
+                obligaba a saberse la numeración para entender cuál faltaba. Olva
+                LAT es el que emite las guías y trae el catálogo de sedes (§67);
+                Olva PE solo rastrea, y está dormido desde el 15-set. */}
             <div className="flex items-center gap-1">
-              <span className="text-[10px] font-black px-2 py-1 rounded-full"
+              <span className="text-[10px] font-black px-2 py-1 rounded-full" title="Olva PE: solo rastreo, dormido"
                 style={{
                   background: olvaUp === null ? '#F3F4F6' : olvaUp ? '#DCFCE7' : '#FEE2E2',
                   color: olvaUp === null ? '#6B7280' : olvaUp ? '#16A34A' : '#DC2626',
                 }}>
-                ● {olvaUp === null ? 'Verificando…' : olvaUp ? 'Riel 1 OK' : 'Riel 1 caído'}
+                ● Olva PE {olvaUp === null ? '…' : olvaUp ? 'OK' : 'caído'}
               </span>
-              {/* El segundo riel, con su propio chip. Dos proveedores
-                  independientes leyendo el mismo courier: si los dos caen a la
-                  vez es Olva, y si cae uno solo el rastreo sigue. */}
-              <span className="text-[10px] font-black px-2 py-1 rounded-full"
+              <span className="text-[10px] font-black px-2 py-1 rounded-full" title="Olva LAT: emite las guías, rótulo, sedes y rastreo"
                 style={{
                   background: olvaLat === null ? '#F3F4F6' : olvaLat.operational ? '#DCFCE7' : '#FEE2E2',
                   color: olvaLat === null ? '#6B7280' : olvaLat.operational ? '#16A34A' : '#DC2626',
                 }}>
-                ● {olvaLat === null ? 'Verificando…'
-                  : olvaLat.operational ? 'Riel 2 OK'
-                  : olvaLat.motivo === 'cuota' ? 'Riel 2 sin cuota'
-                  : olvaLat.motivo === 'llave' ? 'Riel 2 sin llave'
-                  : 'Riel 2 caído'}
+                ● Olva LAT {olvaLat === null ? '…'
+                  : olvaLat.operational ? 'OK'
+                  : olvaLat.motivo === 'cuota' ? 'sin cuota'
+                  : olvaLat.motivo === 'llave' ? 'sin llave'
+                  : 'caído'}
               </span>
             </div>
           </div>
+
+          {/* Sin Olva LAT no hay guías: es el que emite (§67). Se dice acá, al
+              lado del interruptor, y no solo en Conexiones. */}
+          {olvaLat !== null && !olvaLat.operational && (
+            <div className="rounded-xl px-3 py-2 mb-2" style={{ background: 'var(--danger-bg)' }}>
+              <p className="text-[10px] font-bold" style={{ color: 'var(--danger-fg)' }}>
+                {olvaLat.motivo === 'llave'
+                  ? 'Falta la llave de Olva LAT (OLVA_LAT_API_KEY). Sin ella no se registran envíos ni carga el catálogo de sedes: avisa al equipo de Kross.'
+                  : olvaLat.motivo === 'cuota'
+                    ? 'Olva LAT se quedó sin cuota este mes: no se registran envíos ni se rastrea por ahí hasta que se renueve. Avisa al equipo de Kross.'
+                    : 'Olva LAT no responde: los envíos no se registran solos mientras dure. Regístralos a mano al despachar.'}
+              </p>
+            </div>
+          )}
 
           {/* El plan B solo cuando caen LOS DOS: mientras quede un riel el
               rastreo sigue solo, y mandar a nadie a consultar a mano por un
@@ -1688,16 +1703,17 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
           )}
           {olvaLat?.remaining != null && olvaLat.remaining < 500 && (
             <p className="text-[10px] font-bold mb-2" style={{ color: 'var(--warn-fg)' }}>
-              Al riel 2 le quedan {olvaLat.remaining} consultas este mes. Avisa al equipo:
-              cuando se agote, el rastreo se queda con un solo proveedor.
+              A Olva LAT le quedan {olvaLat.remaining} consultas este mes. Avisa al equipo:
+              cuando se agote, no se registran envíos y el rastreo se queda sin ese proveedor.
             </p>
           )}
 
           <p className="text-[10px] text-gray-500 mb-3">
-            Aquí no hay nada que conectar: el rastreo de Olva funciona para todas las marcas
-            con la conexión de la plataforma (no existe una cuenta del cliente, como sí pasa
-            con Shalom Pro). La guía se registra en el chat del pedido y las fases se
-            reflejan solas.
+            Aquí no hay nada que conectar: Olva funciona para todas las marcas con la conexión
+            de la plataforma (no existe una cuenta del cliente, como sí pasa con Shalom Pro).
+            <b> Olva LAT</b> registra los envíos, baja el rótulo, trae el catálogo de sedes y
+            rastrea; <b>Olva PE</b> era el rastreo de respaldo y está dormido. La guía se
+            registra en el chat del pedido y las fases se reflejan solas.
           </p>
 
           {/* ── Registrar envíos Olva solo. Es lo mismo que la guía automática de

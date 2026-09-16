@@ -259,6 +259,9 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
   // cuota, va cacheada); si no llega, queda el campo para escribir el id.
   const [origenOlva, setOrigenOlva] = useState<string>(product.olva_origin_agency_code ?? '')
   const [sedesOlva, setSedesOlva] = useState<{ id: string; nombre: string }[] | null>(null)
+  // Por qué no hay selector, cuando no lo hay: sin esto el campo de texto se
+  // ve como si fuera el diseño y nadie se entera de que el catálogo no cargó.
+  const [motivoSedes, setMotivoSedes] = useState<string | null>(null)
   const [peso, setPeso] = useState<string>(product.package_weight_kg != null ? String(product.package_weight_kg) : '')
   const [dims, setDims] = useState<string>(product.package_dims_cm ?? '')
   useEffect(() => {
@@ -266,9 +269,13 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
     fetch(`${BASE}/manage-store`, {
       method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'olva_headquarters', admin_auth_id: adminId, store_id: storeId || undefined }),
-    }).then(r => r.json()).then((d: { sedes?: { id: string; nombre: string }[] }) => {
-      if (alive) setSedesOlva(Array.isArray(d.sedes) && d.sedes.length ? d.sedes : [])
-    }).catch(() => { if (alive) setSedesOlva([]) })
+    }).then(async r => ({ ok: r.ok, d: await r.json().catch(() => ({})) as { sedes?: { id: string; nombre: string }[]; motivo?: string } }))
+      .then(({ ok, d }) => {
+        if (!alive) return
+        const sedes = Array.isArray(d.sedes) && d.sedes.length ? d.sedes : []
+        setSedesOlva(sedes)
+        if (!sedes.length) setMotivoSedes(!ok ? 'servidor' : d.motivo ?? 'vacio')
+      }).catch(() => { if (alive) { setSedesOlva([]); setMotivoSedes('red') } })
     return () => { alive = false }
   }, [adminId, storeId])
   const [origenBranch, setOrigenBranch] = useState<AgencyBranch | null>(null)
@@ -653,9 +660,23 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
               {sedesOlva.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
           ) : (
-            <input value={origenOlva} onChange={e => setOrigenOlva(e.target.value.toUpperCase())}
-              placeholder={sedesOlva === null ? 'Cargando sedes…' : 'Id de la sede (del catálogo de Olva)'}
-              className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-3" style={{ borderColor: 'var(--warn-border)' }} />
+            <>
+              <input value={origenOlva} onChange={e => setOrigenOlva(e.target.value.toUpperCase())}
+                placeholder={sedesOlva === null ? 'Cargando sedes…' : 'Id de la sede (del catálogo de Olva)'}
+                className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-1" style={{ borderColor: 'var(--warn-border)' }} />
+              {motivoSedes && (
+                <p className="text-[10px] mb-3 leading-snug" style={{ color: 'var(--warn-fg)' }}>
+                  ⚠️ No se pudo cargar el catálogo de sedes de Olva{' '}
+                  {motivoSedes === 'llave' ? '(falta la llave de la API de Olva LAT).'
+                    : motivoSedes === 'auth' ? '(la llave de Olva LAT no sirve).'
+                    : motivoSedes === 'quota' || motivoSedes === 'rate_limit' ? '(se agotó la cuota del plan).'
+                    : motivoSedes === 'forma' ? '(contestó, pero con una forma que no se supo leer: el detalle está en Conexiones).'
+                    : motivoSedes === 'servidor' ? '(el servidor no tiene esta acción todavía: falta desplegar manage-store).'
+                    : '(no respondió).'}
+                  {' '}Puedes escribir el id de la sede a mano mientras tanto.
+                </p>
+              )}
+            </>
           )}
 
           <label className="text-[11px] font-bold text-gray-500 mb-1 block">
