@@ -34,6 +34,18 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Eva: un pedido recién registrado no trae `status` · 1 función (16-set-2026)
+
+Con el cuerpo ya anotado (`KX-4KGQNC`) se vio la forma real: el `GET` de un pedido nuevo devuelve
+el pedido entero **sin campo `status`** y con `tracks: []` — el manual enseña un pedido ya
+entregado, donde sí está. Un pedido que existe y no tiene hitos es REGISTRADO por definición, y
+así lo lee ahora `leerConsultaEva` (solo si trae `tracking_id`). Tabla en `17-EVA.md` §9.
+
+Sin SQL.
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
+
 ### Eva: «Actualizar» lee la respuesta real del sandbox, y anota la que no entiende · 1 función (16-set-2026)
 
 Con el select arreglado (abajo), el botón llegó a Eva: `200` y «contestó sin un estado que

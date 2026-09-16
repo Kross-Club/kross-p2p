@@ -576,7 +576,13 @@ function estadoDeConsultaEva(pedido: Record<string, unknown>, tracks: Record<str
   }
   const reciente = [...tracks].sort((a, b) =>
     String(b.fechahora ?? '').localeCompare(String(a.fechahora ?? '')))[0]
-  return reciente ? normalizarEstadoEva(reciente.estado) : ''
+  if (reciente) return normalizarEstadoEva(reciente.estado)
+  // Lo que contestó el sandbox de verdad (16-set-2026, `KX-4KGQNC`): el
+  // pedido entero —tracking_id, code, dispatch_date, destinatario— SIN campo
+  // `status` y con `tracks: []`. Un pedido que existe y no tiene ningún hito
+  // es, por definición del manual (§9), REGISTRADO: creado y pendiente de
+  // recojo. Solo se asume si de verdad es un pedido (trae su tracking_id).
+  return typeof pedido.tracking_id === 'string' && pedido.tracking_id.trim() ? 'REGISTRADO' : ''
 }
 
 /**
