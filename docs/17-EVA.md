@@ -1,9 +1,13 @@
 # 17 · EVA COURIER — EL REPARTO A DOMICILIO EN LIMA Y CALLAO
 
-> Estado: **✅ construido, sin probar contra la cuenta real** (15-set-2026). Falta el primer
-> pedido en el sandbox (`api-test.evacourier.pe`) y después el de producción (§ *Puesta en
-> marcha*). Leer junto con `02-SMART-LOGISTICS.md` § *Dos formas de llegar a la puerta* (la
-> bandera y la decisión por pedido, §60) y `13-CONEXIONES.md` (los eventos `reparto.*`).
+> Estado: **✅ registro y rótulo probados contra la cuenta real; el webhook todavía no**
+> (16-set-2026). El primer reparto salió en el sandbox —`ORD-1789519901031` → tracking
+> `858E9F4DE7C9`, despacho del mismo día, con su rótulo en el bucket—. Lo que falta es mover ese
+> pedido de estado en el portal de Eva para ver entrar el primer `order.status_updated`, y
+> después repetir todo en producción (§ *Puesta en marcha*). Lo que enseñaron los dos primeros
+> intentos está en §9. Leer junto con `02-SMART-LOGISTICS.md` § *Dos formas de llegar a la
+> puerta* (la bandera y la decisión por pedido, §60) y `13-CONEXIONES.md` (los eventos
+> `reparto.*`).
 > Manuales del proveedor: *Integración API v1.1* (2026-07-15), *Generación de Rótulos v1.0*
 > (2026-07-16) y *Webhooks v1.0* (2026-06-03), los tres de Fly Express («EVA 3.0»).
 
@@ -189,3 +193,28 @@ nada. Eventos: `reparto.registrar`, `reparto.rotulo`, `reparto.storage`, `webhoo
   `AGENCIA_*`), así que Eva no se enseña en el demo. Es una brecha de paridad **anterior** a
   Eva —el domicilio entero no está en el demo— y se anota como tal, no se parcha tocando el
   azar del generador.
+
+## 9. Lo que enseñó la primera prueba real (16-set-2026)
+
+Tres intentos contra el sandbox, y ninguno falló por el payload. Vale anotarlos porque los dos
+primeros se repiten con **cada cuenta nueva** y el mensaje del proveedor no los explica solo.
+
+| # | Qué contestó | Qué era | Cómo se ve ahora |
+|---|---|---|---|
+| 1 | `SIN_RESPUESTA` · `TypeError: 'headers' … is not a valid ByteString` | La `EVA_API_KEY` guardada tenía un carácter fuera de ASCII: un `…` copiado del comando de ejemplo. `fetch` revienta **antes de salir** y no dice cuál header | `problemaDeApiKey` la revisa antes y nombra al culpable («trae puntos suspensivos», «U+200B») en el pedido y en *Conexiones* |
+| 2 | `RECHAZO 403` con un texto largo de negocio | **No es auth**: la llave entró. Era la ficha de cliente de Eva incompleta — faltaban contacto, dirección de recojo principal con distrito, billetera Yape/Plin y cuenta bancaria con CCI | El mensaje llega entero al chat (600 caracteres, no 300: a 300 se cortaba justo antes de la cuenta bancaria) |
+| 3 | `OK 201` | El reparto quedó registrado, y el rótulo bajó al bucket en la misma corrida | — |
+
+Dos cosas que el 201 confirmó de paso:
+
+- **El distrito traduce.** La dirección del pedido era `por ahí cerca 123, Miraflores` y viajó
+  como `MIRAFLORES`. Eva no valida la calle —acepta cualquier texto—; lo que valida es el
+  distrito, que es exactamente donde su lista y el padrón del INEI se separan.
+- **Una dirección SIN VERIFICAR se registra igual, y sin GPS.** `armarPedidoEva` solo manda
+  `gps` cuando el pin está verificado: un pin sin confirmar mandaría al motorizado a otra casa.
+  Eva lo aceptó sin coordenadas, como su manual dice (`gps` es opcional).
+
+**Un 403 de Eva no siempre es la llave.** Su API usa el mismo código para «tu llave no sirve» y
+para «tu cuenta está incompleta», y el segundo trae el detalle en `message`. Por eso el cuerpo
+crudo se guarda en `api_events` (`detailMax: 900`): sin él, este intento se habría leído como un
+problema de credenciales y la tarde se habría ido por el camino equivocado.
