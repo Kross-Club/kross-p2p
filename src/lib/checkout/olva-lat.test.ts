@@ -13,7 +13,8 @@ import {
   readLatPayload, readLatTracking,
 } from '../../../supabase/functions/_shared/olva-lat.ts'
 import {
-  buildLatShipment, esRastreable, esReconciliable, parseLatAgencies,
+  buildLatShipment, claveDeIdempotencia, dimsCmTexto, esIdempotente, esRastreable, esReconciliable,
+  esRegistrado, leerDetalleLat, parseDimsCm, parseLatAgencies, parseLatHeadquarters,
   parseLatShipment, resolveAgencyCode,
 } from '../../../supabase/functions/_shared/olva-lat-orders.ts'
 
@@ -157,14 +158,17 @@ describe('código de agencia del proveedor', () => {
   })
 })
 
-describe('armado del envío', () => {
+describe('armado del envío (`POST /shipments`, doc de set-2026)', () => {
   const completo = {
-    sender: { name: 'Gadicaf', document: '20512345678', phone: '987654321' },
+    sender: { document: '20512345678', phone: '987654321', email: 'Ventas@Gadicaf.pe' },
     recipient: { name: 'Maria Quispe', document: '87654321', phone: '+51 912 345 678' },
-    originAgencyCode: 'LIM-MIR-01',
-    destinationAgencyCode: 'ARE-CER-01',
+    originHeadquarterId: '43',
+    destinationAgencyCode: '347',
     weightKg: 2.5,
     description: 'Ropa',
+    declaredValue: 89.9,
+    whoPays: 'STORE',
+    pin: '4821',
   }
 
   it('arma el body con los campos de la doc', () => {
@@ -172,32 +176,48 @@ describe('armado del envío', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     expect(r.body).toEqual({
-      sender: { name: 'GADICAF', document: '20512345678', phone: '987654321' },
-      recipient: { name: 'MARIA QUISPE', document: '87654321', phone: '912345678' },
-      origin: { agencyCode: 'LIM-MIR-01' },
-      destination: { agencyCode: 'ARE-CER-01' },
-      package: { weightKg: 2.5, description: 'Ropa' },
-      service: 'REGULAR',
+      sender: { documentType: 'ruc', documentNumber: '20512345678', phone: '987654321', email: 'ventas@gadicaf.pe' },
+      recipient: { documentType: 'dni', documentNumber: '87654321', fullName: 'MARIA QUISPE', phone: '912345678' },
+      origin: { headquarterId: '43' },
+      destination: { agencyCode: '347' },
+      package: { weightKg: 2.5, description: 'Ropa', declaredValue: 89.9, insuranceAccepted: false },
+      whoPays: 'STORE',
+      deliveryType: 'O',
+      pin: '4821',
+      confirm: true,
     })
   })
 
-  it('el remitente puede ir con RUC o con DNI', () => {
-    expect(buildLatShipment({ ...completo, sender: { ...completo.sender, document: '12345678' } }).ok).toBe(true)
+  it('el remitente va con RUC o con DNI, y su tipo de documento sale del largo', () => {
+    const dni = buildLatShipment({ ...completo, sender: { ...completo.sender, document: '12345678' } })
+    expect(dni.ok && (dni.body.sender as { documentType: string }).documentType).toBe('dni')
     const r = buildLatShipment({ ...completo, sender: { ...completo.sender, document: '123' } })
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.faltan.join(' ')).toContain('documento del remitente')
   })
 
+  it('solo se sobrescribe lo del remitente que la marca configuró: Olva completa el resto con su lookup', () => {
+    const r = buildLatShipment({ ...completo, sender: { document: '20512345678', phone: '12', email: 'no-es-correo' } })
+    expect(r.ok && r.body.sender).toEqual({ documentType: 'ruc', documentNumber: '20512345678' })
+  })
+
+  it('con dimensiones va como PAQUETE (tipo 2); sin ellas no se declara tipo', () => {
+    const conDims = buildLatShipment({ ...completo, dimsCm: '20 x 15 x 10' })
+    expect(conDims.ok && conDims.body.package).toMatchObject({ shipmentType: 2, lengthCm: 20, widthCm: 15, heightCm: 10 })
+    const sinDims = buildLatShipment({ ...completo, dimsCm: '20x15' })
+    expect(sinDims.ok && (sinDims.body.package as Record<string, unknown>).shipmentType).toBeUndefined()
+  })
+
   it('dice TODO lo que falta de una vez, no el primer error', () => {
     const r = buildLatShipment({
-      sender: {}, recipient: {}, originAgencyCode: null, destinationAgencyCode: null,
-      weightKg: null, description: null,
+      sender: {}, recipient: {}, originHeadquarterId: null, destinationAgencyCode: null,
+      weightKg: null, description: null, pin: '',
     })
     expect(r.ok).toBe(false)
     if (r.ok) return
-    // 3 del remitente + 3 del destinatario + origen + destino + peso + contenido
-    expect(r.faltan).toHaveLength(10)
+    // remitente + 3 del destinatario + origen + destino + peso + contenido + clave
+    expect(r.faltan).toHaveLength(9)
   })
 
   it('un peso imposible es un dato faltante, no un envío raro', () => {
@@ -208,41 +228,111 @@ describe('armado del envío', () => {
     }
   })
 
-  it('un servicio inventado cae a REGULAR en vez de viajar al proveedor', () => {
-    const r = buildLatShipment({ ...completo, service: 'SUPERSONICO' })
-    expect(r.ok && (r.body.service as string)).toBe('REGULAR')
+  it('quién paga cae a la marca (STORE) si viene algo raro: ONLINE dejaría el envío sin registrar', () => {
+    for (const whoPays of ['ONLINE', 'x', null, undefined]) {
+      const r = buildLatShipment({ ...completo, whoPays })
+      expect(r.ok && r.body.whoPays).toBe('STORE')
+    }
+    const dest = buildLatShipment({ ...completo, whoPays: 'DESTINATION' })
+    expect(dest.ok && dest.body.whoPays).toBe('DESTINATION')
+  })
+
+  it('la clave de recojo es nuestra y va en el body', () => {
+    const r = buildLatShipment({ ...completo, pin: '12' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.faltan.join(' ')).toContain('clave')
+  })
+})
+
+describe('dimensiones', () => {
+  it('lee `LxAxH` con tolerancia y normaliza', () => {
+    expect(parseDimsCm('20x15x10')).toEqual({ lengthCm: 20, widthCm: 15, heightCm: 10 })
+    expect(dimsCmTexto(' 20 × 15.5 * 10 ')).toBe('20x15.5x10')
+  })
+  it('rechaza lo que no son tres lados razonables', () => {
+    for (const v of ['20x15', '0x1x1', '300x1x1', 'axbxc', '', null]) expect(parseDimsCm(v)).toBeNull()
+  })
+})
+
+describe('la clave de idempotencia', () => {
+  it('es la misma para el mismo pedido y el mismo envío: un reintento no duplica', () => {
+    const body = { a: 1 }
+    expect(claveDeIdempotencia('ORD-1', body)).toBe(claveDeIdempotencia('ORD-1', { a: 1 }))
+    expect(claveDeIdempotencia('ORD-1', body)).toMatch(/^kross-ORD-1-[0-9a-f]{8}$/)
+  })
+  it('cambia si cambió el envío o el pedido: una corrección no se choca con la respuesta vieja', () => {
+    expect(claveDeIdempotencia('ORD-1', { a: 1 })).not.toBe(claveDeIdempotencia('ORD-1', { a: 2 }))
+    expect(claveDeIdempotencia('ORD-1', { a: 1 })).not.toBe(claveDeIdempotencia('ORD-2', { a: 1 }))
+  })
+  it('y por eso sí se puede reintentar, aunque siga sin haber cómo buscar por nuestro código', () => {
+    expect(esIdempotente).toBe(true)
+    expect(esReconciliable).toBe(false)
   })
 })
 
 describe('lectura de la respuesta del registro', () => {
-  it('encuentra la guía aunque venga anidada', () => {
-    const g = parseLatShipment({ success: true, data: { shipment: { trackingNumber: '17491234', id: 'ship_9' } } })
-    expect(g.numero).toBe('17491234')
-    expect(g.orderId).toBe('ship_9')
-    expect(esRastreable(g)).toBe(true)
+  const RESPUESTA = {
+    success: true,
+    data: {
+      sessionId: '65c0840b-x', uuid: '1d8ddcf8-x', status: 'REGISTERED', registrationNumber: '202600679978',
+      cost: 8, igv: 1.22,
+      label: { filename: 'rotulo-65c0840b.pdf', mimeType: 'application/pdf', pdfBase64: 'JVBERi0...' },
+      origin: { headquarter: 'LIMA' }, destination: { officeId: '347' },
+      securityPin: '7033', notificationTriggered: true, id: 'cmu2gwn3f000101pgxq6c37q4',
+    },
+  }
+
+  it('lee el registro, el costo, la clave confirmada y el rótulo — y la guía todavía no existe', () => {
+    const r = parseLatShipment(RESPUESTA)
+    expect(r).toMatchObject({
+      status: 'REGISTERED', registrationNumber: '202600679978', id: 'cmu2gwn3f000101pgxq6c37q4',
+      cost: 8, securityPin: '7033', labelBase64: 'JVBERi0...', labelFilename: 'rotulo-65c0840b.pdf',
+      trackingNumber: null,
+    })
+    expect(esRegistrado(r)).toBe(true)
+    expect(esRastreable(r)).toBe(false)
   })
 
-  it('lo que no tiene forma de guía se descarta — escribir basura es peor que nada', () => {
-    const g = parseLatShipment({ trackingNumber: 'PENDIENTE', orderNumber: '123' })
-    expect(g.numero).toBeNull()
-    expect(esRastreable(g)).toBe(false)
+  it('PENDING_PAYMENT y DRAFT no son un registro: no hay guía por venir', () => {
+    expect(esRegistrado(parseLatShipment({ data: { status: 'PENDING_PAYMENT', registrationNumber: '1' } }))).toBe(false)
+    expect(esRegistrado(parseLatShipment({ data: { status: 'DRAFT' } }))).toBe(false)
+    expect(esRegistrado(parseLatShipment({ data: { status: 'REGISTERED' } }))).toBe(false)
   })
 
-  it('toma el PDF de la guía cuando la respuesta trae una URL', () => {
-    expect(parseLatShipment({ numero: '17491234', rotulo: 'https://x.test/g/17491234.pdf' }).pdfUrl)
-      .toBe('https://x.test/g/17491234.pdf')
+  it('si por excepción la guía ya viene, se toma — pero solo con forma de guía', () => {
+    expect(parseLatShipment({ data: { status: 'REGISTERED', registrationNumber: '1', trackingNumber: '17491234' } }).trackingNumber).toBe('17491234')
+    expect(parseLatShipment({ data: { status: 'REGISTERED', registrationNumber: '1', trackingNumber: 'PENDIENTE' } }).trackingNumber).toBeNull()
   })
 
-  it('en Olva basta el número para rastrear: no hay código como en Shalom', () => {
-    expect(esRastreable({ numero: '17491234', orderId: null, pdfUrl: null })).toBe(true)
+  it('una clave que no son 4 dígitos se descarta y queda la nuestra', () => {
+    expect(parseLatShipment({ data: { status: 'REGISTERED', securityPin: 'abcd' } }).securityPin).toBeNull()
+  })
+
+  it('no revienta con basura', () => {
+    expect(parseLatShipment(null).status).toBeNull()
+    expect(parseLatShipment('x').registrationNumber).toBeNull()
   })
 })
 
-describe('lo que el proveedor NO da', () => {
-  it('no se puede reconciliar: no publica cómo listar envíos', () => {
-    // Esta constante es el motivo por el que `olva-order` NO reintenta nunca,
-    // ni siquiera un 5xx. Si algún día el proveedor publica ese endpoint, este
-    // test es el que avisa que la defensa se puede volver a encender.
-    expect(esReconciliable).toBe(false)
+describe('el detalle (`GET /shipments/:id`): esperar la guía', () => {
+  it('lee la guía cuando Olva ya la asignó, esté donde esté', () => {
+    expect(leerDetalleLat({ data: { trackingNumber: '17491234', status: 'REGISTERED' } })).toEqual({
+      trackingNumber: '17491234', status: 'REGISTERED', registrationNumber: null,
+    })
+    expect(leerDetalleLat({ id: 'x', responsePayload: { registrationNumber: '202600679978' }, trackingNumber: null }))
+      .toEqual({ trackingNumber: null, status: null, registrationNumber: '202600679978' })
+  })
+  it('un tracking sin forma de guía no es guía', () => {
+    expect(leerDetalleLat({ trackingNumber: 'pendiente' }).trackingNumber).toBeNull()
+    expect(leerDetalleLat(null).trackingNumber).toBeNull()
+  })
+})
+
+describe('las sedes de origen (`GET /catalog/headquarters`)', () => {
+  it('lee el catálogo envuelto o pelado, con los nombres razonables', () => {
+    expect(parseLatHeadquarters({ data: [{ id: 43, name: 'LIMA', district: 'LIMA' }, { headquarterId: '7', headquarter: 'AREQUIPA' }, { x: 1 }] }))
+      .toEqual([{ id: '43', nombre: 'LIMA · LIMA' }, { id: '7', nombre: 'AREQUIPA' }])
+    expect(parseLatHeadquarters([{ id: '1' }])).toEqual([{ id: '1', nombre: '1' }])
+    expect(parseLatHeadquarters(null)).toEqual([])
   })
 })

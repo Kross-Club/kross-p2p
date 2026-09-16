@@ -53,6 +53,12 @@ export interface OrderSession {
   eva_estado_at?: string | null
   eva_rotulo_url?: string | null
   eva_entrega_foto?: string | null
+  /** El envío por Olva (§67): el expediente del registro, el número de
+   *  registro de Olva (la guía llega después, con la admisión) y el rótulo. */
+  olva_order_status?: string | null
+  olva_order_reason?: string | null
+  olva_registration_number?: string | null
+  olva_rotulo_url?: string | null
   agency_name?: string | null
   /** Sede de recojo elegida (§27.b). Ver `pickupBranchIdOf`. */
   agency_branch_id?: string | null

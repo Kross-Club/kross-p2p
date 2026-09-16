@@ -34,6 +34,42 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Olva vuelve con `POST /shipments` · **SQL §67** + 4 funciones + frontend (16-set-2026)
+
+**Duró un día dormido.** El proveedor de Olva LAT publicó la doc nueva: una sola llamada
+registra la guía y devuelve costo, número de registro y rótulo, y acepta `Idempotency-Key`. Con
+eso se caen las dos objeciones del 3-set (no poder reintentar, no tener clave de recojo).
+**Sigue siendo un tercero** —los mismos desarrolladores del wrapper de Shalom LAT—, no la API
+oficial de Olva, que no existe; Gabriel lo aceptó («es lo que hay por ahora»). Diseño en
+`02-SMART-LOGISTICS.md` § *Olva vuelve*.
+
+**Lo que hay que saber para operarlo:**
+
+- La **guía no nace con el registro**: Olva la asigna al admitir el paquete en la sede. El pedido
+  queda registrado (rótulo y clave listos, `CREATED` sin guía) y el barrido de cada 30 min la pone
+  sola y se la manda al comprador. La tarjeta del envío lo dice para que nadie la registre a mano.
+- **Marca → Envíos Olva**: RUC/DNI del remitente (Olva lo valida con su lookup), correo (a quien
+  Olva avisa), y **quién paga el flete** (la marca en la sede, default; o el cliente al recoger).
+  El interruptor de registro automático sigue APAGADO por marca: se prende cuando la ficha esté.
+- **Productos → Envío por Olva**: la **sede de origen** ahora es un selector (catálogo de Olva,
+  gasta una consulta cada media hora), el peso, y las medidas opcionales.
+- Un `FAILED` por timeout se reintenta con la **misma clave de idempotencia** (no duplica); un
+  rechazo 4xx es un dato nuestro: el detalle está en Conexiones.
+- `OLVA_LAT` pasa a **crítica** en Conexiones; Olva PE sigue dormido. Secret: `OLVA_LAT_API_KEY`
+  (ya existía; verificar que la llave sea la de la cuenta con envíos).
+
+```
+-- SQL Editor: §67 de supabase/setup-kross.sql
+supabase functions deploy olva-order         --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy olva-tracking-sync --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-store       --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy manage-product     --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy get-session get-store-sessions --project-ref ofdjghntvmrdfjhazfvz
+```
+Luego el front. Prueba: producto con sede + peso, marca con RUC y registro automático ON, un
+pedido de recojo en una sede Olva pagado → en el chat de vendedores «Envío registrado en Olva ·
+registro …», rótulo en la tarjeta del envío; al llevar el paquete a la sede, en la siguiente
+media hora el comprador recibe su guía.
 ### Eva: «Actualizar» siempre dice algo · 1 función + frontend (16-set-2026)
 
 Con el estado ya leído, el botón dejó de dar error y también dejó de decir nada: el reflejo
@@ -321,6 +357,8 @@ reintento que las del §49, así que en la ventana sin SQL se degradarían tambi
 y el degradado.
 
 ### Olva se duerme y Chosica se encuentra · 1 función + frontend (15-set-2026)
+
+> **Olva volvió al día siguiente** (§67, entrada de arriba). Lo de Chosica sigue vigente.
 
 **Solo Shalom, por ahora.** Ninguno de los dos proveedores de Olva entrega su API como
 corresponde, y un mostrador que el comprador elige es una guía que el vendedor después tiene que

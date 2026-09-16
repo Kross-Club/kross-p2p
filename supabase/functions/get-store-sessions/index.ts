@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
       address, address_lat, address_lng,
       advance_amount, payment_verification, saldo_amount, saldo_verification,
       tracking_courier, tracking_numero, tracking_phase, tracking_phase_at, tracking_demora_at,
-      shalom_order_status, shalom_order_reason,
+      shalom_order_status, shalom_order_reason, olva_order_status, olva_order_reason,
       assigned_seller_id, involved_seller_ids, writer_seller_ids, seller_name, seller_role, created_at,
       answered_at,
       chat_messages ( id, sender_role, sender_name, type, body, visibility, mentions, created_at, read_at )

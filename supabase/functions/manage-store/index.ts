@@ -3,7 +3,11 @@ import { createBusiness, pay360BaseUrl, pickPartnerKey, type Pay360Env } from '.
 import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
 import { asegurarSesionLat } from '../_shared/shalom-lat-emisor.ts'
-import { olvaLatApiKey, validateAtLat } from '../_shared/olva-lat-api.ts'
+import { latFetch, olvaLatApiKey, validateAtLat } from '../_shared/olva-lat-api.ts'
+import { isWhoPays, parseLatHeadquarters, type LatHeadquarter } from '../_shared/olva-lat-orders.ts'
+
+/** Las sedes de origen de Olva, cacheadas por instancia (consultarlas gasta cuota). */
+let cacheSedesOlva: { at: number; sedes: LatHeadquarter[] } | null = null
 import { administraLaPlataforma, TIENDA_PLATAFORMA } from '../_shared/alcance.ts'
 import { normalizarDominio, variantesDeDominio } from '../_shared/tienda-url.ts'
 import { crearTienda } from '../_shared/crear-tienda.ts'
@@ -122,7 +126,7 @@ Deno.serve(async (req) => {
 
   const body = await req.json() as {
     affiliate_code?: string
-    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'nubefact_status' | 'olva_status' | 'olva_lat_status' | 'verify_domain'
+    action: 'list' | 'create' | 'update' | 'delete' | 'wa_usage' | 'client_stats' | 'ab_stats' | 'shalom_status' | 'nubefact_status' | 'olva_status' | 'olva_lat_status' | 'olva_headquarters' | 'verify_domain'
     home_delivery_enabled?: boolean
     courier_lima_enabled?: boolean
     admin_auth_id: string
@@ -197,6 +201,11 @@ Deno.serve(async (req) => {
     olva_sender_name?: string | null
     olva_sender_document?: string | null
     olva_sender_phone?: string | null
+    /** Correo del remitente: Olva le manda el aviso del registro (§67). */
+    olva_sender_email?: string | null
+    /** Quién paga el flete de Olva: STORE (la marca, en la sede de origen) o
+     *  DESTINATION (el comprador al recoger). §67. */
+    olva_who_pays?: string | null
     // Reparto del experimento A/B: 'SPLIT' | 'A' | 'B'. No es un campo de
     // cobro — mueve tráfico entre dos versiones del checkout, no dinero.
     checkout_ab_mode?: string
@@ -252,7 +261,7 @@ Deno.serve(async (req) => {
   // ─── LIST STORES ───────────────────────────────────────────────────────────
   // Super admin sees every brand; a store admin sees only their own.
   if (body.action === 'list') {
-    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_fallback_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone, nubefact_enabled, ruc, razon_social, direccion_fiscal, boleta_serie, boleta_correlativo'
+    const CAMPOS = 'id, slug, nombre, logo_url, notif_icon_url, logo_wide_url, color_primary, color_dark, active, created_at, wa_enabled, wa_fallback_enabled, wa_phone_number_id, wa_display_phone, wa_business_account_id, wa_codigo_template, welcome_points, welcome_msg, checkout_ab_mode, home_delivery_enabled, pay360_enabled, pay360_env, pay360_business_id, pay360_payment_prefix, flow_enabled, flow_env, flow_payment_method, meta_pixel_id, tiktok_pixel_id, shalom_auto_guide_enabled, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone, olva_sender_email, olva_who_pays, nubefact_enabled, ruc, razon_social, direccion_fiscal, boleta_serie, boleta_correlativo'
     type Respuesta = { data: Record<string, unknown>[] | null; error: { code?: string; message?: string } | null }
     const pedir = async (campos: string): Promise<Respuesta> => {
       const q = supabase.from('stores').select(campos).order('created_at', { ascending: true })
@@ -367,6 +376,21 @@ Deno.serve(async (req) => {
   // cuánta queda: una cuota agotada se ve igual que una API caída desde el
   // pedido, pero se arregla en un sitio completamente distinto (el plan del
   // proveedor, no su servidor), así que el panel las distingue.
+  // ─── Las sedes de origen de Olva (`GET /catalog/headquarters`) ─────────────
+  // Para el selector de *Productos → Envío por Olva*: un id de sede (`43`) no
+  // se adivina. Consume cuota: se cachea por instancia media hora.
+  if (body.action === 'olva_headquarters') {
+    const ya = cacheSedesOlva
+    if (ya && Date.now() - ya.at < 30 * 60 * 1000) return json({ sedes: ya.sedes })
+    const key = await olvaLatApiKey()
+    if (!key) return json({ sedes: [], motivo: 'llave' })
+    const r = await latFetch('/catalog/headquarters', { key, timeoutMs: 10_000 })
+    if (!r.ok) return json({ sedes: [], motivo: r.stage })
+    const sedes = parseLatHeadquarters(r.data)
+    if (sedes.length) cacheSedesOlva = { at: Date.now(), sedes }
+    return json({ sedes })
+  }
+
   if (body.action === 'olva_lat_status') {
     const r = await validateAtLat((await olvaLatApiKey()) ?? '')
     if (!r.ok) {
@@ -731,6 +755,13 @@ Deno.serve(async (req) => {
     if (body.olva_sender_phone !== undefined) {
       const tel = String(body.olva_sender_phone ?? '').replace(/\D/g, '').slice(-9)
       patch.olva_sender_phone = /^9\d{8}$/.test(tel) ? tel : null
+    }
+    if (body.olva_sender_email !== undefined) {
+      const mail = String(body.olva_sender_email ?? '').trim().toLowerCase().slice(0, 120)
+      patch.olva_sender_email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail) ? mail : null
+    }
+    if (body.olva_who_pays !== undefined) {
+      patch.olva_who_pays = isWhoPays(body.olva_who_pays) ? body.olva_who_pays : 'STORE'
     }
 
     let wroteShalom = false

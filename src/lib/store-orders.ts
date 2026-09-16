@@ -109,6 +109,9 @@ export interface StoreOrder {
    *  simplemente todavía no se procesó. */
   shalom_order_status?: string | null
   shalom_order_reason?: string | null
+  /** Íd. para el generador de guías Olva (§67). */
+  olva_order_status?: string | null
+  olva_order_reason?: string | null
   assigned_seller_id?: string | null
   involved_seller_ids?: string[] | null
   writer_seller_ids?: string[] | null

@@ -329,6 +329,11 @@ describe('cobrado y esperando guía a mano', () => {
   it('solo el rechazo del proveedor levanta la alerta', () => {
     expect(esperaGuiaManual({ shalom_order_status: 'FAILED' })).toBe(true)
     expect(esperaGuiaManual({ shalom_order_status: 'failed' })).toBe(true)
+    // El generador de Olva (§67) es el mismo expediente y la misma alerta.
+    expect(esperaGuiaManual({ olva_order_status: 'FAILED' })).toBe(true)
+    // Registrado en Olva SIN guía todavía no espera a nadie: la guía llega
+    // con la admisión del paquete y el barrido la pone solo.
+    expect(esperaGuiaManual({ olva_order_status: 'CREATED' })).toBe(false)
   })
 
   // Marcar a todos los que no tienen guía convertiría la alerta en decoración:

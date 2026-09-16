@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { isDeclaredContent, isShalomSize } from '../_shared/shalom-orders.ts'
+import { dimsCmTexto } from '../_shared/olva-lat-orders.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
 import { saneaProducto } from '../_shared/advance.ts'
 
@@ -40,6 +41,9 @@ Deno.serve(async (req) => {
     // de catálogo.
     olva_origin_agency_code?: string | null
     package_weight_kg?: number | string | null
+    /** `LxAxH` en cm (§67). Con esto el envío Olva va como paquete; sin esto
+     *  no se declara tipo. */
+    package_dims_cm?: string | null
     // Cobro (§56): si este producto deja pagar la mitad ahora (el default es
     // el total) y cuánto descuenta su oferta de salida (0 = no ofrece nada).
     // Los sanea `_shared/advance.ts`, la misma regla que usa el checkout.
@@ -74,10 +78,11 @@ Deno.serve(async (req) => {
   // guardan como NULL —el pedido no genera guía y Logística lo hace a mano— en
   // vez de viajar al proveedor y volver 400 con el paquete ya empacado.
   const origen = String(body.shalom_origin_branch_id ?? '').trim()
-  // El código de agencia de Olva LAT tiene forma de `LIM-MIR-01`: letras,
-  // dígitos y guiones. No se valida contra su catálogo acá —sería una llamada
-  // que consume cuota en cada guardado— sino al emitir, que es donde el
-  // rechazo se puede explicar con el pedido delante.
+  // La sede de origen de Olva LAT es un id de su catálogo (`43`; antes de la
+  // doc de set-2026 era un código tipo `LIM-MIR-01`, que sigue entrando).
+  // No se valida contra su catálogo acá —sería una llamada que consume cuota
+  // en cada guardado— sino al emitir, que es donde el rechazo se puede
+  // explicar con el pedido delante.
   const origenOlva = String(body.olva_origin_agency_code ?? '').trim().toUpperCase()
   const peso = Number(body.package_weight_kg)
   const row = {
@@ -90,7 +95,8 @@ Deno.serve(async (req) => {
     shalom_origin_branch_id: /^\d+$/.test(origen) ? origen : null,
     package_size: isShalomSize(body.package_size) ? body.package_size : null,
     declared_content: isDeclaredContent(body.declared_content) ? body.declared_content : null,
-    olva_origin_agency_code: /^[A-Z0-9][A-Z0-9-]{2,29}$/.test(origenOlva) ? origenOlva : null,
+    olva_origin_agency_code: /^[A-Z0-9][A-Z0-9-]{0,29}$/.test(origenOlva) ? origenOlva : null,
+    package_dims_cm: dimsCmTexto(body.package_dims_cm),
     package_weight_kg: Number.isFinite(peso) && peso > 0 && peso <= 100 ? Math.round(peso * 100) / 100 : null,
     // Cobro (§56). Solo entra lo que el body trae: `row` reescribe el producto
     // entero, y un panel de antes que no mande estos campos no debe borrarlos.

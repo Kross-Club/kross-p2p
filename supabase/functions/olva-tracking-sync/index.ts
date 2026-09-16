@@ -2,7 +2,9 @@ import { applyTracking, isObj, supabase, TRACKED_COLUMNS } from '../_shared/trac
 import type { TrackedRow } from '../_shared/tracking.ts'
 import { derivePhase, normalizeYear } from '../_shared/olva.ts'
 import { readLatPayload } from '../_shared/olva-lat.ts'
-import { ensureLatWebhook, olvaLatApiKey, subscribeAtLat, trackAtLat } from '../_shared/olva-lat-api.ts'
+import { ensureLatWebhook, latFetch, olvaLatApiKey, subscribeAtLat, trackAtLat } from '../_shared/olva-lat-api.ts'
+import { leerDetalleLat } from '../_shared/olva-lat-orders.ts'
+import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
 import { olvaApiKey } from '../_shared/olva-key.ts'
 import { anotar, anotarRespuesta, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 
@@ -17,8 +19,15 @@ const corsHeaders = {
 // Shalom; no recibe parámetros, no expone datos (solo conteos) y es idempotente.
 // El reflejo vive en `_shared/tracking.ts`, compartido con el refresh manual.
 //
-// Desde que Olva tiene DOS rieles, este barrido hace tres cosas por corrida:
+// Desde que Olva tiene DOS rieles, este barrido hace tres cosas por corrida
+// —y una CUARTA desde que registra envíos (16-set-2026), que va primero:
 //
+//   0. **Espera la guía de los envíos registrados.** `POST /shipments` no
+//      devuelve la guía: Olva la asigna al ADMITIR el paquete en la sede. Los
+//      pedidos en `olva_order_status = CREATED` sin `tracking_numero` se
+//      preguntan por `GET /shipments/:id`, y cuando aparece se corre
+//      `registrarGuia` —el mismo camino que la guía escrita a mano: aviso al
+//      comprador, clave si ya no debe, suscripción al webhook—.
 //   1. **Suscribe al webhook** las guías vivas que aún no lo estén. Las
 //      suscripciones de Olva LAT son GRATIS (no consumen cuota) y son lo que
 //      convierte el tracking de Olva de "cada 30 min" a "al instante". Cubre
@@ -40,6 +49,10 @@ const MAX_LAT_PER_RUN = 10
 /** Suscripciones por corrida. Son gratis; el tope existe para no alargar la
  *  invocación cuando una marca registra cien guías de golpe. */
 const MAX_SUBS_PER_RUN = 25
+/** Envíos registrados a los que se les pregunta si ya tienen guía. Cada uno es
+ *  una consulta de cuota, y un paquete tarda horas —no minutos— en llegar a la
+ *  sede: con 2 corridas/hora, 10 por corrida sobra para el volumen del ICP. */
+const MAX_ADMISION_PER_RUN = 10
 
 const json = (b: Record<string, unknown>, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -58,6 +71,46 @@ Deno.serve(async (req) => {
   // secret guardado (mismo patrón que `ensureWebhook` de Shalom). Best-effort:
   // si falla, este barrido sigue cubriendo el tracking.
   if (latKey) await ensureLatWebhook(latKey)
+
+  // ─── 0. Los envíos registrados que esperan su guía (§67) ───────────────────
+  let admitidos = 0
+  if (latKey) {
+    const { data: pendientes } = await supabase
+      .from('order_sessions')
+      .select(`${TRACKED_COLUMNS}, shalom_pickup_code, olva_order_id, olva_rotulo_url`)
+      .eq('status', 'active')
+      .eq('olva_order_status', 'CREATED')
+      .is('tracking_numero', null)
+      .not('olva_order_id', 'is', null)
+      .order('tracking_checked_at', { ascending: true, nullsFirst: true })
+      .limit(MAX_ADMISION_PER_RUN)
+    type Registrado = TrackedRow & { shalom_pickup_code: string | null; olva_order_id: string; olva_rotulo_url: string | null }
+    for (const row of (pendientes ?? []) as Registrado[]) {
+      const r = await latFetch(`/shipments/${encodeURIComponent(row.olva_order_id)}`, { key: latKey, sessionId: row.id })
+      // Se marca la hora consultada aunque no haya guía: es lo que rota la cola.
+      await supabase.from('order_sessions').update({ tracking_checked_at: new Date().toISOString() }).eq('id', row.id)
+      if (!r.ok) {
+        if (r.stage === 'quota' || r.stage === 'rate_limit') break
+        continue
+      }
+      const detalle = leerDetalleLat(r.data)
+      if (!detalle.trackingNumber) continue
+      const g = normalizarGuia({ courier: 'OLVA', numero: detalle.trackingNumber }, row.agency_name)
+      if (!g.ok) {
+        console.error('olva-tracking-sync: guía con formato inesperado', row.id, detalle.trackingNumber)
+        continue
+      }
+      // El mismo camino que la guía manual: escribe, avisa, suelta la clave si
+      // ya no debe, y suscribe al webhook (gratis).
+      const reg = await registrarGuia(row, g, { pdfUrl: row.olva_rotulo_url })
+      if (reg.ok) {
+        admitidos++
+        await anotar({ proveedor: 'OLVA_LAT', op: 'shipments.admision', outcome: 'OK', sessionId: row.id, detail: `guía ${g.ids}` })
+      } else {
+        console.error('olva-tracking-sync: no se pudo escribir la guía', row.id, reg.error)
+      }
+    }
+  }
 
   // Los envíos vivos, los menos chequeados primero (índice 23.b).
   const { data: rows, error: qErr } = await supabase
@@ -189,6 +242,6 @@ Deno.serve(async (req) => {
   }
 
   return json({
-    ok: true, active: trackable.length, checked, transitions, failed, subscribed, rescatados,
+    ok: true, active: trackable.length, checked, transitions, failed, subscribed, rescatados, admitidos,
   })
 })

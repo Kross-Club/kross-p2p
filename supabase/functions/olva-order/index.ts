@@ -1,49 +1,51 @@
 // ─── SMART LOGISTICS · Generador de guías OLVA (por Olva LAT) ────────────────
 // El gemelo de `shalom-order` para el otro courier: un pedido de recojo en
-// agencia OLVA con el adelanto verificado registra su propia guía contra
-// `POST /account/register` de Olva LAT, y desde ahí sigue el ciclo de siempre —
-// aviso al comprador, suscripción al webhook, fases y cobranza (`_shared/guia.ts`).
+// agencia OLVA con el pago verificado registra su envío contra
+// `POST /shipments` de Olva LAT, y desde ahí sigue el ciclo de siempre —
+// rótulo, aviso, guía, fases y cobranza (`_shared/guia.ts`).
 //
-// Lo llama `pay360-webhook` apenas el adelanto cuadra (fire-and-forget: cobrar
-// nunca se cuelga de despachar). Es interna — la invoca otra función con la
-// service role key, no el navegador: emitir guías CUESTA PLATA y la anon key
-// vive en el bundle de la PWA.
+// Lo llama `flow-confirm` apenas el pago cuadra (fire-and-forget: cobrar nunca
+// se cuelga de despachar). Es interna — la invoca otra función con la service
+// role key, no el navegador: emitir guías CUESTA PLATA y la anon key vive en
+// el bundle de la PWA.
 //
-// ⚠️ TRES DIFERENCIAS CON SHALOM QUE CAMBIAN EL DISEÑO, no el estilo:
+// ⚠️ LO QUE CAMBIA RESPECTO A SHALOM, con la doc de set-2026 (`POST /shipments`):
 //
-//   1. **La guía nace en la cuenta del PROVEEDOR, no en una de la marca.** Los
-//      endpoints de «cuenta» de Olva LAT corren sobre su OAuth2 global con Olva;
-//      no hay credenciales por cliente como el Shalom Pro de cada marca. El
-//      remitente es un dato que mandamos (`sender`), no una identidad
-//      verificada. Quién factura el flete es una conversación comercial abierta
-//      —anotada en 02-SMART-LOGISTICS y en ESTADO-OPERATIVO—, y hasta que se
-//      cierre el interruptor por marca se queda APAGADO: la función corre
-//      entera y deja el payload en el chat de vendedores sin emitir (SIMULADO).
-//   2. **No hay forma de reconciliar.** Shalom tiene `GET /v1/orders` y
-//      `shalom-order` la usa como su defensa central: ante un timeout, pregunta
-//      si la guía ya existe antes de reintentar. Olva LAT no publica ese
-//      endpoint (`esReconciliable === false`), así que acá **no se reintenta
-//      nunca** —ni un 5xx—: sin respuesta se cierra en FAILED y una persona
-//      verifica antes de emitir otra. Pagar dos veces el mismo flete, o mandar
-//      dos paquetes, cuesta más que una guía hecha a mano.
-//   3. **No hay clave de retiro.** Shalom deja elegir el `pickup_code`; acá el
-//      campo no existe. El pedido queda como una guía Olva registrada a mano:
-//      el chat entrega la guía y la clave la coordina una persona.
+//   1. **La guía NO nace con el registro.** Olva devuelve un
+//      `registrationNumber` (para reclamar y para el rótulo) y el rótulo en
+//      PDF; el número de GUÍA lo asigna cuando ADMITE el paquete en la sede.
+//      Así que esta función cierra en CREATED **sin `tracking_numero`**, sube
+//      el rótulo al bucket para que la marca lo pegue al paquete, y el barrido
+//      (`olva-tracking-sync`) pregunta por `GET /shipments/:id` hasta que la
+//      guía exista — ahí recién corre `registrarGuia`, el mismo camino que la
+//      guía escrita a mano.
+//   2. **Sí se reintenta, gracias a `Idempotency-Key`.** Un timeout o un 5xx se
+//      repite con la MISMA clave (pedido + huella del payload): si el primero
+//      llegó a registrar, Olva devuelve ese envío en vez de crear otro. Un 4xx
+//      no se reintenta: es un dato nuestro que hay que corregir.
+//   3. **La clave de recojo la elegimos nosotros** (`pin`, como el `pickup_code`
+//      de Shalom) y Olva la confirma en `securityPin`. Se guarda en
+//      `shalom_pickup_code` —el nombre es histórico; es LA clave de recojo del
+//      pedido— y el chat la suelta cuando el saldo se paga, igual que siempre.
+//   4. **La guía nace en la cuenta Olva del PROVEEDOR**, no en una de la marca:
+//      el remitente es un documento que Olva valida con su lookup. Quién factura
+//      el flete lo decide `stores.olva_who_pays` (STORE: la marca en la sede de
+//      origen; DESTINATION: el comprador al recoger).
 //
-// El candado (defensa #1) sí es idéntico: se reclama el pedido con un UPDATE
-// condicional ANTES de llamar a nadie, así que dos webhooks del mismo pago no
-// registran dos envíos para un paquete.
+// El candado (defensa #1) es idéntico al de Shalom: se reclama el pedido con un
+// UPDATE condicional ANTES de llamar a nadie, así que dos webhooks del mismo
+// pago no registran dos envíos para un paquete.
 //
 // Deploy: supabase functions deploy olva-order --project-ref ofdjghntvmrdfjhazfvz
 
 import { normalizarGuia, registrarGuia } from '../_shared/guia.ts'
-import { chatMessage, supabase } from '../_shared/tracking.ts'
+import { broadcast, chatMessage, supabase } from '../_shared/tracking.ts'
 import { latAgencies, latFetch, olvaLatApiKey } from '../_shared/olva-lat-api.ts'
 import { anotar } from '../_shared/api-eventos.ts'
 import {
-  buildLatShipment, esRastreable, parseLatShipment, resolveAgencyCode,
+  buildLatShipment, claveDeIdempotencia, esRastreable, esRegistrado, parseLatShipment, resolveAgencyCode,
 } from '../_shared/olva-lat-orders.ts'
-import { CONTENT_LABELS, isDeclaredContent } from '../_shared/shalom-orders.ts'
+import { CONTENT_LABELS, isDeclaredContent, nuevoPickupCode } from '../_shared/shalom-orders.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,7 +59,8 @@ const json = (body: unknown, status = 200) =>
 const SESSION_COLUMNS =
   'id, order_id, store_id, origin_store_id, buyer_id, buyer_name, buyer_phone, product_id, product_name, ' +
   'product_price, advance_amount, payment_verification, saldo_verification, dispatch_type, agency_name, ' +
-  'agency_branch_id, agency_branch_label, delivery_reference, tracking_numero, olva_order_status'
+  'agency_branch_id, agency_branch_label, delivery_reference, tracking_numero, olva_order_status, ' +
+  'shalom_pickup_code, token, buyer_phone, saldo_amount'
 
 /** Cierra el expediente. `status` es también el candado: una vez escrito,
  *  ninguna corrida futura vuelve a tomar este pedido sola. */
@@ -139,11 +142,11 @@ Deno.serve(async (req: Request) => {
     const storeId = String(session.origin_store_id ?? session.store_id ?? '')
     const [{ data: store }, { data: product }, { data: buyer }] = await Promise.all([
       supabase.from('stores')
-        .select('nombre, olva_auto_guide_enabled, olva_sender_name, olva_sender_document, olva_sender_phone')
+        .select('nombre, olva_auto_guide_enabled, olva_sender_document, olva_sender_phone, olva_sender_email, olva_who_pays')
         .eq('id', storeId).maybeSingle(),
       session.product_id
         ? supabase.from('products')
-            .select('olva_origin_agency_code, package_weight_kg, declared_content').eq('id', session.product_id).maybeSingle()
+            .select('olva_origin_agency_code, package_weight_kg, package_dims_cm, declared_content').eq('id', session.product_id).maybeSingle()
         : Promise.resolve({ data: null }),
       session.buyer_id
         ? supabase.from('buyers').select('document_number, phone').eq('id', session.buyer_id).maybeSingle()
@@ -173,21 +176,29 @@ Deno.serve(async (req: Request) => {
       ? CONTENT_LABELS[product.declared_content]
       : null
 
+    // La clave de recojo: la del pedido si ya tenía (un reintento no cambia la
+    // clave que quizá ya se le dijo a alguien), o una nueva.
+    const pin = /^\d{4}$/.test(String(session.shalom_pickup_code ?? '')) ? String(session.shalom_pickup_code) : nuevoPickupCode()
+
     const armado = buildLatShipment({
       sender: {
-        name: store?.olva_sender_name ?? store?.nombre ?? null,
         document: store?.olva_sender_document ?? null,
         phone: store?.olva_sender_phone ?? null,
+        email: store?.olva_sender_email ?? null,
       },
       recipient: {
         name: session.buyer_name ?? null,
         document: dni,
         phone: String(session.buyer_phone ?? buyer?.phone ?? ''),
       },
-      originAgencyCode: product?.olva_origin_agency_code ?? null,
+      originHeadquarterId: product?.olva_origin_agency_code ?? null,
       destinationAgencyCode: destino,
       weightKg: product?.package_weight_kg ?? null,
+      dimsCm: product?.package_dims_cm ?? null,
       description: contenido,
+      declaredValue: Number(session.product_price ?? 0),
+      whoPays: store?.olva_who_pays ?? null,
+      pin,
     })
 
     if (!armado.ok) {
@@ -213,79 +224,147 @@ Deno.serve(async (req: Request) => {
     }
 
     // ─── La llamada que cuesta plata ─────────────────────────────────────────
-    // UNA sola. Sin reintentos y sin reconciliación: el proveedor no publica
-    // cómo preguntar si el envío ya existe (`esReconciliable`), así que repetir
-    // es arriesgarse a dos guías por un paquete. Un fallo cierra en FAILED y el
-    // panel ofrece reintentar a mano DESPUÉS de que una persona verificó.
-    const res = await latFetch('/account/register', {
-      key,
-      sessionId,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(armado.body),
-      timeoutMs: 60_000,
-    })
+    // Con `Idempotency-Key` (pedido + huella del payload): un timeout o un 5xx
+    // se repite con la misma clave y Olva devuelve el mismo envío en vez de
+    // crear otro. Un 4xx no se repite: es un dato nuestro que hay que corregir.
+    const idem = claveDeIdempotencia(String(session.order_id ?? session.id), armado.body)
+    const ESPERAS_MS = [0, 2_000, 6_000]
+    let res: Awaited<ReturnType<typeof latFetch>> | null = null
+    for (const espera of ESPERAS_MS) {
+      if (espera) await new Promise(r => setTimeout(r, espera))
+      res = await latFetch('/shipments', {
+        key,
+        sessionId,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idem },
+        body: JSON.stringify(armado.body),
+        timeoutMs: 45_000,
+      })
+      if (res.ok) break
+      const reintentable = res.stage === 'network' || res.stage === 'upstream' || res.stage === 'rate_limit'
+      if (!reintentable) break
+    }
 
-    if (!res.ok) {
+    if (!res || !res.ok) {
       // El detalle crudo del proveedor quedó anotado en `api_events` por
       // `latFetch`, con su referencia para reclamárselo (§42).
-      const sinRespuesta = res.stage === 'network'
+      const sinRespuesta = res?.stage === 'network'
       await cerrar(sessionId, 'FAILED', sinRespuesta
-        ? 'el proveedor no respondió'
-        : `el proveedor rechazó el envío (${res.stage})`)
+        ? 'el proveedor no respondió (3 intentos con la misma clave de idempotencia)'
+        : `el proveedor rechazó el envío (${res?.stage ?? 'desconocido'})`)
       await aLogistica(sessionId, sinRespuesta
-        ? '⚠️ Envío Olva sin confirmar: el proveedor no respondió y no hay forma de preguntarle si '
-          + 'llegó a registrarse. ANTES de registrar otro, verifícalo en Olva — puede existir. '
-          + 'Si existe, registra esa guía acá con el botón de siempre.'
-        : '📦 Envío Olva no registrado — el proveedor lo rechazó. Regístralo a mano cuando '
-          + 'despaches; el detalle quedó en los logs de Kross.')
-      return json({ error: sinRespuesta ? 'sin respuesta' : 'rechazado', stage: res.stage }, 502)
+        ? '⚠️ Envío Olva sin confirmar: el proveedor no respondió en tres intentos. Mira en su panel si el '
+          + 'envío llegó a crearse; si no está, «Reintentar» lo pide de nuevo con la misma clave de '
+          + 'idempotencia (no duplica). Si prefieres, regístralo a mano al despachar.'
+        : res?.stage === 'quota' || res?.stage === 'auth'
+          ? '📦 Envío Olva no registrado — la llave de la API de envíos no sirve o se agotó la cuota. '
+            + 'Avisa al equipo; mientras tanto regístralo a mano al despachar.'
+          : '📦 Envío Olva no registrado — el proveedor lo rechazó (un dato del envío). El detalle quedó '
+            + 'en Conexiones; corrige el producto o el remitente y toca «Reintentar», o regístralo a mano.')
+      return json({ error: sinRespuesta ? 'sin respuesta' : 'rechazado', stage: res?.stage }, 502)
     }
 
-    // De acá para abajo, EL ENVÍO EXISTE. Cualquier problema es de lectura o de
-    // escritura nuestra, nunca motivo para volver a registrar.
-    const guia = parseLatShipment(res.data)
-    if (!esRastreable(guia)) {
-      console.error('[olva-order] respuesta sin guía rastreable', sessionId)
-      await cerrar(sessionId, 'CREATED', 'envío registrado, sin número de guía en la respuesta', { olva_order_id: guia.orderId })
+    // De acá para abajo, EL ENVÍO EXISTE (o Olva contestó algo). Cualquier
+    // problema es de lectura o de escritura nuestra, nunca motivo para volver
+    // a registrar sin la misma clave.
+    const envio = parseLatShipment(res.data)
+    if (!esRegistrado(envio)) {
+      // `PENDING_PAYMENT` (un `whoPays: ONLINE` que no mandamos) o `DRAFT` (un
+      // `confirm: false` que tampoco): no hay guía por venir. Se cierra en
+      // FAILED con el estado, y se anota el cuerpo para ver qué contestó.
+      await anotar({
+        proveedor: 'OLVA_LAT', op: 'shipments', outcome: 'RECHAZO', sessionId, httpStatus: 200,
+        detail: `registro sin REGISTERED · ${JSON.stringify(res.data).slice(0, 900)}`, detailMax: 1000,
+      })
+      await cerrar(sessionId, 'FAILED', `Olva contestó ${envio.status ?? 'sin estado'} en vez de REGISTERED`)
       await aLogistica(sessionId,
-        '⚠️ El envío se registró en Olva pero la respuesta no trajo el número de guía. '
-        + 'Búscalo en el comprobante y regístralo acá con el botón de siempre — NO registres otro.')
-      return json({ created: true, sinGuia: true })
+        `⚠️ Olva no dio por registrado el envío (contestó ${envio.status ?? 'sin estado'}). `
+        + 'Mira el detalle en Conexiones y avisa al equipo; regístralo a mano al despachar.')
+      return json({ error: 'no registrado', status: envio.status }, 502)
     }
 
-    const g = normalizarGuia({ courier: 'OLVA', numero: guia.numero }, session.agency_name)
-    if (!g.ok) {
-      console.error('[olva-order] guía con formato inesperado', sessionId, JSON.stringify(guia))
-      await cerrar(sessionId, 'CREATED', 'envío registrado con guía de formato inesperado', { olva_order_id: guia.orderId })
-      await aLogistica(sessionId,
-        '⚠️ El envío se registró en Olva pero su guía no tiene el formato esperado. '
-        + 'Regístrala a mano desde el comprobante — NO registres otro envío.')
-      return json({ created: true, formatoRaro: true })
-    }
+    // ─── El rótulo, para pegar al paquete ────────────────────────────────────
+    const rotuloUrl = await subirRotulo(envio.registrationNumber!, envio.labelBase64)
 
-    // `registrarGuia` se encarga del resto y es el MISMO camino que la guía
-    // escrita a mano: mensaje al comprador, broadcast y —acá sí— la suscripción
-    // al webhook de Olva LAT, que es gratis y arranca el tracking al instante.
-    const reg = await registrarGuia(session, g, { pdfUrl: guia.pdfUrl })
-    await cerrar(sessionId, 'CREATED', reg.ok ? null : 'envío registrado, no se pudo escribir en el pedido',
-      { olva_order_id: guia.orderId })
-    if (!reg.ok) {
-      console.error('[olva-order] no se pudo escribir la guía en el pedido', sessionId, reg.error)
-      await aLogistica(sessionId, '⚠️ El envío se registró en Olva pero no se pudo escribir en el pedido. Regístralo a mano — NO registres otro.')
-      return json({ created: true, guardado: false }, 500)
+    // La clave de recojo definitiva: la que Olva confirmó, o la nuestra.
+    const clave = envio.securityPin ?? pin
+    const registro = {
+      olva_order_id: envio.id,
+      olva_registration_number: envio.registrationNumber,
+      olva_rotulo_url: rotuloUrl,
+      olva_cost: envio.cost,
+      shalom_pickup_code: clave,
     }
 
     // Una guía registrada es plata gastada: se anota SIEMPRE, salga bien o
     // mal, y por eso este `OK` no es ruido como el de una consulta cualquiera.
     await anotar({
-      proveedor: 'OLVA_LAT', op: 'account.register', outcome: 'OK',
-      sessionId, detail: `guía ${g.ids}`,
+      proveedor: 'OLVA_LAT', op: 'shipments', outcome: 'OK', sessionId, providerRef: envio.registrationNumber,
+      detail: `registro ${envio.registrationNumber}${envio.cost != null ? ` · S/${envio.cost}` : ''}${envio.trackingNumber ? ` · guía ${envio.trackingNumber}` : ' · guía pendiente de admisión'}`,
     })
+
+    // ─── Si por excepción la guía ya vino, se registra ahora mismo ───────────
+    if (esRastreable(envio)) {
+      const g = normalizarGuia({ courier: 'OLVA', numero: envio.trackingNumber }, session.agency_name)
+      if (g.ok) {
+        const reg = await registrarGuia({ ...session, shalom_pickup_code: clave }, g, { pdfUrl: rotuloUrl })
+        await cerrar(sessionId, 'CREATED', reg.ok ? null : 'envío registrado, no se pudo escribir la guía en el pedido', registro)
+        if (!reg.ok) {
+          console.error('[olva-order] no se pudo escribir la guía en el pedido', sessionId, reg.error)
+          await aLogistica(sessionId, '⚠️ El envío se registró en Olva pero la guía no se pudo escribir en el pedido. Regístrala a mano — NO registres otro envío.')
+          return json({ created: true, guardado: false }, 500)
+        }
+        await aLogistica(sessionId,
+          `📦 Envío registrado en Olva · registro ${envio.registrationNumber} · ${g.ids}. `
+          + (rotuloUrl ? 'Imprime el rótulo desde la tarjeta del envío y pégalo al paquete.' : 'El rótulo no se pudo guardar: imprímelo desde el panel de Olva.'))
+        return json({ created: true, tracking: { ...g.tracking, ...registro, olva_order_status: 'CREATED', olva_order_reason: null } })
+      }
+    }
+
+    // ─── Lo normal: registrado, la guía llega con la admisión ────────────────
+    // El pedido queda en CREATED sin `tracking_numero`. El barrido pregunta por
+    // `GET /shipments/:id` hasta que Olva asigne la guía, y ahí `registrarGuia`
+    // se la manda al comprador (y la clave, si ya no debe nada).
+    await cerrar(sessionId, 'CREATED', null, registro)
+    await chatMessage(sessionId,
+      '📦 Tu pedido ya está registrado en Olva. Te mandamos por aquí tu número de guía en cuanto el paquete '
+      + 'entre a la agencia.', 'all')
     await aLogistica(sessionId,
-      `📦 Envío registrado automáticamente en Olva · ${g.ids}. El comprador ya tiene su guía en el chat. `
-      + 'La clave de recojo la coordina una persona: Olva no la emite por API.')
-    return json({ created: true, tracking: g.tracking })
+      `📦 Envío registrado en Olva · registro ${envio.registrationNumber}${envio.cost != null ? ` · flete S/${envio.cost}` : ''}. `
+      + (rotuloUrl
+        ? 'Imprime el rótulo desde la tarjeta del envío, pégalo al paquete y llévalo a la sede de origen. '
+        : 'El rótulo no se pudo guardar: imprímelo desde el panel de Olva. ')
+      + 'La guía de rastreo la asigna Olva al admitir el paquete; el sistema la pone sola y se la manda al comprador.')
+    const patch = { ...registro, olva_order_status: 'CREATED', olva_order_reason: null }
+    await broadcast(sessionId, 'tracking_update', patch)
+    return json({ created: true, pendienteDeGuia: true, tracking: patch })
+  }
+
+  /** Decodifica el rótulo (base64) y lo sube al bucket. Best-effort: sin
+   *  rótulo el envío sigue registrado y la marca lo imprime desde Olva. */
+  async function subirRotulo(registro: string, base64: string | null): Promise<string | null> {
+    if (!base64) return null
+    try {
+      const limpio = base64.replace(/^data:application\/pdf;base64,/, '').replace(/\s+/g, '')
+      const bin = atob(limpio)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      // Un PDF empieza por `%PDF`: lo que no, no se guarda como rótulo.
+      if (bytes.length < 4 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== '%PDF') {
+        await anotar({ proveedor: 'OLVA_LAT', op: 'shipments.rotulo', outcome: 'RECHAZO', sessionId, detail: `el rótulo no es un PDF (${bytes.length} bytes)` })
+        return null
+      }
+      const path = `${sessionId}/${registro}.pdf`
+      const up = await supabase.storage.from('olva-rotulos').upload(path, bytes, { contentType: 'application/pdf', upsert: true })
+      if (up.error) {
+        await anotar({ proveedor: 'OLVA_LAT', op: 'shipments.storage', outcome: 'FALLO', sessionId, detail: `Storage olva-rotulos: ${up.error.message}` })
+        return null
+      }
+      return supabase.storage.from('olva-rotulos').getPublicUrl(path).data.publicUrl
+    } catch (e) {
+      await anotar({ proveedor: 'OLVA_LAT', op: 'shipments.rotulo', outcome: 'FALLO', sessionId, detail: String(e).slice(0, 300) })
+      return null
+    }
   }
 })
 
