@@ -467,6 +467,20 @@ describe('consultar el pedido (GET): el estado sale de `status`, no del último 
       expect(leerConsultaEva(RESPUESTA)?.estado).toBe('ENTREGADO')
     })
 
+    it('lo que contestó el sandbox de verdad: el pedido sin `status` y con `tracks: []` es REGISTRADO', () => {
+      // `KX-4KGQNC`, 16-set-2026: el GET devuelve el pedido entero sin campo
+      // de estado y sin hitos. Existe y nadie lo tocó = registrado (manual §9).
+      const r = leerConsultaEva({
+        tracking_id: '858E9F4DE7C9', dispatch_date: '2026-09-16', code: 'ORD-1789519901031', name: 'gag',
+        phone: '987654321', district: 'MIRAFLORES', address: 'por ahí cerca 123', gps: null,
+        payment_method: 'SOLO ENTREGAR', amount: '0.00', packages: 1, service_type: 1, tracks: [],
+      })
+      expect(r).toEqual({ estado: 'REGISTRADO', motivo: null, comentarios: null, fotos: [], fechahora: null })
+      // Pero un objeto que no es un pedido no se inventa un estado.
+      expect(leerConsultaEva({ tracks: [] })).toBeNull()
+      expect(leerConsultaEva({ tracking_id: '', tracks: [] })).toBeNull()
+    })
+
     it('un `status` vacío se trata como ausente: cae al track más reciente', () => {
       // Un `''` no es un estado; no hay nada que perder tratándolo como si no
       // viniera, y el track con fecha sí dice algo.

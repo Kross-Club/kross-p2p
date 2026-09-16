@@ -70,6 +70,18 @@ Luego el front. Prueba: producto con sede + peso, marca con RUC y registro autom
 pedido de recojo en una sede Olva pagado → en el chat de vendedores «Envío registrado en Olva ·
 registro …», rótulo en la tarjeta del envío; al llevar el paquete a la sede, en la siguiente
 media hora el comprador recibe su guía.
+### Eva: un pedido recién registrado no trae `status` · 1 función (16-set-2026)
+
+Con el cuerpo ya anotado (`KX-4KGQNC`) se vio la forma real: el `GET` de un pedido nuevo devuelve
+el pedido entero **sin campo `status`** y con `tracks: []` — el manual enseña un pedido ya
+entregado, donde sí está. Un pedido que existe y no tiene hitos es REGISTRADO por definición, y
+así lo lee ahora `leerConsultaEva` (solo si trae `tracking_id`). Tabla en `17-EVA.md` §9.
+
+Sin SQL.
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
+
 ### Eva: «Actualizar» lee la respuesta real del sandbox, y anota la que no entiende · 1 función (16-set-2026)
 
 Con el select arreglado (abajo), el botón llegó a Eva: `200` y «contestó sin un estado que
