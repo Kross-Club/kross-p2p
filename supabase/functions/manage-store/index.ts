@@ -4,6 +4,7 @@ import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
 import { asegurarSesionLat } from '../_shared/shalom-lat-emisor.ts'
 import { latFetch, olvaLatApiKey, validateAtLat } from '../_shared/olva-lat-api.ts'
+import { anotar } from '../_shared/api-eventos.ts'
 import { isWhoPays, parseLatHeadquarters, type LatHeadquarter } from '../_shared/olva-lat-orders.ts'
 
 /** Las sedes de origen de Olva, cacheadas por instancia (consultarlas gasta cuota). */
@@ -388,6 +389,15 @@ Deno.serve(async (req) => {
     if (!r.ok) return json({ sedes: [], motivo: r.stage })
     const sedes = parseLatHeadquarters(r.data)
     if (sedes.length) cacheSedesOlva = { at: Date.now(), sedes }
+    else {
+      // Contestó 200 y no se leyó ninguna sede: la doc no enseña la forma de
+      // este catálogo, así que el cuerpo crudo va a Conexiones para verla.
+      await anotar({
+        proveedor: 'OLVA_LAT', op: 'catalog.headquarters', outcome: 'RECHAZO', httpStatus: 200,
+        detail: `sin sedes que leer · ${JSON.stringify(r.data).slice(0, 900)}`, detailMax: 1000,
+      })
+      return json({ sedes: [], motivo: 'forma' })
+    }
     return json({ sedes })
   }
 
