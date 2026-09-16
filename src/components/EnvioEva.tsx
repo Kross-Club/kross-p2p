@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bike, Camera, ExternalLink, Printer, RefreshCw } from 'lucide-react'
+import { Bike, Camera, ExternalLink, Printer, RefreshCw, RotateCw } from 'lucide-react'
 import { enlaceDeArchivoDeTienda } from '../lib/archivos'
 import { useStore } from '../lib/store-context'
 import type { TiendaConDominio } from '../lib/dominio'
@@ -57,6 +57,8 @@ export default function EnvioEva({ sessionId, pedido, tienda, onUpdated }: {
 }) {
   const { store } = useStore()
   const [retrying, setRetrying] = useState(false)
+  const [consultando, setConsultando] = useState(false)
+  const [nota, setNota] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const esEva = pedido.tracking_courier === 'EVA'
@@ -75,6 +77,35 @@ export default function EnvioEva({ sessionId, pedido, tienda, onUpdated }: {
   const demora = !entregado && (esDemoraEva(estado) || !!pedido.tracking_demora_at)
   const cierre = esCierreSinEntregaEva(estado)
   const rotulo = enlaceDeArchivoDeTienda(tienda ?? store, pedido.eva_rotulo_url)
+
+  // Preguntarle a Eva dónde va. En SU portal el estado lo mueve el motorizado,
+  // así que el vendedor no tiene otra forma de saberlo hasta que Eva llame; y
+  // como Eva no reintenta sus webhooks, esto es además el respaldo de un aviso
+  // perdido. Solo lee: se puede tocar las veces que haga falta.
+  const consultar = async () => {
+    if (consultando) return
+    setConsultando(true)
+    setError(null)
+    setNota(null)
+    try {
+      const res = await fetch(`${BASE}/order-manage`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'consultar_eva', session_id: sessionId }),
+      })
+      const r = await res.json().catch(() => ({})) as
+        { ok?: boolean; aplicado?: boolean; tracking?: CamposEva; etiqueta?: string; error?: string }
+      if (!res.ok || !r.ok) { setError(r.error ?? `No se pudo consultar a ${NOMBRE_EVA}.`); return }
+      if (r.aplicado && r.tracking) onUpdated(r.tracking)
+      // Decir «sin novedad» es parte de la respuesta: un botón que no hace nada
+      // visible se lee como que falló.
+      else setNota(`Sin novedad: ${NOMBRE_EVA} sigue en «${r.etiqueta ?? 'el mismo estado'}».`)
+    } catch {
+      setError('No se pudo consultar. Revisa tu conexión e intenta de nuevo.')
+    } finally {
+      setConsultando(false)
+    }
+  }
 
   const reintentar = async () => {
     if (retrying) return
@@ -105,8 +136,18 @@ export default function EnvioEva({ sessionId, pedido, tienda, onUpdated }: {
           {demora && <span className="ml-1 whitespace-nowrap" style={{ color: '#F59E0B' }}>· Pasó y no entregó</span>}
           {cierre && <span className="ml-1 whitespace-nowrap" style={{ color: 'var(--danger-fg)' }}>· Cerrado sin entregar</span>}
         </p>
+        {/* Preguntarle el estado a Eva. Va antes del rótulo porque es lo que se
+            busca cuando el comprador escribe «¿dónde está mi pedido?». */}
+        {esEva && !cierre && (
+          <button onClick={consultar} disabled={consultando}
+            className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg flex-shrink-0 disabled:opacity-50"
+            style={{ background: 'var(--brand-tint)', color: 'var(--brand)' }}>
+            <RotateCw size={10} className={consultando ? 'animate-spin' : undefined} />
+            {consultando ? '…' : 'Actualizar'}
+          </button>
+        )}
         {/* El rótulo es LA acción de este envío: Eva recoge en el local y la
-            etiqueta va pegada al paquete. Por eso va arriba y es el primario. */}
+            etiqueta va pegada al paquete. */}
         {esEva && rotulo && (
           <a href={rotulo} target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg flex-shrink-0"
@@ -140,6 +181,7 @@ export default function EnvioEva({ sessionId, pedido, tienda, onUpdated }: {
                 : 'Eva pasa a recogerlo por tu local. Ten el paquete con su rótulo listo.'}
             </p>
           )}
+          {nota && <p className="text-[10px] font-semibold text-gray-400 mt-1">{nota}</p>}
           {!rotulo && idx === 0 && !cierre && (
             <p className="text-[10px] font-semibold text-gray-400 mt-1">
               El rótulo no se pudo bajar: imprímelo desde app.evacourier.pe con el tracking de arriba.
@@ -178,6 +220,11 @@ export default function EnvioEva({ sessionId, pedido, tienda, onUpdated }: {
           )}
           {error && <p className="text-[10px] font-bold mt-1" style={{ color: 'var(--danger-fg)' }}>{error}</p>}
         </div>
+      )}
+      {/* El error de una consulta no vive dentro del bloque del fallo: se puede
+          consultar un envío que salió bien. */}
+      {esEva && error && !(fallo || saltado || pendiente) && (
+        <p className="text-[10px] font-bold mt-1" style={{ color: 'var(--danger-fg)' }}>{error}</p>
       )}
     </div>
   )

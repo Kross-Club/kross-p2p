@@ -69,8 +69,16 @@ Sandbox: `https://api-test.evacourier.pe` (`EVA_API_BASE` lo pisa). Producción:
   provincia) traduciría a Cercado y se llevaría por delante a Miraflores.
 - **Es cliente tipo RECOJO**: Eva recoge en el local. `product` y `packages` son obligatorios y
   el rótulo es del **vendedor**. El comprador no necesita documento alguno — le llega el paquete.
-- **Eva no reintenta el webhook** si respondemos 4xx/5xx o tardamos más de 10 s. Y no hay
-  barrido de respaldo construido (🔮, §8).
+- **Eva no reintenta el webhook** si respondemos 4xx/5xx o tardamos más de 10 s. El respaldo es
+  el botón **Actualizar** del panel (§6): un `GET` que pregunta el estado y lo refleja igual.
+  El barrido automático sigue sin construirse (🔮, §8).
+- **En el portal de Eva el estado lo mueve el MOTORIZADO**, no el cliente (16-set-2026). El
+  vendedor no puede empujar un pedido a «EN RUTA» para probar, y tampoco puede saber dónde va su
+  paquete hasta que Eva llame. Por eso Actualizar no es un lujo: es la única lectura que el
+  comercio controla.
+- **El `GET` trae los `tracks` DESORDENADOS.** En el ejemplo del propio manual «ASIGNADO
+  MOTORIZADO» (18:50) viene antes que «ENTREGADO» (16:19). El estado sale de `status`; `tracks`
+  solo aporta el detalle del hito que le corresponde (`leerConsultaEva`).
 
 ## 4. Cuándo y cómo se registra
 
@@ -139,9 +147,10 @@ que pide su manual. Eva no reintenta un 4xx, y está bien: un impostor no merece
 ## 6. Qué ve cada uno
 
 **El vendedor** (`EnvioEva.tsx`, debajo de la dirección): el tracking, el estado crudo en
-palabras, tres pasos (registrado · en ruta · entregado), **Imprimir rótulo** (PDF por el dominio
-de la marca), la foto de la entrega si Eva la mandó, y cuando falló: el motivo con nombre y
-«Reintentar». Es su propio componente y no un tercer modo de `TrackingBar`: aquella es toda de
+palabras, tres pasos (registrado · en ruta · entregado), **Actualizar** (le pregunta el estado a
+Eva y lo refleja; dice «sin novedad» cuando no cambió, porque un botón que no hace nada visible
+se lee como que falló), **Imprimir rótulo** (PDF por el dominio de la marca), la foto de la
+entrega si Eva la mandó, y cuando falló: el motivo con nombre y «Reintentar». Es su propio componente y no un tercer modo de `TrackingBar`: aquella es toda de
 recojo en agencia (número, código, clave, formulario del comprobante) y nada de eso existe acá.
 
 **El comprador** («Ver pedido»): el recorrido de domicilio de siempre —preparando · en camino ·
@@ -176,10 +185,10 @@ nada. Eventos: `reparto.registrar`, `reparto.rotulo`, `reparto.storage`, `webhoo
 
 ## 8. Lo que no hace (🔮)
 
-- **Barrido de respaldo.** Eva recomienda una reconciliación diaria por `GET
-  /api/v1/orders/{tracking_id}/` para los pedidos abiertos, porque su webhook no reintenta. Hoy
-  un webhook perdido es un estado que no se ve hasta el siguiente. Es el mismo `applyTracking` y
-  un pg_cron como `shalom-tracking-sync`: está pensado, no construido.
+- **Barrido AUTOMÁTICO de respaldo.** La consulta manual ya existe (el botón Actualizar, que usa
+  el mismo `reflejarEstadoEva` que el webhook); lo que falta es correrla sola para los pedidos
+  abiertos, en un pg_cron como `shalom-tracking-sync`. Mientras no exista, un webhook perdido se
+  recupera con un toque, pero alguien tiene que darlo.
 - **Cliente tipo ALMACEN** (Eva guarda el stock y descuenta por SKU). Kross es para marcas con
   stock en su local; RECOJO es el modelo.
 - **Lote** (`POST /api/v1/orders/bulk`, hasta 200). Cada venta dispara una llamada; no hay carga
@@ -193,6 +202,22 @@ nada. Eventos: `reparto.registrar`, `reparto.rotulo`, `reparto.storage`, `webhoo
   `AGENCIA_*`), así que Eva no se enseña en el demo. Es una brecha de paridad **anterior** a
   Eva —el domicilio entero no está en el demo— y se anota como tal, no se parcha tocando el
   azar del generador.
+
+### ¿Y una guía para el comprador? No, y es a propósito
+
+Eva entrega **un solo documento: el rótulo**, y es del vendedor —se pega al paquete para que el
+motorizado sepa a dónde va—. No hay guía para el comprador, y no hace falta inventarle una:
+
+| | Agencia (Shalom) | Domicilio (Eva) |
+|---|---|---|
+| Quién se mueve | **El comprador** va al mostrador | **El motorizado** va a su puerta |
+| Qué presenta | Guía con QR + DNI + clave | Nada |
+| Por eso | La guía es indispensable | Un documento que nadie le va a pedir |
+
+Lo que el comprador sí tiene es **su pedido con el recorrido** (preparando → en camino →
+entrega), que se mueve con lo que Eva reporta y le avisa por el chat. Eso es el equivalente
+funcional de la guía: saber dónde está su paquete. Darle además un PDF que no usa en ningún lado
+sería ruido con aspecto de documento — y peor, le enseñaría a esperar que alguien se lo pida.
 
 ## 9. Lo que enseñó la primera prueba real (16-set-2026)
 

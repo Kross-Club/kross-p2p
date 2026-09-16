@@ -34,6 +34,31 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Eva: «Actualizar» le pregunta el estado, porque el webhook no se puede probar · 2 funciones (16-set-2026)
+
+**Lo que enseñó el portal.** En Eva **el estado lo mueve el motorizado**, no el cliente: no hay
+forma de empujar un pedido a «EN RUTA» desde el panel de Eva para probar el webhook, y tampoco de
+saber dónde va el paquete hasta que Eva llame. Y Eva **no reintenta** sus webhooks.
+
+**El arreglo.** El botón **Actualizar** de *Envío Eva* pregunta `GET /api/v1/orders/{id}/` y
+refleja el estado con el MISMO código que el webhook (`_shared/eva-reflejo.ts`, extraído para que
+un estado no se refleje distinto según por dónde llegó). Solo lee: no crea nada y se puede tocar
+las veces que haga falta. Dice «sin novedad» cuando no cambió — un botón que no hace nada visible
+se lee como que falló.
+
+⚠️ **El `GET` trae los `tracks` desordenados** (en el ejemplo del propio manual, «ASIGNADO
+MOTORIZADO» de las 18:50 viene antes que «ENTREGADO» de las 16:19). El estado sale de `status`;
+`tracks` solo aporta el detalle del hito que le corresponde.
+
+**Queda pendiente el webhook**, esperando respuesta de Eva sobre cómo dispararlo. Mientras tanto
+el pedido no se queda ciego.
+
+Sin SQL.
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy eva-webhook  --project-ref ofdjghntvmrdfjhazfvz --no-verify-jwt
+```
+
 ### ✅ Eva: el primer reparto real registrado, y lo que costó llegar · 2 funciones (16-set-2026)
 
 **Salió.** `ORD-1789519901031` → tracking **`858E9F4DE7C9`**, despacho del mismo día, rótulo en

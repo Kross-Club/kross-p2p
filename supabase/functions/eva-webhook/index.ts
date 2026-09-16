@@ -17,17 +17,12 @@
 // (`applyTracking`), y para lo que no es fase —demora, cierre— se compara con
 // el último estado y su hora antes de volver a escribir en el chat.
 
-import { applyTracking, broadcast, chatMessage, supabase, TRACKED_COLUMNS, type TrackedRow } from '../_shared/tracking.ts'
-import { anotar } from '../_shared/api-eventos.ts'
-import {
-  esCierreSinEntregaEva, esDemoraEva, faseDeEva, firmaEvaValida, leerWebhookEva, mensajesDeEva,
-  normalizarEstadoEva,
-} from '../_shared/eva.ts'
+import { supabase, TRACKED_COLUMNS } from '../_shared/tracking.ts'
+import { COLUMNAS_EVA, reflejarEstadoEva, type FilaEva } from '../_shared/eva-reflejo.ts'
+import { firmaEvaValida, leerWebhookEva, normalizarEstadoEva } from '../_shared/eva.ts'
 
 const ok = (body: unknown = { ok: true }, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-
-type FilaEva = TrackedRow & { order_id: string | null; eva_estado: string | null; eva_estado_at: string | null }
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 })
@@ -57,7 +52,7 @@ Deno.serve(async (req) => {
   // El pedido al que pertenece. Por tracking + courier: el tracking de Eva es
   // alfanumérico y podría coincidir con un número de guía de otro courier.
   const { data: rows, error } = await supabase.from('order_sessions')
-    .select(`${TRACKED_COLUMNS}, order_id, eva_estado, eva_estado_at`)
+    .select(`${TRACKED_COLUMNS}, ${COLUMNAS_EVA}`)
     .eq('status', 'active').eq('tracking_courier', 'EVA').eq('tracking_numero', evento.trackingId)
   if (error) {
     console.error('eva-webhook: query', error.message)
@@ -68,45 +63,14 @@ Deno.serve(async (req) => {
     return ok({ ok: true, ignored: 'pedido no encontrado' })
   }
 
+  // El reflejo vive en `_shared/eva-reflejo.ts`, compartido con el botón
+  // «Actualizar» del panel: un estado no puede reflejarse distinto según si lo
+  // empujó Eva o lo preguntamos nosotros.
   for (const row of rows as FilaEva[]) {
-    // El mismo evento dos veces: mismo estado, misma hora. Nada que hacer.
-    if (row.eva_estado === estado && row.eva_estado_at && evento.fechahora && row.eva_estado_at === evento.fechahora) continue
-
-    const ctx = { proveedor: 'EVA' as const, op: 'webhook.evento', storeId: row.store_id, sessionId: row.id }
-    await anotar({ ...ctx, outcome: 'OK', providerRef: evento.trackingId, detail: estado })
-
-    const msgs = mensajesDeEva(estado, { motivo: evento.motivo, comentarios: evento.comentarios, fotos: evento.fotos })
-    const ahora = new Date().toISOString()
-    const patch: Record<string, unknown> = { eva_estado: estado, eva_estado_at: evento.fechahora ?? ahora }
-    if (estado === 'ENTREGADO' && evento.fotos[0]) patch.eva_entrega_foto = evento.fotos[0]
-
-    const fase = faseDeEva(estado)
-    if (fase) {
-      // Solo hacia adelante y con los mensajes de EVA, no los de agencia: un
-      // domicilio no «llega a tu agencia». `alAvanzar` reemplaza a
-      // `onTransition` justo por eso.
-      await applyTracking(row, { phase: fase, demoraIso: null }, {
-        alAvanzar: async () => {
-          if (msgs.comprador) await chatMessage(row.id, msgs.comprador, 'all')
-          if (msgs.equipo) await chatMessage(row.id, msgs.equipo, 'sellers')
-        },
-      })
-    } else if (esDemoraEva(estado)) {
-      // Cada intento fallido cuenta: la demora se reescribe con su hora, y se
-      // avisa cada vez (no es el mismo evento: es otra visita).
-      patch.tracking_demora_at = evento.fechahora ?? ahora
-      if (msgs.comprador) await chatMessage(row.id, msgs.comprador, 'all')
-      if (msgs.equipo) await chatMessage(row.id, msgs.equipo, 'sellers')
-    } else if (esCierreSinEntregaEva(estado)) {
-      if (msgs.equipo) await chatMessage(row.id, msgs.equipo, 'sellers')
-    } else if (row.eva_estado !== estado && msgs.equipo) {
-      // En almacén, asignado: solo al equipo, y solo si cambió.
-      await chatMessage(row.id, msgs.equipo, 'sellers')
-    }
-
-    const { error: errUp } = await supabase.from('order_sessions').update(patch).eq('id', row.id)
-    if (errUp) console.error('eva-webhook: update', row.id, errUp.message)
-    else await broadcast(row.id, 'tracking_update', patch)
+    await reflejarEstadoEva(row, {
+      estado, motivo: evento.motivo, comentarios: evento.comentarios,
+      fotos: evento.fotos, fechahora: evento.fechahora,
+    })
   }
 
   return ok()

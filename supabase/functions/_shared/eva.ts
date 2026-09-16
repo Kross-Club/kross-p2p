@@ -529,6 +529,50 @@ export async function firmarComoEva(raw: string, secret: string): Promise<string
   return [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// ─── Consultar el pedido (GET) ───────────────────────────────────────────────
+
+/** Lo que dice `GET /api/v1/orders/{tracking_id}/` sobre un pedido. */
+export interface ConsultaEva {
+  estado: string
+  motivo: string | null
+  comentarios: string | null
+  fotos: string[]
+  fechahora: string | null
+}
+
+/**
+ * Lee la consulta de un pedido.
+ *
+ * ⚠️ El estado sale de `status`, NO del último elemento de `tracks`. En el
+ * ejemplo del propio manual los tracks vienen DESORDENADOS —«ASIGNADO
+ * MOTORIZADO» a las 18:50 y «ENTREGADO» a las 16:19, en ese orden—, así que
+ * quedarse con el último de la lista daría un estado viejo. `tracks` sirve para
+ * el DETALLE: se busca el hito que coincide con `status` y de ahí salen el
+ * motivo, los comentarios y la foto de la entrega.
+ */
+export function leerConsultaEva(json: unknown): ConsultaEva | null {
+  if (!esObj(json)) return null
+  const estado = normalizarEstadoEva(json.status)
+  if (!estado) return null
+  const tracks = Array.isArray(json.tracks) ? json.tracks.filter(esObj) : []
+  // El hito de ESE estado; si hay varios (un reintento de entrega), el más
+  // reciente por fecha, que es el que cuenta la visita de la que se habla.
+  const suyos = tracks.filter(t => normalizarEstadoEva(t.estado) === estado)
+  const hito = suyos.sort((a, b) =>
+    String(b.fechahora ?? '').localeCompare(String(a.fechahora ?? '')))[0] ?? null
+  const txt = (v: unknown): string | null => {
+    const t = v == null ? '' : String(v).trim()
+    return t ? t : null
+  }
+  return {
+    estado,
+    motivo: hito ? txt(hito.motivo) : null,
+    comentarios: hito ? txt(hito.comentarios) : null,
+    fotos: hito ? fotosDeEva(hito.fotos) : [],
+    fechahora: hito ? txt(hito.fechahora) : null,
+  }
+}
+
 // ─── El rótulo ───────────────────────────────────────────────────────────────
 
 /** `A4` por defecto: la marca imprime en la impresora de la oficina. Quien
