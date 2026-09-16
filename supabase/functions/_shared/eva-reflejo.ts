@@ -45,7 +45,10 @@ export interface ResultadoDeReflejo {
  *
  * Idempotente: mismo estado + misma hora = mismo hecho, y no se vuelve a
  * escribir en el chat. Cada visita fallida sí cuenta —otra hora es otra
- * visita—, que es justo lo que el vendedor necesita saber.
+ * visita—, que es justo lo que el vendedor necesita saber. Y un estado SIN
+ * hora (el GET de un pedido recién registrado no trae hitos, ver 17-EVA §9)
+ * que es el mismo que ya tenemos tampoco es novedad: si contara, cada
+ * «Actualizar» reescribiría la hora y anotaría un evento por nada.
  */
 export async function reflejarEstadoEva(row: FilaEva, ev: EstadoDeEva): Promise<ResultadoDeReflejo> {
   const estado = ev.estado
@@ -53,7 +56,7 @@ export async function reflejarEstadoEva(row: FilaEva, ev: EstadoDeEva): Promise<
   const patch: Record<string, unknown> = { eva_estado: estado, eva_estado_at: ev.fechahora ?? ahora }
 
   const mismo = row.eva_estado === estado
-    && !!row.eva_estado_at && !!ev.fechahora && row.eva_estado_at === ev.fechahora
+    && (!ev.fechahora || (!!row.eva_estado_at && row.eva_estado_at === ev.fechahora))
   if (mismo) return { aplicado: false, patch: {} }
 
   const ctx = { proveedor: 'EVA' as const, storeId: row.store_id, sessionId: row.id }
