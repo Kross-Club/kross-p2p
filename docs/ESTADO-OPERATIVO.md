@@ -34,18 +34,32 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
-### Eva, primera prueba real: la llave con un «…» · 2 funciones (16-set-2026)
+### ✅ Eva: el primer reparto real registrado, y lo que costó llegar · 2 funciones (16-set-2026)
 
-**Qué enseñó.** Toda la cadena funcionó —pedido COURIER, pagado, `flow-confirm` disparó,
-payload armado— y murió en el `fetch` con *«'headers' … is not a valid ByteString»*: el secret
-`EVA_API_KEY` llevaba un carácter fuera de ASCII (un `…` copiado de un comando de ejemplo). Un
-header no admite eso, y `fetch` revienta antes de salir sin decir cuál era.
+**Salió.** `ORD-1789519901031` → tracking **`858E9F4DE7C9`**, despacho del mismo día, rótulo en
+el bucket y el botón *Imprimir rótulo* vivo en el pedido. El registro y el rótulo quedan
+**probados contra la cuenta real**; el webhook todavía no (falta mover ese pedido de estado en el
+portal de Eva). La tabla de los tres intentos está en `17-EVA.md` §9.
+
+**Qué enseñó el primero.** Toda la cadena funcionó —pedido COURIER, pagado, `flow-confirm`
+disparó, payload armado— y murió en el `fetch` con *«'headers' … is not a valid ByteString»*: el
+secret `EVA_API_KEY` llevaba un carácter fuera de ASCII (un `…` copiado de un comando de
+ejemplo). Un header no admite eso, y `fetch` revienta antes de salir sin decir cuál era.
+
+**Y el segundo.** `403` — y **no era la llave**: era la ficha de cliente de Eva incompleta
+(contacto, dirección de recojo principal con distrito, billetera Yape/Plin, cuenta bancaria con
+CCI). Eva usa el mismo 403 para las dos cosas. Se completa en su portal, y el rechazo es 4xx: se
+reintenta sin mirar nada, porque el pedido no se creó.
 
 **El arreglo.** `problemaDeApiKey` revisa la llave ANTES de ponerla en un header y nombra el
 culpable (puntos suspensivos, comillas, espacios, o el código del carácter). `eva-order` cierra
 en FAILED con ese motivo y el chat lo dice; el chequeo de *Conexiones* lo anota en vez de pintar
-«caída» a secas. **La operación**: volver a pegar la llave limpia con `supabase secrets set` y
-tocar «Reintentar» en *Envío Eva* — el pedido quedó en FAILED y se reabre desde ahí.
+«caída» a secas. El mensaje del rechazo llega entero (600 caracteres, no 300: a 300 se cortaba justo antes de la
+cuenta bancaria, que es parte de lo que hay que completar).
+
+**La operación de cada uno**: llave limpia con `supabase secrets set`; ficha completa en el
+portal de Eva; y en los dos casos «Reintentar» en *Envío Eva* — el pedido queda en FAILED y se
+reabre desde ahí.
 
 Sin SQL.
 ```
