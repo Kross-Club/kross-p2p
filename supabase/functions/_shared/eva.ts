@@ -333,7 +333,11 @@ export function mensajeDeErrorEva(json: unknown, status: number): string {
       const texto = Array.isArray(v) ? v.map(String).join(' ') : String(v ?? '')
       return k === 'detail' ? texto : `${k}: ${texto}`
     }).filter(Boolean)
-    if (partes.length) return partes.join(' · ').slice(0, 300)
+    // 600 y no 300: el primer rechazo real de Eva fue una LISTA de lo que
+    // faltaba en la cuenta (contacto, dirección de recojo, billetera, cuenta
+    // bancaria con CCI) y a 300 se cortaba antes de la cuenta bancaria. El
+    // vendedor actúa sobre esa lista: tiene que verla entera en el chat.
+    if (partes.length) return partes.join(' · ').slice(0, 600)
   }
   if (status === 401) return 'Eva rechazó la API Key (401)'
   if (status === 403) return 'La API Key no está habilitada o no está asociada a un cliente (403)'

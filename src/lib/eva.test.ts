@@ -386,3 +386,11 @@ describe('la API Key, revisada antes de ponerla en un header', () => {
     expect(problemaDeApiKey('abcñ')).toContain('U+00F1')
   })
 })
+
+describe('un rechazo largo de Eva llega entero', () => {
+  it('600 caracteres: la lista de lo que falta en la cuenta no se corta antes de la cuenta bancaria', () => {
+    const largo = 'Estimado cliente, falta ' + 'x'.repeat(400) + ' y una cuenta bancaria principal con CCI de 20 dígitos.'
+    expect(mensajeDeErrorEva({ message: largo }, 403)).toContain('cuenta bancaria principal')
+    expect(mensajeDeErrorEva({ message: 'y'.repeat(900) }, 403)).toHaveLength(600)
+  })
+})
