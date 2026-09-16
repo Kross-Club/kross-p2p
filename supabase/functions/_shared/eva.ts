@@ -541,6 +541,45 @@ export interface ConsultaEva {
 }
 
 /**
+ * El pedido dentro de la respuesta. El manual lo trae en la raíz; el sandbox
+ * contestó 200 con algo que NO traía `status` en la raíz (16-set-2026, primer
+ * «Actualizar» real), así que se aceptan también las envolturas usuales de una
+ * API Django (`data`, `order`, `result`, o `results[0]`) antes de rendirse.
+ */
+function desenvolverConsultaEva(json: unknown): Record<string, unknown> | null {
+  if (!esObj(json)) return null
+  if (json.status !== undefined || json.estado !== undefined || json.tracks !== undefined) return json
+  for (const k of ['data', 'order', 'result', 'pedido']) {
+    const v = json[k]
+    if (esObj(v)) return desenvolverConsultaEva(v)
+  }
+  const lista = json.results
+  if (Array.isArray(lista) && esObj(lista[0])) return desenvolverConsultaEva(lista[0])
+  return json
+}
+
+/**
+ * El estado del pedido. Primero `status` (el manual), y si viniera como
+ * objeto (`{ name }`, `{ nombre }`) o bajo otro nombre (`estado`,
+ * `status_display`), también. Solo si NADA de eso está se cae al track más
+ * reciente por fecha: ahí el orden de la lista no vale (ver arriba), la fecha sí.
+ */
+function estadoDeConsultaEva(pedido: Record<string, unknown>, tracks: Record<string, unknown>[]): string {
+  for (const v of [pedido.status, pedido.estado, pedido.status_display, pedido.estado_actual]) {
+    if (esObj(v)) {
+      const dentro = normalizarEstadoEva(v.name ?? v.nombre ?? v.estado ?? v.status ?? v.label)
+      if (dentro) return dentro
+      continue
+    }
+    const e = normalizarEstadoEva(v)
+    if (e) return e
+  }
+  const reciente = [...tracks].sort((a, b) =>
+    String(b.fechahora ?? '').localeCompare(String(a.fechahora ?? '')))[0]
+  return reciente ? normalizarEstadoEva(reciente.estado) : ''
+}
+
+/**
  * Lee la consulta de un pedido.
  *
  * ⚠️ El estado sale de `status`, NO del último elemento de `tracks`. En el
@@ -551,10 +590,11 @@ export interface ConsultaEva {
  * motivo, los comentarios y la foto de la entrega.
  */
 export function leerConsultaEva(json: unknown): ConsultaEva | null {
-  if (!esObj(json)) return null
-  const estado = normalizarEstadoEva(json.status)
+  const pedido = desenvolverConsultaEva(json)
+  if (!pedido) return null
+  const tracks = Array.isArray(pedido.tracks) ? pedido.tracks.filter(esObj) : []
+  const estado = estadoDeConsultaEva(pedido, tracks)
   if (!estado) return null
-  const tracks = Array.isArray(json.tracks) ? json.tracks.filter(esObj) : []
   // El hito de ESE estado; si hay varios (un reintento de entrega), el más
   // reciente por fecha, que es el que cuenta la visita de la que se habla.
   const suyos = tracks.filter(t => normalizarEstadoEva(t.estado) === estado)
