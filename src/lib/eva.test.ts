@@ -4,7 +4,7 @@ import {
   distritoEva, esCierreSinEntregaEva, esDemoraEva, esPdf, faseDeEva, firmaEvaValida, firmarComoEva,
   fotosDeEva, leerRespuestaDeOrden, leerWebhookEva, mensajeDeErrorEva, mensajesDeEva,
   nombreDeEstadoEva, normalizarParaEva, partirDireccionLima, productoEva, rutaDePedido,
-  rutaDePedidos, rutaDeRotulos, telefonoEva,
+  problemaDeApiKey, rutaDePedidos, rutaDeRotulos, telefonoEva,
 } from '../../supabase/functions/_shared/eva.ts'
 import { GEO_PERU } from '../data/peru-geo'
 
@@ -361,5 +361,28 @@ describe('el rótulo', () => {
     expect(esPdf('application/pdf', new Uint8Array(0))).toBe(true)
     expect(esPdf(null, new TextEncoder().encode('%PDF-1.4 …'))).toBe(true)
     expect(esPdf('application/json', new TextEncoder().encode('{"detail":"x"}'))).toBe(false)
+  })
+})
+
+describe('la API Key, revisada antes de ponerla en un header', () => {
+  it('una llave limpia pasa', () => {
+    expect(problemaDeApiKey('k8X9p2QR4m.aBc123_-')).toBeNull()
+  })
+  it('el marcador «…» de un comando de ejemplo se nombra: es lo que mató la primera prueba', () => {
+    // 16-set-2026: `fetch` moría con «not a valid ByteString» y sin decir cuál.
+    expect(problemaDeApiKey('…')).toContain('puntos suspensivos')
+    expect(problemaDeApiKey('abc…')).toContain('puntos suspensivos')
+  })
+  it('comillas tipográficas o rectas, espacios, saltos de línea, vacío', () => {
+    expect(problemaDeApiKey('“abc”')).toContain('comillas')
+    expect(problemaDeApiKey('"abc"')).toContain('comillas')
+    expect(problemaDeApiKey('ab c')).toContain('espacios')
+    expect(problemaDeApiKey('abc\n')).toContain('espacios')
+    expect(problemaDeApiKey('')).toContain('vacía')
+    expect(problemaDeApiKey(null)).toContain('vacía')
+  })
+  it('cualquier otro carácter fuera de ASCII se nombra por su código', () => {
+    expect(problemaDeApiKey('abc\u200b')).toContain('U+200B')
+    expect(problemaDeApiKey('abcñ')).toContain('U+00F1')
   })
 })

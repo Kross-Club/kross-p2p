@@ -57,6 +57,28 @@ export const rutaDeRotulos = (base: string) => `${base}/api/v1/integration/shipp
 export const cabeceraEva = (apiKey: string): Record<string, string> =>
   ({ Authorization: `Api-Key ${apiKey}`, 'Content-Type': 'application/json' })
 
+/**
+ * ¿La llave puede ir en un header? Devuelve el problema con palabras, o null.
+ *
+ * La primera prueba real (16-set-2026) murió con «'headers' … is not a valid
+ * ByteString»: el secret llevaba un carácter fuera de ASCII —un `…` copiado
+ * de un comando de ejemplo, o unas comillas tipográficas al pegar— y `fetch`
+ * revienta ANTES de salir, sin decir cuál. Un header no admite nada fuera de
+ * Latin-1, y una API key de verdad es ASCII imprimible sin espacios: se exige
+ * eso y se nombra el culpable, para que el arreglo sea «vuelve a pegar la
+ * llave» y no una tarde de logs.
+ */
+export function problemaDeApiKey(key: unknown): string | null {
+  const k = String(key ?? '')
+  if (!k.trim()) return 'la API Key está vacía'
+  if (/[\u2026]/.test(k)) return 'la API Key trae puntos suspensivos («…»): se copió el marcador del ejemplo en vez de la llave'
+  if (/[\u2018\u2019\u201C\u201D"']/.test(k)) return 'la API Key trae comillas: pégala sin comillas'
+  if (/\s/.test(k)) return 'la API Key trae espacios o saltos de línea'
+  const raro = [...k].find(c => { const n = c.charCodeAt(0); return n < 0x21 || n > 0x7e })
+  if (raro) return `la API Key trae un carácter que no puede ir en un header (U+${raro.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')})`
+  return null
+}
+
 // ─── Los distritos: del INEI al nombre exacto de Eva ─────────────────────────
 
 /**

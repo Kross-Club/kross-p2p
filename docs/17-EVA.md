@@ -158,6 +158,10 @@ nada. Eventos: `reparto.registrar`, `reparto.rotulo`, `reparto.storage`, `webhoo
    también una sola vez.
 3. Secrets de las funciones: `EVA_API_KEY`, `EVA_WEBHOOK_SECRET`. Para el sandbox, además
    `EVA_API_BASE=https://api-test.evacourier.pe` (y la llave del sandbox).
+   ⚠️ **Pega la llave sola**: sin comillas, sin espacios y sin copiar un marcador de ejemplo. La
+   primera prueba real (16-set-2026) murió porque el secret llevaba un `…`: un header no admite
+   nada fuera de ASCII y `fetch` revienta antes de salir. Desde entonces `problemaDeApiKey` lo
+   dice con palabras en el pedido y en *Conexiones*; antes era un TypeError mudo.
 4. Desplegar: `eva-order`, `eva-webhook` (**`--no-verify-jwt`**), `flow-confirm`
    (`--no-verify-jwt`), `order-manage`, `get-session`, `integraciones`.
 5. En *Marca → Entrega a domicilio*, encender **Eva Courier · Lima y Callao**.
