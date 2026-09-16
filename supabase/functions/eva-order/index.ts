@@ -36,7 +36,7 @@ import { chatMessage, broadcast, saldoOf, supabase } from '../_shared/tracking.t
 import { anotar, anotarSinRespuesta } from '../_shared/api-eventos.ts'
 import {
   NOMBRE_EVA, armarPedidoEva, baseEva, cabeceraEva, cuerpoDeRotulos, esPdf,
-  leerRespuestaDeOrden, rutaDePedidos, rutaDeRotulos,
+  leerRespuestaDeOrden, problemaDeApiKey, rutaDePedidos, rutaDeRotulos,
 } from '../_shared/eva.ts'
 
 const TIMEOUT_MS = 20_000
@@ -135,13 +135,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const apiKey = String(Deno.env.get('EVA_API_KEY') ?? '').trim()
-    if (!apiKey) {
-      // Es un problema de la PLATAFORMA (la llave es de Kross), y se anota
-      // para que Conexiones lo diga en vez de fallar pedido por pedido.
-      await anotar({ ...ctx, op: 'reparto.registrar', outcome: 'RECHAZO', detail: 'sin EVA_API_KEY en la plataforma' })
-      await cerrar(sessionId, 'FAILED', 'la plataforma no tiene la API Key de Eva configurada')
-      await aLogistica(sessionId, `⚠️ ${NOMBRE_EVA}: la plataforma no tiene la API Key configurada. Avisar a Kross; mientras tanto, coordinar el reparto por fuera.`)
-      return json({ error: 'sin EVA_API_KEY' }, 500)
+    const problemaLlave = problemaDeApiKey(apiKey)
+    if (problemaLlave) {
+      // Es un problema de la PLATAFORMA (la llave es de Kross), y se anota con
+      // el motivo con palabras para que Conexiones lo diga en vez de fallar
+      // pedido por pedido. La primera prueba real murió acá con un TypeError
+      // mudo de `fetch` (16-set-2026): por eso se revisa ANTES de llamar.
+      await anotar({ ...ctx, op: 'reparto.registrar', outcome: 'RECHAZO', detail: problemaLlave })
+      await cerrar(sessionId, 'FAILED', problemaLlave)
+      await aLogistica(sessionId, `⚠️ ${NOMBRE_EVA}: ${problemaLlave}. Avisar a Kross (es un secret de la plataforma); corregida la llave, toca «Reintentar» en Envío Eva.`)
+      return json({ error: problemaLlave }, 500)
     }
 
     // ─── El pedido, como lo quiere Eva ─────────────────────────────────────

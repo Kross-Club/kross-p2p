@@ -22,7 +22,8 @@ import { shalomApiKey, shalomLatApiKey } from '../_shared/shalom.ts'
 import { olvaApiKey } from '../_shared/olva-key.ts'
 import { olvaLatApiKey, OLVA_LAT_BASE } from '../_shared/olva-lat-api.ts'
 import { SHALOM_LAT_BASE } from '../_shared/shalom-lat.ts'
-import { baseEva, cabeceraEva, rutaDePedido } from '../_shared/eva.ts'
+import { baseEva, cabeceraEva, problemaDeApiKey, rutaDePedido } from '../_shared/eva.ts'
+import { anotar } from '../_shared/api-eventos.ts'
 import {
   esProveedor, INTEGRACIONES, saludDe, type Proveedor, type Salud,
 } from '../_shared/integraciones.ts'
@@ -90,6 +91,13 @@ async function pingDe(id: Proveedor, llaves: Record<string, string | null>): Pro
 }
 
 async function pingEva(apiKey: string): Promise<boolean> {
+  // Una llave que no puede ir en un header revienta `fetch` antes de salir, y
+  // el tablero diría «caída» sin motivo. Se anota el motivo y se dice que no.
+  const problema = problemaDeApiKey(apiKey)
+  if (problema) {
+    await anotar({ proveedor: 'EVA', op: 'chequeo', outcome: 'RECHAZO', detail: problema })
+    return false
+  }
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 5000)
   try {

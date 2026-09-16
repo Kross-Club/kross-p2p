@@ -34,6 +34,25 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### Eva, primera prueba real: la llave con un «…» · 2 funciones (16-set-2026)
+
+**Qué enseñó.** Toda la cadena funcionó —pedido COURIER, pagado, `flow-confirm` disparó,
+payload armado— y murió en el `fetch` con *«'headers' … is not a valid ByteString»*: el secret
+`EVA_API_KEY` llevaba un carácter fuera de ASCII (un `…` copiado de un comando de ejemplo). Un
+header no admite eso, y `fetch` revienta antes de salir sin decir cuál era.
+
+**El arreglo.** `problemaDeApiKey` revisa la llave ANTES de ponerla en un header y nombra el
+culpable (puntos suspensivos, comillas, espacios, o el código del carácter). `eva-order` cierra
+en FAILED con ese motivo y el chat lo dice; el chequeo de *Conexiones* lo anota en vez de pintar
+«caída» a secas. **La operación**: volver a pegar la llave limpia con `supabase secrets set` y
+tocar «Reintentar» en *Envío Eva* — el pedido quedó en FAILED y se reabre desde ahí.
+
+Sin SQL.
+```
+supabase functions deploy eva-order      --project-ref ofdjghntvmrdfjhazfvz
+supabase functions deploy integraciones  --project-ref ofdjghntvmrdfjhazfvz
+```
+
 ### El RLS de `order_sessions` y `chat_messages`, al fin en el repo · **SQL §65** (15-set-2026)
 
 **Se cerró la deuda del §63.** Las dos políticas se leyeron de `pg_policies` y son la misma:
