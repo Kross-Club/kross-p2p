@@ -1,0 +1,416 @@
+[
+  {
+    "id": "00-landing",
+    "file": "00-landing.png",
+    "grupo": "Entrada",
+    "titulo": "Landing del producto",
+    "condicion": "Entrada al flujo. La barra fija muestra el precio del pack y «¡Lo quiero!» abre el checkout.",
+    "w": 390,
+    "h": 1004
+  },
+  {
+    "id": "00b-landing-pedido-reciente",
+    "file": "00b-landing-pedido-reciente.png",
+    "grupo": "Entrada",
+    "titulo": "Landing con pedido reciente",
+    "condicion": "Hay un pedido guardado en este navegador (últimas 24 h): la barra suma «Ver mi pedido» junto a «¡Lo quiero!».",
+    "w": 390,
+    "h": 1004
+  },
+  {
+    "id": "00c-landing-pago-pendiente",
+    "file": "00c-landing-pago-pendiente.png",
+    "grupo": "Entrada",
+    "titulo": "Landing con pago pendiente",
+    "condicion": "El pago en línea quedó a medias (advancePending): el botón secundario pasa a «Coordinar el pago de tu pedido» y lleva al chat.",
+    "w": 390,
+    "h": 1004
+  },
+  {
+    "id": "01-paso1-pack",
+    "file": "01-paso1-pack.png",
+    "grupo": "Paso 1 · Tu pack",
+    "titulo": "Paso 1 · Elige tu pack",
+    "condicion": "Siempre. El pack recomendado viene preseleccionado (badge «MÁS ELEGIDO»), con el ahorro por unidad y las 6 señales de confianza. El CTA nunca se bloquea aquí.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "01b-paso1-descuento-aplicado",
+    "file": "01b-paso1-descuento-aplicado.png",
+    "grupo": "Paso 1 · Tu pack",
+    "titulo": "Paso 1 · Descuento de salida aplicado",
+    "condicion": "Aceptó la oferta: vuelve al paso 1 con el banner y el precio tachado en cada pack. El descuento se resta del total y del adelanto.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "02-paso2-inicial",
+    "file": "02-paso2-inicial.png",
+    "grupo": "Paso 2 · Tus datos",
+    "titulo": "Paso 2 · WhatsApp y DNI",
+    "condicion": "Al entrar solo se piden WhatsApp y DNI. Nombre y distrito se revelan cuando el DNI tiene 8 dígitos.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "02b-paso2-dni-validando",
+    "file": "02b-paso2-dni-validando.png",
+    "grupo": "Paso 2 · Tus datos",
+    "titulo": "Paso 2 · Validando el DNI",
+    "condicion": "DNI completo → consulta a RENIEC (Decolecta) en curso: «Validando tu DNI…». Nombre y distrito ya aparecen.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "02c-paso2-dni-validado",
+    "file": "02c-paso2-dni-validado.png",
+    "grupo": "Paso 2 · Tus datos",
+    "titulo": "Paso 2 · DNI validado",
+    "condicion": "RENIEC devolvió el nombre: sello verde y «quien recibe» se rellena solo (nunca pisa lo escrito).",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "02d-paso2-dni-no-validado",
+    "file": "02d-paso2-dni-no-validado.png",
+    "grupo": "Paso 2 · Tus datos",
+    "titulo": "Paso 2 · DNI no validado",
+    "condicion": "RENIEC no lo encontró (o el servicio cayó): «No pudimos validarlo, pero puedes continuar». El nombre queda vacío para escribirlo; nunca se bloquea la venta por un servicio externo.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "02e-paso2-errores",
+    "file": "02e-paso2-errores.png",
+    "grupo": "Paso 2 · Tus datos",
+    "titulo": "Paso 2 · Errores de validación",
+    "condicion": "Campos con error al tocar el CTA (celular que no empieza en 9, nombre vacío, distrito sin elegir): mensajes que dicen CÓMO arreglarlo, CTA gris y la ayuda «Completa los datos marcados».",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "02f-paso2-distrito-buscando",
+    "file": "02f-paso2-distrito-buscando.png",
+    "grupo": "Paso 2 · Tus datos",
+    "titulo": "Paso 2 · Buscando el distrito",
+    "condicion": "Un solo selector con los 1 874 distritos del país. Badge «Podemos ir a tu casa» solo si la marca reparte en esa región y el distrito tiene cobertura.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "03-lima-A-domicilio",
+    "file": "03-lima-A-domicilio.png",
+    "grupo": "Rama Lima",
+    "titulo": "Lima · Variante A · Domicilio",
+    "condicion": "Distrito de Lima Metropolitana/Callao + la marca reparte + checkout_ab_mode = A: el método queda en DOMICILIO sin preguntar. Se piden dirección y referencia; el aviso dice cuánto paga ahora.",
+    "w": 390,
+    "h": 974
+  },
+  {
+    "id": "03b-lima-B-elegir",
+    "file": "03b-lima-B-elegir.png",
+    "grupo": "Rama Lima",
+    "titulo": "Lima · Variante B · Elegir cómo recibirlo",
+    "condicion": "checkout_ab_mode = B (o ?checkout=B) y la marca reparte: dos tarjetas, «En mi casa» y «Recojo en agencia». Nada más aparece hasta que elija.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "03c-lima-B-casa",
+    "file": "03c-lima-B-casa.png",
+    "grupo": "Rama Lima",
+    "titulo": "Lima · Variante B · En mi casa",
+    "condicion": "Eligió casa: dirección + referencia y el aviso de cuánto paga ahora.",
+    "w": 390,
+    "h": 1051
+  },
+  {
+    "id": "03d-lima-agencia-cercanas",
+    "file": "03d-lima-agencia-cercanas.png",
+    "grupo": "Rama Lima",
+    "titulo": "Lima · Recojo en agencia · Puntos cercanos",
+    "condicion": "Eligió agencia (también en Lima: Shalom y Olva tienen sedes). Los 4 puntos más cercanos al centro del distrito, mezclando couriers; el primero queda preseleccionado.",
+    "w": 390,
+    "h": 1356
+  },
+  {
+    "id": "03e-lima-agencia-buscar",
+    "file": "03e-lima-agencia-buscar.png",
+    "grupo": "Rama Lima",
+    "titulo": "Lima · Recojo en agencia · Ver todos",
+    "condicion": "«Ver todos los puntos de mi zona»: buscador sobre las 911 sedes, con vuelta al ranking de cercanía.",
+    "w": 390,
+    "h": 1240
+  },
+  {
+    "id": "03f-lima-sin-domicilio",
+    "file": "03f-lima-sin-domicilio.png",
+    "grupo": "Rama Lima",
+    "titulo": "Lima · Marca sin reparto a domicilio",
+    "condicion": "home_delivery_enabled = false y sin courier de Lima (§60): el reducer fija AGENCIA al elegir distrito. No hay tarjetas ni badge en la lista; va directo al selector de puntos (también en variante B).",
+    "w": 390,
+    "h": 1217
+  },
+  {
+    "id": "04-prov-A-domicilio",
+    "file": "04-prov-A-domicilio.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · Cobertura IN_ZONE · Variante A",
+    "condicion": "Distrito fuera de Lima Metro con cobertura del courier (Trujillo): «¡Sí llegamos a tu puerta!» con el plazo del tarifario, dirección + referencia y la salida siempre abierta «Prefiero recoger en una agencia». Aviso naranja con el monto.",
+    "w": 390,
+    "h": 1030
+  },
+  {
+    "id": "04b-prov-A-agencia-elegida",
+    "file": "04b-prov-A-agencia-elegida.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · Prefiere recoger",
+    "condicion": "Desde domicilio tocó «Prefiero recoger en una agencia» (CHOOSE_AGENCY_BRANCH_FLOW): caja morada + puntos cercanos. Como el distrito SÍ tiene cobertura, puede volver con «Prefiero intentar entrega a domicilio».",
+    "w": 390,
+    "h": 1434
+  },
+  {
+    "id": "04c-prov-sin-cobertura",
+    "file": "04c-prov-sin-cobertura.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · Sin cobertura (OUT_OF_ZONE)",
+    "condicion": "El distrito no está en el tarifario del courier: la máquina fija AGENCIA. Caja morada «En tu zona la entrega es en agencia», puntos cercanos y sin enlace para volver a domicilio.",
+    "w": 390,
+    "h": 1365
+  },
+  {
+    "id": "04d-prov-semanal",
+    "file": "04d-prov-semanal.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · Zona de visita semanal (BORDERLINE)",
+    "condicion": "Distrito cubierto pero con entrega 1 vez por semana: el veredicto es BORDERLINE → AGENCIA, con el aviso operativo «el courier pasa una vez por semana».",
+    "w": 390,
+    "h": 1444
+  },
+  {
+    "id": "04e-prov-B-elegir",
+    "file": "04e-prov-B-elegir.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · IN_ZONE · Variante B · Elegir",
+    "condicion": "Con cobertura confirmada y variante B, el método lo elige el comprador: dos tarjetas. Sin cobertura no se pregunta (va directo a agencia). El aviso naranja todavía no pone monto.",
+    "w": 390,
+    "h": 896
+  },
+  {
+    "id": "04f-prov-B-casa",
+    "file": "04f-prov-B-casa.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · Variante B · En mi casa",
+    "condicion": "Eligió casa: «Ok, te lo enviaremos a tu casa» (copy de elección, no de veredicto), plazo, dirección y la salida a agencia.",
+    "w": 390,
+    "h": 1030
+  },
+  {
+    "id": "04g-prov-B-agencia",
+    "file": "04g-prov-B-agencia.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · Variante B · Recojo en agencia",
+    "condicion": "Eligió agencia teniendo cobertura: «Con gusto, te lo dejamos en la agencia que prefieras», puntos cercanos y el enlace para volver a domicilio.",
+    "w": 390,
+    "h": 1456
+  },
+  {
+    "id": "04h-prov-adelanto-mitad",
+    "file": "04h-prov-adelanto-mitad.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · Aviso con adelanto de la mitad",
+    "condicion": "Volvió al paso 2 después de elegir la mitad y re-eligió casa: el aviso naranja cambia a «Adelanto de S/…» y «el resto lo pagas al recibir».",
+    "w": 390,
+    "h": 969
+  },
+  {
+    "id": "04i-prov-B-volver",
+    "file": "04i-prov-B-volver.png",
+    "grupo": "Rama Provincia",
+    "titulo": "Provincia · Variante B · Volver al paso 2",
+    "condicion": "Al volver de «Atrás» la rama vuelve a consultar la cobertura y, en variante B, deja el método en blanco: se vuelven a mostrar las dos tarjetas (la dirección escrita se conserva). El aviso naranja pasa a la versión sin monto de «adelanto».",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05-paso3-total-domicilio",
+    "file": "05-paso3-total-domicilio.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · Paga todo · Domicilio",
+    "condicion": "Default (§56): se cobra el total. Con Flow activo no se pide nada más: el botón de Yape llega después de «Terminar mi pedido».",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05b-paso3-total-agencia",
+    "file": "05b-paso3-total-agencia.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · Paga todo · Recojo en agencia",
+    "condicion": "Mismo paso 3 con la copy de recojo: «recoges sin pagar nada más» y la entrega nombra la agencia y el distrito.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05c-paso3-mitad-opciones",
+    "file": "05c-paso3-mitad-opciones.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · El producto permite pagar la mitad",
+    "condicion": "products.permite_mitad = true: aparece «¿Cuánto quieres pagar ahora?» con Todo (default, con el empujón de puntos) y Mitad. Sin ese flag este bloque no existe.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05d-paso3-mitad-elegida",
+    "file": "05d-paso3-mitad-elegida.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · Eligió la mitad · Domicilio",
+    "condicion": "advanceChoice = HALF: título «adelanta tu envío», fila «Adelantas ahora» y «Pagas al recibir» con el saldo.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05e-paso3-mitad-agencia",
+    "file": "05e-paso3-mitad-agencia.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · Eligió la mitad · Agencia",
+    "condicion": "HALF + AGENCIA: la fila dice «Saldo (lo pagas por la app)» — el saldo nunca se paga en el mostrador; pagarlo suelta la clave de recojo.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05f-paso3-sin-cobro-en-linea",
+    "file": "05f-paso3-sin-cobro-en-linea.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · Tienda sin cobro en línea",
+    "condicion": "stores.flow_enabled = false: el paso 3 avisa «Tu pago lo coordinamos por el chat» con el monto. Terminar registra el pedido y va directo a la página del pedido (REGISTERED_MANUAL).",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05g-paso3-nota-zona",
+    "file": "05g-paso3-nota-zona.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · Aviso de zona",
+    "condicion": "Distrito con entrega solo de lunes a viernes (weekdaysOnly): el paso 3 suma la nota ámbar bajo el resumen. Entrega en provincia a domicilio.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05h-paso3-error-registro",
+    "file": "05h-paso3-error-registro.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · Error al registrar",
+    "condicion": "register-buyer falló (red o servidor): mensaje en rojo y el CTA vuelve a estar disponible. No se borra nada de lo ingresado.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "05i-paso3-registrando",
+    "file": "05i-paso3-registrando.png",
+    "grupo": "Paso 3 · Confirmar",
+    "titulo": "Paso 3 · Registrando el pedido",
+    "condicion": "Submit en vuelo (register-buyer): el botón se bloquea contra el doble tap y «Atrás» desaparece.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "06-salida-oferta",
+    "file": "06-salida-oferta.png",
+    "grupo": "Salida",
+    "titulo": "Salida · Oferta de descuento",
+    "condicion": "Tocó la X (o Esc) con datos ingresados, el producto tiene descuento_pen > 0 y aún no se le ofreció: diálogo de retención con el monto como héroe. Una sola vez por checkout.",
+    "w": 390,
+    "h": 969
+  },
+  {
+    "id": "06b-salida-confirmar",
+    "file": "06b-salida-confirmar.png",
+    "grupo": "Salida",
+    "titulo": "Salida · Confirmación seca",
+    "condicion": "Segundo intento de salir (o producto sin descuento): «¿Salir sin terminar?» con el borrador guardado 24 h. Esc = quedarse.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "07-pago-emitiendo",
+    "file": "07-pago-emitiendo.png",
+    "grupo": "Pago",
+    "titulo": "Pago · Creando la orden en Flow",
+    "condicion": "Pedido registrado y riel FLOW: mientras flow-order responde se anuncia la salida a pagar. Sin pie: no hay botón que repetir.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "07b-pago-esperando-al-volver",
+    "file": "07b-pago-esperando-al-volver.png",
+    "grupo": "Pago",
+    "titulo": "Pago · Volvió de la página de pago",
+    "condicion": "Sin deeplink (o en escritorio) el comprador SALE a la página de Flow; al volver (visibilitychange / bfcache) la misma pantalla pasa a «Esperando tu pago por Yape…» y consulta el pedido cada 3 s.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "07c-pago-yape",
+    "file": "07c-pago-yape.png",
+    "grupo": "Pago",
+    "titulo": "Pago · Botón que abre Yape (deeplink)",
+    "condicion": "Celular + el servidor sacó el deeplink de Yape: botón «Pagar con Yape», respaldo a la página de Flow, sello de pago seguro y la espera del MATCHED que deja el webhook.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "07d-pago-fallo",
+    "file": "07d-pago-fallo.png",
+    "grupo": "Pago",
+    "titulo": "Pago · No se pudo generar el pago",
+    "condicion": "El pedido YA existe pero flow-order falló (ISSUE_FAILED): «Reintentar el pago» o «Prefiero que me escriban para pagar». Único punto con esa salida.",
+    "w": 390,
+    "h": 844
+  },
+  {
+    "id": "08-pedido-confirmado-domicilio",
+    "file": "08-pedido-confirmado-domicilio.png",
+    "grupo": "Pedido confirmado",
+    "titulo": "/pedido/:token · Pagado · Domicilio",
+    "condicion": "El webhook confirmó el pago (MATCHED): navega a la página del pedido. Cabecera con la marca, recorrido (pago recibido + comprobante, boleta pendiente, preparando, en camino, entrega) y el bloque de avisos/app (Android).",
+    "w": 390,
+    "h": 1157
+  },
+  {
+    "id": "08b-pedido-confirmado-agencia-saldo",
+    "file": "08b-pedido-confirmado-agencia-saldo.png",
+    "grupo": "Pedido confirmado",
+    "titulo": "/pedido/:token · Mitad pagada · Agencia",
+    "condicion": "Adelanto cruzado + recojo en Shalom: recorrido con guía pendiente, «En camino a Shalom», «Llegó a la agencia» con el botón real «Pagar S/… con Yape» (riel en línea + adelanto cruzado) y el recojo con el DNI.",
+    "w": 390,
+    "h": 1219
+  },
+  {
+    "id": "08c-pedido-pago-pendiente",
+    "file": "08c-pedido-pago-pendiente.png",
+    "grupo": "Pedido confirmado",
+    "titulo": "/pedido/:token · Pago pendiente",
+    "condicion": "Eligió «que me escriban» (GIVE_UP): el pedido se registró con riel FLOW pero sin pago cruzado. Regla dura: nunca se le dice que su pago no existe — «un asesor coordina tu adelanto».",
+    "w": 390,
+    "h": 1027
+  },
+  {
+    "id": "08d-pedido-coordinar-por-chat",
+    "file": "08d-pedido-coordinar-por-chat.png",
+    "grupo": "Pedido confirmado",
+    "titulo": "/pedido/:token · Sin cobro en línea",
+    "condicion": "Pedido registrado sin riel: «Un asesor te escribe para coordinar tu adelanto». Sin comprobante ni boleta hasta que cruce el pago.",
+    "w": 390,
+    "h": 1027
+  },
+  {
+    "id": "08e-pedido-confirmado-iphone",
+    "file": "08e-pedido-confirmado-iphone.png",
+    "grupo": "Pedido confirmado",
+    "titulo": "/pedido/:token · iPhone",
+    "condicion": "Mismo pedido pagado visto en iPhone: Safari no da push web, así que el bloque final enseña el video de instalación en vez de «Avisarme por aquí».",
+    "w": 390,
+    "h": 1331
+  }
+]

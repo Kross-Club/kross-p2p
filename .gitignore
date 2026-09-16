@@ -32,3 +32,6 @@ dist/
 
 # Basura temporal de la CLI de Supabase
 supabase/.temp/
+
+# Caché local de fuentes para scripts/figma-checkout (se descarga aparte)
+scripts/figma-checkout/fonts/
