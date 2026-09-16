@@ -45,6 +45,8 @@ interface Product {
   shalom_origin_branch_id?: string | null
   olva_origin_agency_code?: string | null
   package_weight_kg?: number | null
+  /** `LxAxH` en cm (§67): con esto el envío Olva va como paquete. */
+  package_dims_cm?: string | null
   package_size?: string | null
   declared_content?: string | null
   /** Cobro (§56): si deja pagar la mitad ahora (el default es el total) y
@@ -250,11 +252,25 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
   const [size, setSize] = useState<string | null>(product.package_size ?? null)
   const [contenido, setContenido] = useState<string | null>(product.declared_content ?? null)
   const [origen, setOrigen] = useState<string | null>(product.shalom_origin_branch_id ?? null)
-  // Olva va por su propio camino: su código de agencia es del PROVEEDOR
-  // (`LIM-MIR-01`), no el id de nuestro catálogo, y su tarifa la decide el peso
-  // y no un tamaño de catálogo. Por eso no se pueden reusar los de arriba.
+  // Olva va por su propio camino: su origen es una SEDE de su catálogo
+  // (`/catalog/headquarters`, un id como `43`), no el id de nuestro listado,
+  // y su tarifa la decide el peso y no un tamaño de catálogo. Por eso no se
+  // pueden reusar los de arriba. La lista de sedes se pide al servidor (gasta
+  // cuota, va cacheada); si no llega, queda el campo para escribir el id.
   const [origenOlva, setOrigenOlva] = useState<string>(product.olva_origin_agency_code ?? '')
+  const [sedesOlva, setSedesOlva] = useState<{ id: string; nombre: string }[] | null>(null)
   const [peso, setPeso] = useState<string>(product.package_weight_kg != null ? String(product.package_weight_kg) : '')
+  const [dims, setDims] = useState<string>(product.package_dims_cm ?? '')
+  useEffect(() => {
+    let alive = true
+    fetch(`${BASE}/manage-store`, {
+      method: 'POST', headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'olva_headquarters', admin_auth_id: adminId, store_id: storeId || undefined }),
+    }).then(r => r.json()).then((d: { sedes?: { id: string; nombre: string }[] }) => {
+      if (alive) setSedesOlva(Array.isArray(d.sedes) && d.sedes.length ? d.sedes : [])
+    }).catch(() => { if (alive) setSedesOlva([]) })
+    return () => { alive = false }
+  }, [adminId, storeId])
   const [origenBranch, setOrigenBranch] = useState<AgencyBranch | null>(null)
   const [buscarSede, setBuscarSede] = useState('')
   const [sedes, setSedes] = useState<AgencyBranch[]>([])
@@ -366,6 +382,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
           shalom_origin_branch_id: origen, package_size: size, declared_content: contenido,
           olva_origin_agency_code: origenOlva.trim() || null,
           package_weight_kg: peso.trim() ? Number(peso) : null,
+          package_dims_cm: dims.trim() || null,
           permite_mitad: permiteMitad,
           descuento_pen: descuento.trim() ? Number(descuento) : 0,
         }),
@@ -618,25 +635,45 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
             <Truck size={14} /> Envío por agencia (Olva)
           </span>
           <p className="text-[10px] text-gray-500 mt-1 mb-2 leading-snug">
-            Lo mismo para Olva: con el <b>código de su agencia de origen</b> y el <b>peso</b>,
-            un pedido de recojo en Olva con su adelanto pagado registra su envío solo.
+            Lo mismo para Olva: con la <b>sede de origen</b> (donde dejas el paquete) y el <b>peso</b>,
+            un pedido de recojo en Olva ya pagado registra su envío solo, con rótulo y clave de recojo.
             El contenido declarado es el de arriba — es el mismo dato. Sin esto el pedido
             se cierra igual y Logística registra la guía a mano.
           </p>
 
           <label className="text-[11px] font-bold text-gray-500 mb-1 block">
-            Código de agencia de origen <span className="font-bold text-gray-400">(el de Olva, ej: LIM-MIR-01)</span>
+            Sede Olva de origen <span className="font-bold text-gray-400">(donde entregas el paquete)</span>
           </label>
-          <input value={origenOlva} onChange={e => setOrigenOlva(e.target.value.toUpperCase())}
-            placeholder="LIM-MIR-01"
-            className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-3" style={{ borderColor: 'var(--warn-border)' }} />
+          {sedesOlva && sedesOlva.length > 0 ? (
+            <select value={origenOlva} onChange={e => setOrigenOlva(e.target.value)}
+              className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-3" style={{ borderColor: 'var(--warn-border)' }}>
+              <option value="">— Elige la sede —</option>
+              {/* La guardada, aunque ya no esté en el catálogo: no se pierde en silencio. */}
+              {origenOlva && !sedesOlva.some(s => s.id === origenOlva) && <option value={origenOlva}>{origenOlva} (ya no está en el catálogo)</option>}
+              {sedesOlva.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            </select>
+          ) : (
+            <input value={origenOlva} onChange={e => setOrigenOlva(e.target.value.toUpperCase())}
+              placeholder={sedesOlva === null ? 'Cargando sedes…' : 'Id de la sede (del catálogo de Olva)'}
+              className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-3" style={{ borderColor: 'var(--warn-border)' }} />
+          )}
 
           <label className="text-[11px] font-bold text-gray-500 mb-1 block">
             Peso del paquete <span className="font-bold text-gray-400">(kg — decide la tarifa)</span>
           </label>
           <input value={peso} onChange={e => setPeso(e.target.value.replace(/[^\d.]/g, ''))}
             inputMode="decimal" placeholder="2.5"
+            className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border mb-3" style={{ borderColor: 'var(--warn-border)' }} />
+
+          <label className="text-[11px] font-bold text-gray-500 mb-1 block">
+            Medidas del paquete <span className="font-bold text-gray-400">(largo × ancho × alto en cm, opcional)</span>
+          </label>
+          <input value={dims} onChange={e => setDims(e.target.value)}
+            placeholder="20x15x10"
             className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--warn-border)' }} />
+          <p className="text-[10px] text-gray-400 mt-1 leading-snug">
+            Con medidas el envío va declarado como paquete; sin ellas Olva usa su tipo por defecto.
+          </p>
         </div>
 
         <div className="flex gap-2">

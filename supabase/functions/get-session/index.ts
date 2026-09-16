@@ -80,6 +80,7 @@ Deno.serve(async (req) => {
       advance_amount, payment_provider,
       boleta_serie, boleta_numero, boleta_estado, boleta_url,
       eva_order_status, eva_order_reason, eva_estado, eva_estado_at, eva_rotulo_url, eva_entrega_foto,
+      olva_order_status, olva_order_reason, olva_registration_number, olva_rotulo_url,
       answered_at,
       expires_at, created_at
     `)

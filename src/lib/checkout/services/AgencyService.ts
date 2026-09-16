@@ -33,16 +33,15 @@ const LOADERS: Record<AgencyName, Loader | null> = {
 }
 
 /**
- * Los couriers que HOY se le ofrecen al comprador. (15-set-2026)
+ * Los couriers que HOY se le ofrecen al comprador.
  *
- * Olva sale: su API no se entrega —ni la del titular ni la de LAT—, y una sede
- * que el comprador elige es una guía que el vendedor después tiene que emitir.
- * Ofrecer un mostrador al que no le podemos sacar guía es vender un despacho
- * que no existe. Su listado de sedes **no se borra**: los pedidos que ya
- * eligieron una Olva siguen resolviéndola por `getBranch`, y el día que la API
- * llegue esto vuelve a ser una línea.
+ * La regla: una sede que el comprador elige es una guía que el vendedor
+ * después tiene que emitir, así que solo entra un courier al que se le puede
+ * sacar guía por API. Olva salió un día (15-set-2026, su API no se entregaba)
+ * y volvió al siguiente con la doc nueva de `POST /shipments` (§67). Sacar
+ * uno vuelve a ser una línea acá; su listado de sedes nunca se borra.
  */
-export const COURIERS_ACTIVOS: readonly AgencyName[] = ['SHALOM']
+export const COURIERS_ACTIVOS: readonly AgencyName[] = ['SHALOM', 'OLVA']
 
 /**
  * Las agencias con listado que además están activas. Se DERIVA de `LOADERS`,

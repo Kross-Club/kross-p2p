@@ -52,6 +52,12 @@ export interface TrackingFields {
    *  rechazó el registro automático y este pedido espera a una persona. */
   shalom_order_status?: string | null
   shalom_order_reason?: string | null
+  /** Íd. para Olva (§67). `CREATED` sin `tracking_numero` = registrado, con
+   *  rótulo, esperando que Olva admita el paquete y asigne la guía. */
+  olva_order_status?: string | null
+  olva_order_reason?: string | null
+  olva_registration_number?: string | null
+  olva_rotulo_url?: string | null
 }
 
 /** Lo que el demo hace en lugar del servidor: registrar la guía a mano y
@@ -104,7 +110,12 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
   const isOlva = courier === 'OLVA'
   // El registro automático falló y este pedido espera a una persona: acá el
   // formulario deja de ser "por si acaso" y pasa a ser LA tarea.
-  const fallo = String(tracking.shalom_order_status ?? '').toUpperCase() === 'FAILED'
+  const expediente = String((isOlva ? tracking.olva_order_status : tracking.shalom_order_status) ?? '').toUpperCase()
+  const motivoFallo = isOlva ? tracking.olva_order_reason : tracking.shalom_order_reason
+  const fallo = expediente === 'FAILED'
+  // Olva: registrado y con rótulo, pero la guía todavía no existe — Olva la
+  // asigna al admitir el paquete en la sede, y el barrido la pone sola.
+  const olvaEsperaGuia = isOlva && !registered && expediente === 'CREATED'
   const numeroOk = isOlva
     ? /^\d{6,15}$/.test(numero.replace(/\D/g, ''))
     : /^\d{8,10}$/.test(numero.replace(/\D/g, ''))
@@ -199,11 +210,13 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
       const res = await fetch(`${BASE}/order-manage`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'retry_shalom', session_id: sessionId }),
+        body: JSON.stringify({ action: isOlva ? 'retry_olva' : 'retry_shalom', session_id: sessionId }),
       })
       const r = await res.json().catch(() => ({}))
       if (res.ok && r.tracking) { onUpdated(r.tracking as TrackingFields); return }
-      setError('Shalom volvió a rechazarlo. Regístrala a mano del comprobante físico.')
+      setError(isOlva
+        ? 'Olva volvió a rechazarlo. El detalle está en Conexiones; o regístrala a mano del comprobante.'
+        : 'Shalom volvió a rechazarlo. Regístrala a mano del comprobante físico.')
     } catch {
       setError('No se pudo reintentar. Revisa tu conexión e intenta de nuevo.')
     } finally {
@@ -350,18 +363,46 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
               si acaso" y pasa a ser LA tarea — con las dos salidas: copiar la
               guía del comprobante físico, o reintentar por el API (el servidor
               ya reintentó solo lo reintentable antes de rendirse). */}
+          {/* Olva registró el envío: hay rótulo y clave, y la guía llega con la
+              admisión del paquete. Se dice acá, encima del formulario, para
+              que nadie registre "a mano" una guía que Olva va a poner sola. */}
+          {olvaEsperaGuia && !editing && (
+            <div className="mb-2 rounded-xl px-2.5 py-2"
+              style={{ background: 'var(--ok-bg)', border: '0.5px solid var(--border)' }}>
+              <p className="text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                📦 Registrado en Olva{tracking.olva_registration_number ? <> · registro <span className="font-black" style={{ color: 'var(--text)' }}>{tracking.olva_registration_number}</span></> : null}.
+                {' '}La guía la asigna Olva cuando admita el paquete en la sede; el sistema la pone sola y se la manda al comprador.
+                {' '}Lleva el paquete con su rótulo.
+              </p>
+              {tracking.olva_rotulo_url && (
+                <a href={tracking.olva_rotulo_url} target="_blank" rel="noreferrer"
+                  className="inline-block mt-1.5 text-[10px] font-black px-2 py-1 rounded-lg"
+                  style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}>
+                  🖨 Imprimir rótulo
+                </a>
+              )}
+              {tracking.shalom_pickup_code && (
+                <p className="text-[10px] font-semibold mt-1.5 flex items-start gap-1" style={{ color: 'var(--text-muted)' }}>
+                  <KeyRound size={11} className="flex-shrink-0 mt-0.5" />
+                  <span>Clave de recojo <span className="font-black" style={{ color: 'var(--text)' }}>{tracking.shalom_pickup_code}</span> — solo la ve tu equipo hasta que el cliente pague su saldo.</span>
+                </p>
+              )}
+            </div>
+          )}
           {fallo && !editing && (
             <div className="mb-2 rounded-xl px-2.5 py-2"
               style={{ background: 'var(--warn-bg-soft)', border: '0.5px solid var(--warn-border)' }}>
               <p className="text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
-                ⚠️ La guía automática falló{tracking.shalom_order_reason ? `: ${tracking.shalom_order_reason}` : ''}.
-                {' '}Emite el envío en Shalom por fuera y copia acá sus tres datos — o reintenta por el API.
+                ⚠️ La guía automática falló{motivoFallo ? `: ${motivoFallo}` : ''}.
+                {' '}{isOlva
+                  ? 'Mira en el panel de Olva si el envío llegó a crearse; corrige lo que falte y reintenta (no duplica), o copia acá la guía del comprobante.'
+                  : 'Emite el envío en Shalom por fuera y copia acá sus tres datos — o reintenta por el API.'}
               </p>
               <button onClick={reintentar} disabled={retrying}
                 className="mt-1.5 text-[10px] font-black px-2 py-1 rounded-lg disabled:opacity-50"
                 style={{ background: 'var(--surface-3)', color: 'var(--text)' }}>
                 <RefreshCw size={10} className={`inline mr-1 ${retrying ? 'animate-spin' : ''}`} />
-                {retrying ? 'Reintentando…' : 'Reintentar por el API de Shalom'}
+                {retrying ? 'Reintentando…' : `Reintentar por el API de ${isOlva ? 'Olva' : 'Shalom'}`}
               </button>
             </div>
           )}
@@ -402,7 +443,9 @@ export default function TrackingBar({ sessionId, role, dispatchType, agencyName,
           )}
           <p className="text-[10px] font-semibold text-gray-400 mt-1.5">
             {isOlva
-              ? 'El número viene impreso en el comprobante de OLVA. La guía le llega al comprador por el chat.'
+              ? (olvaEsperaGuia
+                ? 'Solo si Olva ya te dio la guía y el sistema aún no la puso: escríbela acá y le llega al comprador por el chat.'
+                : 'El número viene impreso en el comprobante de OLVA. La guía le llega al comprador por el chat.')
               : `Los tres vienen impresos en el comprobante de ${courier}. La guía le llega al comprador por el chat; `
                 + 'la clave se queda guardada y el chat se la entrega solo cuando pague su saldo.'}
           </p>

@@ -708,11 +708,10 @@ describe('CoverageService · data real del courier', () => {
 // depende de la ZONA (y por eso murió `RECOMMENDED_AGENCY`), y que los ids se
 // repiten entre couriers.
 
-// Con Olva dormido (15-set-2026) el checkout ofrece un solo courier, así que la
-// regla del mezclado se prueba pasando las dos agencias EXPLÍCITAS. No es un
-// test de mentira: es la misma función que corre en producción, y el día que
-// Olva vuelva a `COURIERS_ACTIVOS` estos tests describen otra vez lo que el
-// comprador ve — sin haber perdido por qué el ranking mezcla.
+// Olva durmió un día (15-set-2026) y volvió al siguiente con la doc nueva de
+// `POST /shipments`; mientras tanto la regla del mezclado se probó pasando las
+// dos agencias EXPLÍCITAS, y así se queda: es la misma función que corre en
+// producción, y `LISTED_AGENCIES` tiene su propio test abajo.
 describe('AgencyService · puntos de recojo de todas las agencias', () => {
   const LAS_DOS = ['SHALOM', 'OLVA'] as const
   const HUANCAVELICA = { lat: -12.7869, lng: -74.9731 }
@@ -773,10 +772,10 @@ describe('AgencyService · puntos de recojo de todas las agencias', () => {
     expect(olva.every(b => b.agency === 'OLVA')).toBe(true)
   })
 
-  it('solo se ofrecen los couriers activos: Olva está dormido y OTRO no tiene listado', () => {
-    // Olva sale porque su API no se entrega (15-set-2026): ofrecer un mostrador
-    // al que no le podemos sacar guía es vender un despacho que no existe.
-    expect(LISTED_AGENCIES).toEqual(['SHALOM'])
+  it('se ofrecen los dos couriers con guía por API; OTRO no tiene listado', () => {
+    // Olva volvió el 16-set-2026 con `POST /shipments` (§67): ya se le puede
+    // sacar guía, así que su mostrador vuelve a ser una opción real.
+    expect(LISTED_AGENCIES).toEqual(['SHALOM', 'OLVA'])
   })
 
   it('pero el listado de Olva NO se borra: un pedido viejo sigue resolviendo su sede', async () => {

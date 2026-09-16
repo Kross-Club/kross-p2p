@@ -259,10 +259,13 @@ export function pedidoAbierto(p: PedidoRastreable & { status?: string | null }):
  */
 export function esperaGuiaManual(p: {
   shalom_order_status?: string | null
+  /** El generador de Olva (§67): mismo expediente, misma alerta. */
+  olva_order_status?: string | null
   tracking_numero?: string | null
   tracking_ose_id?: string | null
 }): boolean {
-  return String(p.shalom_order_status ?? '').toUpperCase() === 'FAILED'
+  const fallo = (v: unknown) => String(v ?? '').toUpperCase() === 'FAILED'
+  return (fallo(p.shalom_order_status) || fallo(p.olva_order_status))
     && !p.tracking_numero && !p.tracking_ose_id
 }
 

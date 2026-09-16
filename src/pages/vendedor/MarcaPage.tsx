@@ -85,6 +85,8 @@ interface StoreRow {
   olva_sender_name?: string | null
   olva_sender_document?: string | null
   olva_sender_phone?: string | null
+  olva_sender_email?: string | null
+  olva_who_pays?: string | null
   // Pixel y anuncios — los IDs son públicos; de los tokens de CAPI el backend
   // solo manda la PRESENCIA (nunca el token). Ver docs/09-PIXELS-CAPI.md.
   meta_pixel_id?: string | null
@@ -513,6 +515,8 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
   const [olvaSender, setOlvaSender] = useState(store.olva_sender_name ?? '')
   const [olvaDoc, setOlvaDoc] = useState(store.olva_sender_document ?? '')
   const [olvaTel, setOlvaTel] = useState(store.olva_sender_phone ?? '')
+  const [olvaEmail, setOlvaEmail] = useState(store.olva_sender_email ?? '')
+  const [olvaPaga, setOlvaPaga] = useState<'STORE' | 'DESTINATION'>(store.olva_who_pays === 'DESTINATION' ? 'DESTINATION' : 'STORE')
   const [olvaBusy, setOlvaBusy] = useState(false)
   const autoGuiaOlva = store.olva_auto_guide_enabled === true
 
@@ -859,6 +863,7 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
     const { ok, data } = await call({
       action: 'update', admin_auth_id: adminId, store_id: store.id,
       olva_sender_name: olvaSender.trim(), olva_sender_document: olvaDoc.trim(), olva_sender_phone: olvaTel.trim(),
+      olva_sender_email: olvaEmail.trim(), olva_who_pays: olvaPaga,
     })
     setOlvaBusy(false)
     if (!ok) { setErr(ERR[(data as { error?: string }).error ?? ''] ?? mensajePanel((data as { error?: string }).error, 'No se pudo guardar el remitente.')); return }
@@ -1704,10 +1709,12 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               Registrar el envío solo
             </span>
             <p className="text-[10px] text-gray-500 mb-2 leading-snug">
-              Con esto encendido, un pedido de recojo en Olva que ya pagó su adelanto
-              <b> registra su envío solo</b> y el comprador recibe su guía en el chat. Apagado,
-              el sistema arma el envío completo y lo deja en el chat de vendedores sin
-              registrarlo: es el ensayo con un pedido real, sin gastar.
+              Con esto encendido, un pedido de recojo en Olva ya pagado
+              <b> registra su envío solo</b>: sale el rótulo para pegar al paquete y la clave de
+              recojo, y la guía le llega al comprador por el chat cuando Olva admite el paquete
+              en la sede. Apagado, el sistema arma el envío completo y lo deja en el chat de
+              vendedores sin registrarlo: es el ensayo con un pedido real, sin gastar.
+              Olva valida el remitente por su <b>RUC o DNI</b>; el correo es a quien Olva avisa.
             </p>
 
             <div className="grid grid-cols-2 gap-1.5 mb-2">
@@ -1720,6 +1727,17 @@ function BrandEditor({ store, isSuper, quien, adminId, onClose, onSaved }: {
               <input value={olvaTel} onChange={e => setOlvaTel(e.target.value.replace(/\D/g, ''))}
                 inputMode="numeric" placeholder="Celular"
                 className="bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--warn-border)' }} />
+              <input value={olvaEmail} onChange={e => setOlvaEmail(e.target.value)}
+                inputMode="email" placeholder="Correo del remitente (avisos de Olva)"
+                className="col-span-2 bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--warn-border)' }} />
+              {/* Quién paga el flete. Kross cobra el pedido completo antes de
+                  despachar, así que lo normal es que lo pague la marca en la
+                  sede; DESTINATION se lo cobra al comprador al recoger. */}
+              <select value={olvaPaga} onChange={e => setOlvaPaga(e.target.value === 'DESTINATION' ? 'DESTINATION' : 'STORE')}
+                className="col-span-2 bg-white rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: 'var(--warn-border)' }}>
+                <option value="STORE">El flete lo paga la marca, en la sede de origen</option>
+                <option value="DESTINATION">El flete lo paga el cliente al recoger</option>
+              </select>
             </div>
 
             <div className="flex gap-1.5">

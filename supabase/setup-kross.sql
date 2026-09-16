@@ -3280,3 +3280,63 @@ CREATE POLICY "service role only" ON chat_messages
 ALTER TABLE stores ALTER COLUMN checkout_ab_mode SET DEFAULT 'A';
 UPDATE stores SET checkout_ab_mode = 'A'
  WHERE checkout_ab_mode IS NULL OR checkout_ab_mode = 'SPLIT';
+
+-- ============================================================================
+-- §67 · OLVA VUELVE: `POST /shipments`, RÓTULO, CLAVE Y GUÍA POR ADMISIÓN  (16-set-2026)
+-- ============================================================================
+-- Olva durmió un día (§ "Olva se duerme", 15-set) porque el proveedor no
+-- entregaba la API. Al siguiente publicó la doc nueva de `POST /shipments`:
+-- una sola llamada registra la guía, devuelve el costo, el número de registro
+-- y el rótulo en PDF, y acepta `Idempotency-Key` —lo que antes faltaba para
+-- poder reintentar—. Sigue siendo un tercero (los mismos desarrolladores del
+-- wrapper de Shalom), no la API oficial de Olva, y así se anota en Conexiones.
+--
+-- Lo que cambia en el esquema, y por qué:
+--
+--   · La GUÍA no nace con el registro. Olva la asigna al ADMITIR el paquete en
+--     la sede; hasta entonces hay `registrationNumber` (reclamos, rótulo) y el
+--     pedido queda en `olva_order_status = CREATED` SIN `tracking_numero`. El
+--     barrido `olva-tracking-sync` pregunta por `GET /shipments/:id`
+--     (`olva_order_id`) y registra la guía cuando aparece.
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_registration_number text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_rotulo_url          text;
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS olva_cost                numeric;
+CREATE INDEX IF NOT EXISTS order_sessions_olva_admision_idx
+  ON order_sessions (tracking_checked_at NULLS FIRST)
+  WHERE status = 'active' AND olva_order_status = 'CREATED' AND tracking_numero IS NULL;
+
+--   · La CLAVE DE RECOJO sí existe (`pin`, 4 dígitos): la elegimos nosotros y
+--     Olva la confirma. Se guarda en `shalom_pickup_code`: el nombre es
+--     histórico —es LA clave de recojo del pedido, del courier que sea— y todo
+--     el circuito (el chat la suelta al pagar el saldo, el panel la muestra
+--     solo al equipo) ya cuelga de esa columna. Renombrarla sería tocar diez
+--     sitios para no cambiar nada.
+COMMENT ON COLUMN order_sessions.shalom_pickup_code IS
+  'La clave de recojo del pedido, del courier que sea (Shalom la elige la emisión automática; Olva la confirma en securityPin; la manual la copia Logística). El nombre es histórico.';
+
+--   · El remitente: Olva valida el DOCUMENTO con su lookup y completa nombres y
+--     celular; el correo es a quien Olva le avisa del registro. Y quién paga
+--     el flete: STORE (la marca, en la sede de origen) o DESTINATION (el
+--     comprador al recoger). Kross cobra el pedido completo antes de
+--     despachar, así que el default es la marca.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS olva_sender_email text;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS olva_who_pays     text NOT NULL DEFAULT 'STORE';
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_olva_who_pays_check;
+ALTER TABLE stores ADD CONSTRAINT stores_olva_who_pays_check
+  CHECK (olva_who_pays IN ('STORE', 'DESTINATION'));
+
+--   · `products.olva_origin_agency_code` pasa a guardar el id de la SEDE de
+--     origen (`origin.headquarterId`, de `/catalog/headquarters`, p. ej. `43`),
+--     no un código de agencia. Se conserva el nombre: nunca tuvo datos reales.
+--     Y las dimensiones, opcionales: con ellas el envío va como PAQUETE
+--     (`shipmentType: 2`); sin ellas no se declara tipo.
+COMMENT ON COLUMN products.olva_origin_agency_code IS
+  'Id de la SEDE de origen de Olva LAT (origin.headquarterId, de /catalog/headquarters). El nombre es histórico.';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS package_dims_cm text;  -- "LxAxH" en cm
+
+--   · El bucket del rótulo. PÚBLICO con la misma regla que `eva-rotulos` (§64):
+--     la ruta lleva el uuid del pedido y el número de registro —no se
+--     adivinan— y el documento lo imprime la marca desde su panel.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('olva-rotulos', 'olva-rotulos', true)
+ON CONFLICT (id) DO NOTHING;

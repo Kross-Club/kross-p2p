@@ -809,7 +809,48 @@ en `ESTADO-OPERATIVO.md`.
   2, que trae código, coordenadas y horario por sede. Misma candidata que ya
   anotaba §5 para el riel 1, ahora con dos fuentes para cotejarla.
 
+## Olva vuelve: `POST /shipments`, rótulo, clave y guía por admisión ✅ (16-set-2026, §67)
+
+Olva durmió un día. El 15-set salió del checkout porque ninguno de los dos rieles entregaba la
+API; el 16 el proveedor de Olva LAT publicó la doc nueva —**una sola llamada** que orquesta el
+flujo entero de Olva y devuelve costo, número de registro y rótulo— y con ella se resolvían las
+dos objeciones que tenía el generador de abajo. **Sigue siendo un tercero** (los mismos
+desarrolladores del wrapper de Shalom LAT), no la API oficial de Olva, que no existe: así se
+anota en *Conexiones* y así lo decidió Gabriel («es lo que hay por ahora»).
+
+Lo que cambia respecto al diseño del 3-set (la sección siguiente, que se conserva como
+bitácora):
+
+| Antes (`POST /account/register`) | Ahora (`POST /shipments`) |
+|---|---|
+| Sin clave de idempotencia → **nunca se reintentaba**, ni un 5xx | `Idempotency-Key` = pedido + huella del payload (`claveDeIdempotencia`) → un timeout o un 5xx se **reintenta tres veces con la misma clave**; si el primero llegó a registrar, Olva devuelve ese envío. Un 4xx no se reintenta: es un dato nuestro |
+| La guía venía en la respuesta | **La guía NO nace con el registro.** Olva devuelve `registrationNumber` (reclamos, rótulo) y asigna la guía al **admitir el paquete en la sede**. El pedido queda `olva_order_status = CREATED` sin `tracking_numero`; el barrido `olva-tracking-sync` (paso 0) pregunta por `GET /shipments/:id` hasta que aparece y ahí corre `registrarGuia`, el mismo camino que la guía a mano |
+| Sin clave de recojo | `pin` de 4 dígitos, **nuestro** (`nuevoPickupCode`, como Shalom), confirmado en `securityPin`. Se guarda en `shalom_pickup_code` —nombre histórico: es LA clave de recojo del pedido— y el chat la suelta al pagar el saldo, como siempre |
+| Sin rótulo | El rótulo llega en base64 y se sube a `olva-rotulos` (`olva_rotulo_url`); la tarjeta del envío ofrece **Imprimir rótulo** al equipo |
+| `origin.agencyCode` | `origin.headquarterId`: la **sede** de `/catalog/headquarters`. El panel de Productos la ofrece en un selector (`manage-store · olva_headquarters`, cacheado); la columna conserva su nombre |
+| Remitente con nombre + documento + celular | Olva **valida el documento con su lookup** y completa nombres y celular; se mandan solo si la marca los configuró. Nuevo: `olva_sender_email` (a quien Olva avisa) y `olva_who_pays` (STORE: la marca en la sede · DESTINATION: el comprador al recoger; default la marca, porque Kross cobra todo antes de despachar) |
+| — | Dimensiones opcionales (`package_dims_cm`, `LxAxH`): con ellas el envío va como paquete (`shipmentType: 2`); sin ellas no se declara tipo |
+
+Lo que **sigue sin haber**: una búsqueda por nuestro código. `GET /shipments` existe pero filtra
+por `trackingNumber` (nulo hasta la admisión) y el body no lleva referencia nuestra. Por eso
+`esReconciliable` sigue en `false` y la defensa contra el duplicado es la clave de idempotencia
+(`esIdempotente`).
+
+**Estados del expediente** (`olva_order_status`): igual que antes, con un matiz en `CREATED`:
+registrado en Olva, con rótulo y clave, **con o sin guía todavía**. La alerta «espera guía a
+mano» (`esperaGuiaManual`) solo se levanta con `FAILED`; un `CREATED` sin guía está esperando a
+Olva, no a una persona, y la tarjeta del envío lo dice.
+
+**Para dormirlo otra vez:** quitar `'OLVA'` de `COURIERS_ACTIVOS` y poner `dormida: true` en
+`OLVA_LAT`. Nada más.
+
 ## Registro de envíos Olva 🟡 · construido, apagado por decisión (3-set-2026)
+
+> ⚠️ **Bitácora.** Describe el contrato viejo (`POST /account/register`) y sus tres
+> diferencias con Shalom; dos de ellas —no poder reintentar y no tener clave de recojo— ya no
+> valen desde el 16-set (sección anterior, §67). Se conserva porque explica por qué el
+> generador se diseñó como se diseñó.
+
 
 **Sí: Olva LAT puede registrar guías, igual que Shalom.** `POST /account/register`
 crea el envío y devuelve su número; existe también `register-bulk` para lotes.
@@ -1210,6 +1251,10 @@ corresponde) ni el barrido de rastreo de las guías Olva que ya existen.
 ranking mezclado sigue probada mientras tanto — los tests le pasan las dos agencias explícitas
 (`checkout.test.ts` § *puntos de recojo de todas las agencias*), así que el día que vuelva no hay
 que redescubrir por qué el orden es por distancia real y no por una constante.
+
+> **Duró un día.** El 16-set volvió con la doc nueva de `POST /shipments` (§ *Olva vuelve*, §67).
+> Olva PE (el riel de solo rastreo) sigue dormido: la llave nunca se entregó bien y Olva LAT
+> rastrea igual.
 
 ### Dos formas de llegar a la puerta ✅ (15-set-2026, §60)
 
