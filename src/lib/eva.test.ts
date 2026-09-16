@@ -434,5 +434,43 @@ describe('consultar el pedido (GET): el estado sale de `status`, no del último 
   it('sin estado no hay nada que reflejar', () => {
     expect(leerConsultaEva({ tracks: [] })).toBeNull()
     expect(leerConsultaEva(null)).toBeNull()
+    expect(leerConsultaEva({ detail: 'ok' })).toBeNull()
+    expect(leerConsultaEva('<html>login</html>')).toBeNull()
+  })
+
+  // El primer «Actualizar» real (16-set-2026) volvió 200 sin `status` en la
+  // raíz. Sin ver el cuerpo (ahora se anota) se aceptan las formas usuales.
+  describe('formas que el manual no enseña', () => {
+    it('el pedido envuelto en `data`, `order`, `result` o `results[0]`', () => {
+      for (const env of [
+        { data: RESPUESTA }, { order: RESPUESTA }, { result: RESPUESTA }, { results: [RESPUESTA] },
+        { data: { order: RESPUESTA } },
+      ]) {
+        expect(leerConsultaEva(env)?.estado).toBe('ENTREGADO')
+      }
+    })
+
+    it('el estado como objeto o bajo otro nombre', () => {
+      expect(leerConsultaEva({ status: { name: 'En ruta' } })?.estado).toBe('EN RUTA')
+      expect(leerConsultaEva({ status: { nombre: 'REGISTRADO' } })?.estado).toBe('REGISTRADO')
+      expect(leerConsultaEva({ estado: 'en almacén' })?.estado).toBe('EN ALMACEN')
+      expect(leerConsultaEva({ status_display: 'Asignado motorizado' })?.estado).toBe('ASIGNADO MOTORIZADO')
+    })
+
+    it('solo sin `status` se cae al track más reciente POR FECHA, no por posición', () => {
+      const r = leerConsultaEva({ tracks: [
+        { fechahora: '2026-04-22T18:50:50-05:00', estado: 'ASIGNADO MOTORIZADO' },
+        { fechahora: '2026-04-22T16:19:58-05:00', estado: 'REGISTRADO' },
+      ] })
+      expect(r?.estado).toBe('ASIGNADO MOTORIZADO')
+      // Y con `status` presente, `status` manda aunque los tracks digan otra cosa.
+      expect(leerConsultaEva(RESPUESTA)?.estado).toBe('ENTREGADO')
+    })
+
+    it('un `status` vacío se trata como ausente: cae al track más reciente', () => {
+      // Un `''` no es un estado; no hay nada que perder tratándolo como si no
+      // viniera, y el track con fecha sí dice algo.
+      expect(leerConsultaEva({ status: '', tracks: [{ fechahora: '2026-01-01', estado: 'EN RUTA' }] })?.estado).toBe('EN RUTA')
+    })
   })
 })

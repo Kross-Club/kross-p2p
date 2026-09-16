@@ -312,8 +312,15 @@ Deno.serve(async (req) => {
     }
     const consulta = leerConsultaEva(cuerpo)
     if (!consulta) {
-      await anotar({ ...ctx, outcome: 'RECHAZO', httpStatus: r.status, detail: 'respuesta sin estado' })
-      return json({ ok: false, error: `${NOMBRE_EVA} contestó sin un estado que leer.` }, 502)
+      // El cuerpo CRUDO va al evento: la primera vez que pasó (16-set-2026) el
+      // registro decía «respuesta sin estado» y nadie pudo ver qué contestó
+      // Eva en realidad. Con la referencia, el vendedor lo encuentra en
+      // Conexiones y quien integra ve la forma real.
+      const ref = await anotar({
+        ...ctx, outcome: 'RECHAZO', httpStatus: r.status,
+        detail: `respuesta sin estado · ${texto.trim() || '(vacía)'}`, detailMax: 1200,
+      })
+      return json({ ok: false, error: `${NOMBRE_EVA} contestó sin un estado que leer${ref ? ` (${ref}, en Conexiones)` : ''}.` }, 502)
     }
 
     // La fila con lo que el reflejo necesita (la del `select` de arriba no
