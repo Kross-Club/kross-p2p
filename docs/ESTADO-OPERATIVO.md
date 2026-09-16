@@ -70,6 +70,20 @@ Luego el front. Prueba: producto con sede + peso, marca con RUC y registro autom
 pedido de recojo en una sede Olva pagado → en el chat de vendedores «Envío registrado en Olva ·
 registro …», rótulo en la tarjeta del envío; al llevar el paquete a la sede, en la siguiente
 media hora el comprador recibe su guía.
+### Eva: «Actualizar» lee la respuesta real del sandbox, y anota la que no entiende · 1 función (16-set-2026)
+
+Con el select arreglado (abajo), el botón llegó a Eva: `200` y «contestó sin un estado que
+leer». El `GET` no trae `status` en la raíz como enseña el manual —o no con ese nombre— y el
+código tiraba el cuerpo sin anotarlo, así que no hay forma de saber qué forma tenía.
+`leerConsultaEva` acepta ahora las envolturas usuales (`data`/`order`/`result`/`results[0]`), el
+estado como objeto o bajo otro nombre, y solo sin nada de eso cae al track más reciente por fecha.
+Si aun así no lee, **el cuerpo crudo va a `api_events`** y el botón da la referencia `KX-…`: en
+*Conexiones* se ve exactamente qué contestó Eva. Tabla de intentos en `17-EVA.md` §9.
+
+Sin SQL.
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
 
 ### El checkout ya no pregunta por defecto, y «Actualizar» de Eva vuelve a andar · **SQL §66** + 1 función (16-set-2026)
 

@@ -221,7 +221,7 @@ sería ruido con aspecto de documento — y peor, le enseñaría a esperar que a
 
 ## 9. Lo que enseñó la primera prueba real (16-set-2026)
 
-Tres intentos contra el sandbox, y ninguno falló por el payload. Vale anotarlos porque los dos
+Cuatro intentos contra el sandbox, y ninguno falló por el payload. Vale anotarlos porque los dos
 primeros se repiten con **cada cuenta nueva** y el mensaje del proveedor no los explica solo.
 
 | # | Qué contestó | Qué era | Cómo se ve ahora |
@@ -229,6 +229,7 @@ primeros se repiten con **cada cuenta nueva** y el mensaje del proveedor no los 
 | 1 | `SIN_RESPUESTA` · `TypeError: 'headers' … is not a valid ByteString` | La `EVA_API_KEY` guardada tenía un carácter fuera de ASCII: un `…` copiado del comando de ejemplo. `fetch` revienta **antes de salir** y no dice cuál header | `problemaDeApiKey` la revisa antes y nombra al culpable («trae puntos suspensivos», «U+200B») en el pedido y en *Conexiones* |
 | 2 | `RECHAZO 403` con un texto largo de negocio | **No es auth**: la llave entró. Era la ficha de cliente de Eva incompleta — faltaban contacto, dirección de recojo principal con distrito, billetera Yape/Plin y cuenta bancaria con CCI | El mensaje llega entero al chat (600 caracteres, no 300: a 300 se cortaba justo antes de la cuenta bancaria) |
 | 3 | `OK 201` | El reparto quedó registrado, y el rótulo bajó al bucket en la misma corrida | — |
+| 4 | **Actualizar**: `OK 200` y «contestó sin un estado que leer» | El `GET` volvió 200 pero `status` no estaba en la raíz como enseña el manual — y el código descartó el cuerpo sin anotarlo, así que no se sabe qué forma tenía | `leerConsultaEva` acepta las envolturas usuales (`data`/`order`/`result`/`results[0]`), el estado como objeto o bajo otro nombre, y solo sin nada de eso cae al track más reciente **por fecha**. Y si aun así no lee, el cuerpo crudo va a `api_events` (1.200 caracteres) y el botón da la referencia `KX-…` para verlo en *Conexiones* |
 
 Dos cosas que el 201 confirmó de paso:
 
