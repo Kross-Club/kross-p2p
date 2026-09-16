@@ -4,12 +4,13 @@
 // Lima y Olva 128, así que el mostrador es una opción real y no un parche.
 //
 // A diferencia de provincia, aquí NO hay veredicto de cobertura que consultar:
-// el motorizado propio llega a todo Lima metropolitana. Por eso la elección es
-// del comprador desde el primer instante, sin esperar a nada — mientras la marca
-// ofrezca domicilio — con su motorizado propio o con el courier de Lima y
-// Callao (§60), que para el comprador son lo mismo: le llega a la puerta. Si no
-// tiene ninguna de las dos no hay opciones que comparar y el reducer ya fijó
-// AGENCIA al elegir el distrito.
+// el motorizado propio llega a todo Lima metropolitana, y el courier de Lima y
+// Callao (§60) también — para el comprador son lo mismo: le llega a la puerta.
+// Quién elige depende de la variante, igual que en provincia (16-set-2026):
+// en la **A** (el default) el reducer ya fijó DOMICILIO al elegir el distrito
+// y aquí solo se le dice; en la **B** elige él, con las dos tarjetas, desde el
+// primer instante. Si la marca no reparte no hay opciones que comparar y el
+// reducer ya fijó AGENCIA.
 //
 // El distrito ya viene elegido del paso 2 — es lo que determinó que esta rama se
 // montara.
@@ -59,10 +60,12 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
 
   return (
     <div className="space-y-3.5">
-      {/* Sin domicilio no hay dos opciones que ofrecer: el reducer ya fijó
-          AGENCIA al elegir el distrito, y mostrar un selector de una sola
-          tarjeta cobra un tap para llegar al mismo sitio. */}
-      {(state.homeDeliveryEnabled || state.courierLimaEnabled) && (
+      {/* Solo en la B: en la A el método ya viene definido y preguntarlo es
+          justo lo que esa versión existe para no hacer. Y sin domicilio no hay
+          dos opciones que ofrecer: el reducer ya fijó AGENCIA al elegir el
+          distrito, y un selector de una sola tarjeta cobra un tap para llegar
+          al mismo sitio. */}
+      {state.variant === 'B' && (state.homeDeliveryEnabled || state.courierLimaEnabled) && (
         <MethodPicker
           value={method}
           onPick={m => {
@@ -70,6 +73,14 @@ export default function LimaBranch({ state, dispatch, errors, touch }: LimaBranc
             trackEvent({ name: 'delivery_method_selected', method: m })
           }}
         />
+      )}
+
+      {/* En la A nadie le preguntó: se le dice a dónde va, antes de pedirle la
+          dirección, para que no la escriba pensando que es la de una agencia. */}
+      {method === 'DOMICILIO' && state.variant !== 'B' && (
+        <p className="text-sm font-black text-green-800 rounded-2xl px-4 py-3" style={{ background: '#F0FDF4', border: '1px solid #86EFAC' }}>
+          🏠 Envío a domicilio: te lo llevamos a la puerta.
+        </p>
       )}
 
       {method === 'DOMICILIO' && (

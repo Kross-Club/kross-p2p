@@ -167,7 +167,15 @@ describe('recojo en agencia · las dos regiones', () => {
     const s = run(conPunto(LIMA_D),
       { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Surquillo' })
     expect(s.pickup.agency).toBeNull()
-    expect(s.deliveryMethod).toBeNull()
+    // Y el método vuelve a lo que define la variante: en la A, domicilio.
+    expect(s.deliveryMethod).toBe('DOMICILIO')
+    // En la B vuelve a null: se le pregunta de nuevo.
+    const b = run(initialCheckoutState('pack-2', 'B'), LIMA_D,
+      { type: 'SET_DELIVERY_METHOD', method: 'AGENCIA' },
+      { type: 'SET_PICKUP_POINT', agency: 'SHALOM', branchId: '4' },
+      { type: 'SET_DISTRICT', department: 'Lima', province: 'Lima', district: 'Surquillo' })
+    expect(b.pickup.agency).toBeNull()
+    expect(b.deliveryMethod).toBeNull()
   })
 
   it('volver a "en casa" descarta el punto, para que no salgan los dos', () => {
@@ -1101,12 +1109,13 @@ describe('ajustes tras la revisión de Fase 2', () => {
     expect(resolveVariant('SPLIT')).toBe('A')
   })
 
-  it('un modo desconocido cae en el sorteo, no en una versión fija', () => {
-    // Una marca sin migrar (NULL) o un dato mal escrito no puede decidir el
-    // reparto de nadie.
+  it('un modo desconocido cae en la A, el default: nadie entra a un experimento por un dato raro', () => {
+    // Una marca sin migrar (NULL) o un dato mal escrito no puede meter a sus
+    // compradores en el sorteo (§66: el default de la columna es 'A').
     for (const raw of [null, undefined, '', 'C', 'split', 42]) {
-      expect(abModeOf(raw)).toBe('SPLIT')
+      expect(abModeOf(raw)).toBe('A')
     }
+    expect(abModeOf('SPLIT')).toBe('SPLIT')
     expect(abModeOf('A')).toBe('A')
     expect(abModeOf('B')).toBe('B')
   })
@@ -1125,6 +1134,44 @@ describe('ajustes tras la revisión de Fase 2', () => {
       )
       expect(s.deliveryMethod).toBe('AGENCIA')
     }
+  })
+
+  // §66 · En Lima la variante también manda (16-set-2026). Antes las dos
+  // preguntaban siempre; ahora la A —el default— define domicilio sola.
+  describe('en Lima la A define el envío sola y la B pregunta', () => {
+    it('A con reparto: domicilio desde que hay distrito, sin preguntar', () => {
+      expect(run(initialCheckoutState('pack-2', 'A', true), LIMA_D).deliveryMethod).toBe('DOMICILIO')
+      // Con el courier de Lima igual: para el comprador es lo mismo.
+      expect(run(initialCheckoutState('pack-2', 'A', false, false, 0, true), LIMA_D).deliveryMethod).toBe('DOMICILIO')
+    })
+
+    it('A sin reparto: agencia, igual que siempre', () => {
+      expect(run(initialCheckoutState('pack-2', 'A', false), LIMA_D).deliveryMethod).toBe('AGENCIA')
+    })
+
+    it('B con reparto: null, para que la UI pregunte', () => {
+      expect(run(initialCheckoutState('pack-2', 'B', true), LIMA_D).deliveryMethod).toBeNull()
+    })
+
+    it('en la A el comprador puede igual recoger si la acción llega: el reducer no lo impide', () => {
+      // La UI de la A no muestra el selector, pero un pedido que quede en
+      // AGENCIA por otra vía es válido: la marca sí lo cumple.
+      const s = run(initialCheckoutState('pack-2', 'A', true), LIMA_D, { type: 'SET_DELIVERY_METHOD', method: 'AGENCIA' })
+      expect(s.deliveryMethod).toBe('AGENCIA')
+    })
+
+    it('un borrador de la B (método en null) restaurado bajo la A queda en domicilio', () => {
+      // `SET_AB_MODE` puede llegar después del distrito y un borrador entra por
+      // RESTORE: por eso la regla vive en `derive()` y no solo en SET_DISTRICT.
+      const enB = run(initialCheckoutState('pack-2', 'B', true), LIMA_D)
+      expect(enB.deliveryMethod).toBeNull()
+      const enA = checkoutReducer(enB, { type: 'RESTORE', state: { ...enB, variant: 'A' } })
+      expect(enA.deliveryMethod).toBe('DOMICILIO')
+    })
+
+    it('en provincia la A sigue esperando a la cobertura: no define nada con el distrito', () => {
+      expect(run(initialCheckoutState('pack-2', 'A', true), PROV_D).deliveryMethod).toBeNull()
+    })
   })
 
   it('la variante B no autodecide el método: lo elige el comprador', () => {

@@ -34,6 +34,27 @@ fecha de arriba.
 **Léelo primero.** La lista que se arrastraba desde el 21-ago **se vació el 29-ago de
 madrugada** —SQL corrido y 25 funciones desplegadas—, y esto es lo que entró después.
 
+### El checkout ya no pregunta por defecto, y «Actualizar» de Eva vuelve a andar · **SQL §66** + 1 función (16-set-2026)
+
+**El checkout.** El A/B del paso de envío nacía en `SPLIT`: la mitad de los compradores veía las
+dos tarjetas «En mi casa / Recojo en agencia», y en Lima las veían **todos** (ahí las dos
+versiones eran idénticas). Desde hoy **el default es la A**: el envío ya viene definido —a
+domicilio donde la marca reparte, agencia donde no— y en Lima la A también decide sola, con una
+línea que lo dice antes de pedir la dirección. La B (el comprador elige) y el sorteo se prenden
+desde *Productos → Experimento del checkout*. Es **por tienda**, no por producto; los enlaces
+`?checkout=A|B` de cada producto siguen forzando una versión para ese tráfico. El §66 mueve a `A`
+las tiendas en `SPLIT` o sin dato y respeta a la que eligió `B`.
+
+**Eva.** El botón *Actualizar* del #234 devolvía «este pedido no tiene un envío de Eva» a un
+pedido que sí lo tenía: el `select` de `order-manage` no traía `tracking_courier` ni
+`tracking_numero`, así que la guarda fallaba siempre. Se agregan al select; sin más cambio.
+Probarlo con `ORD-1789519901031`: debe decir «Sin novedad: Eva Courier sigue en «Registrado en
+Eva»».
+
+```
+supabase functions deploy order-manage --project-ref ofdjghntvmrdfjhazfvz
+```
+
 ### Eva: «Actualizar» le pregunta el estado, porque el webhook no se puede probar · 2 funciones (16-set-2026)
 
 **Lo que enseñó el portal.** En Eva **el estado lo mueve el motorizado**, no el cliente: no hay
@@ -2714,7 +2735,8 @@ Para comprobar qué versión quedó viva, la consulta está en
 - **Entrega a domicilio apagada**: solo recojo en agencia. El `DEFAULT` de la columna se
   cambió a `false` el mismo día — una marca nueva no promete entrega a la puerta hasta que
   alguien decida que puede cumplirla.
-- A/B del checkout en `SPLIT` (mitad y mitad).
+- A/B del checkout en `SPLIT` (mitad y mitad) hasta el 16-set; el §66 la pasa a `A` (el envío
+  ya viene definido, el comprador no elige).
 - WhatsApp aún sin activar.
 
 ### Gadicaf
