@@ -155,9 +155,20 @@ function derive(state: CheckoutState): CheckoutState {
   // HALF, venga de una acción o de un borrador guardado cuando sí la permitía.
   // El total es la dirección segura y es lo que el servidor va a cobrar igual
   // (`eleccionDeAdelanto` en `_shared/advance.ts`).
-  const s: CheckoutState = !s0.permiteMitad && s0.advanceChoice === 'HALF'
+  const s1: CheckoutState = !s0.permiteMitad && s0.advanceChoice === 'HALF'
     ? { ...s0, advanceChoice: 'FULL' }
     : s0
+  // Y con el método en Lima cuando el comprador NO elige (variante A, la de
+  // default desde el 16-set-2026): si la marca reparte, el pedido va a la
+  // puerta y no hay nada que preguntar; sin reparto ya quedó en AGENCIA. Va
+  // aquí y no solo en SET_DISTRICT porque la variante puede resolverse DESPUÉS
+  // del distrito (`SET_AB_MODE` llega con la config de la tienda) y un borrador
+  // guardado bajo la B entra por RESTORE con el método en null. En provincia no
+  // aplica: ahí quien define es la cobertura, en SET_COVERAGE.
+  const s: CheckoutState = s1.locationType === 'LIMA' && s1.variant === 'A'
+    && s1.deliveryMethod === null && reparteAqui(s1)
+    ? { ...s1, deliveryMethod: 'DOMICILIO' }
+    : s1
 
   const isProvincia = s.locationType === 'PROVINCIA'
   // El adelanto es un porcentaje del pedido, no una tabla por destino: el
@@ -222,6 +233,8 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       // desde que se sabe la región, y la UI ni siquiera muestra las tarjetas.
       // Con la región NUEVA, no la vieja: el courier entra recién cuando el
       // distrito elegido dice que este pedido es de Lima.
+      // Con reparto queda en null: en provincia lo define la cobertura, y en
+      // Lima lo define `derive()` (domicilio en la A, el comprador en la B).
       const forced = ofreceDomicilio(
         { home_delivery_enabled: state.homeDeliveryEnabled, courier_lima_enabled: state.courierLimaEnabled },
         next,

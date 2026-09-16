@@ -3264,3 +3264,19 @@ ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "service role only" ON chat_messages;
 CREATE POLICY "service role only" ON chat_messages
   FOR ALL USING ((select auth.role()) = 'service_role');
+
+-- ============================================================================
+-- §66 · EL CHECKOUT NO PREGUNTA POR DEFECTO: EL ENVÍO YA VIENE DEFINIDO  (16-set-2026)
+-- ============================================================================
+-- El A/B del checkout (bloque 19) nacía en 'SPLIT': la mitad de los compradores
+-- veía las dos tarjetas «En mi casa / Recojo en agencia». Desde hoy el default
+-- es la versión **A** —el envío queda definido solo: a domicilio donde la marca
+-- reparte, agencia donde no— y el experimento se PRENDE desde el panel de
+-- Productos cuando alguien quiera medirlo. Y la A pasa a decidir también en
+-- Lima (antes ahí las dos versiones eran idénticas y siempre preguntaban).
+--
+-- Se mueven solo las tiendas en sorteo o sin dato: una marca que eligió 'B' a
+-- propósito la conserva. Idempotente: un rerun no toca nada.
+ALTER TABLE stores ALTER COLUMN checkout_ab_mode SET DEFAULT 'A';
+UPDATE stores SET checkout_ab_mode = 'A'
+ WHERE checkout_ab_mode IS NULL OR checkout_ab_mode = 'SPLIT';

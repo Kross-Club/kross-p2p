@@ -3,16 +3,20 @@
 // panel es lo único que hay para operarlas sin un deploy: repartir o mandar
 // todo el tráfico a la ganadora, y ver cuál convierte.
 //
-// Regla de lectura que el panel HACE VISIBLE en vez de esconder: la variante
-// solo cambia el flujo en provincia con cobertura del courier (en B el
-// comprador elige domicilio o agencia; en A lo decide la cobertura). En Lima
-// las dos son idénticas, así que el total global mezcla tráfico sin
-// experimento. Por eso el número grande es el de provincia y el global va
-// debajo, en gris, diciendo lo que es.
+// Regla de lectura que el panel HACE VISIBLE en vez de esconder: en B el
+// comprador elige domicilio o agencia; en A el envío queda definido solo (la
+// cobertura en provincia, el reparto de la marca en Lima). Desde el 16-set-2026
+// las dos se diferencian también en Lima —antes ahí eran idénticas—, pero el
+// número grande sigue siendo el de provincia: es donde la tarifa del courier
+// hace que «recojo yo» sea una decisión con precio, y donde el experimento
+// nació. El global va debajo, en gris, diciendo lo que es.
+//
+// El default de una tienda es A (§66): el experimento se prende desde aquí.
 
 import { useEffect, useState } from 'react'
 import { FlaskConical, Loader2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { abModeOf } from '../../lib/checkout/variant'
 
 const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -36,9 +40,9 @@ interface AbStats {
 const MIN_LEADS = 30
 
 const MODES: { value: AbMode; label: string; hint: string }[] = [
+  { value: 'A', label: 'Todos a A', hint: 'El envío queda definido solo: a domicilio donde la marca reparte, agencia donde no. Es el default.' },
+  { value: 'B', label: 'Todos a B', hint: 'El comprador elige entre su casa y una agencia. Sin experimento.' },
   { value: 'SPLIT', label: '50 / 50', hint: 'Sorteo entre las dos. Es lo que produce los números.' },
-  { value: 'A', label: 'Todos a A', hint: 'La cobertura decide el envío. Sin experimento.' },
-  { value: 'B', label: 'Todos a B', hint: 'El comprador elige el envío. Sin experimento.' },
 ]
 
 async function call(payload: Record<string, unknown>) {
@@ -56,7 +60,7 @@ const pct = (num: number, den: number): string =>
   den > 0 ? `${((num / den) * 100).toFixed(1)}%` : '—'
 
 export default function AbTestPanel({ storeId }: { storeId: string }) {
-  const [mode, setMode] = useState<AbMode>('SPLIT')
+  const [mode, setMode] = useState<AbMode>('A')
   const [stats, setStats] = useState<AbStats | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -74,8 +78,7 @@ export default function AbTestPanel({ storeId }: { storeId: string }) {
       if (!alive) return
       if (cfg.ok) {
         const mine = (cfg.data?.stores ?? []).find((s: { id: string }) => s.id === storeId)
-        const raw = mine?.checkout_ab_mode
-        setMode(raw === 'A' || raw === 'B' ? raw : 'SPLIT')
+        setMode(abModeOf(mine?.checkout_ab_mode))
       }
       if (st.ok) setStats(st.data as AbStats)
     })()
@@ -116,8 +119,8 @@ export default function AbTestPanel({ storeId }: { storeId: string }) {
         {saving && <Loader2 size={12} className="animate-spin text-gray-400" />}
       </div>
       <p className="text-[11px] text-gray-400 mb-3">
-        Dos versiones del paso de envío. Se diferencian solo en provincia con cobertura:
-        en <b>A</b> la cobertura decide, en <b>B</b> elige el comprador.
+        Dos versiones del paso de envío. En <b>A</b> el envío queda definido solo
+        (es el default); en <b>B</b> el comprador elige entre su casa y una agencia.
       </p>
 
       <div className="flex gap-1.5 mb-1">

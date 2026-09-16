@@ -56,7 +56,7 @@ export default function LandingProductoPage() {
   // Cobro en línea de la marca (flags públicos de `stores`). `null` = manual.
   const [flow, setFlow] = useState<StoreFlow | null>(null)
   // Reparto del experimento A/B de la marca. Hasta que llegue, el 50/50.
-  const [abMode, setAbMode] = useState<CheckoutAbMode>('SPLIT')
+  const [abMode, setAbMode] = useState<CheckoutAbMode>('A')
 
   // El `setLoading(false)` vivía DENTRO del `.then`, sin `catch`: una caída de
   // red —el escenario normal del comprador en 4G— dejaba la landing girando
@@ -131,8 +131,9 @@ export default function LandingProductoPage() {
         setCourierLima(data.courier_lima_enabled === true)
         // 360pay está dormido (14-set-2026): ya no se lee `pay360_enabled`; el
         // único riel en línea es Flow, resuelto arriba con `flow_enabled`.
-        // Cualquier valor raro (o una marca sin migrar) cae en el sorteo: el
-        // reparto por defecto nunca puede depender de un dato mal escrito.
+        // Cualquier valor raro (o una marca sin migrar) cae en la A, el default
+        // de la columna: un dato mal escrito no puede meter a nadie en un
+        // experimento que nadie prendió.
         setAbMode(abModeOf(data.checkout_ab_mode))
         // ─── Pixels de la marca ────────────────────────────────────────────
         // Solo enciende los que la marca configuró (columnas públicas de

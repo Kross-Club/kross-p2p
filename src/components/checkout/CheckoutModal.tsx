@@ -63,14 +63,14 @@ interface CheckoutModalProps {
   /** Íd. para Flow. Cuál de los dos cobra este pedido lo decide el servidor. */
   flow?: StoreFlow | null
   /** Cómo reparte la tienda el A/B (`stores.checkout_ab_mode`). Asíncrona igual
-   *  que `pay360`: hasta que llegue vale el sorteo 50/50 de siempre. */
+   *  que `pay360`: hasta que llegue vale la A, el default de la columna (§66). */
   abMode?: CheckoutAbMode
 }
 
 export default function CheckoutModal({
   packs, unitPrice, bestPackId, initialPack, onClose, onPartialLead,
   submitContext, homeDeliveryEnabled = true, permiteMitad = false, descuentoPen = 0, courierLimaEnabled = false,
-  pay360 = null, flow = null, abMode = 'SPLIT',
+  pay360 = null, flow = null, abMode = 'A',
 }: CheckoutModalProps) {
   const co = useCheckout({ initialPack, onPartialLead, homeDeliveryEnabled, courierLimaEnabled, permiteMitad, productDiscountPen: descuentoPen })
   const { state, dispatch, errors, touch } = co

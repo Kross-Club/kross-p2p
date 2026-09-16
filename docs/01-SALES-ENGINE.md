@@ -1158,13 +1158,25 @@ dos la base de clientes.
 
 | | Quién elige domicilio vs. agencia |
 |---|---|
-| **A** | La cobertura, sola. El comprador nunca se entera de que había opción. |
-| **B** | El **comprador**, después de poner su distrito, con los dos precios delante. |
+| **A** (default) | Nadie: el envío **ya viene definido**. En provincia lo define la cobertura del courier; en Lima, si la marca reparte (motorizado propio o Eva, §60) va a domicilio, y si no, a agencia. El comprador nunca se entera de que había opción; solo lee «Envío a domicilio: te lo llevamos a la puerta» antes de escribir su dirección. |
+| **B** | El **comprador**, después de poner su distrito, con las dos tarjetas «En mi casa / Recojo en agencia» — en Lima desde el primer instante, en provincia con los dos precios delante. |
 
-En B las tarjetas aparecen **solo después del distrito**: antes no se sabe si el
-courier llega ni cuánto cuesta, así que ofrecerlo sería preguntar a ciegas. Y el
-precio va **dentro** de cada tarjeta — esconderlo hasta el paso del pago
-convertiría la elección en una sorpresa.
+**Desde el 16-set-2026 el default es la A** (`checkout_ab_mode DEFAULT 'A'`, §66) y
+la variante manda **también en Lima**: hasta entonces ahí las dos versiones eran
+idénticas —siempre preguntaban— y el 50/50 era el default de toda tienda nueva.
+El sorteo se prende desde el panel cuando alguien quiere medir; una marca que
+había elegido `B` a propósito la conserva.
+
+En B las tarjetas de provincia aparecen **solo después del distrito**: antes no
+se sabe si el courier llega ni cuánto cuesta, así que ofrecerlo sería preguntar
+a ciegas. Y el precio va **dentro** de cada tarjeta — esconderlo hasta el paso
+del pago convertiría la elección en una sorpresa.
+
+La etiqueta **«Podemos ir a tu casa»** en la lista de distritos no es de la B:
+sale en las dos versiones, donde la marca reparte y el distrito tiene cobertura.
+En la A es incluso más importante, porque es lo único que le anticipa al
+comprador que su pedido irá a la puerta antes de que el formulario lo dé por
+hecho.
 
 El reparto es al azar y **estable por dispositivo** (`lib/checkout/variant.ts`):
 sin eso el adelanto le bailaría entre S/20 y S/30 a la misma persona al recargar,
@@ -1181,10 +1193,13 @@ Bloque 19 del esquema. Vendedor → **Productos** trae el panel del experimento
 (`src/pages/vendedor/AbTestPanel.tsx`), y cada producto ofrece sus enlaces
 `?checkout=A` y `?checkout=B` para repartir tráfico de anuncios a mano.
 
-**`stores.checkout_ab_mode`** (`SPLIT` · `A` · `B`) decide el reparto sin deploy:
-`SPLIT` es el sorteo, y `A`/`B` mandan todo a esa versión cuando el experimento
-terminó. Vive en `stores` porque la landing lo necesita antes de que el comprador
-toque nada, y esa tabla ya tiene SELECT público.
+**`stores.checkout_ab_mode`** (`A` · `B` · `SPLIT`) decide el reparto sin deploy:
+`A` es el default (§66), `SPLIT` es el sorteo, y `B` manda todo a la versión que
+pregunta. Vive en `stores` porque la landing lo necesita antes de que el comprador
+toque nada, y esa tabla ya tiene SELECT público. Un valor nulo o raro se lee como
+`A` (`abModeOf`): un dato mal escrito no mete a nadie en un experimento que nadie
+prendió. **Es por tienda, no por producto**: los enlaces `?checkout=A|B` de cada
+producto fuerzan una versión para ese tráfico sin tocar el modo de la marca.
 
 **Forzar nunca persiste** — ni por URL ni por `checkout_ab_mode`. Si el modo
 forzado se guardara en `localStorage`, al devolver el switch a 50/50 cada
@@ -1208,9 +1223,11 @@ consultable. Para el denominador del A/B sigue mandando `checkout_drafts`.
 - **`since`** = el primer lead marcado con versión, y los pedidos se cuentan desde
   ahí. Sin eso, los pedidos viejos (que sí traen variante) se dividirían entre
   leads que nunca la tuvieron y la tasa saldría inflada.
-- **El corte de PROVINCIA es el que vale.** La variante solo cambia el flujo en
-  provincia con cobertura; en Lima A y B son idénticas y su tráfico solo diluye la
-  señal. El panel pinta ese número en grande y el global en gris, rotulado.
+- **El corte de PROVINCIA es el que vale.** Es donde la tarifa del courier hace
+  que «recojo yo» sea una decisión con precio, y donde el experimento nació. Hasta
+  el 16-set en Lima A y B eran idénticas y su tráfico solo diluía la señal; desde
+  entonces también se diferencian ahí, pero el panel sigue pintando provincia en
+  grande y el global en gris, rotulado.
 
 > ⚠️ **Volumen.** Un A/B necesita cientos de pedidos por rama para separar señal
 > de ruido. El panel no pinta ganador por debajo de 30 leads por versión y lo dice

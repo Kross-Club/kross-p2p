@@ -6,19 +6,21 @@
 // números saldrían mal, porque una visita contaría en las dos ramas.
 //
 // La tienda manda sobre el sorteo (`stores.checkout_ab_mode`, bloque 19):
-// 'SPLIT' lo mantiene, 'A'/'B' mandan todo el tráfico a esa versión. Eso es lo
-// que se usa cuando el experimento terminó y hay una ganadora — hasta entonces
-// el 50/50 es el que produce los números.
+// 'SPLIT' lo mantiene, 'A'/'B' mandan todo el tráfico a esa versión. El 50/50
+// es el que produce los números de un experimento; **el default es 'A'** (§66,
+// 16-set-2026): el envío queda definido solo y el comprador no elige. Quien
+// quiera medir lo prende desde el panel.
 import type { CheckoutVariant } from './types'
 
 const KEY = 'kross.checkout.variant'
 
-/** Cómo reparte la tienda. `null`/desconocido se trata como 'SPLIT': una marca
- *  sin migrar, o un `select` que aún no volvió, no puede cambiar el reparto. */
+/** Cómo reparte la tienda. `null`/desconocido se trata como 'A' —el default de
+ *  la columna (§66)—: una marca sin migrar, o un `select` que aún no volvió,
+ *  no puede meter a nadie en un experimento que nadie prendió. */
 export type CheckoutAbMode = 'SPLIT' | 'A' | 'B'
 
 export function abModeOf(raw: unknown): CheckoutAbMode {
-  return raw === 'A' || raw === 'B' ? raw : 'SPLIT'
+  return raw === 'SPLIT' || raw === 'B' ? raw : 'A'
 }
 
 /** `?checkout=A|B` fuerza una versión. Es para demostrar y depurar: no toca lo

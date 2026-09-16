@@ -196,9 +196,10 @@ export interface CheckoutState {
   provinciaConfig: ProvinciaConfig | null
   /**
    * Cómo recibe el pedido. En la raíz porque aplica a las DOS regiones: en Lima
-   * se puede recoger en agencia igual que en provincia. En provincia lo propone
-   * la cobertura (o lo elige el comprador en la variante B); en Lima siempre lo
-   * elige él, porque el motorizado propio llega a todo Lima metropolitana.
+   * se puede recoger en agencia igual que en provincia. En la variante A (el
+   * default) lo define el reducer solo: la cobertura en provincia, y en Lima
+   * el reparto de la marca —domicilio si reparte, agencia si no—. En la B lo
+   * elige el comprador en las dos regiones.
    */
   deliveryMethod: DeliveryMethod | null
   /** Punto elegido cuando `deliveryMethod` es AGENCIA. */
