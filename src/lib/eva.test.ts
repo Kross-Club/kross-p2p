@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DISTRITOS_EVA, ESTADOS_EVA, armarPedidoEva, baseEva, cabeceraEva, cobroEva, cuerpoDeRotulos,
   distritoEva, esCierreSinEntregaEva, esDemoraEva, esPdf, faseDeEva, firmaEvaValida, firmarComoEva,
-  fotosDeEva, leerRespuestaDeOrden, leerWebhookEva, mensajeDeErrorEva, mensajesDeEva,
+  fotosDeEva, leerConsultaEva, leerRespuestaDeOrden, leerWebhookEva, mensajeDeErrorEva, mensajesDeEva,
   nombreDeEstadoEva, normalizarParaEva, partirDireccionLima, productoEva, rutaDePedido,
   problemaDeApiKey, rutaDePedidos, rutaDeRotulos, telefonoEva,
 } from '../../supabase/functions/_shared/eva.ts'
@@ -384,5 +384,55 @@ describe('la API Key, revisada antes de ponerla en un header', () => {
   it('cualquier otro carácter fuera de ASCII se nombra por su código', () => {
     expect(problemaDeApiKey('abc\u200b')).toContain('U+200B')
     expect(problemaDeApiKey('abcñ')).toContain('U+00F1')
+  })
+})
+
+describe('un rechazo largo de Eva llega entero', () => {
+  it('600 caracteres: la lista de lo que falta en la cuenta no se corta antes de la cuenta bancaria', () => {
+    const largo = 'Estimado cliente, falta ' + 'x'.repeat(400) + ' y una cuenta bancaria principal con CCI de 20 dígitos.'
+    expect(mensajeDeErrorEva({ message: largo }, 403)).toContain('cuenta bancaria principal')
+    expect(mensajeDeErrorEva({ message: 'y'.repeat(900) }, 403)).toHaveLength(600)
+  })
+})
+
+describe('consultar el pedido (GET): el estado sale de `status`, no del último track', () => {
+  // El ejemplo del propio manual trae los tracks DESORDENADOS: «ASIGNADO
+  // MOTORIZADO» a las 18:50 y «ENTREGADO» a las 16:19, en ese orden. Quedarse
+  // con el último de la lista daría un estado viejo.
+  const RESPUESTA = {
+    tracking_id: 'K8X9P2QR4M', code: 'ORD-1', status: 'ENTREGADO',
+    tracks: [
+      { id: 2682571, fechahora: '2026-04-22T18:50:50-05:00', estado: 'ASIGNADO MOTORIZADO', motivo: '', comentarios: null, fotos: [] },
+      { id: 2683743, fechahora: '2026-04-22T16:19:58-05:00', estado: 'ENTREGADO', motivo: '', comentarios: 'Ok', fotos: ['https://app.evacourier.pe/x/e.jpg'] },
+    ],
+  }
+
+  it('lee el estado de `status` y el detalle del hito que le corresponde', () => {
+    expect(leerConsultaEva(RESPUESTA)).toEqual({
+      estado: 'ENTREGADO', motivo: null, comentarios: 'Ok',
+      fotos: ['https://app.evacourier.pe/x/e.jpg'], fechahora: '2026-04-22T16:19:58-05:00',
+    })
+  })
+
+  it('con varios hitos del mismo estado se queda con el más reciente: es la visita de la que se habla', () => {
+    const r = leerConsultaEva({
+      status: 'PUNTO VISITADO',
+      tracks: [
+        { fechahora: '2026-04-22T10:00:00-05:00', estado: 'PUNTO VISITADO', motivo: 'Primera visita' },
+        { fechahora: '2026-04-22T17:00:00-05:00', estado: 'PUNTO VISITADO', motivo: 'Cliente ausente' },
+      ],
+    })
+    expect(r?.motivo).toBe('Cliente ausente')
+  })
+
+  it('sin tracks devuelve el estado igual: es lo que mueve la fase', () => {
+    expect(leerConsultaEva({ status: 'EN RUTA' })).toEqual({
+      estado: 'EN RUTA', motivo: null, comentarios: null, fotos: [], fechahora: null,
+    })
+  })
+
+  it('sin estado no hay nada que reflejar', () => {
+    expect(leerConsultaEva({ tracks: [] })).toBeNull()
+    expect(leerConsultaEva(null)).toBeNull()
   })
 })

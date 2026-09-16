@@ -8,6 +8,13 @@ import { resumenDelPedido, montoTexto } from '../_shared/resumen-pedido.ts'
 import { sePuedeBorrar } from '../_shared/cobros.ts'
 import { NOMBRE_DE_REPARTO, esReparto, repartosPosibles } from '../_shared/reparto.ts'
 import { runInBackground } from '../_shared/capi.ts'
+import { COLUMNAS_EVA, reflejarEstadoEva, type FilaEva } from '../_shared/eva-reflejo.ts'
+import { anotar, anotarSinRespuesta } from '../_shared/api-eventos.ts'
+import {
+  baseEva, cabeceraEva, leerConsultaEva, mensajeDeErrorEva, nombreDeEstadoEva,
+  problemaDeApiKey, rutaDePedido, NOMBRE_EVA,
+} from '../_shared/eva.ts'
+import { TRACKED_COLUMNS } from '../_shared/tracking.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -260,6 +267,65 @@ Deno.serve(async (req) => {
       }))
     }
     return json({ ok: true, reparto_lima: elegido })
+  }
+
+  // ─── PREGUNTARLE EL ESTADO A EVA (§64) ─────────────────────────────────────
+  //
+  // El botón «Actualizar» de *Envío Eva*. Existe por una razón concreta
+  // (16-set-2026): en el portal de Eva el estado lo mueve EL MOTORIZADO, no el
+  // cliente, así que el vendedor no tiene otra forma de saber dónde está su
+  // paquete hasta que Eva llame. Y como Eva no reintenta sus webhooks, un aviso
+  // perdido dejaría el pedido clavado para siempre: esto es también el respaldo.
+  //
+  // Solo LEE (`GET`): no crea nada, no cuesta nada y se puede tocar las veces
+  // que haga falta. El reflejo es el MISMO que el del webhook.
+  if (body.action === 'consultar_eva') {
+    if (session.tracking_courier !== 'EVA' || !session.tracking_numero) {
+      return json({ error: 'este pedido no tiene un envío de Eva' }, 400)
+    }
+    const apiKey = String(Deno.env.get('EVA_API_KEY') ?? '').trim()
+    const problemaLlave = problemaDeApiKey(apiKey)
+    if (problemaLlave) return json({ error: problemaLlave }, 500)
+
+    const storeId = session.origin_store_id ?? session.store_id
+    const ctx = { proveedor: 'EVA' as const, op: 'reparto.consultar', storeId, sessionId: session.id }
+    const base = baseEva({ EVA_API_BASE: Deno.env.get('EVA_API_BASE') })
+    const inicio = Date.now()
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 15_000)
+    let r: Response | null = null
+    try {
+      r = await fetch(rutaDePedido(base, session.tracking_numero), { headers: cabeceraEva(apiKey), signal: ctrl.signal })
+    } catch (e) {
+      await anotarSinRespuesta(ctx, e, Date.now() - inicio)
+    } finally {
+      clearTimeout(t)
+    }
+    if (!r) return json({ ok: false, error: `${NOMBRE_EVA} no respondió. Intenta de nuevo en un momento.` }, 502)
+
+    const texto = await r.text().catch(() => '')
+    const cuerpo = (() => { try { return JSON.parse(texto || 'null') } catch { return null } })()
+    if (!r.ok) {
+      const mensaje = mensajeDeErrorEva(cuerpo, r.status)
+      await anotar({ ...ctx, outcome: r.status >= 500 ? 'FALLO' : 'RECHAZO', httpStatus: r.status, detail: mensaje, duracionMs: Date.now() - inicio })
+      return json({ ok: false, error: mensaje }, 502)
+    }
+    const consulta = leerConsultaEva(cuerpo)
+    if (!consulta) {
+      await anotar({ ...ctx, outcome: 'RECHAZO', httpStatus: r.status, detail: 'respuesta sin estado' })
+      return json({ ok: false, error: `${NOMBRE_EVA} contestó sin un estado que leer.` }, 502)
+    }
+
+    // La fila con lo que el reflejo necesita (la del `select` de arriba no
+    // trae las columnas de tracking).
+    const { data: fila } = await supabase.from('order_sessions')
+      .select(`${TRACKED_COLUMNS}, ${COLUMNAS_EVA}`).eq('id', session.id).maybeSingle()
+    if (!fila) return json({ ok: false, error: 'pedido no encontrado' }, 404)
+    const { aplicado, patch } = await reflejarEstadoEva(fila as FilaEva, consulta)
+    return json({
+      ok: true, aplicado, tracking: patch,
+      estado: consulta.estado, etiqueta: nombreDeEstadoEva(consulta.estado),
+    })
   }
 
   // ─── REINTENTAR EN EVA (§64) ───────────────────────────────────────────────
