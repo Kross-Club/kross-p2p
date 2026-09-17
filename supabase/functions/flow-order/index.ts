@@ -31,7 +31,7 @@
 // Logging: jamás el body, las llaves de Flow ni el enlace de pago completo.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { advanceForServer } from '../_shared/advance.ts'
+import { adelantoEsperadoDeLaFila } from '../_shared/advance.ts'
 import { columnasDe } from '../_shared/cobros.ts'
 import { anotarResultado } from '../_shared/api-eventos.ts'
 import { derivarDeeplinkYape } from '../_shared/flow-yape-deeplink.ts'
@@ -77,7 +77,8 @@ Deno.serve(async (req) => {
       id, order_id, store_id, origin_store_id, status, buyer_id, buyer_name, buyer_phone,
       advance_amount, payment_verification, payment_provider,
       product_price, advance_choice, advance_charge_attempts,
-      saldo_amount, saldo_verification
+      saldo_amount, saldo_verification,
+      embed_key, product_id, pack_name, dispatch_type
     `)
     .eq('token', orderToken)
     .maybeSingle()
@@ -157,7 +158,16 @@ Deno.serve(async (req) => {
       return json({ ok: false, stage: 'validation', code: 'no_saldo', user_message: 'Este pedido ya está pagado por completo.' }, 409)
     }
   } else {
-    const expected = advanceForServer(precio, String(session.advance_choice ?? 'HALF'))
+    // Kross Form (§68) deriva su adelanto de otra forma —un monto por pack, no
+    // una proporción— así que el producto hace falta para reproducirlo. Solo
+    // se lee cuando el pedido trae llave: un pedido de la PWA no gasta un
+    // viaje a la base y sigue por exactamente la misma línea de siempre.
+    const producto = session.embed_key && session.product_id
+      ? (await supabase.from('products')
+          .select('packs, permite_mitad, cobra_completo')
+          .eq('id', session.product_id).maybeSingle()).data
+      : null
+    const expected = adelantoEsperadoDeLaFila(session, precio, producto)
     if (expected <= 0 || rowAmount <= 0 || session.payment_verification === 'NOT_REQUIRED') {
       return json({ ok: false, stage: 'validation', code: 'no_advance' }, 400)
     }

@@ -266,3 +266,49 @@ export function adelantoDelPedido(e: EntradaDeAdelanto): number {
   if (e.permiteMitad === true) return advanceForServer(precio, 'HALF')
   return 0
 }
+
+/**
+ * Lo que ESTA fila de pedido debía adelantar, re-derivado al momento de cobrar.
+ *
+ * `flow-order` (y `pay360-coupon`) no confían en `advance_amount`: lo vuelven a
+ * derivar y comparan, porque una fila con un monto que nadie puede reproducir
+ * es una fila que alguien tocó. Hasta §68 esa re-derivación era una sola línea
+ * —`advanceForServer(precio, advance_choice)`—, y para un pedido de Kross Form
+ * daba el PRECIO ENTERO: `advance_choice` solo sabe de HALF y FULL, y un
+ * adelanto de S/20 sobre un pack de S/89 no es ninguno de los dos. El cobro
+ * moría en `amount_mismatch` y el comprador nunca veía la página de pago.
+ *
+ * Así que la re-derivación se bifurca por `embed_key`:
+ *   · NULL (todo pedido de krossclub.app) → exactamente la línea de antes.
+ *   · con llave → la escalera de §5.a, contra el producto de la base.
+ *
+ * Es pura a propósito: quien llama trae el producto ya leído, y así el test
+ * puede fijar que la rama de la PWA devuelve lo mismo que devolvía.
+ */
+export function adelantoEsperadoDeLaFila(
+  fila: {
+    embed_key?: unknown
+    advance_choice?: unknown
+    pack_name?: unknown
+    dispatch_type?: unknown
+  },
+  precio: number,
+  producto: { packs?: unknown; permite_mitad?: unknown; cobra_completo?: unknown } | null,
+): number {
+  const conLlave = typeof fila.embed_key === 'string' && fila.embed_key.trim() !== ''
+  if (!conLlave) return advanceForServer(precio, String(fila.advance_choice ?? 'HALF'))
+
+  // Sin el producto no se puede reproducir el monto, y un 0 acá cae en el
+  // `no_advance` de quien llama: el cobro no sale y queda el rastro. Es mejor
+  // que emitir una orden de pago por un monto que nadie sabe justificar.
+  if (!producto) return 0
+
+  const packName = typeof fila.pack_name === 'string' ? fila.pack_name : null
+  return adelantoDelPedido({
+    precioPack: precio,
+    adelantoPen: adelantoFromPacks(producto.packs, packName),
+    dispatchType: fila.dispatch_type,
+    cobraCompleto: producto.cobra_completo === true,
+    permiteMitad: producto.permite_mitad === true,
+  })
+}

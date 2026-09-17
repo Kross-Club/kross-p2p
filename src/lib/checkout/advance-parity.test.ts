@@ -16,6 +16,7 @@ import {
   ADVANCE_HALF_SHARE as SERVER_HALF_SHARE,
   DESCUENTO_MAXIMO_PEN,
   adelantoDelPedido,
+  adelantoEsperadoDeLaFila,
   adelantoFromPacks,
   adelantoSaneado,
   advanceForServer,
@@ -354,5 +355,55 @@ describe('saneaProducto · cobra_completo, el tercer interruptor', () => {
   it('convive con los dos de §56 sin pisarlos', () => {
     expect(saneaProducto({ permite_mitad: true, descuento_pen: '5', cobra_completo: true }))
       .toEqual({ permite_mitad: true, descuento_pen: 5, cobra_completo: true })
+  })
+})
+
+describe('adelantoEsperadoDeLaFila · la re-derivación al cobrar', () => {
+  const producto = {
+    packs: [{ nombre: '2 unidades', precio: 89, adelanto_pen: 20 }],
+    permite_mitad: false, cobra_completo: false,
+  }
+
+  it('sin embed_key devuelve EXACTAMENTE la línea vieja de flow-order', () => {
+    // El invariante que protege a krossclub.app: mientras no haya llave, esta
+    // función tiene que ser indistinguible de `advanceForServer(precio, choice)`.
+    for (const precio of [1, 5, 69.5, 89, 140, 300, 999.99]) {
+      for (const advance_choice of ['HALF', 'FULL', null, undefined, 'basura']) {
+        const fila = { advance_choice, pack_name: '2 unidades', dispatch_type: 'AGENCIA_PROVINCIA' }
+        expect(adelantoEsperadoDeLaFila(fila, precio, producto))
+          .toBe(advanceForServer(precio, String(advance_choice ?? 'HALF')))
+      }
+    }
+  })
+
+  it('una embed_key vacía o no-texto sigue siendo un pedido de la PWA', () => {
+    for (const embed_key of ['', '   ', null, undefined, 0, {}]) {
+      expect(adelantoEsperadoDeLaFila({ embed_key, advance_choice: 'FULL' }, 89, producto)).toBe(89)
+    }
+  })
+
+  it('con llave usa la escalera del pack, no la proporción', () => {
+    const fila = { embed_key: 'pub_1', advance_choice: 'FULL', pack_name: '2 unidades', dispatch_type: 'AGENCIA_PROVINCIA' }
+    // Ésta es la regresión que se arregló: la línea vieja daba 89 y flow-order
+    // cortaba el cobro con amount_mismatch.
+    expect(advanceForServer(89, 'FULL')).toBe(89)
+    expect(adelantoEsperadoDeLaFila(fila, 89, producto)).toBe(20)
+  })
+
+  it('con llave y destino Lima, no hay adelanto que cobrar', () => {
+    const fila = { embed_key: 'pub_1', pack_name: '2 unidades', dispatch_type: 'MOTORIZADO_LIMA' }
+    expect(adelantoEsperadoDeLaFila(fila, 89, producto)).toBe(0)
+  })
+
+  it('con llave y sin el producto devuelve 0: no se emite lo que no se puede justificar', () => {
+    const fila = { embed_key: 'pub_1', pack_name: '2 unidades', dispatch_type: 'AGENCIA_PROVINCIA' }
+    expect(adelantoEsperadoDeLaFila(fila, 89, null)).toBe(0)
+  })
+
+  it('con llave, el producto manda sobre lo que diga la fila', () => {
+    // La fila puede haber sido tocada; el producto es la fuente.
+    const fila = { embed_key: 'pub_1', advance_choice: 'HALF', pack_name: '2 unidades', dispatch_type: 'AGENCIA_PROVINCIA' }
+    expect(adelantoEsperadoDeLaFila(fila, 89, { ...producto, cobra_completo: true })).toBe(89)
+    expect(adelantoEsperadoDeLaFila(fila, 89, producto)).toBe(20)
   })
 })

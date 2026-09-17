@@ -4,10 +4,9 @@
 > escribió ANTES del código para que las decisiones —dónde vive cada pieza, quién manda el
 > monto, qué dominio puede embeber qué— no se tomen a mitad de un commit.
 >
-> Viven ya la aritmética (§5) —`adelantoFromPacks`, `adelantoDelPedido` y la regla de destino,
-> con su espejo en el navegador— y el esquema con su panel (§4, §5.b): `embed_keys`,
-> `products.cobra_completo`, el adelanto por pack en el editor de productos y la compuerta
-> `stores.kross_form`. Falta el script, `embed-order` y la vuelta a WhatsApp.
+> Viven ya la aritmética (§5), el esquema con su panel (§4, §5.b) y **`embed-order`** (§6.a):
+> el pedido del embed entra, se valida contra la allowlist, deriva su adelanto y sale con su
+> enlace a WhatsApp. Falta el script (`kf.js`) y la vuelta del pago (§7).
 >
 > Kross Form es **el checkout de Kross servido como `<script>` en la página de otro**. Nace
 > para los clientes de dropshipping que ya usan GoHighLevel y Neural, arman su web en
@@ -263,6 +262,49 @@ bifurcación no inventa un campo: usa el que el pedido ya tiene.
 formulario, cualquiera abre el inspector, declara Lima y se lleva un pedido a provincia sin
 adelantar nada. Va pegada a `adelantoDelPedido()`, en `_shared/advance.ts`.
 
+### 6.a `embed-order`, y por qué el precio no viaja
+
+La función que recibe el pedido no acepta **ningún campo de precio ni de adelanto**. Lee el
+producto de la base por `product_id` —filtrado por la tienda de la llave, porque sin ese
+filtro la llave de una marca cerraría pedidos del producto de otra— y de ahí saca las dos
+cifras: el precio con `priceFromPacks()` y el adelanto con la escalera de §5.a. Si el pack que
+mandan no existe en el producto, corta: cobrar un precio que nadie configuró es peor que
+perder la venta.
+
+El CORS es la puerta y devuelve el **origen exacto**, nunca `*`: por ahí viajan nombre,
+teléfono y documento. Dos detalles que parecen descuidos y no lo son:
+
+- **El preflight contesta a cualquiera.** El `OPTIONS` del navegador no lleva cuerpo, así que
+  ahí todavía no se sabe qué llave pregunta. La decisión la toma el `POST`.
+- **El 403 sale CON cabeceras de CORS.** Sin ellas el navegador esconde la respuesta y el
+  comerciante ve un fallo opaco al instalar el formulario. Lo que se le entrega es «este
+  dominio no está autorizado» y nada más: ni la tienda, ni sus pedidos. Y una llave que no
+  existe y una apagada contestan igual, para que probar llaves al azar no enseñe cuáles son
+  buenas.
+
+El pedido nace con `order_sessions.embed_key` puesto —el discriminante del embed— y **sin
+vendedor asignado, sin chat y sin push**: la conversación pasa en WhatsApp (§8).
+
+### 6.b El adelanto por pack rompía el cobro, y por qué
+
+`flow-order` no confía en `advance_amount`: lo vuelve a derivar y compara, porque una fila con
+un monto que nadie puede reproducir es una fila que alguien tocó. Esa re-derivación era
+`advanceForServer(precio, advance_choice)` — y para un pedido de Kross Form daba el **precio
+entero**: `advance_choice` solo sabe de `HALF` y `FULL`, y un adelanto de S/20 sobre un pack de
+S/89 no es ninguno de los dos. El cobro moría en `amount_mismatch` y el comprador nunca veía
+la página de pago.
+
+Se arregló con `adelantoEsperadoDeLaFila()` en `_shared/advance.ts`, que bifurca por
+`embed_key`: sin llave devuelve exactamente la línea de antes —y hay un test que lo fija sobre
+toda la matriz de precios y elecciones—, y con llave aplica la escalera contra el producto de
+la base. `flow-order` solo hace el viaje extra a `products` cuando el pedido trae llave.
+
+⚠️ **`pay360-coupon` sigue con la línea vieja**, así que un pedido del embed ruteado ahí
+cobraría de más. Como 360pay está dormido (`RIELES_ACTIVOS`), `embed-order` corta por lo sano:
+**solo acepta FLOW**, y un adelanto que rutearía a 360pay entra contraentrega en vez de
+cobrarse mal. El día que 360pay vuelva, `pay360-coupon` necesita el mismo cambio que §6.b le
+hizo a `flow-order`.
+
 ## 7. La vuelta: WhatsApp con el pedido prellenado
 
 Los dos caminos terminan en `wa.me/<numero-de-la-tienda>?text=…` con la información que el
@@ -339,7 +381,7 @@ no se cuela al embed porque sí. En el embed son toggles apagados (§5.b).
 |---|---|---|
 | 1 | ✅ `adelantoFromPacks()` + la escalera de §5.a + paridad | Es la aritmética; todo lo demás la llama |
 | 2 | ✅ `embed_keys` + `cobra_completo` + el panel de packs con adelanto | El comerciante tiene que poder configurar antes de que exista el form |
-| 3 | `embed-order` (CORS por allowlist, hermana de `web-order`) | El endpoint que recibe |
+| 3 | ✅ `embed-order` (CORS por allowlist, hermana de `web-order`) | El endpoint que recibe |
 | 4 | `kf.js` con Shadow DOM | El formulario |
 | 5 | La rama de `flow-return` a `wa.me` + Purchase por CAPI | Cerrar el camino de provincia |
 | 6 | `frame-ancestors` en `vercel.json` + dominios en Vercel | Lo último: no bloquea nada de arriba |

@@ -3401,3 +3401,17 @@ CREATE TABLE IF NOT EXISTS embed_keys (
 ALTER TABLE embed_keys ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON embed_keys FROM anon, authenticated;
 CREATE INDEX IF NOT EXISTS embed_keys_store_idx ON embed_keys (store_id);
+
+--   · Qué llave creó este pedido. NULL = pedido de la PWA, que es lo que son
+--     todos los que existen hoy. Es el discriminante del embed y hace dos
+--     cosas: `flow-return` sabe por él que la vuelta del pago va a WhatsApp y
+--     no a `<slug>.krossclub.app/p/<token>` (§7 del doc), y deja el rastro de
+--     por qué llave entró cada venta.
+--
+--     Se distingue por acá y NO por `closed_by`: ese campo lo leen el panel y
+--     media docena de sitios como «AI_CLOSER o lo demás», y meterle un tercer
+--     valor movería comportamiento de krossclub.app para ganar un dato que una
+--     columna propia da sin tocar nada (§10).
+ALTER TABLE order_sessions ADD COLUMN IF NOT EXISTS embed_key text;
+CREATE INDEX IF NOT EXISTS order_sessions_embed_key_idx
+  ON order_sessions (embed_key) WHERE embed_key IS NOT NULL;
