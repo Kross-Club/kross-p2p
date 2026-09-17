@@ -1,8 +1,11 @@
 # 18 · KROSS FORM, EL FORMULARIO COMO EMBED
 
-> **Diseño cerrado, sin construir** (17-set-2026). Este archivo es el contrato: se escribió
-> ANTES del código para que las decisiones —dónde vive cada pieza, quién manda el monto, qué
-> dominio puede embeber qué— no se tomen a mitad de un commit.
+> **Diseño cerrado. Pieza 1 construida** (17-set-2026). Este archivo es el contrato: se
+> escribió ANTES del código para que las decisiones —dónde vive cada pieza, quién manda el
+> monto, qué dominio puede embeber qué— no se tomen a mitad de un commit.
+>
+> Vive ya la aritmética (§5): `adelantoFromPacks`, `adelantoDelPedido` y la regla de destino,
+> con su espejo en el navegador y 35 casos de paridad. Lo demás sigue sin construir.
 >
 > Kross Form es **el checkout de Kross servido como `<script>` en la página de otro**. Nace
 > para los clientes de dropshipping que ya usan GoHighLevel y Neural, arman su web en
@@ -186,13 +189,29 @@ del producto, apagados por defecto, que existen para la PWA y no estorban acá:
 | `products.descuento_pen` | ya existe (§56), oferta de salida | toggle, 0 |
 | `products.cobra_completo` | nuevo, booleano | toggle, apagado |
 
-### 5.c El test de paridad se mueve en el mismo commit
+### 5.c La escalera se AGREGA; `advanceForServer` no se toca
 
-`advanceForServer()` hoy solo sabe `HALF`/`FULL`. Al reescribirlo, su espejo del front
-(`advanceFor()` en `src/lib/checkout/checkout.config.ts`) y
-`src/lib/checkout/advance-parity.test.ts` cambian **en el mismo commit**. Ese test existe
-justo para esto: si las dos puntas se desalinean, el comprador ve un número y paga otro, que
-es el peor error posible del checkout.
+La tentación era reescribir `advanceForServer()` para que entendiera montos además de
+`HALF`/`FULL`. **No se hizo, y es la decisión que protege a la PWA** (§11): esa función es la
+que cobra todos los pedidos de krossclub.app, y un cambio ahí es un cambio en el adelanto de
+todas las marcas vivas para ganar algo que solo necesita el embed.
+
+Lo que hay en su lugar, en el mismo `_shared/advance.ts`:
+
+| Función | Qué hace |
+|---|---|
+| `esContraentregaPorDestino(dispatchType)` | El peldaño 1. Lima, Callao y cualquier destino desconocido → contraentrega |
+| `adelantoSaneado(v)` | Lo que el panel guardó, redondeado al sol; basura → 0 |
+| `adelantoFromPacks(packs, packName)` | El monto del pack, emparejado por `nombre` igual que `priceFromPacks` |
+| `adelantoDelPedido(entrada)` | La escalera de §5.a |
+
+Los peldaños 2 y 4 **delegan en `advanceForServer`** en vez de repetir su aritmética, así que
+el redondeo al sol sigue estando escrito una sola vez.
+
+Y el espejo del navegador vive en `src/lib/checkout/adelanto-pack.ts`, archivo aparte de
+`checkout.config.ts` por peso (el bundle de `kf.js` apunta a < 20 KB y no debe arrastrar la
+cobertura ni la copy del checkout de la PWA) y por separación. `advance-parity.test.ts` los
+compara valor por valor sobre toda la matriz: precio × adelanto × destino × los dos toggles.
 
 ## 6. Los dos caminos del comprador
 
@@ -260,12 +279,40 @@ Escrito para que nadie lo dé por supuesto:
 5. **`flow-confirm` es la verdad del pago.** `flow-return` es una cortesía del navegador y una
    segunda oportunidad; nunca la fuente.
 6. **La regla de destino se evalúa en el servidor.**
+7. **Kross Form no cambia el comportamiento de krossclub.app.** Agrega; no reescribe (§10).
 
-## 10. Orden de construcción
+## 10. Kross Form no toca krossclub.app
+
+**Es una regla, no una aspiración.** Kross Form y la PWA comparten base de datos, riel de
+cobro y este repositorio. Esa cercanía es lo que hace barato construirlo — y lo que haría
+fácil romper, desde una funcionalidad para drop, el checkout de una marca que ya está
+vendiendo hoy.
+
+Lo que la regla obliga, en concreto:
+
+1. **Nada que la PWA llame cambia de comportamiento.** `advanceForServer`, `advanceFor`,
+   `eleccionDeAdelanto`, `ofertaDelProducto`, `priceFromPacks` y `saneaProducto` quedan tal
+   cual. Kross Form agrega funciones hermanas; no reescribe las de nadie (§5.c).
+2. **Las columnas nuevas nacen con el default de hoy.** `packs[].adelanto_pen` ausente y
+   `cobra_completo` en `false` describen exactamente el producto que existe ahora: un pedido
+   de krossclub.app se comporta igual con la columna que sin ella.
+3. **Ninguna ruta nueva en la PWA.** El panel de Kross Form es su propio dominio. Lo que se
+   comparte son funciones puras y tablas, no pantallas.
+4. **`vercel.json` se toca por ruta, no en bloque.** El `frame-ancestors` que necesita
+   `krossform.com` no puede aflojar el `X-Frame-Options` que protege al panel de la PWA (§2.a).
+5. **Lo prueba un test, no la buena intención.** `advance-parity.test.ts` tiene un bloque
+   —*krossform.com no toca krossclub.app*— que falla si alguien mete la escalera del embed
+   dentro de las funciones de la PWA, o si un producto sin nada de Kross Form deja de
+   comportarse como siempre.
+
+La dirección también vale al revés: una regla de la PWA (§56, la mitad; la oferta de salida)
+no se cuela al embed porque sí. En el embed son toggles apagados (§5.b).
+
+## 11. Orden de construcción
 
 | # | Qué | Por qué en este orden |
 |---|---|---|
-| 1 | `adelantoFromPacks()` + la escalera de §5.a + paridad | Es la aritmética; todo lo demás la llama |
+| 1 | ✅ `adelantoFromPacks()` + la escalera de §5.a + paridad | Es la aritmética; todo lo demás la llama |
 | 2 | `embed_keys` + `cobra_completo` + el panel de packs con adelanto | El comerciante tiene que poder configurar antes de que exista el form |
 | 3 | `embed-order` (CORS por allowlist, hermana de `web-order`) | El endpoint que recibe |
 | 4 | `kf.js` con Shadow DOM | El formulario |

@@ -125,3 +125,110 @@ export function priceFromPacks(
   // Si no, el precio declarado vale solo si ES uno de los del producto.
   return prices.includes(Number(claimed)) ? Number(claimed) : null
 }
+
+// ─── KROSS FORM · El adelanto por pack ───────────────────────────────────────
+// Lo de abajo NO lo usa la PWA. Es la aritmética del embed (`docs/18-KROSS-FORM.md`),
+// donde el adelanto es un MONTO que el comerciante escribe en cada pack
+// —"que adelanten 20 soles"— en vez de la proporción de §56.
+//
+// Vive en este archivo y no en uno nuevo porque aquí ya viven las reglas de
+// adelanto por producto, y partirlas sería tener dos sitios donde mirar cuánto
+// se le cobra a alguien. Pero es ADITIVO: `advanceForServer`, `eleccionDeAdelanto`,
+// `ofertaDelProducto` y `priceFromPacks` quedan exactamente como estaban, y
+// ningún camino de krossclub.app pasa por lo que sigue. La PWA no cambia ni un
+// céntimo por esto.
+
+/** Los cuatro destinos válidos de `order_sessions.dispatch_type`. */
+const DISPATCH_VALIDOS = [
+  'MOTORIZADO_LIMA', 'MOTORIZADO_PROVINCIA', 'AGENCIA_PROVINCIA', 'AGENCIA_LIMA',
+] as const
+
+/**
+ * Si este destino va contraentrega pase lo que pase.
+ *
+ * Lima y Callao no adelantan: es la regla comercial de Kross Form y **se evalúa
+ * en el servidor a propósito**. Si viviera en el formulario, cualquiera abre el
+ * inspector, declara Lima y se lleva un pedido a provincia sin adelantar nada.
+ *
+ * Un `dispatch_type` que no sea uno de los cuatro cae también en contraentrega.
+ * Es la dirección segura: cobrarle a alguien que esperaba pagar en la puerta
+ * cuesta plata y un reclamo, mientras que no cobrar deja un pedido que el
+ * vendedor coordina por WhatsApp. Y no es una puerta: quien llama valida
+ * `dispatch_type` contra la misma lista antes de escribir el pedido, así que
+ * esto solo se activa ante un bug nuestro, no ante un navegador mentiroso.
+ */
+export function esContraentregaPorDestino(dispatchType: unknown): boolean {
+  const d = typeof dispatchType === 'string' ? dispatchType.trim() : ''
+  if (!(DISPATCH_VALIDOS as readonly string[]).includes(d)) return true
+  return d.endsWith('_LIMA')
+}
+
+/**
+ * Lo que el panel guardó en `packs[].adelanto_pen`, saneado.
+ *
+ * Redondeado al sol por la misma razón que `advanceForServer`: el comprador lo
+ * yapea a mano y "S/20.50" invita a teclear mal. Cualquier basura —negativo,
+ * texto, `undefined`— es 0, y 0 significa **este pack no cobra adelanto**: va
+ * contraentrega aunque sea provincia. No cobrar es el error barato.
+ */
+export function adelantoSaneado(v: unknown): number {
+  const n = typeof v === 'string' ? Number(v.trim()) : Number(v)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.round(n)
+}
+
+/**
+ * El adelanto que pide ESTE pack, tomado del producto en la base.
+ *
+ * Hermana de `priceFromPacks()` y con su misma regla: empareja por `nombre`,
+ * que es la coincidencia exacta. Sin nombre no hay pack que mirar y devuelve 0
+ * —de nuevo, la dirección segura—; el monto jamás se acepta del navegador.
+ */
+export function adelantoFromPacks(packs: unknown, packName: string | null): number {
+  if (!Array.isArray(packs) || !packName) return 0
+  const hit = packs.find(p => (p as { nombre?: unknown })?.nombre === packName)
+  return adelantoSaneado((hit as { adelanto_pen?: unknown })?.adelanto_pen)
+}
+
+/** Lo que hace falta para saber cuánto adelanta un pedido del embed. */
+export interface EntradaDeAdelanto {
+  /** Precio del pack, YA verificado contra el producto (`priceFromPacks`). */
+  precioPack: number
+  /** Lo que pide el pack (`adelantoFromPacks`). 0 = este pack no adelanta. */
+  adelantoPen: number
+  /** `order_sessions.dispatch_type`. */
+  dispatchType: unknown
+  /** Toggle del producto: cobrar el 100 % por adelantado. */
+  cobraCompleto?: boolean
+  /** Toggle del producto (§56): permitir la mitad. */
+  permiteMitad?: boolean
+}
+
+/**
+ * Cuánto adelanta un pedido de Kross Form. La escalera, en este orden exacto:
+ *
+ *   1. destino Lima/Callao   → 0                         (contraentrega, SIEMPRE)
+ *   2. `cobra_completo`      → el precio del pack
+ *   3. `adelanto_pen` > 0    → min(adelanto, precio del pack)
+ *   4. `permite_mitad`       → la mitad, por `advanceForServer`
+ *   5. si no                 → 0
+ *
+ * El destino va primero porque es la regla de SEGURIDAD, no la comercial:
+ * ningún dato del producto puede hacer que a un comprador de Lima se le cobre
+ * por adelantado. Los pasos 2 y 4 delegan en `advanceForServer` para que la
+ * aritmética siga siendo una sola, y el 3 nunca devuelve más que el pedido —un
+ * `adelanto_pen` mayor que el pack cobra el pack entero, no más.
+ */
+export function adelantoDelPedido(e: EntradaDeAdelanto): number {
+  const precio = Number(e.precioPack)
+  if (!Number.isFinite(precio) || precio <= 0) return 0
+
+  if (esContraentregaPorDestino(e.dispatchType)) return 0
+  if (e.cobraCompleto === true) return advanceForServer(precio, 'FULL')
+
+  const adelanto = adelantoSaneado(e.adelantoPen)
+  if (adelanto > 0) return Math.min(adelanto, advanceForServer(precio, 'FULL'))
+
+  if (e.permiteMitad === true) return advanceForServer(precio, 'HALF')
+  return 0
+}

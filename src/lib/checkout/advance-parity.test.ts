@@ -6,18 +6,32 @@
 //
 // Y las reglas por producto de §56 (`eleccionDeAdelanto`, `ofertaDelProducto`,
 // `saneaProducto`), que también comparten las dos puntas.
+//
+// Y desde set-2026, la escalera por pack de Kross Form (`docs/18-KROSS-FORM.md`
+// §5), que es otro par front/servidor con el mismo riesgo y la misma cura.
 
 import { describe, expect, it } from 'vitest'
 import { ADVANCE_HALF_SHARE, advanceFor } from './checkout.config'
 import {
   ADVANCE_HALF_SHARE as SERVER_HALF_SHARE,
   DESCUENTO_MAXIMO_PEN,
+  adelantoDelPedido,
+  adelantoFromPacks,
+  adelantoSaneado,
   advanceForServer,
+  esContraentregaPorDestino,
   descuentoSaneado,
   eleccionDeAdelanto,
   ofertaDelProducto,
+  priceFromPacks,
   saneaProducto,
 } from '../../../supabase/functions/_shared/advance.ts'
+import {
+  adelantoDelPedido as adelantoDelPedidoFront,
+  adelantoFromPacks as adelantoFromPacksFront,
+  adelantoSaneado as adelantoSaneadoFront,
+  esContraentregaPorDestino as esContraentregaPorDestinoFront,
+} from './adelanto-pack'
 
 describe('paridad front ↔ servidor', () => {
   it('la proporción de la mitad es la misma constante', () => {
@@ -98,5 +112,180 @@ describe('saneaProducto · lo que guarda el panel', () => {
     expect(saneaProducto({})).toEqual({})
     expect(saneaProducto({ descuento_pen: '5' })).toEqual({ descuento_pen: 5 })
     expect(saneaProducto({ permite_mitad: true, descuento_pen: 0 })).toEqual({ permite_mitad: true, descuento_pen: 0 })
+  })
+})
+
+// ─── KROSS FORM · la escalera por pack ───────────────────────────────────────
+
+const LIMA = ['MOTORIZADO_LIMA', 'AGENCIA_LIMA'] as const
+const PROVINCIA = ['MOTORIZADO_PROVINCIA', 'AGENCIA_PROVINCIA'] as const
+
+describe('esContraentregaPorDestino · Lima y Callao no adelantan', () => {
+  it('los dos destinos de Lima van contraentrega', () => {
+    for (const d of LIMA) {
+      expect(esContraentregaPorDestino(d)).toBe(true)
+      expect(esContraentregaPorDestinoFront(d)).toBe(true)
+    }
+  })
+  it('los dos de provincia sí adelantan', () => {
+    for (const d of PROVINCIA) {
+      expect(esContraentregaPorDestino(d)).toBe(false)
+      expect(esContraentregaPorDestinoFront(d)).toBe(false)
+    }
+  })
+  it('un destino que no es de los cuatro cae en contraentrega (dirección segura)', () => {
+    for (const d of [undefined, null, '', 'LIMA', 'PROVINCIA', 'MOTORIZADO_LIMA ', 0, {}]) {
+      expect(esContraentregaPorDestino(d)).toBe(true)
+      expect(esContraentregaPorDestinoFront(d)).toBe(true)
+    }
+  })
+})
+
+describe('adelantoSaneado · el monto que escribió el comerciante', () => {
+  it('redondea al sol, como el resto del adelanto', () => {
+    for (const [dado, esperado] of [[20, 20], ['20', 20], [20.4, 20], [20.5, 21], ['7.50', 8]] as const) {
+      expect(adelantoSaneado(dado)).toBe(esperado)
+      expect(adelantoSaneadoFront(dado)).toBe(esperado)
+    }
+  })
+  it('cualquier basura es 0, y 0 significa que este pack no adelanta', () => {
+    for (const v of [0, -5, NaN, Infinity, 'abc', '', null, undefined, {}]) {
+      expect(adelantoSaneado(v)).toBe(0)
+      expect(adelantoSaneadoFront(v)).toBe(0)
+    }
+  })
+})
+
+describe('adelantoFromPacks · el monto sale del producto, nunca del navegador', () => {
+  const packs = [
+    { nombre: '1 unidad', precio: 59, adelanto_pen: 15 },
+    { nombre: '2 unidades', precio: 89, adelanto_pen: '20' },  // numeric de Postgres
+    { nombre: '3 unidades', precio: 119 },                      // sin adelanto configurado
+  ]
+
+  it('empareja por nombre, como priceFromPacks', () => {
+    expect(adelantoFromPacks(packs, '2 unidades')).toBe(20)
+    expect(adelantoFromPacksFront(packs, '2 unidades')).toBe(20)
+  })
+  it('un pack sin adelanto configurado no adelanta', () => {
+    expect(adelantoFromPacks(packs, '3 unidades')).toBe(0)
+    expect(adelantoFromPacksFront(packs, '3 unidades')).toBe(0)
+  })
+  it('sin nombre, o con un nombre que no existe, no hay pack que mirar', () => {
+    for (const n of [null, '', 'inventado']) {
+      expect(adelantoFromPacks(packs, n)).toBe(0)
+      expect(adelantoFromPacksFront(packs, n)).toBe(0)
+    }
+  })
+  it('packs que no son una lista no rompen', () => {
+    for (const p of [null, undefined, {}, 'packs', 5]) {
+      expect(adelantoFromPacks(p, '1 unidad')).toBe(0)
+      expect(adelantoFromPacksFront(p, '1 unidad')).toBe(0)
+    }
+  })
+})
+
+describe('adelantoDelPedido · la escalera, peldaño por peldaño', () => {
+  const base = { precioPack: 89, adelantoPen: 20, dispatchType: 'AGENCIA_PROVINCIA' as unknown }
+
+  it('1 · Lima gana sobre TODO lo que diga el producto', () => {
+    for (const d of LIMA) {
+      const e = { ...base, dispatchType: d, adelantoPen: 50, cobraCompleto: true, permiteMitad: true }
+      expect(adelantoDelPedido(e)).toBe(0)
+      expect(adelantoDelPedidoFront(e)).toBe(0)
+    }
+  })
+  it('2 · cobra_completo gana sobre el adelanto del pack', () => {
+    const e = { ...base, cobraCompleto: true, permiteMitad: true }
+    expect(adelantoDelPedido(e)).toBe(89)
+    expect(adelantoDelPedidoFront(e)).toBe(89)
+  })
+  it('3 · el adelanto del pack gana sobre permite_mitad', () => {
+    const e = { ...base, permiteMitad: true }
+    expect(adelantoDelPedido(e)).toBe(20)
+    expect(adelantoDelPedidoFront(e)).toBe(20)
+  })
+  it('3 · un adelanto mayor que el pack cobra el pack, nunca más', () => {
+    const e = { ...base, adelantoPen: 500 }
+    expect(adelantoDelPedido(e)).toBe(89)
+    expect(adelantoDelPedidoFront(e)).toBe(89)
+  })
+  it('4 · sin adelanto por pack, permite_mitad cobra la mitad', () => {
+    const e = { ...base, adelantoPen: 0, permiteMitad: true }
+    expect(adelantoDelPedido(e)).toBe(advanceForServer(89, 'HALF'))
+    expect(adelantoDelPedidoFront(e)).toBe(advanceFor(89, 'HALF'))
+  })
+  it('5 · sin nada encendido, no adelanta: provincia también puede ir contraentrega', () => {
+    const e = { ...base, adelantoPen: 0 }
+    expect(adelantoDelPedido(e)).toBe(0)
+    expect(adelantoDelPedidoFront(e)).toBe(0)
+  })
+  it('sin precio verificado no hay adelanto', () => {
+    for (const p of [0, -5, NaN, Infinity]) {
+      const e = { ...base, precioPack: p }
+      expect(adelantoDelPedido(e)).toBe(0)
+      expect(adelantoDelPedidoFront(e)).toBe(0)
+    }
+  })
+  it('los toggles solo cuentan con un true de verdad', () => {
+    for (const v of ['true', 1, {}, 'sí'] as unknown[]) {
+      const e = { ...base, adelantoPen: 0, cobraCompleto: v as boolean, permiteMitad: v as boolean }
+      expect(adelantoDelPedido(e)).toBe(0)
+      expect(adelantoDelPedidoFront(e)).toBe(0)
+    }
+  })
+})
+
+describe('paridad de la escalera · front y servidor, valor por valor', () => {
+  it('coinciden en toda la matriz', () => {
+    const destinos = [...LIMA, ...PROVINCIA, 'BASURA', '', null, undefined]
+    for (const precioPack of [1, 59, 69.5, 89, 119, 300, 999.99]) {
+      for (const adelantoPen of [0, 1, 15, 20.5, 89, 500, -3, NaN]) {
+        for (const dispatchType of destinos) {
+          for (const cobraCompleto of [true, false]) {
+            for (const permiteMitad of [true, false]) {
+              const e = { precioPack, adelantoPen, dispatchType, cobraCompleto, permiteMitad }
+              expect(adelantoDelPedidoFront(e)).toBe(adelantoDelPedido(e))
+            }
+          }
+        }
+      }
+    }
+  })
+
+  it('el adelanto nunca supera el pedido, en ninguna combinación', () => {
+    for (const precioPack of [1, 59, 89, 300]) {
+      for (const adelantoPen of [0, 20, 500]) {
+        for (const dispatchType of [...LIMA, ...PROVINCIA]) {
+          for (const cobraCompleto of [true, false]) {
+            for (const permiteMitad of [true, false]) {
+              const monto = adelantoDelPedido({ precioPack, adelantoPen, dispatchType, cobraCompleto, permiteMitad })
+              expect(monto).toBeGreaterThanOrEqual(0)
+              expect(monto).toBeLessThanOrEqual(Math.round(precioPack))
+            }
+          }
+        }
+      }
+    }
+  })
+})
+
+describe('krossform.com no toca krossclub.app', () => {
+  it('la escalera del embed no altera el adelanto de la PWA', () => {
+    // La PWA llama `advanceForServer`/`advanceFor` y nada más. Si alguien mete
+    // la escalera del embed dentro de ellas, esto se cae.
+    for (const precio of [1, 5, 69.5, 89, 140, 300]) {
+      expect(advanceForServer(precio, 'FULL')).toBe(Math.round(precio))
+      expect(advanceForServer(precio, 'HALF')).toBe(Math.round(precio * 0.5))
+      expect(advanceFor(precio, 'FULL')).toBe(Math.round(precio))
+      expect(advanceFor(precio, 'HALF')).toBe(Math.round(precio * 0.5))
+    }
+  })
+
+  it('un producto sin nada de Kross Form se comporta como siempre', () => {
+    // packs de la PWA: sin `adelanto_pen` por ningún lado.
+    const packsPWA = [{ nombre: '1 unidad', precio: 140 }, { nombre: '2 unidades', precio: 240 }]
+    expect(adelantoFromPacks(packsPWA, '1 unidad')).toBe(0)
+    expect(priceFromPacks(packsPWA, 140, '1 unidad')).toBe(140)
   })
 })
