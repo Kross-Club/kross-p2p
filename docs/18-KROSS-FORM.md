@@ -4,8 +4,10 @@
 > escribió ANTES del código para que las decisiones —dónde vive cada pieza, quién manda el
 > monto, qué dominio puede embeber qué— no se tomen a mitad de un commit.
 >
-> Vive ya la aritmética (§5): `adelantoFromPacks`, `adelantoDelPedido` y la regla de destino,
-> con su espejo en el navegador y 35 casos de paridad. Lo demás sigue sin construir.
+> Viven ya la aritmética (§5) —`adelantoFromPacks`, `adelantoDelPedido` y la regla de destino,
+> con su espejo en el navegador— y el esquema con su panel (§4, §5.b): `embed_keys`,
+> `products.cobra_completo`, el adelanto por pack en el editor de productos y la compuerta
+> `stores.kross_form`. Falta el script, `embed-order` y la vuelta a WhatsApp.
 >
 > Kross Form es **el checkout de Kross servido como `<script>` en la página de otro**. Nace
 > para los clientes de dropshipping que ya usan GoHighLevel y Neural, arman su web en
@@ -118,13 +120,21 @@ Reglas del script:
 
 ```sql
 CREATE TABLE IF NOT EXISTS embed_keys (
-  public_key          text PRIMARY KEY,           -- pub_… , viaja en el HTML de cualquiera
-  store_id            text NOT NULL,
-  dominios_permitidos text[] NOT NULL DEFAULT '{}',
-  activo              boolean NOT NULL DEFAULT true,
+  public_key          text        PRIMARY KEY,   -- pub_… , viaja en el HTML de cualquiera
+  store_id            text        NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  dominios_permitidos text[]      NOT NULL DEFAULT '{}',
+  whatsapp            text,                      -- a dónde va el comprador al final
+  activo              boolean     NOT NULL DEFAULT true,
   created_at          timestamptz DEFAULT now()
 );
+ALTER TABLE embed_keys ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON embed_keys FROM anon, authenticated;
 ```
+
+El `whatsapp` vive en la llave y no en `stores` porque un comerciante puede repartir los
+pedidos de dos landings a dos números distintos sin tener dos tiendas. Y el RLS va con
+`REVOKE` como `store_secrets`: la tabla la escribe y la lee el service role desde las
+funciones, nunca el navegador.
 
 La `public_key` está a la vista en el código fuente de la página: **no es una credencial**.
 Lo que decide si una petición se atiende es el `Origin`, contrastado contra
@@ -133,6 +143,21 @@ origen exacto**, nunca `*` — por ahí viajan nombre, DNI y teléfono del compr
 
 La key tampoco da lectura: no existe ningún endpoint que, con la key, liste pedidos o
 compradores. Solo escribe pedidos nuevos.
+
+### 4.a `stores.kross_form`: la compuerta
+
+Un booleano por tienda, apagado por defecto. Mientras esté en `false`, el editor de productos
+**no enseña ni un campo del embed** —ni el adelanto del pack, ni el interruptor de cobrar el
+100 %— y el guardado no manda esas claves, así que la marca no puede ni escribirlas por
+accidente. Es lo que hace que §68 del esquema sea invisible para las marcas que hoy venden en
+krossclub.app (§10).
+
+Dónde vive el panel de Kross Form es harina de otro costal y **sigue sin decidirse**: el
+editor de productos que hoy enciende esta compuerta es el de la PWA, y el doc dice
+`krossform.com` (§2). Las dos opciones —un despliegue aparte del mismo repo, o la misma app
+sirviéndose en los dos dominios y ramificando por hostname como ya hace `store-context`— dan
+el mismo editor, así que la compuerta sirve igual en las dos. Hay que elegir antes de la
+pieza 4.
 
 ## 5. El adelanto: monto por pack
 
@@ -313,7 +338,7 @@ no se cuela al embed porque sí. En el embed son toggles apagados (§5.b).
 | # | Qué | Por qué en este orden |
 |---|---|---|
 | 1 | ✅ `adelantoFromPacks()` + la escalera de §5.a + paridad | Es la aritmética; todo lo demás la llama |
-| 2 | `embed_keys` + `cobra_completo` + el panel de packs con adelanto | El comerciante tiene que poder configurar antes de que exista el form |
+| 2 | ✅ `embed_keys` + `cobra_completo` + el panel de packs con adelanto | El comerciante tiene que poder configurar antes de que exista el form |
 | 3 | `embed-order` (CORS por allowlist, hermana de `web-order`) | El endpoint que recibe |
 | 4 | `kf.js` con Shadow DOM | El formulario |
 | 5 | La rama de `flow-return` a `wa.me` + Purchase por CAPI | Cerrar el camino de provincia |

@@ -19,6 +19,7 @@ import {
   adelantoFromPacks,
   adelantoSaneado,
   advanceForServer,
+  saneaPacks,
   esContraentregaPorDestino,
   descuentoSaneado,
   eleccionDeAdelanto,
@@ -287,5 +288,71 @@ describe('krossform.com no toca krossclub.app', () => {
     const packsPWA = [{ nombre: '1 unidad', precio: 140 }, { nombre: '2 unidades', precio: 240 }]
     expect(adelantoFromPacks(packsPWA, '1 unidad')).toBe(0)
     expect(priceFromPacks(packsPWA, 140, '1 unidad')).toBe(140)
+  })
+})
+
+describe('saneaPacks · lo que el panel guarda en cada pack', () => {
+  it('un pack de krossclub.app sale TAL CUAL: misma referencia, no una copia', () => {
+    // La prueba fuerte de §10: si algún día alguien normaliza el pack entero,
+    // esto se cae aunque el contenido siga siendo equivalente.
+    const pack = { nombre: '2 unidades', descripcion: 'Envío gratis', precio: 89, image: 'x.jpg' }
+    const salida = saneaPacks([pack])
+    expect(salida[0]).toBe(pack)
+  })
+
+  it('normaliza adelanto_pen solo en los packs que lo traen', () => {
+    const packs = [
+      { nombre: 'a', precio: 59, adelanto_pen: '20' },
+      { nombre: 'b', precio: 89 },
+      { nombre: 'c', precio: 119, adelanto_pen: -5 },
+      { nombre: 'd', precio: 149, adelanto_pen: 20.5 },
+    ]
+    expect(saneaPacks(packs)).toEqual([
+      { nombre: 'a', precio: 59, adelanto_pen: 20 },
+      { nombre: 'b', precio: 89 },
+      { nombre: 'c', precio: 119, adelanto_pen: 0 },
+      { nombre: 'd', precio: 149, adelanto_pen: 21 },
+    ])
+  })
+
+  it('el 0 se conserva: es una respuesta, no la ausencia de una', () => {
+    const [p] = saneaPacks([{ nombre: 'a', precio: 59, adelanto_pen: 0 }]) as { adelanto_pen?: number }[]
+    expect(p.adelanto_pen).toBe(0)
+    expect('adelanto_pen' in p).toBe(true)
+  })
+
+  it('no pierde ningún otro campo del pack', () => {
+    const [p] = saneaPacks([
+      { nombre: 'a', descripcion: 'd', precio: 59, image: 'i.jpg', adelanto_pen: 'basura' },
+    ]) as Record<string, unknown>[]
+    expect(p).toEqual({ nombre: 'a', descripcion: 'd', precio: 59, image: 'i.jpg', adelanto_pen: 0 })
+  })
+
+  it('lo que no es una lista de packs es una lista vacía', () => {
+    for (const v of [null, undefined, {}, 'packs', 5]) expect(saneaPacks(v)).toEqual([])
+  })
+
+  it('una entrada que no es un objeto pasa sin tocarse', () => {
+    expect(saneaPacks([null, 'x', 5])).toEqual([null, 'x', 5])
+  })
+})
+
+describe('saneaProducto · cobra_completo, el tercer interruptor', () => {
+  it('solo con un true de verdad', () => {
+    expect(saneaProducto({ cobra_completo: true }).cobra_completo).toBe(true)
+    expect(saneaProducto({ cobra_completo: 'true' }).cobra_completo).toBe(false)
+    expect(saneaProducto({ cobra_completo: 1 }).cobra_completo).toBe(false)
+  })
+
+  it('un panel que no lo manda no toca la columna', () => {
+    // El panel de una marca sin Kross Form no incluye la clave, así que un
+    // guardado suyo no puede apagar lo que otro encendió.
+    expect('cobra_completo' in saneaProducto({ permite_mitad: true })).toBe(false)
+    expect(saneaProducto({ permite_mitad: true })).toEqual({ permite_mitad: true })
+  })
+
+  it('convive con los dos de §56 sin pisarlos', () => {
+    expect(saneaProducto({ permite_mitad: true, descuento_pen: '5', cobra_completo: true }))
+      .toEqual({ permite_mitad: true, descuento_pen: 5, cobra_completo: true })
   })
 })

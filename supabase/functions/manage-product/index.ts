@@ -2,7 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { isDeclaredContent, isShalomSize } from '../_shared/shalom-orders.ts'
 import { dimsCmTexto } from '../_shared/olva-lat-orders.ts'
 import { administraLaPlataforma } from '../_shared/alcance.ts'
-import { saneaProducto } from '../_shared/advance.ts'
+import { saneaPacks, saneaProducto } from '../_shared/advance.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -27,7 +27,9 @@ Deno.serve(async (req) => {
     images?: string[]
     // `image` es la foto propia del pack (opcional). El checkout cae a
     // `images[0]` cuando no está. `packs` es jsonb: no hace falta migración.
-    packs?: { nombre: string; descripcion?: string; precio: number; image?: string }[]
+    // `adelanto_pen` (§68) es el adelanto en soles de Kross Form para ESE pack.
+    // Lo sanea `saneaPacks`; ausente o 0 = ese pack no cobra adelanto.
+    packs?: { nombre: string; descripcion?: string; precio: number; image?: string; adelanto_pen?: number | string }[]
     active?: boolean
     // Envío (sección 27.a): de qué sede Shalom sale el paquete, de qué tamaño
     // es y qué contenido se declara. Los usa el generador de guías; sin los
@@ -49,6 +51,9 @@ Deno.serve(async (req) => {
     // Los sanea `_shared/advance.ts`, la misma regla que usa el checkout.
     permite_mitad?: boolean
     descuento_pen?: number | string | null
+    // Cobro (§68, Kross Form): cobrar el 100 % por adelantado. Tercer
+    // interruptor junto a los dos de §56, y lo sanea el mismo sitio.
+    cobra_completo?: boolean
     store_id?: string   // super admin: target store when managing a brand they entered
   }
 
@@ -90,7 +95,9 @@ Deno.serve(async (req) => {
     nombre: body.nombre ?? 'Producto',
     precio: body.precio ?? 0,
     images: body.images ?? [],
-    packs: body.packs ?? [],
+    // Los packs entran saneados: lo único que cambia es `adelanto_pen`, y solo
+    // en los packs que lo traen. Un producto sin Kross Form sale igual que antes.
+    packs: saneaPacks(body.packs),
     active: body.active ?? true,
     shalom_origin_branch_id: /^\d+$/.test(origen) ? origen : null,
     package_size: isShalomSize(body.package_size) ? body.package_size : null,

@@ -83,13 +83,20 @@ export function ofertaDelProducto(descuentoPen: unknown, exitOffer: boolean): nu
  * ninguna de las dos— no debe borrar en silencio lo que otro ya configuró.
  * `permite_mitad` solo es verdad con un `true` de verdad.
  */
-export function saneaProducto(body: { permite_mitad?: unknown; descuento_pen?: unknown }): {
+export function saneaProducto(
+  body: { permite_mitad?: unknown; descuento_pen?: unknown; cobra_completo?: unknown },
+): {
   permite_mitad?: boolean
   descuento_pen?: number
+  cobra_completo?: boolean
 } {
   return {
     ...(body.permite_mitad !== undefined ? { permite_mitad: body.permite_mitad === true } : {}),
     ...(body.descuento_pen !== undefined ? { descuento_pen: descuentoSaneado(body.descuento_pen) } : {}),
+    // `cobra_completo` (§68) entra por la misma puerta y con la misma regla:
+    // solo si el body lo trae, y solo con un `true` de verdad. Un panel que no
+    // lo mande —el de cualquier marca que no use Kross Form— no lo toca.
+    ...(body.cobra_completo !== undefined ? { cobra_completo: body.cobra_completo === true } : {}),
   }
 }
 
@@ -188,6 +195,33 @@ export function adelantoFromPacks(packs: unknown, packName: string | null): numb
   if (!Array.isArray(packs) || !packName) return 0
   const hit = packs.find(p => (p as { nombre?: unknown })?.nombre === packName)
   return adelantoSaneado((hit as { adelanto_pen?: unknown })?.adelanto_pen)
+}
+
+/**
+ * Los packs tal como el panel los manda, con `adelanto_pen` normalizado.
+ *
+ * `manage-product` reescribe el producto entero en cada guardado y venía
+ * pasando `body.packs` tal cual a la base. Mientras el pack solo llevaba
+ * nombre, precio e imagen daba igual —el precio se verifica al pedir, no al
+ * guardar—, pero un `adelanto_pen` es plata: dejarlo entrar como `"20 soles"`
+ * o `-5` guarda una configuración que nadie escribió a propósito.
+ *
+ * **Toca UNA clave y no más.** Cada pack se devuelve con todos sus campos
+ * intactos y solo `adelanto_pen` reescrito, y únicamente cuando el pack lo
+ * trae. Un producto de krossclub.app —que no manda esa clave por ningún lado—
+ * sale de aquí byte por byte como entró (§10 del doc).
+ *
+ * El 0 se conserva en vez de borrarse: es una respuesta ("este pack no cobra
+ * adelanto"), no la ausencia de una.
+ */
+export function saneaPacks(packs: unknown): unknown[] {
+  if (!Array.isArray(packs)) return []
+  return packs.map(pack => {
+    if (!pack || typeof pack !== 'object') return pack
+    const p = pack as Record<string, unknown>
+    if (p.adelanto_pen === undefined) return pack
+    return { ...p, adelanto_pen: adelantoSaneado(p.adelanto_pen) }
+  })
 }
 
 /** Lo que hace falta para saber cuánto adelanta un pedido del embed. */

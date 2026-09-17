@@ -30,7 +30,12 @@ const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 /** `image` es la foto propia del pack. Opcional: sin ella el checkout cae a la
  *  primera imagen de la landing. Ver el aviso del editor sobre cuándo sirve. */
-interface Pack { nombre: string; descripcion?: string; precio: number; image?: string }
+interface Pack {
+  nombre: string; descripcion?: string; precio: number; image?: string
+  /** Kross Form (§68): el adelanto en soles de ESTE pack. 0 o ausente = no
+   *  cobra adelanto. Solo se edita en las tiendas con el embed encendido. */
+  adelanto_pen?: number
+}
 interface Product {
   id: string
   store_id: string | null
@@ -53,6 +58,8 @@ interface Product {
    *  cuánto descuenta su oferta de salida (0 = no ofrece nada). */
   permite_mitad?: boolean | null
   descuento_pen?: number | string | null
+  /** Cobro (§68, Kross Form): cobrar el 100 % por adelantado. */
+  cobra_completo?: boolean | null
 }
 
 /** El host de una dirección, para nombrar el botón sin el `https://`. */
@@ -68,6 +75,9 @@ export default function ProductosPage() {
   const [store, setStore] = useState<{
     slug: string | null; home_delivery_enabled: boolean
     custom_domain?: string | null; custom_domain_verified?: boolean | null
+    /** §68: si esta marca usa el embed. Apagado, el editor no enseña ni un
+     *  campo de Kross Form y el producto se ve exactamente como siempre. */
+    kross_form?: boolean | null
   } | null>(null)
   /** Cuál de los enlaces se acaba de copiar. Sin acuse, copiar no se siente:
    *  el portapapeles no da señal y el vendedor toca dos veces por las dudas. */
@@ -97,11 +107,12 @@ export default function ProductosPage() {
     const CAMPOS = 'slug, home_delivery_enabled'
     const pedir = (campos: string) =>
       supabase.from('stores').select(campos).eq('id', effective.store_id!).maybeSingle()
-    pedir(`${CAMPOS}, custom_domain, custom_domain_verified`)
+    pedir(`${CAMPOS}, custom_domain, custom_domain_verified, kross_form`)
       .then(async r => (r.error ? (await pedir(CAMPOS)).data : r.data))
       .then(d => {
         const data = d as { slug?: string | null; home_delivery_enabled?: boolean | null
-                            custom_domain?: string | null; custom_domain_verified?: boolean | null } | null
+                            custom_domain?: string | null; custom_domain_verified?: boolean | null
+                            kross_form?: boolean | null } | null
         setStore({
         slug: data?.slug ?? null,
         custom_domain: data?.custom_domain ?? null,
@@ -109,6 +120,9 @@ export default function ProductosPage() {
         // El default de la columna es `true` y las marcas viejas no la tienen
         // escrita: `undefined` significa "reparte", igual que en el checkout.
         home_delivery_enabled: data?.home_delivery_enabled ?? true,
+        // Sin la columna (`pedir(CAMPOS)` de respaldo) el embed está apagado,
+        // que es lo que corresponde a una marca de krossclub.app y nada más.
+        kross_form: data?.kross_form === true,
         })
       })
   }, [effective?.store_id])
@@ -220,13 +234,16 @@ export default function ProductosPage() {
         </div>
       )}
 
-      {editing && <Editor product={editing} adminId={real?.auth_user_id ?? ''} storeId={effective?.store_id ?? ''} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+      {editing && <Editor product={editing} adminId={real?.auth_user_id ?? ''} storeId={effective?.store_id ?? ''} krossForm={store?.kross_form === true} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
     </div>
   )
 }
 
-function Editor({ product, adminId, storeId, onClose, onSaved }: {
+function Editor({ product, adminId, storeId, krossForm, onClose, onSaved }: {
   product: Product; adminId: string; storeId: string
+  /** §68: enciende los campos de Kross Form. Apagado —toda marca que no use el
+   *  embed— este editor es el de siempre, campo por campo. */
+  krossForm: boolean
   /** Borrar un producto es un DELETE sin papelera, y con pedidos viejos
    *  apuntando al que desaparece: no lo hace un operador. Para sacarlo de la
    *  venta está el interruptor de activo, que sí puede y sí se deshace. El
@@ -241,6 +258,7 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
   const [permiteMitad, setPermiteMitad] = useState<boolean>(product.permite_mitad === true)
   const [descuento, setDescuento] = useState<string>(
     Number(product.descuento_pen) > 0 ? String(Number(product.descuento_pen)) : '')
+  const [cobraCompleto, setCobraCompleto] = useState<boolean>(product.cobra_completo === true)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -392,6 +410,10 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
           package_dims_cm: dims.trim() || null,
           permite_mitad: permiteMitad,
           descuento_pen: descuento.trim() ? Number(descuento) : 0,
+          // La clave solo viaja con el embed encendido: `saneaProducto` escribe
+          // únicamente lo que el body trae, así que una marca de krossclub.app
+          // nunca toca esta columna (§68).
+          ...(krossForm ? { cobra_completo: cobraCompleto } : {}),
         }),
       })
       if (!res.ok) {
@@ -461,6 +483,37 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
             </span>
           </button>
 
+          {/* Kross Form (§68): el tercer interruptor de cobro. Gana sobre el
+              adelanto de cada pack y pierde contra el destino — la escalera
+              entera está en docs/18-KROSS-FORM.md §5.a. */}
+          {krossForm && (
+            <>
+              <button type="button" role="switch" aria-checked={cobraCompleto}
+                onClick={() => setCobraCompleto(v => !v)}
+                className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-white border mb-2"
+                style={{ borderColor: 'var(--border)' }}>
+                <span className="text-left">
+                  <span className="block text-xs font-black text-gray-900">Cobrar el 100 % por adelantado</span>
+                  <span className="block text-[10px] text-gray-500">Ignora el adelanto que pusiste en cada pack y cobra el precio completo.</span>
+                </span>
+                <span className="relative rounded-full transition-colors flex-shrink-0"
+                  style={{ width: 34, height: 20, background: cobraCompleto ? 'var(--brand)' : 'var(--border-strong)' }}>
+                  <span className="absolute top-[3px] rounded-full transition-all"
+                    style={{ width: 14, height: 14, background: '#fff', left: cobraCompleto ? 17 : 3 }} />
+                </span>
+              </button>
+              {/* El orden importa y no es adivinable: sin esto el vendedor pone
+                  S/20 en un pack, ve que un pedido de Lima no cobró nada y cree
+                  que el formulario falló. */}
+              <p className="text-[10px] text-gray-400 mb-3 leading-snug">
+                En tu formulario manda <b>el destino</b>: los pedidos de <b>Lima y Callao van
+                contraentrega siempre</b>, cobre lo que cobre el pack. En provincia se cobra,
+                en este orden: el 100 % si lo prendiste arriba, si no el adelanto del pack, y
+                si el pack está en 0 el pedido va contraentrega también.
+              </p>
+            </>
+          )}
+
           <label className="text-[11px] font-bold text-gray-500 mb-1 block">
             Oferta de salida (S/) <span className="font-bold text-gray-400">(0 = sin oferta)</span>
           </label>
@@ -514,6 +567,24 @@ function Editor({ product, adminId, storeId, onClose, onSaved }: {
                   porque deducía las unidades del nombre y mentía en cuanto el
                   nombre no llevaba número. Vacía, debajo del título no va nada. */}
               <input value={p.descripcion ?? ''} onChange={e => setPack(i, { descripcion: e.target.value })} placeholder="Descripción corta (lo que sale bajo el título)" className="w-full bg-white rounded-lg px-3 py-2 text-xs outline-none border" />
+
+              {/* Kross Form (§68): el adelanto es un MONTO de este pack, no una
+                  proporción. Va pegado al precio porque se decide mirándolo.
+                  Solo con el embed encendido — en krossclub.app el adelanto lo
+                  deciden los interruptores del producto, no el pack. */}
+              {krossForm && (
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] font-bold text-gray-500 flex-1">
+                    Adelanto de este pack <span className="font-bold text-gray-400">(0 = contraentrega)</span>
+                  </label>
+                  <input
+                    value={String(p.adelanto_pen || '')}
+                    onChange={e => setPack(i, { adelanto_pen: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })}
+                    inputMode="decimal" placeholder="S/"
+                    className="w-20 bg-white rounded-lg px-3 py-2 text-xs outline-none border"
+                  />
+                </div>
+              )}
 
               {/* Foto del pack: la que se ve en el paso 1 del checkout. */}
               <div className="flex items-center gap-2">

@@ -3340,3 +3340,64 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS package_dims_cm text;  -- "LxAxH" 
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('olva-rotulos', 'olva-rotulos', true)
 ON CONFLICT (id) DO NOTHING;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §68 · KROSS FORM: EL FORMULARIO COMO EMBED  (17-set-2026)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- El checkout de Kross servido como <script> en la página de otro —GemPages,
+-- una landing, lo que sea—, fuera del App Store de Shopify y a propósito.
+-- El diseño entero está en `docs/18-KROSS-FORM.md`.
+--
+-- Todo lo de este bloque es ADITIVO y nace apagado (§10 del doc): una tienda de
+-- krossclub.app que no use Kross Form se comporta exactamente igual con estas
+-- columnas que sin ellas. `adelanto_pen` ausente y `cobra_completo` en false
+-- describen el producto que ya existe hoy.
+
+--   · El adelanto del embed es un MONTO por pack, no la proporción de §56:
+--     "que adelanten 20 soles". Vive DENTRO del jsonb `products.packs`, como un
+--     campo más de cada pack —{ nombre, descripcion, precio, image?,
+--     adelanto_pen? }—, así que no hay columna ni migración que correr. La lee
+--     `adelantoFromPacks()` de `_shared/advance.ts`, emparejando por `nombre`
+--     igual que `priceFromPacks()`, y la sanea `saneaPacks()` al guardar.
+--     0 o ausente = ese pack NO cobra adelanto: va contraentrega aunque sea
+--     provincia.
+COMMENT ON COLUMN products.packs IS
+  'jsonb [{ nombre, descripcion, precio, image?, adelanto_pen? }]. adelanto_pen es el adelanto en soles de Kross Form (docs/18-KROSS-FORM.md §5); ausente o 0 = ese pack no adelanta.';
+
+--   · El tercer interruptor de cobro del producto, junto a `permite_mitad` y
+--     `descuento_pen` de §56: cobrar el 100 % por adelantado. Gana sobre el
+--     adelanto del pack en la escalera de `adelantoDelPedido()`, y pierde
+--     contra el destino — Lima y Callao van contraentrega pase lo que pase.
+ALTER TABLE products ADD COLUMN IF NOT EXISTS cobra_completo boolean NOT NULL DEFAULT false;
+
+--   · Qué tienda usa Kross Form. Apagado por defecto: mientras esté en false,
+--     el panel no enseña ni un campo del embed y la marca sigue viendo el
+--     producto de siempre. Es la compuerta que hace que §68 sea invisible para
+--     las marcas vivas.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS kross_form boolean NOT NULL DEFAULT false;
+
+--   · Las llaves del embed. La `public_key` viaja EN EL HTML de la página del
+--     comerciante —cualquiera la ve en el código fuente— así que NO es una
+--     credencial: lo que autoriza es el `Origin`, contrastado contra
+--     `dominios_permitidos`. Y no da lectura de nada: ninguna función acepta
+--     esta llave para listar pedidos o compradores, solo para escribir uno
+--     nuevo.
+--
+--     RLS con REVOKE como `store_secrets`: la escribe y la lee el service role
+--     desde las funciones, nunca el navegador.
+CREATE TABLE IF NOT EXISTS embed_keys (
+  public_key          text        PRIMARY KEY,
+  store_id            text        NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  -- Los hosts donde este formulario puede correr, sin esquema ni barra final
+  -- ("tienda.com", "www.tienda.com"). Vacío = la llave no atiende a nadie.
+  dominios_permitidos text[]      NOT NULL DEFAULT '{}',
+  -- El WhatsApp al que van los dos caminos del comprador. Vive acá y no en
+  -- `stores` porque un comerciante puede repartir pedidos de dos landings a
+  -- dos números distintos sin tener dos tiendas.
+  whatsapp            text,
+  activo              boolean     NOT NULL DEFAULT true,
+  created_at          timestamptz DEFAULT now()
+);
+ALTER TABLE embed_keys ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON embed_keys FROM anon, authenticated;
+CREATE INDEX IF NOT EXISTS embed_keys_store_idx ON embed_keys (store_id);
